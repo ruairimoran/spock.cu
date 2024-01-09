@@ -1,248 +1,162 @@
-//from typing import Union, Any
-//import numpy as np
-//import turtle
 #include <stdexcept>
+#define standard_type double
 
 
-bool _check_probability_vector(p) {
+template <typename type, size_t len>
+bool _check_probability_vector(type (&p)[len]) {
     if (abs(sum(p) - 1) >= 1e-10) {
-        throw std::runtime_error("probability vector does not sum up to 1")
+        throw std::runtime_error("probability vector does not sum up to 1");
     }
     if (any(pi <= -1e-16 for pi in p)) {
-        throw std::runtime_error("probability vector contains negative entries")
+        throw std::runtime_error("probability vector contains negative entries");
     }
-    return True
+    return true;
 }
 
 
-bool _check_stopping_time(n, t) {
+bool _check_stopping_time(unsigned int n, unsigned int t) {
     if (t > n) {
-        throw std::runtime_error("stopping time greater than number of stages")
+        throw std::runtime_error("stopping time greater than number of stages");
     }
-    return True
+    return true;
 }
 
 
-class ScenarioTree:
+class ScenarioTree {
+    private:
+        int __stages;
+        int __ancestors[];
+        double __probability[];
+        int __w_values[]=NULL; 
+        bool __is_markovian=false;
+        int __children[][] = None[][];  // array of arrays of the children at each node
+        void __update_children();
+        ScenarioTree(int stages, int ancestors[], double probability[], int w_values[]=NULL, bool is_markovian=false);
+    
+    public:
+        bool is_markovian() {
+            return __is_markovian;
+        }
 
-    def __init__(self, stages, ancestors, probability, w_values=None, is_markovian=False):
-        /** @Scenario tree creation and visualisation
-        @param[in] stages: integer number of total tree stages (N+1)
-        @param[in] ancestors: array where `array position=node number` and `value at position=node ancestor`
-        @param[in] probability: array where `array position=node number` and `value at position=probability node occurs`
-        @param[in] w_values: array where `array position=node number` and `value at position=value of w`
+        unsigned int num_nonleaf_nodes() {
+            return np.sum(self.__stages < (self.num_stages - 1));
+        }
 
-        Note: avoid using this constructor directly; use a factory instead
-        */
-        self.__is_markovian = is_markovian
-        self.__stages = stages
-        self.__ancestors = ancestors
-        self.__probability = probability
-        self.__w_idx = w_values
-        self.__children = None  # this will be updated later (the user doesn't need to provide it)
-        self.__data = None  # really, any data associated with the nodes of the tree
-        self.__update_children()
-        self.__allocate_data()
+        unsigned int num_nodes() {
+            /** @return total number of nodes of the tree */
+            return len(self.__ancestors);
+        }
 
-    def __update_children(self):
-        self.__children = []
-        for i in range(self.num_nonleaf_nodes):
-            children_of_i = np.where(self.__ancestors == i)
-            self.__children += children_of_i
+        unsigned int num_stages() {
+            /** @return number of stages including zero stage */
+            return self.__stages[-1] + 1;
+        }
 
-    def __allocate_data(self):
-        self.__data = np.empty(shape=(self.num_nodes, ), dtype=dict)
-        
-    def get_data_at_node(self, node_idx):
-        """
-        :param node_idx: index of node, or range of indices
-        :return: stored data
+        unsigned int get_ancestor_of(node_idx) {
+            /**
+            @param node_idx node index
+            @return index of ancestor node 
+            */
+            return self.__ancestors[node_idx];
+        }
 
-        Returns `None` if no data are stored at the given node
-        """
-        return self.__data[node_idx]
+        unsigned int[] get_children_of(node_idx) {
+            /**
+            @param node_idx node index
+            @return list of children of given node
+            */
+            return self.__children[node_idx];
+        }
 
-    def set_data_at_node(self, node_idx, data_dict: dict):
-        """
-        :param node_idx: node index
-        :param data_dict: a dictionary with the data to be stored at the above node
-        :return: nothing
-        """
-        self.__data[node_idx] = data_dict
+        unsigned int get_stage_of(node_idx) {
+            /**
+            @param node_idx node index
+            @return stage of given node
+            */
+            if (node_idx < 0) {
+                throw std::runtime_error("node_idx cannot be <0")
+            }
+            return self.__stages[node_idx];
+        }
 
-    @property
-    def is_markovian(self):
-        return self.__is_markovian
+        unsigned int get_value_at_node(node_idx):
+            /**
+            @param node_idx node index
+            @return value of the disturbance (`w`) at the given node (if any)
+            */
+            return self.__w_idx[node_idx]
 
-    @property
-    def num_nonleaf_nodes(self):
-        return np.sum(self.__stages < (self.num_stages - 1))
+        unsigned int get_nodes_at_stage(stage_idx) {
+            /**
+            @param stage_idx index of stage
+            @return array of node indices at given stage
+            */
+            return np.where(self.__stages == stage_idx)[0];
+        }
 
-    @property
-    def num_nodes(self):
-        """
-        :return: total number of nodes of the tree
-        """
-        return len(self.__ancestors)
+        def probability_of_node(self, node_idx):
+            """
+            :param node_idx: node index
+            :return: probability to visit the given node
+            """
+            return self.__probability[node_idx]
 
-    @property
-    def num_stages(self):
-        """
-        :return: number of stages including zero stage
-        """
-        return self.__stages[-1] + 1
+        def siblings_of_node(self, node_idx):
+            """
+            :param node_idx: node index
+            :return: array of siblings of given node (including the given node)
+            """
+            if node_idx == 0:
+                return [0]
+            return self.children_of(self.ancestor_of(node_idx))
 
-    def ancestor_of(self, node_idx):
-        """
-        :param node_idx: node index
-        :return: index of ancestor node
-        """
-        return self.__ancestors[node_idx]
-
-    def children_of(self, node_idx):
-        """
-        :param node_idx: node index
-        :return: list of children of given node
-        """
-        return self.__children[node_idx]
-
-    def stage_of(self, node_idx):
-        """
-        :param node_idx: node index
-        :return: stage of given node
-        """
-        if node_idx < 0:
-            raise ValueError("node_idx cannot be <0")
-        return self.__stages[node_idx]
-
-    def value_at_node(self, node_idx):
-        """
-        :param node_idx: node index
-        :return: value of the disturbance (`w`) at the given node (if any)
-        """
-        return self.__w_idx[node_idx]
-
-    def nodes_at_stage(self, stage_idx):
-        """
-        :param stage_idx: index of stage
-        :return: array of node indices at given stage
-        """
-        return np.where(self.__stages == stage_idx)[0]
-
-    def probability_of_node(self, node_idx):
-        """
-        :param node_idx: node index
-        :return: probability to visit the given node
-        """
-        return self.__probability[node_idx]
-
-    def siblings_of_node(self, node_idx):
-        """
-        :param node_idx: node index
-        :return: array of siblings of given node (including the given node)
-        """
-        if node_idx == 0:
-            return [0]
-        return self.children_of(self.ancestor_of(node_idx))
-
-    def conditional_probabilities_of_children(self, node_idx):
-        """
-        :param node_idx: node index
-        :return: array of conditional probabilities of the children of a given node
-        """
-        prob_node_idx = self.probability_of_node(node_idx)
-        children = self.children_of(node_idx)
-        prob_children = self.__probability[children]
-        return prob_children / prob_node_idx
-
-    def __str__(self):
-        return f"Scenario Tree\n+ Nodes: {self.num_nodes}\n+ Stages: {self.num_stages}\n" \
-               f"+ Scenarios: {len(self.nodes_at_stage(self.num_stages - 1))}\n" \
-               f"+ Data: {self.__data is not None}"
-
-    def __repr__(self):
-        return f"Scenario tree with {self.num_nodes} nodes, {self.num_stages} stages " \
-               f"and {len(self.nodes_at_stage(self.num_stages - 1))} scenarios"
-
-    @staticmethod
-    def __circle_coord(rad, arc):
-        return rad * np.cos(np.deg2rad(arc)), rad * np.sin(np.deg2rad(arc))
-
-    @staticmethod
-    def __goto_circle_coord(trt, rad, arc):
-        trt.penup()
-        trt.goto(ScenarioTree.__circle_coord(rad, arc))
-        trt.pendown()
-
-    @staticmethod
-    def __draw_circle(trt, rad):
-        trt.penup()
-        trt.home()
-        trt.goto(0, -rad)
-        trt.pendown()
-        trt.circle(rad)
-
-    def __draw_leaf_nodes_on_circle(self, trt, radius, dot_size=6):
-        trt.pencolor('gray')
-        ScenarioTree.__draw_circle(trt, radius)
-        leaf_nodes = self.nodes_at_stage(self.num_stages - 1)
-        num_leaf_nodes = len(leaf_nodes)
-        dv = 360 / num_leaf_nodes
-        arcs = np.zeros(self.num_nodes)
-        for i in range(num_leaf_nodes):
-            ScenarioTree.__goto_circle_coord(trt, radius, i * dv)
-            trt.pencolor('black')
-            trt.dot(dot_size)
-            trt.pencolor('gray')
-            arcs[leaf_nodes[i]] = i * dv
-
-        trt.pencolor('black')
-        return arcs
-
-    def __draw_nonleaf_nodes_on_circle(self, trt, radius, larger_radius, stage, arcs, dot_size=6):
-        trt.pencolor('gray')
-        ScenarioTree.__draw_circle(trt, radius)
-        nodes = self.nodes_at_stage(stage)
-        for n in nodes:
-            mean_arc = np.mean(arcs[self.children_of(n)])
-            arcs[n] = mean_arc
-            ScenarioTree.__goto_circle_coord(trt, radius, mean_arc)
-            trt.pencolor('black')
-            trt.dot(dot_size)
-            for nc in self.children_of(n):
-                current_pos = trt.pos()
-                trt.goto(ScenarioTree.__circle_coord(larger_radius, arcs[nc]))
-                trt.goto(current_pos)
-            trt.pencolor('gray')
-        return arcs
-
-    def bulls_eye_plot(self, dot_size=5, radius=300, filename=None):
-        """
-        Bull's eye plot of scenario tree
-
-        :param dot_size: size of node [default: 5]
-        :param radius: radius of largest circle [default: 300]
-        :param filename: name of file, with .eps extension, to save the plot [default: None]
-        """
-        wn = turtle.Screen()
-        wn.tracer(0)
-        t = turtle.Turtle(visible=False)
-        t.speed(0)
-
-        arcs = self.__draw_leaf_nodes_on_circle(t, radius, dot_size)
-        radius_step = radius / (self.num_stages - 1)
-        for n in range(self.num_stages - 2, -1, -1):
-            radius -= radius_step
-            arcs = self.__draw_nonleaf_nodes_on_circle(t, radius, radius + radius_step, n, arcs, dot_size)
-
-        wn.update()
-
-        if filename is not None:
-            wn.getcanvas().postscript(file=filename)
-        wn.mainloop()
+        def conditional_probabilities_of_children(self, node_idx):
+            """
+            :param node_idx: node index
+            :return: array of conditional probabilities of the children of a given node
+            """
+            prob_node_idx = self.probability_of_node(node_idx)
+            children = self.children_of(node_idx)
+            prob_children = self.__probability[children]
+            return prob_children / prob_node_idx
+}
 
 
-class MarkovChainScenarioTreeFactory:
+ScenarioTree::ScenarioTree(int stages, int ancestors[], double probability[], int w_values[]=NULL, bool is_markovian=false) {
+    /** @Scenario tree constructor
+    @param stages: integer number of total tree stages (N+1)
+    @param ancestors: array where `array position=node number` and `value at position=node ancestor`
+    @param probability: array where `array position=node number` and `value at position=probability node occurs`
+    @param w_values: array where `array position=node number` and `value at position=value of w`
+
+    Note: avoid using this constructor directly; use a factory instead
+    */
+    bool __is_markovian = is_markovian;
+    int __stages = stages;
+    int __ancestors[] = ancestors[];
+    double __probability = probability[];
+    int __w_idx = w_values[];
+}
+
+void __update_children() {
+    this.__children = [];
+    for (i=0; i<this.num_nonleaf_nodes; i++) {
+        children_of_i = np.where(self.__ancestors == i)
+        self.__children += children_of_i
+    }
+}
+
+def __str__(self):
+    return f"Scenario Tree\n+ Nodes: {self.num_nodes}\n+ Stages: {self.num_stages}\n" \
+            f"+ Scenarios: {len(self.nodes_at_stage(self.num_stages - 1))}\n" \
+            f"+ Data: {self.__data is not None}"
+
+def __repr__(self):
+    return f"Scenario tree with {self.num_nodes} nodes, {self.num_stages} stages " \
+            f"and {len(self.nodes_at_stage(self.num_stages - 1))} scenarios"
+
+
+class MarkovChainScenarioTreeFactory {
     """
     Factory class to construct scenario trees from stopped Markov chains
     """
@@ -267,6 +181,7 @@ class MarkovChainScenarioTreeFactory:
         for pi in transition_prob:
             _check_probability_vector(pi)
         _check_probability_vector(initial_distribution)
+}
 
     def __cover(self, i):
         pi = self.__transition_prob[i, :]

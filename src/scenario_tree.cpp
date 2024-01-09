@@ -27,11 +27,21 @@ class ScenarioTree {
         int __stages;
         int __ancestors[];
         double __probability[];
-        int __w_values[]=NULL; 
+        int __w_idx[]=NULL; 
         bool __is_markovian=false;
         int __children[][] = None[][];  // array of arrays of the children at each node
-        void __update_children();
-        ScenarioTree(int stages, int ancestors[], double probability[], int w_values[]=NULL, bool is_markovian=false);
+        ScenarioTree(int stages, int ancestors[], double probability[], int w_values[]=NULL, bool is_markovian=false)
+        : __is_markovian(is_markovian), __stages(stages), __ancestors(ancestors), __probability(probability), __w_idx(w_values) {
+            /** @Scenario tree constructor
+            @param stages: integer number of total tree stages (N+1)
+            @param ancestors: array where `array position=node number` and `value at position=node ancestor`
+            @param probability: array where `array position=node number` and `value at position=probability node occurs`
+            @param w_values: array where `array position=node number` and `value at position=value of w`
+
+            Note: avoid using this constructor directly; use a factory instead
+            */
+           __update_children();
+        }
     
     public:
         bool is_markovian() {
@@ -119,23 +129,6 @@ class ScenarioTree {
             children = self.children_of(node_idx)
             prob_children = self.__probability[children]
             return prob_children / prob_node_idx
-}
-
-
-ScenarioTree::ScenarioTree(int stages, int ancestors[], double probability[], int w_values[]=NULL, bool is_markovian=false) {
-    /** @Scenario tree constructor
-    @param stages: integer number of total tree stages (N+1)
-    @param ancestors: array where `array position=node number` and `value at position=node ancestor`
-    @param probability: array where `array position=node number` and `value at position=probability node occurs`
-    @param w_values: array where `array position=node number` and `value at position=value of w`
-
-    Note: avoid using this constructor directly; use a factory instead
-    */
-    bool __is_markovian = is_markovian;
-    int __stages = stages;
-    int __ancestors[] = ancestors[];
-    double __probability = probability[];
-    int __w_idx = w_values[];
 }
 
 void __update_children() {

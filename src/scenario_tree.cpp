@@ -104,31 +104,35 @@ class ScenarioTree {
             return np.where(self.__stages == stage_idx)[0];
         }
 
-        def probability_of_node(self, node_idx):
-            """
-            :param node_idx: node index
-            :return: probability to visit the given node
-            """
-            return self.__probability[node_idx]
+        double get_probability_of_node(node_idx) {
+            /**
+            @param node_idx node index
+            @return probability to visit the given node
+            */
+            return self.__probability[node_idx];
+        }
 
-        def siblings_of_node(self, node_idx):
-            """
-            :param node_idx: node index
-            :return: array of siblings of given node (including the given node)
-            """
-            if node_idx == 0:
-                return [0]
-            return self.children_of(self.ancestor_of(node_idx))
+        unsigned int[] get_siblings_of_node(node_idx){
+            /**
+            @param node_idx node index
+            @return array of siblings of given node (including the given node)
+            */
+            if (node_idx == 0) {
+                return [0];
+            }
+            return self.children_of(self.ancestor_of(node_idx));
+        }
 
-        def conditional_probabilities_of_children(self, node_idx):
-            """
-            :param node_idx: node index
-            :return: array of conditional probabilities of the children of a given node
-            """
-            prob_node_idx = self.probability_of_node(node_idx)
-            children = self.children_of(node_idx)
-            prob_children = self.__probability[children]
-            return prob_children / prob_node_idx
+        double[] get_conditional_probabilities_of_children(node_idx) {
+            /**
+            @param node_idx node index
+            @return array of conditional probabilities of the children of a given node
+            */
+            prob_node_idx = self.probability_of_node(node_idx);
+            children = self.children_of(node_idx);
+            prob_children = self.__probability[children];
+            return prob_children / prob_node_idx;
+        }
 }
 
 void __update_children() {

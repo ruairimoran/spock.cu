@@ -6,7 +6,7 @@
 class ScenarioTree {
 private:
     bool __is_markovian;
-    int __stages;
+    int ptr_stages;
     std::vector<int> __ancestors;
     std::vector<double> __probability;
     std::vector<int> __w_idx;

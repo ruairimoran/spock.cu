@@ -120,8 +120,7 @@ class ScenarioTree:
 
     def __str__(self):
         return f"Scenario Tree\n+ Nodes: {self.num_nodes}\n+ Stages: {self.num_stages}\n" \
-               f"+ Scenarios: {len(self.nodes_at_stage(self.num_stages - 1))}\n" \
-               f"+ Data: {self.__data is not None}"
+               f"+ Scenarios: {len(self.nodes_at_stage(self.num_stages - 1))}"
 
     def __repr__(self):
         return f"Scenario tree with {self.num_nodes} nodes, {self.num_stages} stages " \
@@ -158,10 +157,15 @@ class ScenarioTree:
         # Generate "tree.h" from template "tree_template.h.jinja2"
         template = env.get_template("tree.h.jinja2")
         output = template.render(timestamp=current_timestamp,
-                                 num_stages=self.num_stages,
-                                 num_nodes=self.num_nodes,
+                                 is_markovian=self.is_markovian,
                                  num_nonleaf_nodes=self.num_nonleaf_nodes,
-                                 stages=self.__stages)
+                                 num_nodes=self.num_nodes,
+                                 num_stages=self.num_stages,
+                                 stages=self.__stages,
+                                 ancestors=self.__ancestors,
+                                 probability=self.__probability,
+                                 events=self.__w_idx,
+                                 children=self.__children)
         output_path = "src/tree.h"
         with open(output_path, "w") as fh:
             fh.write(output)
@@ -340,13 +344,14 @@ class ScenarioTreeFactoryMarkovChain:
             probs = np.concatenate((probs, [probs_new]))
             index = i
 
-        for j in range(index, num_nodes):
-            probs_new = probs[ancestors[j]]
-            probs = np.concatenate((probs, [probs_new]))
-
+        if i != num_nodes - 1:
+            for j in range(index, num_nodes):
+                probs_new = probs[ancestors[j]]
+                probs = np.concatenate((probs, [probs_new]))
+        
         return probs
 
-    def generate(self):
+    def generate_tree(self):
         """
         Generates a scenario tree from the given Markov chain
         """

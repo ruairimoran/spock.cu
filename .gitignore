@@ -1,6 +1,7 @@
 # Custom
 .vscode
 venv
+__pycache__
 
 # Prerequisites
 *.d

@@ -1,8 +1,5 @@
 import sys
-try:
-    sys.path.append(sys.path[0] + '/..')
-except:
-    sys.path.append(sys.path[0] + '\..')
+sys.path.append(sys.path[0] + '/..')
 import py.tree_factories as factories
 import unittest
 import numpy as np

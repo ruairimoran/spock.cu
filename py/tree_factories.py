@@ -144,7 +144,7 @@ class ScenarioTree:
         # Get current date and time
         current_timestamp = datetime.datetime.utcnow()
         # Setup jinja environment
-        file_loader = j2.FileSystemLoader(searchpath="src/")
+        file_loader = j2.FileSystemLoader(searchpath="py/")
         env = j2.Environment(loader=file_loader,
                              trim_blocks=True,
                              lstrip_blocks=True,
@@ -155,7 +155,7 @@ class ScenarioTree:
                              comment_start_string="\#",
                              comment_end_string="#\\")
         # Generate "tree.h" from template "tree_template.h.jinja2"
-        template = env.get_template("tree.h.jinja2")
+        template = env.get_template("tree_attributes.h.jinja2")
         output = template.render(timestamp=current_timestamp,
                                  is_markovian=self.is_markovian,
                                  num_nonleaf_nodes=self.num_nonleaf_nodes,
@@ -166,7 +166,7 @@ class ScenarioTree:
                                  probability=self.__probability,
                                  events=self.__w_idx,
                                  children=self.__children)
-        output_path = "src/tree.h"
+        output_path = "src/tree_attributes.h"
         with open(output_path, "w") as fh:
             fh.write(output)
     
@@ -344,7 +344,7 @@ class ScenarioTreeFactoryMarkovChain:
             probs = np.concatenate((probs, [probs_new]))
             index = i
 
-        if i != num_nodes - 1:
+        if index != num_nodes - 1:
             for j in range(index, num_nodes):
                 probs_new = probs[ancestors[j]]
                 probs = np.concatenate((probs, [probs_new]))

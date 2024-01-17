@@ -29,8 +29,8 @@ setup(name=NAME,
       long_description=long_description,
       long_description_content_type='text/markdown',
       author=['Ruairi Moran', 'Pantelis Sopasakis'],
-      author_email='anonymous@qub.ac.uk',
-      license='',
+      author_email=['rmoran05@qub.ac.uk', 'p.sopasakis@qub.ac.uk'],
+      license='Apache 2.0',
       packages=find_packages(
           exclude=["tests"]),
       include_package_data=True,
@@ -38,9 +38,9 @@ setup(name=NAME,
           'numpy', 'scipy', 'PythonTurtle', 'matplotlib', 'jinja2'
       ],
       classifiers=[
-          'Programming Language :: Python, C++, CUDA'
+          'Programming Languages :: Python, C++, CUDA'
       ],
-      keywords=['risk averse, model predictive control, parallel'],
+      keywords=['risk averse, optimal control, parallel'],
       url=(
           'https://github.com/ruairimoran/raocp-parallel'
       ),

@@ -12,7 +12,7 @@ test_py() {
     pip install virtualenv
 
     # -- create virtualenv
-    virtualenv -p python3.11 venv
+    virtualenv -p python3.8 venv
 
     # -- activate venv
     source venv/bin/activate
@@ -21,7 +21,7 @@ test_py() {
     pip install --upgrade pip
 
     # -- install dependencies
-    pip install ./tests
+    pip install .
 
     # -- run the python tests
     python -W ignore tests/test_tree_factories.py -v

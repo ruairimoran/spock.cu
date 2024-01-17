@@ -10,7 +10,7 @@ class ScenarioTree:
     Scenario tree creation and visualisation
     """
 
-    def __init__(self, stages, ancestors, probability, w_values=None, is_markovian=False):
+    def __init__(self, stages, ancestors, probability, w_values=None, is_markovian=False, is_iid=False):
         """
         :param stages: array where `array position=node number` and `value at position=stage at node`
         :param ancestors: array where `array position=node number` and `value at position=node ancestor`
@@ -20,6 +20,7 @@ class ScenarioTree:
         Note: avoid using this constructor directly; use a factory instead
         """
         self.__is_markovian = is_markovian
+        self.__is_iid = is_iid
         self.__stages = stages
         self.__ancestors = ancestors
         self.__probability = probability
@@ -36,6 +37,10 @@ class ScenarioTree:
     @property
     def is_markovian(self):
         return self.__is_markovian
+    
+    @property
+    def is_iid(self):
+        return self.__is_iid
 
     @property
     def num_nonleaf_nodes(self):

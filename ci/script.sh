@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euxo pipefail
 
-test_py() {
+test_all() {
     # Run Python tests
     # ------------------------------------
 
@@ -25,11 +25,13 @@ test_py() {
 
     # -- run the python tests
     python -W ignore tests/test_tree_factories.py -v
-}
 
-test_cpp() {
+
     # Run C++ gtests using cmake
     # ------------------------------------
+
+    # -- generate simple tree for testing
+    python tests/test_tree_main.py
 
     # -- change into test directory
     cd tests
@@ -49,8 +51,7 @@ test_cpp() {
 
 
 main() {
-    test_py
-    test_cpp
+    test_all
 }
 
 main

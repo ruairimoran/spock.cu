@@ -173,7 +173,7 @@ class TestScenarioTree(unittest.TestCase):
                       [0, 0.3, 0.7]])
         v = np.array([0.5, 0.4, 0.1])
         (N, tau) = (1, 1)
-        mock_tree_from_markov = factories.ScenarioTreeFactoryMarkovChain(p, v, N, tau).generate_tree()
+        _ = factories.ScenarioTreeFactoryMarkovChain(p, v, N, tau).generate_tree()
 
     def test_stop_is_one(self):
         p = np.array([[0.1, 0.8, 0.1],
@@ -181,7 +181,7 @@ class TestScenarioTree(unittest.TestCase):
                       [0, 0.3, 0.7]])
         v = np.array([0.5, 0.4, 0.1])
         (N, tau) = (3, 1)
-        mock_tree_from_markov = factories.ScenarioTreeFactoryMarkovChain(p, v, N, tau).generate_tree()
+        _ = factories.ScenarioTreeFactoryMarkovChain(p, v, N, tau).generate_tree()
 
 
 if __name__ == '__main__':

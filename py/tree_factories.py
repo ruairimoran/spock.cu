@@ -60,21 +60,21 @@ class ScenarioTree:
         """
         return self.__stages[-1] + 1
 
-    def ancestor_of(self, node_idx):
+    def ancestor_of_node(self, node_idx):
         """
         :param node_idx: node index
         :return: index of ancestor node
         """
         return self.__ancestors[node_idx]
 
-    def children_of(self, node_idx):
+    def children_of_node(self, node_idx):
         """
         :param node_idx: node index
         :return: list of children of given node
         """
         return self.__children[node_idx]
 
-    def stage_of(self, node_idx):
+    def stage_of_node(self, node_idx):
         """
         :param node_idx: node index
         :return: stage of given node
@@ -83,14 +83,14 @@ class ScenarioTree:
             raise ValueError("node_idx cannot be <0")
         return self.__stages[node_idx]
 
-    def value_at_node(self, node_idx):
+    def event_of_node(self, node_idx):
         """
         :param node_idx: node index
         :return: value of the disturbance (`w`) at the given node (if any)
         """
         return self.__w_idx[node_idx]
 
-    def nodes_at_stage(self, stage_idx):
+    def nodes_of_stage(self, stage_idx):
         """
         :param stage_idx: index of stage
         :return: array of node indices at given stage
@@ -111,15 +111,15 @@ class ScenarioTree:
         """
         if node_idx == 0:
             return [0]
-        return self.children_of(self.ancestor_of(node_idx))
+        return self.children_of_node(self.ancestor_of_node(node_idx))
 
-    def conditional_probabilities_of_children(self, node_idx):
+    def cond_prob_of_children_of_node(self, node_idx):
         """
         :param node_idx: node index
         :return: array of conditional probabilities of the children of a given node
         """
         prob_node_idx = self.probability_of_node(node_idx)
-        children = self.children_of(node_idx)
+        children = self.children_of_node(node_idx)
         prob_children = self.__probability[children]
         return prob_children / prob_node_idx
 

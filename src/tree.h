@@ -1,4 +1,3 @@
-#include <vector>
 using namespace std;
 
 
@@ -7,27 +6,27 @@ class ScenarioTree {
         #include "tree_attributes.h"
 
     public:
-        const bool is_markovian() {
+        bool is_markovian() {
             /** @return whether tree is a stopped Markovian process */
             return _is_markovian;
         }
 
-        const bool is_iid() {
+        bool is_iid() {
             /** @return whether tree is an independent and identically distributed sequence */
             return _is_iid;
         }
 
-        const int num_nonleaf_nodes() {
+        int num_nonleaf_nodes() {
             /** @return total number of nonleaf nodes */
             return _num_nonleaf_nodes;
         }
 
-        const int num_nodes() {
+        int num_nodes() {
             /** @return total number of nodes */
             return _num_nodes;
         }
 
-        const int num_stages() {
+        int num_stages() {
             /** @return total number of stages */
             return _num_stages;
         }
@@ -76,7 +75,7 @@ class ScenarioTree {
             return events[node_idx];
         }
 
-        vector<const int> get_children_of_node(int node_idx) {
+        vector<int> get_children_of_node(int node_idx) {
             /**
             @param node_idx node index
             @return last child of given node
@@ -109,7 +108,7 @@ class ScenarioTree {
                 throw invalid_argument("node_idx error: get_conditional_probabilities_of_children()");
             }
             double prob_parent_ = get_probability_of_node(node_idx);
-            vector<const int> children_ = get_children_of_node(node_idx);
+            vector<int> children_ = get_children_of_node(node_idx);
             int size_of_ch = children_.size();
             vector<double> cond_prob_(size_of_ch);
             for (int i=0; i<size_of_ch; i++) {

@@ -7,7 +7,7 @@ class MarkovTreeTest : public testing::Test {
         ScenarioTree mock_markov_tree = ScenarioTree();
 };
 
-TEST_F(MarkovTreeTest, BasicAssertions) {
+TEST_F(MarkovTreeTest, Type) {
     EXPECT_TRUE(mock_markov_tree.is_markovian());
     EXPECT_FALSE(mock_markov_tree.is_iid());
 }
@@ -44,7 +44,7 @@ TEST_F(MarkovTreeTest, GetEvent) {
 
 TEST_F(MarkovTreeTest, GetChildrenOf) {
     EXPECT_ANY_THROW(mock_markov_tree.get_children_of_node(-1));
-    EXPECT_TRUE((mock_markov_tree.get_children_of_node(2) == std::vector<const int> {5, 6}));
+    EXPECT_TRUE((mock_markov_tree.get_children_of_node(2) == std::vector<int> {5, 6}));
     EXPECT_ANY_THROW(mock_markov_tree.get_children_of_node(mock_markov_tree.num_nonleaf_nodes()));
 }
 

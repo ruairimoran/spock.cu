@@ -144,7 +144,7 @@ class ScenarioTree:
         # Get current date and time
         current_timestamp = datetime.datetime.utcnow()
         # Setup jinja environment
-        file_loader = j2.FileSystemLoader(searchpath="py/")
+        file_loader = j2.FileSystemLoader(searchpath=["py/"])
         env = j2.Environment(loader=file_loader,
                              trim_blocks=True,
                              lstrip_blocks=True,

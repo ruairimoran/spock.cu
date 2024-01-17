@@ -17,13 +17,13 @@ FetchContent_MakeAvailable(googletest)
 enable_testing()
 
 add_executable(
-    tree
-    tree.cc
+    test_tree
+    test_tree.cc
 )
 target_link_libraries(
-    tree
+    test_tree
     GTest::gtest_main
 )
 
 include(GoogleTest)
-gtest_discover_tests(tree)
+gtest_discover_tests(test_tree)

@@ -67,7 +67,22 @@ where the number `123` corresponds to the number of an open issue if there is on
 
 When you create a new PR, you will see the following template:
 
-> #todo
+> ## Main Changes
+> 
+> :warning: Before you make a contribution make sure you've read the [**contributing guidelines**](/CONTRIBUTING.md)
+> 
+> :warning: Do not make a PR to merge into `main`; merge into `dev` instead (unless you are creating a new release)
+> 
+> Is this a PR about some _specific_ development (e.g., reading values from the IMU)? If not, don't submit it. 
+> 
+> Describe the main changes here
+> 
+> 
+> ## Associated Issues
+> 
+> - Closes #1
+> - Addresses #2
+
 
 You need to **modify it**: e.g., update the **associated issues**. If the PR is not associated with an issue, delete that section.
 

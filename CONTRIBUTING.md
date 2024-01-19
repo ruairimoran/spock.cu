@@ -53,7 +53,7 @@ where the number `123` corresponds to the number of an open issue if there is on
 - After you create a branch, create a PR for your code to be reviewed
 - When you create a new PR, make sure that the base branch is `dev` (not `main`), unless you want to create a new release (see below)
 - Pull requests must have an adequately detailed description
-- Avoid lengthy PRs with lots of changes (each PR should focus on one issue)
+- Avoid lengthy PRs with lots of changes (each PR should focus on one issue, and we should either close it or merge it in a matter of a few days)
 - No PR will be merged to `dev` unless it has been tested (evidence should be provided)
 - The branch `dev` will be merged into `main` before making a new release (`CHANGELOG.md` must be updated when doing so)
 - All PRs must be reviewed before they can be merged
@@ -63,18 +63,15 @@ where the number `123` corresponds to the number of an open issue if there is on
 **Important:** All invited reviewers should complete their reviews in a timely manner! 
 
 
-### 1.5. Pull request template
+### 1.5. Pull request creation
 
 When you create a new PR, you will see the following template:
 
-> TODO!
+> #todo
 
 You need to **modify it**: e.g., update the **associated issues**. If the PR is not associated with an issue, delete that section.
 
 Lastly, give your PR a meaningful title.
-
-
-### 1.6. Reviewing a PR
 
 If you have been invited to review a PR
 
@@ -83,7 +80,7 @@ If you have been invited to review a PR
 - Once you go through all files, complete your review: click on **review changes** (green button at the top-right corner) and either "Approve" or "Request changes"
 
 
-### 1.7. Issues
+### 1.6. Issues
 
 Key points:
 
@@ -91,6 +88,7 @@ Key points:
 - Make sure your bug report is accompanied by a _minimal reproducible example_ (MRE)
 - When you create an issue, assign it to someone (e.g., yourself)
 - Use appropriate labels for your issues
+- All issues should be _assigned_ to a team member
 
 When creating an issue for a bug, you will see the following template:
 
@@ -119,7 +117,7 @@ When creating an issue for a bug, you will see the following template:
 
 Fill it in and provide adequate information for other people to be able to understand and reproduce the issue.
 
-### 1.8. Conflicts
+### 1.7. Conflicts
 
 Sometimes, you may see a message like this in your PR:
 
@@ -155,7 +153,7 @@ You can read more about conflicts and how to resolve them at https://www.cloudbe
 
 ## 2. Project structure
 
-TODO
+#todo 
 
 
 ## 3. Coding good practice 

@@ -22,7 +22,7 @@ jobs:
         with:
           cuda: '12.3.2'
           method: 'network'
-          sub-packages: ["nvcc"]
+          sub-packages: '["nvcc"]'
 
       - run: bash ./ci/script.sh
 

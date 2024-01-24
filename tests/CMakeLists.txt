@@ -1,16 +1,44 @@
 # ---- cmake with googleTest and CUDA nvcc
-cmake_minimum_required(VERSION 3.18)
-if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES 86)
-endif()
-project(raocp-parallel
+cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
+project(SPOCK
     DESCRIPTION "Solver for risk-averse optimal control problems."
     HOMEPAGE_URL "https://github.com/ruairimoran/raocp-parallel"
-    LANGUAGES CUDA CXX)
-
-set(CMAKE_CUDA_STANDARD 17)
-set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-include_directories("${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}")
+    LANGUAGES CXX)
+# ----
+option(SPOCK_ENABLE_CUDA "Enable CUDA" ON)
+if (SPOCK_ENABLE_CUDA)
+    enable_language(CUDA)
+endif()
+# ----
+add_library(spock_compiler_flags INTERFACE)
+target_compile_features(spock_compiler_flags INTERFACE cxx_std_11)
+set(CMAKE_CXX_EXTENSIONS OFF)
+# ----
+add_library(developer_flags INTERFACE)
+set(cxx_flags -Wall)
+set(cuda_flags -arch=sm_60 -Xcompiler=-Wall -Xcudafe=--display_error_number)
+target_compile_options(developer_flags INTERFACE
+    # flags for CXX builds
+    $<$<COMPILE_LANGUAGE:CXX>:${cxx_flags}>
+    # flags for CUDA builds
+    $<$<COMPILE_LANGUAGE:CUDA>:${cuda_flags}>
+)
+target_link_libraries(spock_compiler_flags INTERFACE $<BUILD_INTERFACE:developer_flags>)
+# ----
+add_library(spock_lib STATIC)
+target_sources(spock_lib PRIVATE empty.h)
+if (SPOCK_ENABLE_CUDA)
+    target_sources(spock_lib PRIVATE test_mat_mul.cuh)
+    set_target_properties(spock_lib PROPERTIES LINKER_LANGUAGE CUDA)
+else()
+    set_target_properties(spock_lib PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+# ----
+target_link_libraries(spock_lib PUBLIC spock_compiler_flags)
+target_include_directories(spock_lib
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+    INTERFACE $<INSTALL_INTERFACE:include/spock>)
+# ----
 include(FetchContent)
 FetchContent_Declare(
     googletest
@@ -19,43 +47,14 @@ FetchContent_Declare(
 # for Windows: prevent overriding the parent project's compiler/linker settings
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
+# ----
 enable_testing()
-add_library(
-    cuda_lib
-    SHARED
-    test_mat_mul.h
-    test_mat_mul.cuh
-)
-target_compile_features(
-    cuda_lib 
-    PRIVATE 
-    cuda_std_17)
-set_target_properties(
-    cuda_lib 
-    PROPERTIES
-    CUDA_RUNTIME_LIBRARY Shared
-    LINKER_LANGUAGE CUDA
-    #CUDA_SEPARABLE_COMPILATION ON
-)
-add_executable(
-    test_all
-    test_tree.cc
-    test_mat_mul.cc
-)
-target_compile_features(
-    test_all
-    PRIVATE 
-    cxx_std_17)
-#set_target_properties(
-#    test_all 
-#    PROPERTIES
-#    CXX_STANDARD 17)
-target_link_libraries(
-    test_all
-    GTest::gtest_main
-    cuda_lib
-)
+add_executable(spock_tests)
+target_sources(spock_tests PRIVATE test_tree.cpp)
+if (SPOCK_ENABLE_CUDA)
+    target_sources(spock_tests PRIVATE test_mat_mul.cu)
+endif()
+target_link_libraries(spock_tests PRIVATE spock_lib GTest::gtest GTest::gtest_main)
 include(GoogleTest)
-gtest_discover_tests(
-    test_all
-)
+gtest_discover_tests(spock_tests)
+# ----

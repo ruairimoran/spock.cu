@@ -31,7 +31,7 @@ so that we don't have to write those lengthy variables all the time.
 
 The `ScenarioTree` class contains only device-based memory. Note that it has a private constructor with all its attributes. All primitives are host-based. 
 
-Note that if we want (or, perhaps, only for testing purposes) we can have pairs of host-based and device-based data and we can have methods like `transfer
+Note that if we want (or, perhaps, only for testing purposes) we can have pairs of host-based and device-based data and we can have methods like `transfer` .
 
 ```plantuml
 
@@ -71,57 +71,118 @@ class ScenarioTree {
 @enduml
 ```
 
-Here is a preliminary implementation (not using any private members for simplicity):
+Here is a preliminary implementation of `ScenarioTree`. The complete code can be found on the server and [here](https://gist.github.com/alphaville/65dc49b746f9e6f0b401a5dc87c0960c).
 
 ```c++
-class ScenarioTree {
-	public:
-		int *dev_ancestors = 0;
+class ScenarioTree 
+{
+	
+	private:
+		int *md_ancestors = 0;  /**< (Device pointer) ancestor indices */
+		int *md_stages = 0;     /**< (Device pointer) stages */
+		int* md_childFrom = 0;
+		int* md_childTo = 0;
+		size_t m_numNodes = 0;  /**< number of nodes, incl. root node */
+		size_t m_numNonleafNodes = 0; /**< number of nonleaf nodes */
 		
-		/**
-		 * Constructor of ScenarioTree
-		 */
-		ScenarioTree(std::vector<int>* ancestors) {
-			int numAncestors = ancestors->size();
-			// allocate memory for ancestors
-			size_t ancestorsBytes = numAncestors * sizeof(int);
-			gpuErrchk(
-				cudaMalloc(
-					(void**)&dev_ancestors, 
-					ancestorsBytes)  );
-			gpuErrchk(
-				cudaMemcpy(dev_ancestors, 
-					ancestors->data(), ancestorsBytes, H2D)  );
+		
+		/** Allocates memory for tree on GPU */
+		void allocateDeviceMemory() 
+		{
+			size_t nodesBytes = m_numNodes * sizeof(int);
+			size_t nonleafNodesBytes = m_numNonleafNodes * sizeof(int);
+			gpuErrchk( cudaMalloc((void**)&md_ancestors, nodesBytes) );
+			gpuErrchk( cudaMalloc((void**)&md_stages, nodesBytes) );
+			gpuErrchk( 
+				cudaMalloc((void**)&md_childFrom, nonleafNodesBytes) );
+			gpuErrchk( 
+				cudaMalloc((void**)&md_childTo, nonleafNodesBytes) );
 		}
 		
+		/** Transfer data to device */
+		void transferIntDataToDevice(
+				const rapidjson::Value& jsonArray, int* devPtr)
+		{
+		  size_t arrayLen = jsonArray.Size();
+		  std::vector<int> hostData(arrayLen);
+		  size_t numBytes = arrayLen * sizeof(int);
+		  for (rapidjson::SizeType i = 0; i < arrayLen; i++) {
+		  	hostData[i] = jsonArray[i].GetInt();
+		  }
+		  gpuErrchk( cudaMemcpy(devPtr, hostData.data(), numBytes, H2D) );
+		}
+		
+		
+	public:
+			
+		/**
+		 * Constructor from file stream
+		 */
+		ScenarioTree(std::ifstream& file)
+		{
+		  std::string json((std::istreambuf_iterator<char>(file)), 
+		                    std::istreambuf_iterator<char>()); 
+		  rapidjson::Document doc;
+		  doc.Parse(json.c_str()); 
+		  
+		  if (doc.HasParseError())
+		      throw std::invalid_argument("Cannot parse JSON file");
+		  
+		  const rapidjson::Value& ancestorsJson = doc["ancestors"];
+		  const rapidjson::Value& childFromJson = doc["children_from"];
+		  m_numNodes = ancestorsJson.Size();
+		  m_numNonleafNodes = childFromJson.Size();
+		  
+		  allocateDeviceMemory();
+		  
+		  /* Transfer data to device */
+		  transferIntDataToDevice(ancestorsJson, md_ancestors); 
+		  transferIntDataToDevice(doc["stages"], md_stages);
+		  transferIntDataToDevice(childFromJson, md_childFrom);
+		  transferIntDataToDevice(doc["children_to"], md_childTo);
+	    }
+    
+    
 		/**
 		 * Destructor
 		 */
 		~ScenarioTree(){
-			if (dev_ancestors != 0) {
-				gpuErrchk( cudaFree(dev_ancestors) );
-			}
-			dev_ancestors = 0;
+			if (md_ancestors != 0)
+				gpuErrchk( cudaFree(md_ancestors) );
+			if (md_stages != 0)
+				gpuErrchk( cudaFree(md_stages) );
+			if (md_childFrom != 0)
+				gpuErrchk( cudaFree(md_childFrom) );
+			if (md_childTo != 0)
+				gpuErrchk( cudaFree(md_childTo) );			
+		}
+			
+		
+		int* ancestorsDevPtr() {
+			return md_ancestors;
 		}
 		
+		int* stagesDevPtr() {
+			return md_stages;
+		}	
 };
 ```
 
-There is also a `ScenarioTreeFactory` which can be used to construct scenario trees. One of its methods will allow the construction of scenario trees from JSON files, which will be generated from Python. Other ways to generate trees can be added in the future.
+Scenario trees can be stored in JSON files. For example,
 
-```plantuml
-
-@startuml
-
-class ScenarioTreeFactory {
-	+{static} ScenarioTree from_file(string)
+```json
+{
+	"stages":        [0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3],
+	"ancestors":     [0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6],
+	"events":        [0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+	"probabilities": [1.0, 0.5, 0.5, 0.25, 0.25, 0.25, 0.25, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125]
 }
-
-
-ScenarioTreeFactory --> ScenarioTree : <<friend>>
-
-@enduml
 ```
+
+Let us not create a scenario tree factory for simplicity. We can have multiple constructors if need be.
+
+> [!note] Just a thought
+> Actually, it may not be be too bad an idea, only for the scenario tree to have the data both on the host and on the device. I suspect we'll use them on both. The thing is that the operations on the device are orchestrated by the host. E.g, the host will need to know all the nodes at stage $k$ to instruct the device to parallelise certain operations. In any case, the above pattern can be re-used in other classes. For example, in the problem class we'll have to read data from a JSON file and transfer it to the device.
 
 ### Problem
 

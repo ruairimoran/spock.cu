@@ -1,4 +1,4 @@
-To run test script: `bash ./script.sh`
+To run test script: `bash ./ci/script.sh`
 
 # Info:
 - Make sure you are using the correct python version (3.10): `python --version`

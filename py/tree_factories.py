@@ -145,7 +145,7 @@ class ScenarioTree:
             raise ValueError("stopping time greater than number of stages")
         return True
     
-    def __generate_header(self):
+    def __generate_json(self):
         # Get current date and time
         current_timestamp = datetime.datetime.utcnow()
         # Setup jinja environment
@@ -159,8 +159,8 @@ class ScenarioTree:
                              variable_end_string="~\\",
                              comment_start_string="\#",
                              comment_end_string="#\\")
-        # Generate "tree.h" from template "tree_template.h.jinja2"
-        template = env.get_template("tree_attributes.h.jinja2")
+        # Generate "tree.json" from template "tree_template.json.jinja2"
+        template = env.get_template("tree_data.json.jinja2")
         output = template.render(timestamp=current_timestamp,
                                  is_markovian=self.is_markovian,
                                  num_nonleaf_nodes=self.num_nonleaf_nodes,
@@ -168,10 +168,10 @@ class ScenarioTree:
                                  num_stages=self.num_stages,
                                  stages=self.__stages,
                                  ancestors=self.__ancestors,
-                                 probability=self.__probability,
+                                 probabilities=self.__probability,
                                  events=self.__w_idx,
                                  children=self.__children)
-        output_path = "src/tree_attributes.h"
+        output_path = "src/tree_data.json"
         with open(output_path, "w") as fh:
             fh.write(output)
     
@@ -364,5 +364,5 @@ class ScenarioTreeFactoryMarkovChain:
         ancestors, values, stages = self.__make_ancestors_values_stages()
         probs = self.__make_probability_values(ancestors, values, stages)
         tree = ScenarioTree(stages, ancestors, probs, values, is_markovian=True)
-        tree._ScenarioTree__generate_header()
+        tree._ScenarioTree__generate_json()
         return tree

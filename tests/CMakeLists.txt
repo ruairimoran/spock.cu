@@ -26,9 +26,14 @@ target_compile_options(developer_flags INTERFACE
 target_link_libraries(spock_compiler_flags INTERFACE $<BUILD_INTERFACE:developer_flags>)
 # ----
 add_library(spock_lib STATIC)
-target_sources(spock_lib PRIVATE empty.h)
+target_sources(spock_lib PRIVATE  # add .h files
+    empty.h
+)
 if (SPOCK_ENABLE_CUDA)
-    target_sources(spock_lib PRIVATE test_mat_mul.cuh)
+    target_sources(spock_lib PRIVATE  # add .cuh files
+        ../src/tree.cuh 
+        test_mat_mul.cuh
+    )
     set_target_properties(spock_lib PROPERTIES LINKER_LANGUAGE CUDA)
 else()
     set_target_properties(spock_lib PROPERTIES LINKER_LANGUAGE CXX)
@@ -50,9 +55,14 @@ FetchContent_MakeAvailable(googletest)
 # ----
 enable_testing()
 add_executable(spock_tests)
-target_sources(spock_tests PRIVATE test_tree.cpp)
+target_sources(spock_tests PRIVATE  # add .cpp files
+    empty.h
+)
 if (SPOCK_ENABLE_CUDA)
-    target_sources(spock_tests PRIVATE test_mat_mul.cu)
+    target_sources(spock_tests PRIVATE  # add .cu files
+        test_tree.cu 
+        test_mat_mul.cu
+    )
 endif()
 target_link_libraries(spock_tests PRIVATE spock_lib GTest::gtest GTest::gtest_main)
 include(GoogleTest)

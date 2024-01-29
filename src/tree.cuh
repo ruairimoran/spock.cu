@@ -15,7 +15,7 @@
 #include <fstream> 
 #include <iostream> 
 #include <stdexcept>
-#include <stdgpu.h>
+#include "../include/stdgpu.h"
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 
@@ -33,10 +33,10 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 class ScenarioTree {
 	
 	private:
-		int *md_ancestors = 0;  /**< (Device pointer) ancestor indices */
-		int *md_stages = 0;     /**< (Device pointer) stages */
-		int* md_childFrom = 0;
-		int* md_childTo = 0;
+		int* m_d_ancestors = 0;  /**< (Device pointer) ancestor indices */
+		int* m_d_stages = 0;     /**< (Device pointer) stages */
+		int* m_d_childFrom = 0;
+		int* m_d_childTo = 0;
 		size_t m_numNodes = 0;  /**< number of nodes, incl. root node */
 		size_t m_numNonleafNodes = 0; /**< number of nonleaf nodes */
 		
@@ -46,10 +46,10 @@ class ScenarioTree {
 		{
 			size_t nodesBytes = m_numNodes * sizeof(int);
 			size_t nonleafNodesBytes = m_numNonleafNodes * sizeof(int);
-			gpuErrchk( cudaMalloc((void**)&md_ancestors, nodesBytes) );
-			gpuErrchk( cudaMalloc((void**)&md_stages, nodesBytes) );
-			gpuErrchk( cudaMalloc((void**)&md_childFrom, nonleafNodesBytes) );
-			gpuErrchk( cudaMalloc((void**)&md_childTo, nonleafNodesBytes) );
+			gpuErrchk( cudaMalloc((void**)&m_d_ancestors, nodesBytes) );
+			gpuErrchk( cudaMalloc((void**)&m_d_stages, nodesBytes) );
+			gpuErrchk( cudaMalloc((void**)&m_d_childFrom, nonleafNodesBytes) );
+			gpuErrchk( cudaMalloc((void**)&m_d_childTo, nonleafNodesBytes) );
 		}
 		
 		/** Transfer data to device */
@@ -81,22 +81,22 @@ class ScenarioTree {
 		  doc.Parse(json.c_str()); 
 		  
 		  if (doc.HasParseError()) { 
-		      std::cerr << "Error parsing JSON: " << doc.GetParseError() << std::endl; 
+		      std::cerr << "Error parsing JSON: " << GetParseError_En(doc.GetParseError()) << std::endl; 
 		      throw std::invalid_argument("Cannot parse JSON file");
 		  } 
 		  
 		  const rapidjson::Value& ancestorsJson = doc["ancestors"];
-		  const rapidjson::Value& childFromJson = doc["children_from"];
+		  const rapidjson::Value& childFromJson = doc["childrenFrom"];
 		  m_numNodes = ancestorsJson.Size();
 		  m_numNonleafNodes = childFromJson.Size();
 		  
 		  allocateDeviceMemory();
 		  
 		  /* Transfer data to device */
-		  transferIntDataToDevice(ancestorsJson, md_ancestors); 
-		  transferIntDataToDevice(doc["stages"], md_stages);
-		  transferIntDataToDevice(childFromJson, md_childFrom);
-		  transferIntDataToDevice(doc["children_to"], md_childTo);
+		  transferIntDataToDevice(ancestorsJson, m_d_ancestors); 
+		  transferIntDataToDevice(doc["stages"], m_d_stages);
+		  transferIntDataToDevice(childFromJson, m_d_childFrom);
+		  transferIntDataToDevice(doc["childrenTo"], m_d_childTo);
     }
     
     
@@ -104,39 +104,34 @@ class ScenarioTree {
 		 * Destructor
 		 */
 		~ScenarioTree(){
-			if (md_ancestors != 0){
-				gpuErrchk( cudaFree(md_ancestors) );
-				md_ancestors = 0;
+			if (m_d_ancestors != 0){
+				gpuErrchk( cudaFree(m_d_ancestors) );
+				m_d_ancestors = 0;
 			}
-			if (md_stages != 0){
-				gpuErrchk( cudaFree(md_stages) );
-				md_stages = 0;
+			if (m_d_stages != 0){
+				gpuErrchk( cudaFree(m_d_stages) );
+				m_d_stages = 0;
 			}
-			if (md_childFrom != 0) {
-				gpuErrchk( cudaFree(md_childFrom) );
-				md_childFrom = 0;
+			if (m_d_childFrom != 0) {
+				gpuErrchk( cudaFree(m_d_childFrom) );
+				m_d_childFrom = 0;
 			}
-			if (md_childTo != 0) {
-				gpuErrchk( cudaFree(md_childTo) );
-				md_childTo = 0;
+			if (m_d_childTo != 0) {
+				gpuErrchk( cudaFree(m_d_childTo) );
+				m_d_childTo = 0;
 			}			
 		}
 		
-		
-		
-		int* ancestorsDevPtr() {
-			return md_ancestors;
+		int numNodes() {
+			return m_numNodes;
 		}
 		
-		int* stagesDevPtr() {
-			return md_stages;
+		int* ancestors() {
+			return m_d_ancestors;
 		}
-
-		int get_ancestor_of_node(int node_idx) {
-			// FOR TESTING ONLY!
-			int *hostNodeData = new int[m_numNodes];
-			cudaMemcpy(hostNodeData, md_ancestors, m_numNodes*sizeof(int), D2H);
-			return hostNodeData[node_idx];
+		
+		int* stages() {
+			return m_d_stages;
 		}
 		
 	
@@ -144,30 +139,30 @@ class ScenarioTree {
 			// FOR DEBUGGING ONLY!
 			std::cout << "Number of ancestors: " << m_numNodes << std::endl; 
 			int *hostNodeData = new int[m_numNodes];
-			cudaMemcpy(hostNodeData, md_ancestors, m_numNodes*sizeof(int), D2H);
+			cudaMemcpy(hostNodeData, m_d_ancestors, m_numNodes*sizeof(int), D2H);
 			std::cout << "Ancestors (from device): ";
-			for (int i=0; i<m_numNodes; i++){
+			for (size_t i=0; i<m_numNodes; i++){
 				std::cout << hostNodeData[i] << " ";
 			}
 			std::cout << std::endl;
 			
-			cudaMemcpy(hostNodeData, md_stages, m_numNodes*sizeof(int), D2H);
+			cudaMemcpy(hostNodeData, m_d_stages, m_numNodes*sizeof(int), D2H);
 			std::cout << "Stages (from device): ";
-			for (int i=0; i<m_numNodes; i++){
+			for (size_t i=0; i<m_numNodes; i++){
 				std::cout << hostNodeData[i] << " ";
 			}
 			std::cout << std::endl;
 			
-			cudaMemcpy(hostNodeData, md_childFrom, m_numNonleafNodes*sizeof(int), D2H);
+			cudaMemcpy(hostNodeData, m_d_childFrom, m_numNonleafNodes*sizeof(int), D2H);
 			std::cout << "Children::from (from device): ";
-			for (int i=0; i<m_numNonleafNodes; i++){
+			for (size_t i=0; i<m_numNonleafNodes; i++){
 				std::cout << hostNodeData[i] << " ";
 			}
 			std::cout << std::endl;
 			
-			cudaMemcpy(hostNodeData, md_childTo, m_numNonleafNodes*sizeof(int), D2H);
+			cudaMemcpy(hostNodeData, m_d_childTo, m_numNonleafNodes*sizeof(int), D2H);
 			std::cout << "Children::to (from device): ";
-			for (int i=0; i<m_numNonleafNodes; i++){
+			for (size_t i=0; i<m_numNonleafNodes; i++){
 				std::cout << hostNodeData[i] << " ";
 			}
 			std::cout << std::endl;

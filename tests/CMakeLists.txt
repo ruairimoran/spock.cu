@@ -8,6 +8,8 @@ project(SPOCK
 option(SPOCK_ENABLE_CUDA "Enable CUDA" ON)
 if (SPOCK_ENABLE_CUDA)
     enable_language(CUDA)
+    set(CMAKE_CUDA_COMPILER "/usr/local/cuda-12.3/bin/nvcc")
+    set(CMAKE_CUDA_ARCHITECTURES 86)
 endif()
 # ----
 add_library(spock_compiler_flags INTERFACE)

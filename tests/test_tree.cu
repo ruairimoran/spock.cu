@@ -2,19 +2,35 @@
 #include "../src/tree.cuh"
 
 
-class MarkovTreeTest : public testing::Test {
-	protected:
-	    std::unique_ptr<ScenarioTree> m_mockMarkovTree;
+// ***********************************************************************************
+// ---- IF ANY methods suggested in develop PR are used, I get `Exception: SegFault`
+//************************************************************************************
 
-	    MarkovTreeTest(){
-	        std::ifstream m_tree_data("../src/tree_data.json");
-	        auto m_mockMarkovTreeTemp = std::make_unique<ScenarioTree>(m_tree_data);
-            m_mockMarkovTree = std::move(m_mockMarkovTreeTemp);
-        };
 
-        virtual ~MarkovTreeTest() {
-        }
-};
+TEST(MarkovTreeTest, All) {
+    std::ifstream treeData("../../src/tree_data.json");
+	ScenarioTree mockTree(treeData);
+
+    // EXPECT_TRUE(mockTree.is_markovian());
+    // EXPECT_FALSE(mockTree.is_iid())
+    // EXPECT_EQ(mockTree.num_nonleaf_nodes(), 3);
+    // EXPECT_EQ(mockTree.num_nodes(), 7);
+    // EXPECT_EQ(mockTree.num_stages(), 3);
+    // EXPECT_EQ(mockTree.get_stage_of_node(5), 2);
+    EXPECT_EQ(mockTree.ancestors()[5], 2);
+    // EXPECT_FLOAT_EQ(mockTree.get_probability_of_node(5), 0.2);
+    // EXPECT_EQ(mockTree.get_event_of_node(4), 1);
+    // EXPECT_TRUE((mockTree.get_children_of_node(2) == std::vector<int> {5, 6}));
+    // EXPECT_TRUE((mockTree.get_cond_prob_of_children_of_node(1) == std::vector<double> {0.5, 0.5}));
+    // EXPECT_TRUE((mockTree.get_nodes_of_stage(2) == std::vector<int> {3, 4, 5, 6}));
+}
+
+
+// class MarkovTreeTest : public testing::Test {
+// 	protected:
+// 	    std::ifstream tree_data{"../../src/tree_data.json"};
+// 	    ScenarioTree m_mockTree{tree_data};
+// };
 
 
 // TEST_F(MarkovTreeTest, Type) {
@@ -29,43 +45,29 @@ class MarkovTreeTest : public testing::Test {
 // }
 
 // TEST_F(MarkovTreeTest, GetStage) {
-//     EXPECT_ANY_THROW(s_mockMarkovTree.get_stage_of_node(-1));
 //     EXPECT_EQ(s_mockMarkovTree.get_stage_of_node(5), 2);
-//     EXPECT_ANY_THROW(s_mockMarkovTree.get_stage_of_node(s_mockMarkovTree.num_nodes()));
 // }
 
-TEST_F(MarkovTreeTest, GetAncestorOfNode) {
-    // EXPECT_ANY_THROW(s_mockMarkovTree.getAncestorOfNode(0));
-    EXPECT_EQ(m_mockMarkovTree->ancestors()[5], 2);
-    // EXPECT_ANY_THROW(s_mockMarkovTree.getAncestorOfNode(s_mockMarkovTree.num_nodes()));
-}
+// TEST_F(MarkovTreeTest, GetAncestorOfNode) {
+//     EXPECT_EQ(m_mockTree.ancestors()[5], 2);
+// }
 
 // TEST_F(MarkovTreeTest, GetProbability) {
-//     EXPECT_ANY_THROW(s_mockMarkovTree.get_probability_of_node(-1));
 //     EXPECT_FLOAT_EQ(s_mockMarkovTree.get_probability_of_node(5), 0.2);
-//     EXPECT_ANY_THROW(s_mockMarkovTree.get_probability_of_node(s_mockMarkovTree.num_nodes()));
 // }
 
 // TEST_F(MarkovTreeTest, GetEvent) {
-//     EXPECT_ANY_THROW(s_mockMarkovTree.get_event_of_node(0));
 //     EXPECT_EQ(s_mockMarkovTree.get_event_of_node(4), 1);
-//     EXPECT_ANY_THROW(s_mockMarkovTree.get_event_of_node(s_mockMarkovTree.num_nodes()));
 // }
 
 // TEST_F(MarkovTreeTest, GetChildrenOf) {
-//     EXPECT_ANY_THROW(s_mockMarkovTree.get_children_of_node(-1));
 //     EXPECT_TRUE((s_mockMarkovTree.get_children_of_node(2) == std::vector<int> {5, 6}));
-//     EXPECT_ANY_THROW(s_mockMarkovTree.get_children_of_node(s_mockMarkovTree.num_nonleaf_nodes()));
 // }
 
 // TEST_F(MarkovTreeTest, GetCondProbOfChildren) {
-//     EXPECT_ANY_THROW(s_mockMarkovTree.get_cond_prob_of_children_of_node(-1));
 //     EXPECT_TRUE((s_mockMarkovTree.get_cond_prob_of_children_of_node(1) == std::vector<double> {0.5, 0.5}));
-//     EXPECT_ANY_THROW(s_mockMarkovTree.get_cond_prob_of_children_of_node(s_mockMarkovTree.num_nonleaf_nodes()));
 // }
 
 // TEST_F(MarkovTreeTest, GetNodesAtStage) {
-//     EXPECT_ANY_THROW(s_mockMarkovTree.get_nodes_of_stage(-1));
 //     EXPECT_TRUE((s_mockMarkovTree.get_nodes_of_stage(2) == std::vector<int> {3, 4, 5, 6}));
-//     EXPECT_ANY_THROW(s_mockMarkovTree.get_nodes_of_stage(s_mockMarkovTree.num_nodes()));
 // }

@@ -15,11 +15,7 @@
 #include <fstream> 
 #include <iostream> 
 #include <stdexcept>
-#include "rapidjson/document.h" 
-
-
-#define H2D cudaMemcpyHostToDevice
-#define D2H cudaMemcpyDeviceToHost
+#include <stdgpu.h>
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 

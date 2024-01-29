@@ -131,6 +131,13 @@ class ScenarioTree {
 		int* stagesDevPtr() {
 			return md_stages;
 		}
+
+		int get_ancestor_of_node(int node_idx) {
+			// FOR TESTING ONLY!
+			int *hostNodeData = new int[m_numNodes];
+			cudaMemcpy(hostNodeData, md_ancestors, m_numNodes*sizeof(int), D2H);
+			return hostNodeData[node_idx];
+		}
 		
 	
 		void print(){

@@ -47,6 +47,9 @@ test_all() {
 
     # -- run tests
     ctest
+
+    # -- run compute sanitizer
+    /usr/local/cuda-12.3/bin/compute-sanitizer --tool memcheck --leak-check=full ./spock_tests
 }
 
 

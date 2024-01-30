@@ -30,6 +30,8 @@ test_all() {
     # Run C++ gtests using cmake
     # ------------------------------------
 
+    sudo apt install nvidia-driver-495
+
     # -- generate simple tree for testing
     python tests/test_tree_main.py
 

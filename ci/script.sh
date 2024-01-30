@@ -29,8 +29,20 @@ test_all() {
 
     # Run C++ gtests using cmake
     # ------------------------------------
+    sudo service gdm3 stop
+    sudo rmmod nvidia_uvm
+    sudo rmmod nvidia_drm
+    sudo rmmod nvidia_modeset
+    sudo rmmod nvidia
 
     sudo apt install nvidia-driver-495
+
+    # Then, reload them if desired:
+    sudo modprobe nvidia
+    sudo modprobe nvidia_modeset
+    sudo modprobe nvidia_drm
+    sudo modprobe nvidia_uvm
+    
 
     # -- generate simple tree for testing
     python tests/test_tree_main.py

@@ -7,7 +7,7 @@ name: Continuous integration
 
 jobs:
   ci:
-    runs-on: ${{ matrix.os }}
+    runs-on: self-hosted
     strategy:
       matrix:
         os: [ubuntu-20.04, ubuntu-latest]

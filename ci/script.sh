@@ -29,7 +29,7 @@ test_all() {
 
     # Run C++ gtests using cmake
     # ------------------------------------
-    sudo service gdm3 stop
+    # sudo service gdm3 stop
     sudo rmmod nvidia_uvm
     sudo rmmod nvidia_drm
     sudo rmmod nvidia_modeset

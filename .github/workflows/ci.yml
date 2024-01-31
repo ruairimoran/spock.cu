@@ -26,9 +26,10 @@ jobs:
           cuda: '12.3.2'
           method: 'network'
           sub-packages: '["nvcc"]'
+      - name: reboot runner
+        run: sudo reboot
       - name: check gpu allocation
-        run: |
-            nvidia-smi
+        run: nvidia-smi
 
       - run: bash ./ci/script.sh
 

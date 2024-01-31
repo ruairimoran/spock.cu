@@ -1,5 +1,5 @@
 # ---- cmake with googleTest and CUDA nvcc
-cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 project(SPOCK
     DESCRIPTION "Solver for risk-averse optimal control problems."
     HOMEPAGE_URL "https://github.com/ruairimoran/raocp-parallel"

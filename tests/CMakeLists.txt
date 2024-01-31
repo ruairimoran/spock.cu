@@ -1,16 +1,15 @@
 # ---- cmake with googleTest and CUDA nvcc
-cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 project(SPOCK
     DESCRIPTION "Solver for risk-averse optimal control problems."
     HOMEPAGE_URL "https://github.com/ruairimoran/raocp-parallel"
     LANGUAGES CXX)
 # ----
-option(SPOCK_ENABLE_CUDA "Enable CUDA" ON)
-if (SPOCK_ENABLE_CUDA)
-    enable_language(CUDA)
-    set(CMAKE_CUDA_COMPILER "/usr/local/cuda-12.3/bin/nvcc")
-    set(CMAKE_CUDA_ARCHITECTURES 86)
-endif()
+set(CMAKE_CUDA_COMPILER "/usr/local/cuda-12.3/bin/nvcc")    
+enable_language(CUDA)
+set(CMAKE_CUDA_ARCHITECTURES 86)
+# ----
+include_directories("home/biggirl/github/raocp-parallel")
 # ----
 add_library(spock_compiler_flags INTERFACE)
 target_compile_features(spock_compiler_flags INTERFACE cxx_std_11)
@@ -31,15 +30,11 @@ add_library(spock_lib STATIC)
 target_sources(spock_lib PRIVATE  # add .h files
     empty.h
 )
-if (SPOCK_ENABLE_CUDA)
-    target_sources(spock_lib PRIVATE  # add .cuh files
-        ../src/tree.cuh 
-        test_mat_mul.cuh
-    )
-    set_target_properties(spock_lib PROPERTIES LINKER_LANGUAGE CUDA)
-else()
-    set_target_properties(spock_lib PROPERTIES LINKER_LANGUAGE CXX)
-endif()
+target_sources(spock_lib PRIVATE  # add .cuh files
+    ../src/tree.cuh 
+    test_mat_mul.cuh
+)
+set_target_properties(spock_lib PROPERTIES LINKER_LANGUAGE CUDA)
 # ----
 target_link_libraries(spock_lib PUBLIC spock_compiler_flags)
 target_include_directories(spock_lib
@@ -60,12 +55,10 @@ add_executable(spock_tests)
 target_sources(spock_tests PRIVATE  # add .cpp files
     empty.h
 )
-if (SPOCK_ENABLE_CUDA)
-    target_sources(spock_tests PRIVATE  # add .cu files
-        test_tree.cu 
-        test_mat_mul.cu
-    )
-endif()
+target_sources(spock_tests PRIVATE  # add .cu files
+    test_tree.cu 
+    test_mat_mul.cu
+)
 target_link_libraries(spock_tests PRIVATE spock_lib GTest::gtest GTest::gtest_main)
 include(GoogleTest)
 gtest_discover_tests(spock_tests)

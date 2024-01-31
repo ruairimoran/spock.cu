@@ -29,9 +29,6 @@ test_all() {
 
     # Run C++ gtests using cmake
     # ------------------------------------
-    
-    cat /proc/driver/nvidia/version
-    /usr/local/cuda/bin/nvcc --version
 
     # -- generate simple tree for testing
     python tests/test_tree_main.py

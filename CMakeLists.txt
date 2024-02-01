@@ -1,4 +1,4 @@
-# ---- cmake with googleTest and CUDA nvcc
+# ---- cmake with CUDA nvcc
 cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 project(SPOCK
     DESCRIPTION "Solver for risk-averse optimal control problems."
@@ -28,11 +28,10 @@ target_link_libraries(spock_compiler_flags INTERFACE $<BUILD_INTERFACE:developer
 # ----
 add_library(spock_lib STATIC)
 target_sources(spock_lib PRIVATE  # add .h files
-        empty.cpp  # placeholder
+        tests/empty.cpp  # placeholder
 )
 target_sources(spock_lib PRIVATE  # add .cuh files
-    ../src/tree.cuh 
-    test_mat_mul.cuh
+        src/tree.cuh
 )
 set_target_properties(spock_lib PROPERTIES LINKER_LANGUAGE CUDA)
 # ----
@@ -41,25 +40,12 @@ target_include_directories(spock_lib
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
     INTERFACE $<INSTALL_INTERFACE:include/spock>)
 # ----
-include(FetchContent)
-FetchContent_Declare(
-    googletest
-    URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+add_executable(spock)
+target_sources(spock PRIVATE  # add .cpp files
+        tests/empty.cpp  # placeholder
 )
-# for Windows: prevent overriding the parent project's compiler/linker settings
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
-# ----
-enable_testing()
-add_executable(spock_tests)
-target_sources(spock_tests PRIVATE  # add .cpp files
-        empty.cpp  # placeholder
+target_sources(spock PRIVATE  # add .cu files
+        tests/empty.cpp  # placeholder
 )
-target_sources(spock_tests PRIVATE  # add .cu files
-    test_tree.cu 
-    test_mat_mul.cu
-)
-target_link_libraries(spock_tests PRIVATE spock_lib GTest::gtest GTest::gtest_main)
-include(GoogleTest)
-gtest_discover_tests(spock_tests)
+target_link_libraries(spock PRIVATE spock_lib)
 # ----

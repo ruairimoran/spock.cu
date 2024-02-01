@@ -1,38 +1,27 @@
 #include <gtest/gtest.h>
+#include "../include/stdgpu.h"
 #include "../src/tree.cuh"
 
 
-// ***********************************************************************************
-// ---- IF ANY methods suggested in develop PR are used, I get `Exception: SegFault`
-//************************************************************************************
+class MarkovTreeTest : public testing::Test {
+	protected:
+	    std::unique_ptr<ScenarioTree> m_mockTree;
+        int numNodes;
+        int* hostDataSizeNumNodes;
+        int* hostDataSizeNumNonleafNodes;
 
+	    MarkovTreeTest(){
+	        std::ifstream tree_data("../../src/tree_data.json");
+	        auto treeTemp = std::make_unique<ScenarioTree>(tree_data);
+	        m_mockTree = std::move(treeTemp);
+            numNodes = m_mockTree->numNodes();
+            hostDataSizeNumNodes = new int[numNodes];
+            hostDataSizeNumNonleafNodes = new int[numNodes];
+        };
 
-TEST(MarkovTreeTest, All) {
-    EXPECT_EQ(2, 2);
-
-    // std::ifstream treeData("../../src/tree_data.json");
-	// ScenarioTree mockTree(treeData);
-
-    // EXPECT_TRUE(mockTree.is_markovian());
-    // EXPECT_FALSE(mockTree.is_iid())
-    // EXPECT_EQ(mockTree.num_nonleaf_nodes(), 3);
-    // EXPECT_EQ(mockTree.num_nodes(), 7);
-    // EXPECT_EQ(mockTree.num_stages(), 3);
-    // EXPECT_EQ(mockTree.get_stage_of_node(5), 2);
-    // EXPECT_EQ(mockTree.ancestors()[5], 2);
-    // EXPECT_FLOAT_EQ(mockTree.get_probability_of_node(5), 0.2);
-    // EXPECT_EQ(mockTree.get_event_of_node(4), 1);
-    // EXPECT_TRUE((mockTree.get_children_of_node(2) == std::vector<int> {5, 6}));
-    // EXPECT_TRUE((mockTree.get_cond_prob_of_children_of_node(1) == std::vector<double> {0.5, 0.5}));
-    // EXPECT_TRUE((mockTree.get_nodes_of_stage(2) == std::vector<int> {3, 4, 5, 6}));
-}
-
-
-// class MarkovTreeTest : public testing::Test {
-// 	protected:
-// 	    std::ifstream tree_data{"../../src/tree_data.json"};
-// 	    ScenarioTree m_mockTree{tree_data};
-// };
+        virtual ~MarkovTreeTest() {
+        }
+};
 
 
 // TEST_F(MarkovTreeTest, Type) {
@@ -50,9 +39,10 @@ TEST(MarkovTreeTest, All) {
 //     EXPECT_EQ(s_mockMarkovTree.get_stage_of_node(5), 2);
 // }
 
-// TEST_F(MarkovTreeTest, GetAncestorOfNode) {
-//     EXPECT_EQ(m_mockTree.ancestors()[5], 2);
-// }
+TEST_F(MarkovTreeTest, GetAncestor) {
+    cudaMemcpy(hostDataSizeNumNodes, m_mockTree->ancestors(), numNodes*sizeof(int), D2H);
+    EXPECT_EQ(hostDataSizeNumNodes[5], 2);
+}
 
 // TEST_F(MarkovTreeTest, GetProbability) {
 //     EXPECT_FLOAT_EQ(s_mockMarkovTree.get_probability_of_node(5), 0.2);

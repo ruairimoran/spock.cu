@@ -5,6 +5,7 @@ __pycache__
 build
 *.egg-info
 .DS_Store
+.idea
 
 # Prerequisites
 *.d

@@ -1,5 +1,5 @@
 # ---- cmake with googleTest and CUDA nvcc
-cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
 project(SPOCK
     DESCRIPTION "Solver for risk-averse optimal control problems."
     HOMEPAGE_URL "https://github.com/ruairimoran/raocp-parallel"
@@ -12,7 +12,7 @@ set(CMAKE_CUDA_ARCHITECTURES 86)
 include_directories("home/biggirl/github/raocp-parallel")
 # ----
 add_library(spock_compiler_flags INTERFACE)
-target_compile_features(spock_compiler_flags INTERFACE cxx_std_11)
+target_compile_features(spock_compiler_flags INTERFACE cxx_std_20)
 set(CMAKE_CXX_EXTENSIONS OFF)
 # ----
 add_library(developer_flags INTERFACE)

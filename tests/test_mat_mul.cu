@@ -2,6 +2,6 @@
 #include "test_mat_mul.cuh"
 
 
-TEST(Suite, Test) {
+TEST(MatMulTest, Test1) {
     EXPECT_EQ(test_function(), 0);
 }

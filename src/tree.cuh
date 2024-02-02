@@ -17,6 +17,47 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 }
 
 
+///**
+// * Computing conditional probability of each tree node
+// * @param[in] anc device ptr to ancestor of node at index
+// * @param[in] prob device ptr to probability of visiting node at index
+// * @param[in] numNodes total number of nodes
+// * @param[out] condProb device ptr to conditional probability of visiting node at index, given ancestor node visited
+// */
+//__global__ void populateProbabilities(int* anc, real_t* prob, int numNodes, real_t* condProb) {
+//    int i = blockIdx.x * blockDim.x + threadIdx.x;
+//    if (i == 0) {
+//        condProb[i] = 1.0;
+//    } else if (i < numNodes) {
+//        condProb[i] = prob[i] / prob[anc[i]];
+//    }
+//}
+//
+//
+///**
+// * Populating stagesFrom and stagesTo
+// * @param[in] stages device ptr to stage of node at index
+// * @param[in] numStages total number of stages
+// * @param[out] stageFrom device ptr to first node of stage at index
+// * @param[out] stageTo device ptr to last node of stage at index
+// */
+//__global__ void populateStages(int* stages, int numStages, int numNodes, int* stageFrom, int* stageTo) {
+//    int i = blockIdx.x * blockDim.x + threadIdx.x;
+//    if (i < numStages) {
+//        for (int j=0; j<numNodes; i++) {
+//            if (stages[j] == i) {
+//                stageFrom[i] = j;
+//                break;
+//            }
+//        for (int j=numNodes-1; j>=0; i--) {
+//            if (stages[j] == i) {
+//                stageTo[i] = j;
+//                break;
+//            }
+//    }
+//}
+
+
 /**
  * Store scenario tree data
  * - from JSON file
@@ -33,42 +74,49 @@ class ScenarioTree {
         size_t m_numStages = 0;  ///< Total number of stages (incl. root)
         int* m_d_stages = 0;  ///< Ptr to stage of node at index
         int* m_d_ancestors = 0;  ///< Ptr to ancestor of node at index
-        double* m_d_probabilities = 0;  ///< Ptr to probability of visiting node at index
+        real_t* m_d_probabilities = 0;  ///< Ptr to probability of visiting node at index
+        real_t* m_d_conditionalProbabilities = 0;  ///< Ptr to conditional probability of visiting node at index
         int* m_d_events = 0;  ///< Ptr to event occurred that led to node at index
         int* m_d_childFrom = 0;  ///< Ptr to first child of node at index
         int* m_d_childTo = 0;  ///< Ptr to last child of node at index
+        int* m_d_stageFrom = 0;  ///< Ptr to first node of stage at index
+        int* m_d_stageTo = 0;  ///< Ptr to last node of stage at index
 
-		/** Allocates memory for tree on device */
+		/** Allocate memory for tree on device */
 		void allocateDeviceMemory() {
 			size_t bytesNonleafInt = m_numNonleafNodes * sizeof(int);
             size_t bytesNodesInt = m_numNodes * sizeof(int);
-            size_t bytesNodesDbl = m_numNodes * sizeof(double);
+            size_t bytesNodesReal = m_numNodes * sizeof(real_t);
+            size_t bytesStagesInt = m_numStages * sizeof(int);
             gpuErrchk( cudaMalloc((void**)&m_d_stages, bytesNodesInt) );
             gpuErrchk( cudaMalloc((void**)&m_d_ancestors, bytesNodesInt) );
-            gpuErrchk( cudaMalloc((void**)&m_d_probabilities, bytesNodesDbl) );
+            gpuErrchk( cudaMalloc((void**)&m_d_probabilities, bytesNodesReal) );
+            gpuErrchk( cudaMalloc((void**)&m_d_conditionalProbabilities, bytesNodesReal) );
             gpuErrchk( cudaMalloc((void**)&m_d_events, bytesNodesInt) );
 			gpuErrchk( cudaMalloc((void**)&m_d_childFrom, bytesNonleafInt) );
 			gpuErrchk( cudaMalloc((void**)&m_d_childTo, bytesNonleafInt) );
+            gpuErrchk( cudaMalloc((void**)&m_d_stageFrom, bytesStagesInt) );
+            gpuErrchk( cudaMalloc((void**)&m_d_stageTo, bytesStagesInt) );
 		}
 		
 		/** Transfer tree data to device */
-		Template<typename T>
-		void transferDataToDevice(const rapidjson::Value& jsonArray, T* devPtr) {
+		template<typename T>
+		void transferDataToDevice(const rapidjson::Value& jsonArray, T* devicePtr) {
             size_t arrayLen = jsonArray.Size();
             std::vector<T> hostData(arrayLen);
             size_t numBytes = arrayLen * sizeof(T);
-            if (jsonArray[0].isInt()) {
+            if (jsonArray[0].IsInt()) {
                 for (rapidjson::SizeType i = 0; i < arrayLen; i++) {
                     hostData[i] = jsonArray[i].GetInt();
                 }
-            } else if (jsonArray[0].isDouble()) {
+            } else if (jsonArray[0].IsDouble()) {
                 for (rapidjson::SizeType i = 0; i < arrayLen; i++) {
                     hostData[i] = jsonArray[i].GetDouble();
                 }
             } else {
-                throw std::invalid_argument("Cannot transfer given data to device. Data is not int or double.");
+                throw std::invalid_argument("Cannot transfer given data to device: cannot get int or real from data.");
             }
-            gpuErrchk( cudaMemcpy(devPtr, hostData.data(), numBytes, H2D) );
+            gpuErrchk( cudaMemcpy(devicePtr, hostData.data(), numBytes, H2D) );
 		}
 
 	public:
@@ -86,21 +134,25 @@ class ScenarioTree {
               throw std::invalid_argument("Cannot parse JSON file");
             }
 
-            const m_isMarkovian = doc["isMarkovian"].GetInt();
-            const m_isIid = doc["isIid"].GetInt();
-            const m_numNonleafNodes = doc["numNonleafNodes"].GetInt();
-            const m_numNodes = doc["numNodes"].GetInt();
-            const m_numStages = doc["numStages"].GetInt();
+            m_isMarkovian = doc["isMarkovian"].GetBool();
+            m_isIid = doc["isIid"].GetBool();
+            m_numNonleafNodes = doc["numNonleafNodes"].GetInt();
+            m_numNodes = doc["numNodes"].GetInt();
+            m_numStages = doc["numStages"].GetInt();
 
             allocateDeviceMemory();
 
-            /* Transfer data to device */
+            /** Transfer data to device */
             transferDataToDevice(doc["stages"], m_d_stages);
             transferDataToDevice(doc["ancestors"], m_d_ancestors);
             transferDataToDevice(doc["probabilities"], m_d_probabilities);
             transferDataToDevice(doc["events"], m_d_events);
             transferDataToDevice(doc["childrenFrom"], m_d_childFrom);
             transferDataToDevice(doc["childrenTo"], m_d_childTo);
+
+//            populateProbabilities<<<bPerG, tPerB>>>(m_d_ancestors, m_d_probabilities, m_numNodes, m_d_conditionalProbabilities);
+//            populateStages<<<bPerG, tPerB>>>(m_d_stages, m_numStages, m_numNodes, m_d_stageFrom, m_d_stageTo);
+            cudaDeviceSynchronize();
         }
 
 		/**
@@ -117,11 +169,15 @@ class ScenarioTree {
 			}
             if (m_d_probabilities != 0){
                 gpuErrchk( cudaFree(m_d_probabilities) );
-                m_d_stages = 0;
+                m_d_probabilities = 0;
+            }
+            if (m_d_conditionalProbabilities != 0){
+                gpuErrchk( cudaFree(m_d_probabilities) );
+                m_d_probabilities = 0;
             }
             if (m_d_events != 0){
                 gpuErrchk( cudaFree(m_d_events) );
-                m_d_stages = 0;
+                m_d_events = 0;
             }
 			if (m_d_childFrom != 0) {
 				gpuErrchk( cudaFree(m_d_childFrom) );
@@ -143,13 +199,18 @@ class ScenarioTree {
         int numStages() { return m_numStages; }
         int* stages() { return m_d_stages; }
 		int* ancestors() { return m_d_ancestors; }
-        int* probabilities() { return m_d_probabilities; }
+        real_t* probabilities() { return m_d_probabilities; }
+        real_t* conditionalProbabilities() { return m_d_conditionalProbabilities; }
         int* events() { return m_d_events; }
         int* childFrom() { return m_d_childFrom; }
         int* childTo() { return m_d_childTo; }
+        int* stageFrom() { return m_d_stageFrom; }
+        int* stageTo() { return m_d_stageTo; }
 
+        /**
+         * Debugging
+         */
 		void print(){
-			// FOR DEBUGGING ONLY!
 			std::cout << "Number of ancestors: " << m_numNodes << std::endl; 
 			int *hostNodeData = new int[m_numNodes];
 			cudaMemcpy(hostNodeData, m_d_ancestors, m_numNodes*sizeof(int), D2H);

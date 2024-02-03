@@ -100,6 +100,7 @@ class ScenarioTree {
               throw std::invalid_argument("Cannot parse JSON file");
             }
 
+            /** Store single element data from JSON in host memory */
             m_isMarkovian = doc["isMarkovian"].GetBool();
             m_isIid = doc["isIid"].GetBool();
             m_numNonleafNodes = doc["numNonleafNodes"].GetInt();
@@ -125,7 +126,7 @@ class ScenarioTree {
             m_d_stageFrom.allocateOnDevice(m_numStages);
             m_d_stageTo.allocateOnDevice(m_numStages);
 
-            /** Store data from JSON in host memory */
+            /** Store array data from JSON in host memory */
             for (rapidjson::SizeType i = 0; i<m_numNodes; i++) {
                 if (i < m_numNonleafNodes) {
                     hostChildrenFrom[i] = doc["childrenFrom"][i].GetInt();
@@ -137,7 +138,7 @@ class ScenarioTree {
                 hostEvents[i] = doc["events"][i].GetInt();
             }
 
-            /** Transfer data to device */
+            /** Transfer JSON array data to device */
             m_d_stages.upload(hostStages);
             m_d_ancestors.upload(hostAncestors);
             m_d_probabilities.upload(hostProbabilities);

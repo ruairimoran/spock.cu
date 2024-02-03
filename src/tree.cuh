@@ -28,9 +28,9 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 __global__ void populateProbabilities(int* anc, real_t* prob, int numNodes, real_t* condProb) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i == 0) {
-//        condProb[i] = 1.0;  // ERROR when you manipulate data on device
+        condProb[i] = 1.0;
     } else if (i < numNodes) {
-//        condProb[i] = prob[i] / prob[anc[i]];  // ERROR when you manipulate data on device
+        condProb[i] = prob[i] / prob[anc[i]];
     }
 }
 
@@ -47,13 +47,13 @@ __global__ void populateStages(int* stages, int numStages, int numNodes, int* st
     if (i < numStages) {
         for (int j=0; j<numNodes; i++) {
             if (stages[j] == i) {
-//                stageFrom[i] = j;  // ERROR when you manipulate data on device
+                stageFrom[i] = j;
                 break;
             }
         }
         for (int j=numNodes-1; j>=0; i--) {
             if (stages[j] == i) {
-//                stageTo[i] = j;  // ERROR when you manipulate data on device
+                stageTo[i] = j;
                 break;
             }
         }
@@ -75,15 +75,15 @@ class ScenarioTree {
         size_t m_numNonleafNodes = 0;  ///< Total number of nonleaf nodes (incl. root)
         size_t m_numNodes = 0;  ///< Total number of nodes (incl. root)
         size_t m_numStages = 0;  ///< Total number of stages (incl. root)
-        DeviceVector<int> m_d_stages = 0;  ///< Ptr to stage of node at index
-        DeviceVector<int> m_d_ancestors = 0;  ///< Ptr to ancestor of node at index
-        DeviceVector<real_t> m_d_probabilities = 0;  ///< Ptr to probability of visiting node at index
-        DeviceVector<real_t> m_d_conditionalProbabilities = 0;  ///< Ptr to conditional probability of visiting node at index
-        DeviceVector<int> m_d_events = 0;  ///< Ptr to event occurred that led to node at index
-        DeviceVector<int> m_d_childFrom = 0;  ///< Ptr to first child of node at index
-        DeviceVector<int> m_d_childTo = 0;  ///< Ptr to last child of node at index
-        DeviceVector<int> m_d_stageFrom = 0;  ///< Ptr to first node of stage at index
-        DeviceVector<int> m_d_stageTo = 0;  ///< Ptr to last node of stage at index
+        DeviceVector<int> m_d_stages;  ///< Ptr to stage of node at index
+        DeviceVector<int> m_d_ancestors;  ///< Ptr to ancestor of node at index
+        DeviceVector<real_t> m_d_probabilities;  ///< Ptr to probability of visiting node at index
+        DeviceVector<real_t> m_d_conditionalProbabilities;  ///< Ptr to conditional probability of visiting node at index
+        DeviceVector<int> m_d_events;  ///< Ptr to event occurred that led to node at index
+        DeviceVector<int> m_d_childFrom;  ///< Ptr to first child of node at index
+        DeviceVector<int> m_d_childTo;  ///< Ptr to last child of node at index
+        DeviceVector<int> m_d_stageFrom;  ///< Ptr to first node of stage at index
+        DeviceVector<int> m_d_stageTo;  ///< Ptr to last node of stage at index
 
 	public:
 		/**
@@ -106,39 +106,50 @@ class ScenarioTree {
             m_numNodes = doc["numNodes"].GetInt();
             m_numStages = doc["numStages"].GetInt();
 
-            /** Convert JSON data to vectors */
-            std::vector<int> vecStages(m_numNodes);
-            std::vector<int> vecAncestors(m_numNodes);
-            std::vector<real_t> vecProbabilities(m_numNodes);
-            std::vector<int> vecEvents(m_numNodes);
-            std::vector<int> vecChildrenFrom(m_numNonleafNodes);
-            std::vector<int> vecChildrenTo(m_numNonleafNodes);
+            /** Allocate memory on host for JSON data */
+            std::vector<int> hostStages(m_numNodes);
+            std::vector<int> hostAncestors(m_numNodes);
+            std::vector<real_t> hostProbabilities(m_numNodes);
+            std::vector<int> hostEvents(m_numNodes);
+            std::vector<int> hostChildrenFrom(m_numNonleafNodes);
+            std::vector<int> hostChildrenTo(m_numNonleafNodes);
+
+            /** Allocate memory on device */
+            m_d_stages.allocateOnDevice(m_numNodes);
+            m_d_ancestors.allocateOnDevice(m_numNodes);
+            m_d_probabilities.allocateOnDevice(m_numNodes);
+            m_d_conditionalProbabilities.allocateOnDevice(m_numNodes);
+            m_d_events.allocateOnDevice(m_numNodes);
+            m_d_childFrom.allocateOnDevice(m_numNonleafNodes);
+            m_d_childTo.allocateOnDevice(m_numNonleafNodes);
+            m_d_stageFrom.allocateOnDevice(m_numStages);
+            m_d_stageTo.allocateOnDevice(m_numStages);
+
+            /** Store data from JSON in host memory */
             for (rapidjson::SizeType i = 0; i<m_numNodes; i++) {
                 if (i < m_numNonleafNodes) {
-                    vecChildrenFrom[i] = doc["childrenFrom"][i].GetInt();
-                    vecChildrenTo[i] = doc["childrenTo"][i].GetInt();
+                    hostChildrenFrom[i] = doc["childrenFrom"][i].GetInt();
+                    hostChildrenTo[i] = doc["childrenTo"][i].GetInt();
                 }
-                vecStages[i] = doc["stages"][i].GetInt();
-                vecAncestors[i] = doc["ancestors"][i].GetInt();
-                vecProbabilities[i] = doc["probabilities"][i].GetDouble();
-                vecEvents[i] = doc["events"][i].GetInt();
+                hostStages[i] = doc["stages"][i].GetInt();
+                hostAncestors[i] = doc["ancestors"][i].GetInt();
+                hostProbabilities[i] = doc["probabilities"][i].GetDouble();
+                hostEvents[i] = doc["events"][i].GetInt();
             }
 
-            /** Transfer data to device
-             * CAUSING MEMCHECK ERRORS **********************************************************************
-             */
-            m_d_stages.upload(vecStages);
-            m_d_ancestors.upload(vecAncestors);
-            m_d_probabilities.upload(vecProbabilities);
-            m_d_events.upload(vecEvents);
-            m_d_childFrom.upload(vecChildrenFrom);
-            m_d_childTo.upload(vecChildrenTo);
+            /** Transfer data to device */
+            m_d_stages.upload(hostStages);
+            m_d_ancestors.upload(hostAncestors);
+            m_d_probabilities.upload(hostProbabilities);
+            m_d_events.upload(hostEvents);
+            m_d_childFrom.upload(hostChildrenFrom);
+            m_d_childTo.upload(hostChildrenTo);
 
             /** Populate remaining arrays on device */
-            populateProbabilities<<<m_numNodes, 1>>>(m_d_ancestors.get(), m_d_probabilities.get(), m_numNodes,
-                                                     m_d_conditionalProbabilities.get());
-            populateStages<<<m_numNodes, 1>>>(m_d_stages.get(), m_numStages, m_numNodes,
-                                              m_d_stageFrom.get(), m_d_stageTo.get());
+//            populateProbabilities<<<m_numNodes, 1>>>(m_d_ancestors.get(), m_d_probabilities.get(), m_numNodes,
+//                                                     m_d_conditionalProbabilities.get());
+//            populateStages<<<m_numNodes, 1>>>(m_d_stages.get(), m_numStages, m_numNodes,
+//                                              m_d_stageFrom.get(), m_d_stageTo.get());
         }
 
 		/**

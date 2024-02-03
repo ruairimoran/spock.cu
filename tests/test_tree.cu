@@ -62,7 +62,7 @@ TEST_F(MarkovTreeTest, GetProbability) {
 
 TEST_F(MarkovTreeTest, GetCondProb) {
     mockTree->conditionalProbabilities().download(hostDataRealNumNodes);
-    EXPECT_FLOAT_EQ(hostDataRealNumNodes[0], 0.5);
+    EXPECT_FLOAT_EQ(hostDataRealNumNodes[5], 0.5);
 }
 
 TEST_F(MarkovTreeTest, GetEvent) {

@@ -4,7 +4,7 @@
 
 int main(void)
 {
-    std::ifstream file("src/tree_data.json"); 
+    std::ifstream file("tests/tree_data.json");
     ScenarioTree tree(file);
-  	tree.print();	
+  	tree.print();  // DEBUGGING
 }

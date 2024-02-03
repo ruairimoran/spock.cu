@@ -45,13 +45,13 @@ __global__ void populateProbabilities(int* anc, real_t* prob, int numNodes, real
 __global__ void populateStages(int* stages, int numStages, int numNodes, int* stageFrom, int* stageTo) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < numStages) {
-        for (int j=0; j<numNodes; i++) {
+        for (int j=0; j<numNodes; j++) {
             if (stages[j] == i) {
                 stageFrom[i] = j;
                 break;
             }
         }
-        for (int j=numNodes-1; j>=0; i--) {
+        for (int j=numNodes-1; j>=0; j--) {
             if (stages[j] == i) {
                 stageTo[i] = j;
                 break;
@@ -146,10 +146,10 @@ class ScenarioTree {
             m_d_childTo.upload(hostChildrenTo);
 
             /** Populate remaining arrays on device */
-//            populateProbabilities<<<m_numNodes, 1>>>(m_d_ancestors.get(), m_d_probabilities.get(), m_numNodes,
-//                                                     m_d_conditionalProbabilities.get());
-//            populateStages<<<m_numNodes, 1>>>(m_d_stages.get(), m_numStages, m_numNodes,
-//                                              m_d_stageFrom.get(), m_d_stageTo.get());
+            populateProbabilities<<<m_numNodes, 1>>>(m_d_ancestors.get(), m_d_probabilities.get(), m_numNodes,
+                                                     m_d_conditionalProbabilities.get());
+            populateStages<<<m_numStages, 1>>>(m_d_stages.get(), m_numStages, m_numNodes,
+                                               m_d_stageFrom.get(), m_d_stageTo.get());
         }
 
 		/**
@@ -179,35 +179,76 @@ class ScenarioTree {
          * Debugging
          */
 		void print(){
-            int *hostNodeDataNonleaf = new int[m_numNonleafNodes];
-            int *hostNodeDataNodes = new int[m_numNodes];
-			std::cout << "Number of ancestors: " << m_numNodes << std::endl;
-            m_d_ancestors.download(hostNodeDataNodes);
+            std::vector<int> hostDataIntNumNonleafNodes(m_numNonleafNodes);
+            std::vector<int> hostDataIntNumNodes(m_numNodes);
+            std::vector<real_t> hostDataRealNumNodes(m_numNodes);
+            std::vector<int> hostDataIntNumStages(m_numStages);
+
+			std::cout << "Number of nonleaf nodes: " << m_numNonleafNodes << std::endl;
+            std::cout << "Number of nodes: " << m_numNodes << std::endl;
+            std::cout << "Number of stages: " << m_numStages << std::endl;
+
+            m_d_stages.download(hostDataIntNumNodes);
+            std::cout << "Stages (from device): ";
+            for (size_t i=0; i<m_numNodes; i++) {
+                std::cout << hostDataIntNumNodes[i] << " ";
+            }
+            std::cout << std::endl;
+
+            m_d_ancestors.download(hostDataIntNumNodes);
 			std::cout << "Ancestors (from device): ";
 			for (size_t i=0; i<m_numNodes; i++) {
-				std::cout << hostNodeDataNodes[i] << " ";
+				std::cout << hostDataIntNumNodes[i] << " ";
 			}
 			std::cout << std::endl;
 
-			m_d_stages.download(hostNodeDataNodes);
-			std::cout << "Stages (from device): ";
-			for (size_t i=0; i<m_numNodes; i++) {
-				std::cout << hostNodeDataNodes[i] << " ";
-			}
-			std::cout << std::endl;
+            m_d_probabilities.download(hostDataRealNumNodes);
+            std::cout << "Probabilities (from device): ";
+            for (size_t i=0; i<m_numNodes; i++) {
+                std::cout << hostDataRealNumNodes[i] << " ";
+            }
+            std::cout << std::endl;
 
-			m_d_childFrom.download(hostNodeDataNonleaf);
+            m_d_conditionalProbabilities.download(hostDataRealNumNodes);
+            std::cout << "Conditional probabilities (from device): ";
+            for (size_t i=0; i<m_numNodes; i++) {
+                std::cout << hostDataRealNumNodes[i] << " ";
+            }
+            std::cout << std::endl;
+
+            m_d_events.download(hostDataIntNumNodes);
+            std::cout << "Events (from device): ";
+            for (size_t i=0; i<m_numNodes; i++) {
+                std::cout << hostDataIntNumNodes[i] << " ";
+            }
+            std::cout << std::endl;
+
+			m_d_childFrom.download(hostDataIntNumNonleafNodes);
 			std::cout << "Children::from (from device): ";
 			for (size_t i=0; i<m_numNonleafNodes; i++) {
-				std::cout << hostNodeDataNonleaf[i] << " ";
+				std::cout << hostDataIntNumNonleafNodes[i] << " ";
 			}
 			std::cout << std::endl;
 
-			m_d_childTo.download(hostNodeDataNonleaf);
+			m_d_childTo.download(hostDataIntNumNonleafNodes);
 			std::cout << "Children::to (from device): ";
 			for (size_t i=0; i<m_numNonleafNodes; i++) {
-				std::cout << hostNodeDataNonleaf[i] << " ";
+				std::cout << hostDataIntNumNonleafNodes[i] << " ";
 			}
 			std::cout << std::endl;
+
+            m_d_stageFrom.download(hostDataIntNumStages);
+            std::cout << "Stage::from (from device): ";
+            for (size_t i=0; i<m_numStages; i++) {
+                std::cout << hostDataIntNumStages[i] << " ";
+            }
+            std::cout << std::endl;
+
+            m_d_stageTo.download(hostDataIntNumStages);
+            std::cout << "Stage::to (from device): ";
+            for (size_t i=0; i<m_numStages; i++) {
+                std::cout << hostDataIntNumStages[i] << " ";
+            }
+            std::cout << std::endl;
 		}
 };

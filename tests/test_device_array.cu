@@ -33,11 +33,17 @@ TEST(DeviceArray, Transfer) {
 }
 
 TEST(DeviceArray, Empty) {
-	DeviceArray array = DeviceArray<float>();
-	EXPECT_TRUE(array.empty());
-	EXPECT_EQ(array.data(), nullptr);
-	EXPECT_EQ(array.size(), 0);
-	EXPECT_EQ(array.size_bytes(), 0);
+	DeviceArray array_1 = DeviceArray<float>();
+	EXPECT_TRUE(array_1.empty());
+	EXPECT_EQ(array_1.data(), nullptr);
+	EXPECT_EQ(array_1.size(), 0);
+	EXPECT_EQ(array_1.size_bytes(), 0);
+
+	DeviceArray array_2 = DeviceArray<float>::alloc(0);
+	EXPECT_TRUE(array_2.empty());
+	EXPECT_EQ(array_2.data(), nullptr);
+	EXPECT_EQ(array_2.size(), 0);
+	EXPECT_EQ(array_2.size_bytes(), 0);
 }
 
 TEST(DeviceArray, Getters) {

@@ -37,6 +37,10 @@ class DeviceArray {
 	/// @return A DeviceArray representing an uninitialised array of T in device memory.
 	/// @exception std::bad_alloc The allocation was unsuccessful.
 	static DeviceArray alloc(size_t size) requires (Extent == std::dynamic_extent) {
+		if (size == 0) {
+			return DeviceArray();
+		}
+
 		T* ptr = nullptr;
 		cudaError_t result = cudaMalloc(&ptr, size * sizeof(T));
 		if (result != cudaSuccess) {

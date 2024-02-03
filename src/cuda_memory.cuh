@@ -15,21 +15,21 @@ class CudaUniqueArray {
 
 	public:
 	static CudaUniqueArray alloc() requires (Extent != std::dynamic_extent) {
-		T* ptr;
+		T* ptr = nullptr;
 		cudaError_t result = cudaMalloc(&ptr, Extent * sizeof(T));
 		if (result != cudaSuccess) {
 			throw std::bad_alloc();
 		}
-		return CudaUniqueArray(std::span(ptr));
+		return CudaUniqueArray(std::span<T, Extent>(ptr, Extent));
 	}
 
 	static CudaUniqueArray alloc(size_t size) requires (Extent == std::dynamic_extent) {
-		T* ptr;
+		T* ptr = nullptr;
 		cudaError_t result = cudaMalloc(&ptr, size * sizeof(T));
 		if (result != cudaSuccess) {
 			throw std::bad_alloc();
 		}
-		return CudaUniqueArray(std::span(ptr, size));
+		return CudaUniqueArray(std::span<T, Extent>(ptr, size));
 	}
 
 	CudaUniqueArray(const CudaUniqueArray&) = delete;
@@ -78,7 +78,6 @@ class CudaUniqueArray {
 		if (result != cudaSuccess) {
 			throw std::runtime_error(cudaGetErrorString(result));
 		}
-		return value;
 	}
 
 	private:

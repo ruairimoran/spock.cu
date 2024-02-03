@@ -32,6 +32,8 @@ class DeviceArray {
 		return DeviceArray(std::span<T, Extent>(ptr, size));
 	}
 
+	DeviceArray() noexcept requires (Extent == std::dynamic_extent) = default;
+
 	DeviceArray(const DeviceArray&) = delete;
 	DeviceArray(DeviceArray&& other) noexcept
 		: span(std::exchange(other.span, {})) {}
@@ -47,12 +49,12 @@ class DeviceArray {
 	}
 
 	[[nodiscard]]
-	__device__ std::span<T, Extent> get() const noexcept {
+	std::span<T, Extent> get() const noexcept {
 		return this->span;
 	}
 
 	[[nodiscard]]
-	__device__ T* data() const noexcept {
+	T* data() const noexcept {
 		return this->span.data();
 	}
 
@@ -64,6 +66,11 @@ class DeviceArray {
 	[[nodiscard]]
 	size_t size_bytes() const noexcept {
 		return this->span.size_bytes();
+	}
+
+	[[nodiscard]]
+	bool empty() const noexcept {
+		return this->span.empty();
 	}
 
 	void upload(std::span<const T> src) const {

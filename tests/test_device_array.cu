@@ -31,3 +31,18 @@ TEST(DeviceArray, Transfer) {
 		EXPECT_EQ(host_data[i], download_dest[i]);
 	}
 }
+
+TEST(DeviceArray, Empty) {
+	DeviceArray array = DeviceArray<float>();
+	EXPECT_TRUE(array.empty());
+	EXPECT_EQ(array.data(), nullptr);
+	EXPECT_EQ(array.size(), 0);
+	EXPECT_EQ(array.size_bytes(), 0);
+}
+
+TEST(DeviceArray, Getters) {
+	DeviceArray array = DeviceArray<float, 3>::alloc();
+	std::span<float, 3> array_span = array.get();
+	EXPECT_EQ(array_span.data(), array.data());
+	EXPECT_EQ(array_span.size(), array.size());
+}

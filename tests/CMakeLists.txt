@@ -31,7 +31,8 @@ target_sources(spock_lib PRIVATE  # add .h files
     empty.h
 )
 target_sources(spock_lib PRIVATE  # add .cuh files
-    ../src/tree.cuh 
+    ../src/tree.cuh
+    ../src/device_array.cuh
     test_mat_mul.cuh
 )
 set_target_properties(spock_lib PROPERTIES LINKER_LANGUAGE CUDA)
@@ -58,6 +59,7 @@ target_sources(spock_tests PRIVATE  # add .cpp files
 target_sources(spock_tests PRIVATE  # add .cu files
     test_tree.cu 
     test_mat_mul.cu
+    test_device_array.cu
 )
 target_link_libraries(spock_tests PRIVATE spock_lib GTest::gtest GTest::gtest_main)
 include(GoogleTest)

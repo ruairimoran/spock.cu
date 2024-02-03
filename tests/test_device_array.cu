@@ -2,21 +2,21 @@
 
 #include <gtest/gtest.h>
 
-#include "../src/cuda_memory.cuh"
+#include "../src/device_array.cuh"
 
-TEST(CudaUniqueArray, Allocate) {
-	CudaUniqueArray array_fixed = CudaUniqueArray<float, 123>::alloc();
+TEST(DeviceArray, Allocate) {
+	DeviceArray array_fixed = DeviceArray<float, 123>::alloc();
 	EXPECT_EQ(array_fixed.size(), 123);
 	EXPECT_EQ(array_fixed.size_bytes(), 123 * sizeof(float));
 
-	CudaUniqueArray array_dyn = CudaUniqueArray<float>::alloc(456);
+	DeviceArray array_dyn = DeviceArray<float>::alloc(456);
 	EXPECT_EQ(array_dyn.size(), 456);
 	EXPECT_EQ(array_dyn.size_bytes(), 456 * sizeof(float));
 }
 
-TEST(CudaUniqueArray, Transfer) {
+TEST(DeviceArray, Transfer) {
 	const std::array<float, 3> host_data = { 123.0f, 456.0f, 789.0f };
-	CudaUniqueArray dev_data = CudaUniqueArray<float, 3>::alloc();
+	DeviceArray dev_data = DeviceArray<float, 3>::alloc();
 
 	dev_data.upload(host_data);
 

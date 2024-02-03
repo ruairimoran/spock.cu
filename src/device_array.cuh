@@ -1,5 +1,5 @@
-#ifndef CUDA_MEMORY_H
-#define CUDA_MEMORY_H
+#ifndef DEVICE_ARRAY_H
+#define DEVICE_ARRAY_H
 
 #include <span>
 #include <stdexcept>
@@ -11,38 +11,38 @@ template <typename T, size_t Extent = std::dynamic_extent>
 		// T must be trivially copyable as it will be bytewise copied to the device.
 		std::is_trivially_copyable_v<T>;
 	}
-class CudaUniqueArray {
+class DeviceArray {
 
 	public:
-	static CudaUniqueArray alloc() requires (Extent != std::dynamic_extent) {
+	static DeviceArray alloc() requires (Extent != std::dynamic_extent) {
 		T* ptr = nullptr;
 		cudaError_t result = cudaMalloc(&ptr, Extent * sizeof(T));
 		if (result != cudaSuccess) {
 			throw std::bad_alloc();
 		}
-		return CudaUniqueArray(std::span<T, Extent>(ptr, Extent));
+		return DeviceArray(std::span<T, Extent>(ptr, Extent));
 	}
 
-	static CudaUniqueArray alloc(size_t size) requires (Extent == std::dynamic_extent) {
+	static DeviceArray alloc(size_t size) requires (Extent == std::dynamic_extent) {
 		T* ptr = nullptr;
 		cudaError_t result = cudaMalloc(&ptr, size * sizeof(T));
 		if (result != cudaSuccess) {
 			throw std::bad_alloc();
 		}
-		return CudaUniqueArray(std::span<T, Extent>(ptr, size));
+		return DeviceArray(std::span<T, Extent>(ptr, size));
 	}
 
-	CudaUniqueArray(const CudaUniqueArray&) = delete;
-	CudaUniqueArray(CudaUniqueArray&& other) noexcept
+	DeviceArray(const DeviceArray&) = delete;
+	DeviceArray(DeviceArray&& other) noexcept
 		: span(std::exchange(other.span, {})) {}
 
-	CudaUniqueArray& operator=(const CudaUniqueArray&) = delete;
-	CudaUniqueArray& operator=(CudaUniqueArray&& other) noexcept {
+	DeviceArray& operator=(const DeviceArray&) = delete;
+	DeviceArray& operator=(DeviceArray&& other) noexcept {
 		std::swap(this->span, other.span);
 		return *this;
 	}
 
-	~CudaUniqueArray() noexcept {
+	~DeviceArray() noexcept {
 		cudaFree(this->span.data());
 	}
 
@@ -81,7 +81,7 @@ class CudaUniqueArray {
 	}
 
 	private:
-	CudaUniqueArray(std::span<T, Extent> span) : span(span) {}
+	DeviceArray(std::span<T, Extent> span) : span(span) {}
 	std::span<T, Extent> span;
 };
 

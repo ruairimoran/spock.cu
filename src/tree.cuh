@@ -164,15 +164,15 @@ class ScenarioTree {
         int numNonleafNodes() { return m_numNonleafNodes; }
         int numNodes() { return m_numNodes; }
         int numStages() { return m_numStages; }
-        DeviceVector<int> stages() { return m_d_stages; }
-		DeviceVector<int> ancestors() { return m_d_ancestors; }
-        DeviceVector<real_t> probabilities() { return m_d_probabilities; }
-        DeviceVector<real_t> conditionalProbabilities() { return m_d_conditionalProbabilities; }
-        DeviceVector<int> events() { return m_d_events; }
-        DeviceVector<int> childFrom() { return m_d_childFrom; }
-        DeviceVector<int> childTo() { return m_d_childTo; }
-        DeviceVector<int> stageFrom() { return m_d_stageFrom; }
-        DeviceVector<int> stageTo() { return m_d_stageTo; }
+        DeviceVector<int>& stages() { return m_d_stages; }
+		DeviceVector<int>& ancestors() { return m_d_ancestors; }
+        DeviceVector<real_t>& probabilities() { return m_d_probabilities; }
+        DeviceVector<real_t>& conditionalProbabilities() { return m_d_conditionalProbabilities; }
+        DeviceVector<int>& events() { return m_d_events; }
+        DeviceVector<int>& childFrom() { return m_d_childFrom; }
+        DeviceVector<int>& childTo() { return m_d_childTo; }
+        DeviceVector<int>& stageFrom() { return m_d_stageFrom; }
+        DeviceVector<int>& stageTo() { return m_d_stageTo; }
 
         /**
          * Debugging

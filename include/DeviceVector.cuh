@@ -161,7 +161,7 @@ void DeviceVector<TElement>::download(TElement* hostData)
 
 template<typename TElement>
 void DeviceVector<TElement>::download(std::vector<TElement>& vec){
-    vec.reserve(m_numAllocatedElements);
+    vec.resize(m_numAllocatedElements);
     cudaMemcpy(vec.data(),
                m_d_data,
                m_numAllocatedElements*sizeof(TElement),

@@ -1,10 +1,8 @@
+#include "../include/stdgpu.h"
 #include <stdio.h>
-#include <vector>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
-#include "../include/stdgpu.h"
-#include "../include/DeviceVector.cuh"
 
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }

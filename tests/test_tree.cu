@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "../include/stdgpu.h"
 #include "../src/tree.cuh"
 
 

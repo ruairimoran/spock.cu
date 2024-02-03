@@ -1,6 +1,3 @@
-#include <vector>
-
-
 /**
  * DeviceVector is a unique_ptr-type entity for device data.
  */

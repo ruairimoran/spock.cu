@@ -2,9 +2,9 @@
 #include <iostream>
 
 
-__global__ void maxWithZero(float* x, size_t n) {
+__global__ void maxWithZero(real_t* vec, size_t size) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n) x[i] = max(0., x[i]);
+    if (i < size) vec[i] = max(0., vec[i]);
 }
 
 
@@ -15,8 +15,8 @@ class ConvexCone {
         explicit ConvexCone(Context& context) : m_context(context) {};
 
     public:
-        virtual void project_on_cone(float* x, size_t n) = 0;
-        virtual void project_on_dual(float* x, size_t n) = 0;
+        virtual void project_on_cone(real_t* vec, size_t size) = 0;
+        virtual void project_on_dual(real_t* vec, size_t size) = 0;
 };
 
 
@@ -25,10 +25,10 @@ class Real : public ConvexCone{
     public:
         Real(Context& context): ConvexCone(context) {}
 
-        void project_on_cone(float* x, size_t n) {
+        void project_on_cone(real_t* vec, size_t size) {
             // complete!
         }
-        void project_on_dual(float* x, size_t n) {
+        void project_on_dual(real_t* vec, size_t size) {
             // complete!
         }
 };
@@ -39,10 +39,10 @@ class Zero : public ConvexCone{
     public:
         Zero(Context& context): ConvexCone(context) {}
 
-        void project_on_cone(float* x, size_t n) {
+        void project_on_cone(real_t* vec, size_t size) {
             // complete!
         }
-        void project_on_dual(float* x, size_t n) {
+        void project_on_dual(real_t* vec, size_t size) {
             // complete!
         }
 };
@@ -53,10 +53,10 @@ class NonnegativeOrthant : public ConvexCone{
     public:
         NonnegativeOrthant(Context& context): ConvexCone(context) {}
 
-        void project_on_cone(float* x, size_t n) {
-            maxWithZero<<<1, n>>>(x, n);
+        void project_on_cone(real_t* vec, size_t size) {
+            maxWithZero<<<1, size>>>(vec, size);
         }
-        void project_on_dual(float* x, size_t n) {
+        void project_on_dual(real_t* vec, size_t size) {
             // complete!
         }
 };
@@ -67,14 +67,14 @@ class SOC : public ConvexCone{
     public:
         explicit SOC(Context& context) : ConvexCone(context) {}
 
-        void project_on_cone(float* x, size_t n) {
+        void project_on_cone(real_t* vec, size_t size) {
             /* Determine the norm of the first n-1 elements of x */
-            float nrm;
-            cublasSnrm2(m_context.handle(), n - 1, x, 1, &nrm);
+            real_t nrm;
+            cublasSnrm2(m_context.handle(), size - 1, vec, 1, &nrm);
             std::cout << "||x|| = " << nrm << std::endl;
             // complete!
         }
-        void project_on_dual(float* x, size_t n) {
+        void project_on_dual(real_t* vec, size_t size) {
             // complete!
         }
 };
@@ -85,10 +85,10 @@ class Cartesian : public ConvexCone{
     public:
         Cartesian(Context& context): ConvexCone(context) {}
 
-        void project_on_cone(float* x, size_t n) {
+        void project_on_cone(real_t* vec, size_t size) {
             // complete!
         }
-        void project_on_dual(float* x, size_t n) {
+        void project_on_dual(real_t* vec, size_t size) {
             // complete!
         }
 };

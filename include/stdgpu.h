@@ -11,6 +11,6 @@
 
 #define H2D cudaMemcpyHostToDevice
 #define D2H cudaMemcpyDeviceToHost
-#define real_t double
+#define real_t float
 
 #endif

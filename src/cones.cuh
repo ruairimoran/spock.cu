@@ -26,6 +26,7 @@ class ConvexCone {
     protected:
         Context& m_context;
         explicit ConvexCone(Context& context) : m_context(context) {};
+        std::vector<real_t> hostSoc;
 
     public:
         virtual void projectOnCone(DeviceVector<real_t>& vec) = 0;
@@ -97,6 +98,8 @@ class NonnegativeOrthant : public ConvexCone{
  * The Second Order cone (SOC)
  * - the set is R^n_2
  * - the cone is self dual
+ * - this projection follows [page 184, Section 6.3.2] of
+ * > Parikh, N., & Boyd, S. (2014). Proximal algorithms. Foundations and trends® in Optimization, 1(3), 127-239.
 */
 class SOC : public ConvexCone{
 
@@ -114,14 +117,13 @@ class SOC : public ConvexCone{
             /** Determine the 2-norm of the first (n - 1) elements of vec */
             real_t nrm;
             cublasDnrm2(m_context.handle(), n-1, vecPtr, 1, &nrm);
-            real_t last;
-            vec.download(&last, n-1);
-            if (nrm <= last) {
+            vec.download(hostSoc);  // could be optimised to only download last element!
+            if (nrm <= hostSoc[n-1]) {
                 // Do nothing!
-            } else if (nrm <= -last) {
+            } else if (nrm <= -hostSoc[n-1]) {
                 setToZero<<<1, n>>>(vecPtr, n);
             } else {
-                real_t avg = (nrm + last) / 2.;
+                real_t avg = (nrm + hostSoc[n-1]) / 2.;
                 projectOnSoc<<<1, n>>>(vecPtr, n, nrm, avg);
             }
         }

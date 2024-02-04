@@ -2,22 +2,22 @@
 #include <iostream>
 
 
-__global__ void maxWithZero(real_t* vec, size_t size) {
+__global__ void maxWithZero(real_t* vec, size_t n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < size) vec[i] = max(0., vec[i]);
+    if (i < n) vec[i] = max(0., vec[i]);
 }
 
 
-__global__ void setToZero(real_t* vec, size_t size) {
+__global__ void setToZero(real_t* vec, size_t n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < size) vec[i] = 0.;
+    if (i < n) vec[i] = 0.;
 }
 
 
-__global__ void projectOnSoc(real_t* vec, size_t size, real_t nrm, real_t last) {
+__global__ void projectOnSoc(real_t* vec, size_t n, real_t nrm, real_t last) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < size - 1) vec[i] = last * (vec[i] / nrm);
-    if (i == size - 1) vec[i] = last;
+    if (i < n - 1) vec[i] = last * (vec[i] / nrm);
+    if (i == n - 1) vec[i] = last;
 }
 
 
@@ -28,8 +28,8 @@ class ConvexCone {
         explicit ConvexCone(Context& context) : m_context(context) {};
 
     public:
-        virtual void projectOnCone(real_t* vec, size_t size) = 0;
-        virtual void projectOnDual(real_t* vec, size_t size) = 0;
+        virtual void projectOnCone(DeviceVector<real_t>& vec) = 0;
+        virtual void projectOnDual(DeviceVector<real_t>& vec) = 0;
 };
 
 
@@ -43,11 +43,12 @@ class Real : public ConvexCone{
     public:
         Real(Context& context): ConvexCone(context) {}
 
-        void projectOnCone(real_t* vec, size_t size) {
+        void projectOnCone(DeviceVector<real_t>& vec) {
             // Do nothing!
         }
-        void projectOnDual(real_t* vec, size_t size) {
-            setToZero<<<1, size>>>(vec, size);
+        void projectOnDual(DeviceVector<real_t>& vec) {
+            size_t n = vec.capacity();
+            setToZero<<<1, n>>>(vec.get(), n);
         }
 };
 
@@ -62,10 +63,11 @@ class Zero : public ConvexCone{
     public:
         Zero(Context& context): ConvexCone(context) {}
 
-        void projectOnCone(real_t* vec, size_t size) {
-            setToZero<<<1, size>>>(vec, size);
+        void projectOnCone(DeviceVector<real_t>& vec) {
+            size_t n = vec.capacity();
+            setToZero<<<1, n>>>(vec.get(), n);
         }
-        void projectOnDual(real_t* vec, size_t size) {
+        void projectOnDual(DeviceVector<real_t>& vec) {
             // Do nothing!
         }
 };
@@ -81,11 +83,12 @@ class NonnegativeOrthant : public ConvexCone{
     public:
         NonnegativeOrthant(Context& context): ConvexCone(context) {}
 
-        void projectOnCone(real_t* vec, size_t size) {
-            maxWithZero<<<1, size>>>(vec, size);
+        void projectOnCone(DeviceVector<real_t>& vec) {
+            size_t n = vec.capacity();
+            maxWithZero<<<1, n>>>(vec.get(), n);
         }
-        void projectOnDual(real_t* vec, size_t size) {
-            projectOnCone(vec, size);
+        void projectOnDual(DeviceVector<real_t>& vec) {
+            projectOnCone(vec);
         }
 };
 
@@ -100,26 +103,30 @@ class SOC : public ConvexCone{
     public:
         explicit SOC(Context& context) : ConvexCone(context) {}
 
-        void projectOnCone(real_t* vec, size_t size) {
+        void projectOnCone(DeviceVector<real_t>& vec) {
+            size_t n = vec.capacity();
             /** Sanity check */
-            if (size < 2) {
+            if (n < 2) {
                 std::invalid_argument("Attempt to project onto a second order cone with a number.");
             }
-            /** Determine the 2-norm of the first (size - 1) elements of vec */
+            /** Get */
+            real_t* vecPtr = vec.get();
+            /** Determine the 2-norm of the first (n - 1) elements of vec */
             real_t nrm;
-            cublasDnrm2(m_context.handle(), size - 1, vec, 1, &nrm);
-            real_t lastElement = vec[size - 1];
-            if (nrm <= lastElement) {
+            cublasDnrm2(m_context.handle(), n-1, vecPtr, 1, &nrm);
+            real_t last;
+            vec.download(&last, n-1);
+            if (nrm <= last) {
                 // Do nothing!
-            } else if (nrm <= -lastElement) {
-                setToZero<<<1, size>>>(vec, size);
+            } else if (nrm <= -last) {
+                setToZero<<<1, n>>>(vecPtr, n);
             } else {
-                real_t projectLastElement = (nrm + lastElement) / 2;
-                projectOnSoc<<<1, size>>>(vec, size, nrm, projectLastElement);
+                real_t avg = (nrm + last) / 2.;
+                projectOnSoc<<<1, n>>>(vecPtr, n, nrm, avg);
             }
         }
-        void projectOnDual(real_t* vec, size_t size) {
-            projectOnCone(vec, size);
+        void projectOnDual(DeviceVector<real_t>& vec) {
+            projectOnCone(vec);
         }
 };
 
@@ -134,10 +141,10 @@ class Cartesian : public ConvexCone{
     public:
         Cartesian(Context& context): ConvexCone(context) {}
 
-        void projectOnCone(real_t* vec, size_t size) {
+        void projectOnCone(DeviceVector<real_t>& vec) {
             // todo!
         }
-        void projectOnDual(real_t* vec, size_t size) {
+        void projectOnDual(DeviceVector<real_t>& vec) {
             // todo!
         }
 };

@@ -3,6 +3,7 @@
 
 
 class MarkovTreeTest : public testing::Test {
+
 	protected:
 	    std::unique_ptr<ScenarioTree> mockTree;
         bool isMarkovian;
@@ -15,21 +16,20 @@ class MarkovTreeTest : public testing::Test {
         std::vector<real_t> hostDataRealNumNodes;
         std::vector<int> hostDataIntNumStages;
 
-	    MarkovTreeTest(){
+	    MarkovTreeTest() {
 	        std::ifstream tree_data("../tree_data.json");
 	        auto treeTemp = std::make_unique<ScenarioTree>(tree_data);
 	        mockTree = std::move(treeTemp);
             numNonleafNodes = mockTree->numNonleafNodes();
             numNodes = mockTree->numNodes();
             numStages = mockTree->numStages();
-            hostDataIntNumNonleafNodes.reserve(numNonleafNodes);
-            hostDataIntNumNodes.reserve(numNodes);
-            hostDataRealNumNodes.reserve(numNodes);
-            hostDataIntNumStages.reserve(numStages);
+            hostDataIntNumNonleafNodes.resize(numNonleafNodes);
+            hostDataIntNumNodes.resize(numNodes);
+            hostDataRealNumNodes.resize(numNodes);
+            hostDataIntNumStages.resize(numStages);
         };
 
-        virtual ~MarkovTreeTest() {
-        }
+        virtual ~MarkovTreeTest() {}
 };
 
 

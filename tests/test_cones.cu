@@ -2,30 +2,73 @@
 #include "../src/cones.cuh"
 
 
-TEST(Cones, One) {
-    Context context; /* Create one context only */
+class ConesTest : public testing::Test {
+	
+    protected:
+        Context context;  ///< Create one context only
 
-    /* Prepare some host and device data */
-    size_t n = 64;
-    DeviceVector<real_t> d_dataContainer(n);
-    std::vector<real_t> dataHost(n);
-    for (size_t i = 0; i < n; i=i+2) { dataHost[i] = -2. * (i + 1.); }
-    for (size_t i = 1; i < n; i=i+2) { dataHost[i] = 2. * (i + 1.); }
-    d_dataContainer.upload(dataHost);
+        /** Prepare some host and device data */
+        size_t n = 64;
+        DeviceVector<real_t> d_data;
+        std::vector<real_t> hostData;
+        ConesTest() {
+            d_data.allocateOnDevice(n);  // why can't I allocate while declaring ?
+            hostData.resize(n);
+            for (size_t i=0; i<n; i=i+2) { hostData[i] = -2. * (i + 1.); }
+            for (size_t i=1; i<n; i=i+2) { hostData[i] = 2. * (i + 1.); }
+            d_data.upload(hostData);
+        };
 
-    /* Project to nonnegative orthant */
+        virtual ~ConesTest() {}
+};
+
+
+TEST_F(ConesTest, RealCone) {
+    Real myCone(context);
+    myCone.projectOnCone(d_data);
+}
+
+TEST_F(ConesTest, RealDual) {
+    Real myCone(context);
+    myCone.projectOnDual(d_data);
+}
+
+TEST_F(ConesTest, ZeroCone) {
+    Zero myCone(context);
+    myCone.projectOnCone(d_data);
+}
+
+TEST_F(ConesTest, ZeroDual) {
+    Zero myCone(context);
+    myCone.projectOnDual(d_data);
+}
+
+TEST_F(ConesTest, NonnegativeOrthantCone) {
     NonnegativeOrthant myCone(context);
-    myCone.projectOnCone(d_dataContainer.get(), d_dataContainer.capacity());
+    myCone.projectOnCone(d_data);
+}
 
-    /* Get the data back to the host and print it */
-    std::vector<real_t> b;
-    d_dataContainer.download(b);
-    for (size_t i = 0; i < n; i++) std::cout << b[i] << " ";
-    std::cout << std::endl;
+TEST_F(ConesTest, NonnegativeOrthantDual) {
+    NonnegativeOrthant myCone(context);
+    myCone.projectOnDual(d_data);
+}
 
-    /* Project to SOC; incomplete! */
-    SOC mySoc(context);
-    mySoc.projectOnCone(d_dataContainer.get(), d_dataContainer.capacity());
+TEST_F(ConesTest, SecondOrderConeCone) {
+    SOC myCone(context);
+    myCone.projectOnCone(d_data);
+}
 
-    EXPECT_EQ(true, 1);
+TEST_F(ConesTest, SecondOrderConeDual) {
+    SOC myCone(context);
+    myCone.projectOnDual(d_data);
+}
+
+TEST_F(ConesTest, CartesianCone) {
+    Cartesian myCone(context);
+    myCone.projectOnCone(d_data);
+}
+
+TEST_F(ConesTest, CartesianDual) {
+    Cartesian myCone(context);
+    myCone.projectOnDual(d_data);
 }

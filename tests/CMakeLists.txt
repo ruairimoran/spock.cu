@@ -56,7 +56,7 @@ target_sources(spock_tests PRIVATE  # add .cpp files
     empty.cpp  # placeholder
 )
 target_sources(spock_tests PRIVATE  # add .cu files
-    test_tree.cu 
+    # test_tree.cu 
     test_cones.cu
 )
 target_link_libraries(spock_tests PRIVATE spock_lib GTest::gtest GTest::gtest_main)

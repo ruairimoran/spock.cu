@@ -107,6 +107,14 @@ public:
     void download(std::vector<TElement>& vec);
 
     /**
+     * Download an element of the device data to a host element
+     *
+     * @param hostData destination memory position on host
+     * @param idx index of element to download
+     */
+    void download(TElement* hostData, size_t idx);
+
+    /**
      * Copy data to another memory position on the device.
      *
      * @param elsewhere destination
@@ -165,5 +173,14 @@ void DeviceVector<TElement>::download(std::vector<TElement>& vec){
     cudaMemcpy(vec.data(),
                m_d_data,
                m_numAllocatedElements*sizeof(TElement),
+               cudaMemcpyDeviceToHost);
+}
+
+template<typename TElement>
+void DeviceVector<TElement>::download(TElement* hostData, size_t idx)
+{
+    cudaMemcpy(&hostData,
+               &m_d_data[idx],
+               sizeof(TElement),
                cudaMemcpyDeviceToHost);
 }

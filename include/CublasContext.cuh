@@ -1,19 +1,18 @@
 class Context {
-private:
-    cublasHandle_t cublasHandle;
-public:
-    explicit Context() noexcept {
-        cublasCreate(&cublasHandle);
-        std::cout << "CREATED CONTEXT!" << std::endl;
-    }
 
-    virtual ~Context() noexcept {
-        cublasDestroy(cublasHandle);
-        std::cout << "DESTROYED CONTEXT!" << std::endl;
-    }
+    private:
+        cublasHandle_t cublasHandle;
+        
+    public:
+        explicit Context() noexcept {
+            cublasCreate(&cublasHandle);
+        }
 
-    cublasHandle_t &handle() {
-        return cublasHandle;
-    }
+        virtual ~Context() noexcept {
+            cublasDestroy(cublasHandle);
+        }
 
+        cublasHandle_t &handle() {
+            return cublasHandle;
+        }
 };

@@ -19,6 +19,13 @@ static void projectOnZero(real_t* vec, size_t size) {
 }
 
 
+__global__ void projectOnSoc(real_t* vec, size_t size, real_t nrm, real_t last) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < size - 1) vec[i] = last * (vec[i] / nrm);
+    if (i == size - 1) vec[i] = last;
+}
+
+
 class ConvexCone {
 
     protected:
@@ -99,11 +106,22 @@ class SOC : public ConvexCone{
         explicit SOC(Context& context) : ConvexCone(context) {}
 
         void projectOnCone(real_t* vec, size_t size) {
-            /* Determine the norm of the first n-1 elements of x */
+            /** Sanity check */
+            if (size < 2) {
+                std::invalid_argument("Attempt to project onto a second order cone with a number.");
+            }
+            /** Determine the 2-norm of the first (size - 1) elements of vec */
             real_t nrm;
-            cublasSnrm2(m_context.handle(), size - 1, vec, 1, &nrm);
-            std::cout << "||x|| = " << nrm << std::endl;
-            // complete!
+            cublasDnrm2(m_context.handle(), size - 1, vec, 1, &nrm);
+            real_t lastElement = vec[size - 1];
+            if (nrm <= lastElement) {
+                // Do nothing!
+            } else if (nrm <= -lastElement) {
+                setToZero(vec, size);
+            } else {
+                real_t projectLastElement = (nrm + lastElement) / 2;
+                projectOnSoc<<<1, size>>>(vec, size, nrm, projectLastElement);
+            }
         }
         void projectOnDual(real_t* vec, size_t size) {
             projectOnCone(vec, size);

@@ -15,7 +15,7 @@ TEST(Cones, One) {
 
     /* Project to nonnegative orthant */
     NonnegativeOrthant myCone(context);
-    myCone.project_on_cone(d_dataContainer.get(), d_dataContainer.capacity());
+    myCone.projectOnCone(d_dataContainer.get(), d_dataContainer.capacity());
 
     /* Get the data back to the host and print it */
     std::vector<float> b;

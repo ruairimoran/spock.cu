@@ -14,11 +14,6 @@ __global__ void setToZero(real_t* vec, size_t size) {
 }
 
 
-static void projectOnZero(real_t* vec, size_t size) {
-    setToZero<<<1, size>>>(vec, size);
-}
-
-
 __global__ void projectOnSoc(real_t* vec, size_t size, real_t nrm, real_t last) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < size - 1) vec[i] = last * (vec[i] / nrm);
@@ -52,7 +47,7 @@ class Real : public ConvexCone{
             // Do nothing!
         }
         void projectOnDual(real_t* vec, size_t size) {
-            projectOnZero(vec, size);
+            setToZero<<<1, size>>>(vec, size);
         }
 };
 
@@ -68,7 +63,7 @@ class Zero : public ConvexCone{
         Zero(Context& context): ConvexCone(context) {}
 
         void projectOnCone(real_t* vec, size_t size) {
-            projectOnZero(vec, size);
+            setToZero<<<1, size>>>(vec, size);
         }
         void projectOnDual(real_t* vec, size_t size) {
             // Do nothing!
@@ -117,7 +112,7 @@ class SOC : public ConvexCone{
             if (nrm <= lastElement) {
                 // Do nothing!
             } else if (nrm <= -lastElement) {
-                setToZero(vec, size);
+                setToZero<<<1, size>>>(vec, size);
             } else {
                 real_t projectLastElement = (nrm + lastElement) / 2;
                 projectOnSoc<<<1, size>>>(vec, size, nrm, projectLastElement);
@@ -140,9 +135,9 @@ class Cartesian : public ConvexCone{
         Cartesian(Context& context): ConvexCone(context) {}
 
         void projectOnCone(real_t* vec, size_t size) {
-            // complete!
+            // todo!
         }
         void projectOnDual(real_t* vec, size_t size) {
-            // complete!
+            // todo!
         }
 };

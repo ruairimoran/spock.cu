@@ -14,10 +14,22 @@ __global__ void setToZero(real_t* vec, size_t n) {
 }
 
 
-__global__ void projectOnSoc(real_t* vec, size_t n, real_t nrm, real_t last) {
+__global__ void projectOnSocElse(real_t* vec, size_t n, real_t nrm, real_t last) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n - 1) vec[i] = last * (vec[i] / nrm);
     if (i == n - 1) vec[i] = last;
+}
+
+
+__global__ void projectOnSoc(real_t* vec, size_t n, real_t nrm) {
+    if (nrm <= vec[n-1]) {
+        // Do nothing!
+    } else if (nrm <= -vec[n-1]) {
+        setToZero<<<1, n>>>(vec, n);
+    } else {
+        real_t avg = (nrm + vec[n-1]) / 2.;
+        projectOnSocElse<<<1, n>>>(vec, n, nrm, avg);
+    }
 }
 
 
@@ -25,12 +37,13 @@ class ConvexCone {
 
     protected:
         Context& m_context;
-        explicit ConvexCone(Context& context) : m_context(context) {};
-        std::vector<real_t> hostSoc;
+        explicit ConvexCone(Context& context) : m_context(context) {}
 
     public:
-        virtual void projectOnCone(DeviceVector<real_t>& vec) = 0;
-        virtual void projectOnDual(DeviceVector<real_t>& vec) = 0;
+        virtual ~ConvexCone() {}
+
+        virtual void projectOnCone(real_t* d_vec, size_t n) = 0;
+        virtual void projectOnDual(real_t* d_vec, size_t n) = 0;
 };
 
 
@@ -39,17 +52,16 @@ class ConvexCone {
  * - the set is R^n
  * - the dual is the Zero cone
 */
-class Real : public ConvexCone{
+class Real : public ConvexCone {
     
     public:
         Real(Context& context): ConvexCone(context) {}
 
-        void projectOnCone(DeviceVector<real_t>& vec) {
+        void projectOnCone(real_t* d_vec, size_t n) {
             // Do nothing!
         }
-        void projectOnDual(DeviceVector<real_t>& vec) {
-            size_t n = vec.capacity();
-            setToZero<<<1, n>>>(vec.get(), n);
+        void projectOnDual(real_t* d_vec, size_t n) {
+            setToZero<<<1, n>>>(d_vec, n);
         }
 };
 
@@ -59,16 +71,15 @@ class Real : public ConvexCone{
  * - the set is {0}
  * - the dual is the Real cone
 */
-class Zero : public ConvexCone{
+class Zero : public ConvexCone {
     
     public:
         Zero(Context& context): ConvexCone(context) {}
 
-        void projectOnCone(DeviceVector<real_t>& vec) {
-            size_t n = vec.capacity();
-            setToZero<<<1, n>>>(vec.get(), n);
+        void projectOnCone(real_t* d_vec, size_t n) {
+            setToZero<<<1, n>>>(d_vec, n);
         }
-        void projectOnDual(DeviceVector<real_t>& vec) {
+        void projectOnDual(real_t* d_vec, size_t n) {
             // Do nothing!
         }
 };
@@ -79,17 +90,16 @@ class Zero : public ConvexCone{
  * - the set is R^n_+
  * - the cone is self dual
 */
-class NonnegativeOrthant : public ConvexCone{
+class NnOC : public ConvexCone {
     
     public:
-        NonnegativeOrthant(Context& context): ConvexCone(context) {}
+        NnOC(Context& context): ConvexCone(context) {}
 
-        void projectOnCone(DeviceVector<real_t>& vec) {
-            size_t n = vec.capacity();
-            maxWithZero<<<1, n>>>(vec.get(), n);
+        void projectOnCone(real_t* d_vec, size_t n) {
+            maxWithZero<<<1, n>>>(d_vec, n);
         }
-        void projectOnDual(DeviceVector<real_t>& vec) {
-            projectOnCone(vec);
+        void projectOnDual(real_t* d_vec, size_t n) {
+            projectOnCone(d_vec, n);
         }
 };
 
@@ -101,34 +111,26 @@ class NonnegativeOrthant : public ConvexCone{
  * - this projection follows [page 184, Section 6.3.2] of
  * > Parikh, N., & Boyd, S. (2014). Proximal algorithms. Foundations and trends® in Optimization, 1(3), 127-239.
 */
-class SOC : public ConvexCone{
+class SOC : public ConvexCone {
+
+    private:
+        std::vector<real_t> m_hostSoc;
 
     public:
-        explicit SOC(Context& context) : ConvexCone(context) {}
+        SOC(Context& context) : ConvexCone(context) {}
 
-        void projectOnCone(DeviceVector<real_t>& vec) {
-            size_t n = vec.capacity();
+        void projectOnCone(real_t* d_vec, size_t n) {
             /** Sanity check */
             if (n < 2) {
                 std::invalid_argument("Attempt to project onto a second order cone with a number.");
             }
-            /** Get */
-            real_t* vecPtr = vec.get();
             /** Determine the 2-norm of the first (n - 1) elements of vec */
             real_t nrm;
-            cublasDnrm2(m_context.handle(), n-1, vecPtr, 1, &nrm);
-            vec.download(hostSoc);  // could be optimised to only download last element!
-            if (nrm <= hostSoc[n-1]) {
-                // Do nothing!
-            } else if (nrm <= -hostSoc[n-1]) {
-                setToZero<<<1, n>>>(vecPtr, n);
-            } else {
-                real_t avg = (nrm + hostSoc[n-1]) / 2.;
-                projectOnSoc<<<1, n>>>(vecPtr, n, nrm, avg);
-            }
+            cublasDnrm2(m_context.handle(), n-1, d_vec, 1, &nrm);
+            projectOnSoc<<<1, 1>>>(d_vec, n, nrm);
         }
-        void projectOnDual(DeviceVector<real_t>& vec) {
-            projectOnCone(vec);
+        void projectOnDual(real_t* d_vec, size_t n) {
+            projectOnCone(d_vec, n);
         }
 };
 
@@ -138,15 +140,29 @@ class SOC : public ConvexCone{
  * - the set is a Cartesian product of cones (cone x cone x ...)
  * - the dual is the concatenation of the dual of each constituent cone 
 */
-class Cartesian : public ConvexCone{
+class Cartesian : public ConvexCone {
+
+    private:
+        std::vector<ConvexCone*>& m_cones;
+        std::vector<size_t> m_sizes;
+        size_t m_index;
     
     public:
-        Cartesian(Context& context): ConvexCone(context) {}
+        Cartesian(Context& context, std::vector<ConvexCone*>& cones, std::vector<size_t> sizes) : 
+            ConvexCone(context), m_cones(cones), m_sizes(sizes) {}
 
-        void projectOnCone(DeviceVector<real_t>& vec) {
-            // todo!
+        void projectOnCone(real_t* d_vec, size_t n=0) {
+            m_index = 0;
+            for (size_t i=0; i<m_cones.size(); i++) {
+                m_cones[i]->projectOnCone(&d_vec[m_index], m_sizes[i]);
+                m_index += m_sizes[i];
+            }
         }
-        void projectOnDual(DeviceVector<real_t>& vec) {
-            // todo!
+        void projectOnDual(real_t* d_vec, size_t n=0) {
+            m_index = 0;
+            for (size_t i=0; i<m_cones.size(); i++) {
+                m_cones[i]->projectOnDual(&d_vec[m_index], m_sizes[i]);
+                m_index += m_sizes[i];
+            }
         }
 };

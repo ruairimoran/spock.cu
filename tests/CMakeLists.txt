@@ -5,6 +5,7 @@ project(SPOCK
     HOMEPAGE_URL "https://github.com/ruairimoran/raocp-parallel"
     LANGUAGES CXX)
 # ----
+set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)  # required for calling cuda kernels from cuda kernels
 set(CMAKE_CUDA_COMPILER "/usr/local/cuda-12.3/bin/nvcc")    
 enable_language(CUDA)
 set(CMAKE_CUDA_ARCHITECTURES 86)
@@ -34,9 +35,13 @@ target_sources(spock_lib PRIVATE  # add .cuh files
     ../src/tree.cuh 
     ../src/cones.cuh
 )
-set_target_properties(spock_lib PROPERTIES LINKER_LANGUAGE CUDA)
+set_target_properties(spock_lib PROPERTIES 
+    LINKER_LANGUAGE CUDA)
 # ----
-target_link_libraries(spock_lib PUBLIC spock_compiler_flags -lcublas)
+target_link_libraries(spock_lib PUBLIC 
+    spock_compiler_flags 
+    -lcublas
+    -lcudadevrt)
 target_include_directories(spock_lib
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
     INTERFACE $<INSTALL_INTERFACE:include/spock>)
@@ -56,10 +61,13 @@ target_sources(spock_tests PRIVATE  # add .cpp files
     empty.cpp  # placeholder
 )
 target_sources(spock_tests PRIVATE  # add .cu files
-    # test_tree.cu 
+    test_tree.cu 
     test_cones.cu
 )
-target_link_libraries(spock_tests PRIVATE spock_lib GTest::gtest GTest::gtest_main)
+target_link_libraries(spock_tests PRIVATE 
+    spock_lib 
+    GTest::gtest 
+    GTest::gtest_main)
 include(GoogleTest)
 gtest_discover_tests(spock_tests)
 # ----

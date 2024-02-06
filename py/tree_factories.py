@@ -171,7 +171,7 @@ class ScenarioTree:
                                  probabilities=self.__probability,
                                  events=self.__w_idx,
                                  children=self.__children)
-        output_path = "tests/tree_data.json" if testing else "src/tree_data.json"
+        output_path = "tests/tree_data.json" if testing else "py/tree_data.json"
         with open(output_path, "w") as fh:
             fh.write(output)
     

@@ -1,4 +1,5 @@
 # Custom
+tree_data.json
 .vscode
 venv
 __pycache__
@@ -6,6 +7,11 @@ build
 *.egg-info
 .DS_Store
 .idea
+cmake-build-debug
+CMakeFiles
+CMakeCache.txt
+Makefile
+cmake_install.cmake
 
 # Prerequisites
 *.d

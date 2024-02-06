@@ -145,7 +145,7 @@ class ScenarioTree:
             raise ValueError("stopping time greater than number of stages")
         return True
     
-    def __generate_json(self):
+    def __generate_json(self, testing):
         # Get current date and time
         current_timestamp = datetime.datetime.utcnow()
         # Setup jinja environment
@@ -171,7 +171,7 @@ class ScenarioTree:
                                  probabilities=self.__probability,
                                  events=self.__w_idx,
                                  children=self.__children)
-        output_path = "src/tree_data.json"
+        output_path = "tests/tree_data.json" if testing else "py/tree_data.json"
         with open(output_path, "w") as fh:
             fh.write(output)
     
@@ -356,7 +356,7 @@ class ScenarioTreeFactoryMarkovChain:
         
         return probs
 
-    def generate_tree(self):
+    def generate_tree(self, testing=False):
         """
         Generates a scenario tree from the given Markov chain
         """
@@ -364,5 +364,5 @@ class ScenarioTreeFactoryMarkovChain:
         ancestors, values, stages = self.__make_ancestors_values_stages()
         probs = self.__make_probability_values(ancestors, values, stages)
         tree = ScenarioTree(stages, ancestors, probs, values, is_markovian=True)
-        tree._ScenarioTree__generate_json()
+        tree._ScenarioTree__generate_json(testing)
         return tree

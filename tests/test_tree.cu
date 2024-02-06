@@ -1,65 +1,90 @@
 #include <gtest/gtest.h>
-#include "../include/stdgpu.h"
 #include "../src/tree.cuh"
 
 
 class MarkovTreeTest : public testing::Test {
-	protected:
-	    std::unique_ptr<ScenarioTree> m_mockTree;
-        int numNodes;
-        int* hostDataSizeNumNodes;
-        int* hostDataSizeNumNonleafNodes;
 
-	    MarkovTreeTest(){
-	        std::ifstream tree_data("../../src/tree_data.json");
+	protected:
+	    std::unique_ptr<ScenarioTree> mockTree;
+        bool isMarkovian;
+        bool isIid;
+        int numNonleafNodes;
+        int numNodes;
+        int numStages;
+        std::vector<int> hostDataIntNumNonleafNodes;
+        std::vector<int> hostDataIntNumNodes;
+        std::vector<real_t> hostDataRealNumNodes;
+        std::vector<int> hostDataIntNumStages;
+
+	    MarkovTreeTest() {
+	        std::ifstream tree_data("../tree_data.json");
 	        auto treeTemp = std::make_unique<ScenarioTree>(tree_data);
-	        m_mockTree = std::move(treeTemp);
-            numNodes = m_mockTree->numNodes();
-            hostDataSizeNumNodes = new int[numNodes];
-            hostDataSizeNumNonleafNodes = new int[numNodes];
+	        mockTree = std::move(treeTemp);
+            numNonleafNodes = mockTree->numNonleafNodes();
+            numNodes = mockTree->numNodes();
+            numStages = mockTree->numStages();
+            hostDataIntNumNonleafNodes.resize(numNonleafNodes);
+            hostDataIntNumNodes.resize(numNodes);
+            hostDataRealNumNodes.resize(numNodes);
+            hostDataIntNumStages.resize(numStages);
         };
 
-        virtual ~MarkovTreeTest() {
-        }
+        virtual ~MarkovTreeTest() {}
 };
 
 
-// TEST_F(MarkovTreeTest, Type) {
-//     EXPECT_TRUE(s_mockMarkovTree.is_markovian());
-//     EXPECT_FALSE(s_mockMarkovTree.is_iid());
-// }
-
-// TEST_F(MarkovTreeTest, Sizes) {
-//     EXPECT_EQ(s_mockMarkovTree.num_nonleaf_nodes(), 3);
-//     EXPECT_EQ(s_mockMarkovTree.num_nodes(), 7);
-//     EXPECT_EQ(s_mockMarkovTree.num_stages(), 3);
-// }
-
-// TEST_F(MarkovTreeTest, GetStage) {
-//     EXPECT_EQ(s_mockMarkovTree.get_stage_of_node(5), 2);
-// }
-
-TEST_F(MarkovTreeTest, GetAncestor) {
-    cudaMemcpy(hostDataSizeNumNodes, m_mockTree->ancestors(), numNodes*sizeof(int), D2H);
-    EXPECT_EQ(hostDataSizeNumNodes[5], 2);
+TEST_F(MarkovTreeTest, Type) {
+    EXPECT_TRUE(mockTree->isMarkovian());
+    EXPECT_FALSE(mockTree->isIid());
 }
 
-// TEST_F(MarkovTreeTest, GetProbability) {
-//     EXPECT_FLOAT_EQ(s_mockMarkovTree.get_probability_of_node(5), 0.2);
-// }
+TEST_F(MarkovTreeTest, Sizes) {
+    EXPECT_EQ(mockTree->numNonleafNodes(), 3);
+    EXPECT_EQ(mockTree->numNodes(), 7);
+    EXPECT_EQ(mockTree->numStages(), 3);
+}
 
-// TEST_F(MarkovTreeTest, GetEvent) {
-//     EXPECT_EQ(s_mockMarkovTree.get_event_of_node(4), 1);
-// }
+TEST_F(MarkovTreeTest, GetStage) {
+    mockTree->stages().download(hostDataIntNumNodes);
+    EXPECT_EQ(hostDataIntNumNodes[5], 2);
+}
 
-// TEST_F(MarkovTreeTest, GetChildrenOf) {
-//     EXPECT_TRUE((s_mockMarkovTree.get_children_of_node(2) == std::vector<int> {5, 6}));
-// }
+TEST_F(MarkovTreeTest, GetAncestor) {
+    mockTree->ancestors().download(hostDataIntNumNodes);
+    EXPECT_EQ(hostDataIntNumNodes[5], 2);
+}
 
-// TEST_F(MarkovTreeTest, GetCondProbOfChildren) {
-//     EXPECT_TRUE((s_mockMarkovTree.get_cond_prob_of_children_of_node(1) == std::vector<double> {0.5, 0.5}));
-// }
+TEST_F(MarkovTreeTest, GetProbability) {
+    mockTree->probabilities().download(hostDataRealNumNodes);
+    EXPECT_FLOAT_EQ(hostDataRealNumNodes[4], 0.4);
+}
 
-// TEST_F(MarkovTreeTest, GetNodesAtStage) {
-//     EXPECT_TRUE((s_mockMarkovTree.get_nodes_of_stage(2) == std::vector<int> {3, 4, 5, 6}));
-// }
+TEST_F(MarkovTreeTest, GetCondProb) {
+    mockTree->conditionalProbabilities().download(hostDataRealNumNodes);
+    EXPECT_FLOAT_EQ(hostDataRealNumNodes[5], 0.5);
+}
+
+TEST_F(MarkovTreeTest, GetEvent) {
+    mockTree->events().download(hostDataIntNumNodes);
+    EXPECT_EQ(hostDataIntNumNodes[4], 1);
+}
+
+TEST_F(MarkovTreeTest, GetChildFrom) {
+    mockTree->childFrom().download(hostDataIntNumNonleafNodes);
+    EXPECT_EQ(hostDataIntNumNonleafNodes[2], 5);
+}
+
+TEST_F(MarkovTreeTest, GetChildTo) {
+    mockTree->childTo().download(hostDataIntNumNonleafNodes);
+    EXPECT_EQ(hostDataIntNumNonleafNodes[2], 6);
+}
+
+TEST_F(MarkovTreeTest, GetStageFrom) {
+    mockTree->stageFrom().download(hostDataIntNumStages);
+    EXPECT_EQ(hostDataIntNumStages[2], 3);
+}
+
+TEST_F(MarkovTreeTest, GetStageTo) {
+    mockTree->stageTo().download(hostDataIntNumStages);
+    EXPECT_EQ(hostDataIntNumStages[2], 6);
+}

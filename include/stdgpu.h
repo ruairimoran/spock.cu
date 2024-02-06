@@ -6,5 +6,9 @@
 
 #define H2D cudaMemcpyHostToDevice
 #define D2H cudaMemcpyDeviceToHost
+#define real_t double
+
+dim3 tPerB(512, 512, 512);  ///< standard threads per block
+dim3 bPerG(512, 512, 512);  ///< standard blocks per grid
 
 #endif

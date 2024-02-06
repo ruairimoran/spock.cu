@@ -13,4 +13,4 @@ tree = factories.ScenarioTreeFactoryMarkovChain(
     initial_distribution=initial_dist, 
     horizon=horizon, 
     stopping_stage=stopping_stage
-).generate_tree()
+).generate_tree(testing=True)

@@ -5,6 +5,7 @@ project(SPOCK
     HOMEPAGE_URL "https://github.com/ruairimoran/raocp-parallel"
     LANGUAGES CXX)
 # ----
+set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)  # required for calling cuda kernels from cuda kernels
 set(CMAKE_CUDA_COMPILER "/usr/local/cuda-12.3/bin/nvcc")    
 enable_language(CUDA)
 set(CMAKE_CUDA_ARCHITECTURES 86)
@@ -28,15 +29,19 @@ target_link_libraries(spock_compiler_flags INTERFACE $<BUILD_INTERFACE:developer
 # ----
 add_library(spock_lib STATIC)
 target_sources(spock_lib PRIVATE  # add .h files
-        empty.cpp  # placeholder
+    empty.cpp  # placeholder
 )
 target_sources(spock_lib PRIVATE  # add .cuh files
     ../src/tree.cuh 
-    test_mat_mul.cuh
+    ../src/cones.cuh
 )
-set_target_properties(spock_lib PROPERTIES LINKER_LANGUAGE CUDA)
+set_target_properties(spock_lib PROPERTIES 
+    LINKER_LANGUAGE CUDA)
 # ----
-target_link_libraries(spock_lib PUBLIC spock_compiler_flags)
+target_link_libraries(spock_lib PUBLIC 
+    spock_compiler_flags 
+    -lcublas
+    -lcudadevrt)
 target_include_directories(spock_lib
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
     INTERFACE $<INSTALL_INTERFACE:include/spock>)
@@ -53,13 +58,16 @@ FetchContent_MakeAvailable(googletest)
 enable_testing()
 add_executable(spock_tests)
 target_sources(spock_tests PRIVATE  # add .cpp files
-        empty.cpp  # placeholder
+    empty.cpp  # placeholder
 )
 target_sources(spock_tests PRIVATE  # add .cu files
     test_tree.cu 
-    test_mat_mul.cu
+    test_cones.cu
 )
-target_link_libraries(spock_tests PRIVATE spock_lib GTest::gtest GTest::gtest_main)
+target_link_libraries(spock_tests PRIVATE 
+    spock_lib 
+    GTest::gtest 
+    GTest::gtest_main)
 include(GoogleTest)
 gtest_discover_tests(spock_tests)
 # ----

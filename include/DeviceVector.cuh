@@ -1,6 +1,3 @@
-#include <vector>
-
-
 /**
  * DeviceVector is a unique_ptr-type entity for device data.
  */
@@ -116,6 +113,15 @@ public:
      */
     void deviceCopyTo(DeviceVector<TElement>& elsewhere);
 
+    /**
+     * Copy slice of data to another memory position on the device.
+     *
+     * @param startIdx index of start of slice
+     * @param sliceSize number of `TElement`s in slice
+     * @param elsewhere destination
+     */
+    void deviceCopySliceTo(size_t startIdx, size_t sliceSize, DeviceVector<TElement>& elsewhere);
+
 }; /* end of class */
 
 template<typename TElement>
@@ -150,6 +156,16 @@ void DeviceVector<TElement>::deviceCopyTo(DeviceVector<TElement>& elsewhere)
     cudaMemcpy(elsewhere.get(),
                m_d_data,
                m_numAllocatedElements * sizeof(TElement),
+               cudaMemcpyDeviceToDevice);
+}
+
+template<typename TElement>
+void DeviceVector<TElement>::deviceCopySliceTo(size_t startIdx, size_t sliceSize, DeviceVector<TElement>& elsewhere)
+{
+    elsewhere.allocateOnDevice(sliceSize);
+    cudaMemcpy(elsewhere.get(),
+               &m_d_data[startIdx],
+               sliceSize * sizeof(TElement),
                cudaMemcpyDeviceToDevice);
 }
 

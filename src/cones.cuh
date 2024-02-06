@@ -48,14 +48,14 @@ class ConvexCone {
 
 
 /**
- * The Real cone
+ * The Universe cone (Univ)
  * - the set is R^n
  * - the dual is the Zero cone
 */
-class Real : public ConvexCone {
+class UniverseCone : public ConvexCone {
     
     public:
-        Real(Context& context): ConvexCone(context) {}
+        UniverseCone(Context& context) : ConvexCone(context) {}
 
         void projectOnCone(real_t* d_vec, size_t n) {
             // Do nothing!
@@ -67,14 +67,14 @@ class Real : public ConvexCone {
 
 
 /**
- * The Zero cone
+ * The Zero cone (Zero)
  * - the set is {0}
- * - the dual is the Real cone
+ * - the dual is the Universe cone
 */
-class Zero : public ConvexCone {
+class ZeroCone : public ConvexCone {
     
     public:
-        Zero(Context& context): ConvexCone(context) {}
+        ZeroCone(Context& context) : ConvexCone(context) {}
 
         void projectOnCone(real_t* d_vec, size_t n) {
             setToZero<<<1, n>>>(d_vec, n);
@@ -86,14 +86,14 @@ class Zero : public ConvexCone {
 
 
 /**
- * The Nonnegative Orthant cone
+ * The Nonnegative Orthant cone (NnOC)
  * - the set is R^n_+
  * - the cone is self dual
 */
-class NnOC : public ConvexCone {
+class NonnegativeOrthantCone : public ConvexCone {
     
     public:
-        NnOC(Context& context): ConvexCone(context) {}
+        NonnegativeOrthantCone(Context& context) : ConvexCone(context) {}
 
         void projectOnCone(real_t* d_vec, size_t n) {
             maxWithZero<<<1, n>>>(d_vec, n);
@@ -111,13 +111,10 @@ class NnOC : public ConvexCone {
  * - this projection follows [page 184, Section 6.3.2] of
  * > Parikh, N., & Boyd, S. (2014). Proximal algorithms. Foundations and trends® in Optimization, 1(3), 127-239.
 */
-class SOC : public ConvexCone {
-
-    private:
-        std::vector<real_t> m_hostSoc;
+class SecondOrderCone : public ConvexCone {
 
     public:
-        SOC(Context& context) : ConvexCone(context) {}
+        SecondOrderCone(Context& context) : ConvexCone(context) {}
 
         void projectOnCone(real_t* d_vec, size_t n) {
             /** Sanity check */
@@ -136,7 +133,7 @@ class SOC : public ConvexCone {
 
 
 /**
- * A Cartesian cone
+ * A Cartesian cone (Cart)
  * - the set is a Cartesian product of cones (cone x cone x ...)
  * - the dual is the concatenation of the dual of each constituent cone 
 */

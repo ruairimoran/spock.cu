@@ -37,7 +37,7 @@ TEST_F(MarkovTreeTest, Type) {
 }
 
 TEST_F(MarkovTreeTest, Sizes) {
-    EXPECT_EQ(m_mockTree->numModes(), 3);
+    EXPECT_EQ(m_mockTree->numEvents(), 2);
     EXPECT_EQ(m_mockTree->numNonleafNodes(), 3);
     EXPECT_EQ(m_mockTree->numNodes(), 7);
     EXPECT_EQ(m_mockTree->numStages(), 3);

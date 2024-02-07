@@ -38,7 +38,7 @@ __global__ void populateStages(size_t* stages, size_t numStages, size_t numNodes
                 break;
             }
         }
-        for (size_t j=numNodes-1; j>=0; j--) {
+        for (size_t j=numNodes-1; ; j--) {
             if (stages[j] == i) {
                 stageTo[i] = j;
                 break;
@@ -175,7 +175,7 @@ class ScenarioTree {
             std::vector<real_t> hostDataRealNumNodes(m_numNodes);
             std::vector<size_t> hostDataIntNumStages(m_numStages);
 
-			std::cout << "Number of modes: " << m_numEvents << std::endl;
+			std::cout << "Number of events: " << m_numEvents << std::endl;
             std::cout << "Number of nonleaf nodes: " << m_numNonleafNodes << std::endl;
             std::cout << "Number of nodes: " << m_numNodes << std::endl;
             std::cout << "Number of stages: " << m_numStages << std::endl;

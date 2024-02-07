@@ -8,6 +8,23 @@
 
 
 /**
+ * Repeat original vector n times while concatenating
+ * @param[in] originalVec vector to be repeated
+ * @param[in] times number of times to repeat vector
+ * @return a vector of n originalVec's joined together
+*/
+template<typename T>
+std::vector<T> repeat_n(const std::vector<T>& input, size_t n) {
+    std::vector<T> result(input.size() * n);
+    auto iter = result.begin();
+    for (size_t rep=0; rep<n; rep++, iter+=input.size()) {
+        std::copy(input.begin(), input.end(), iter);
+    }
+    return result;
+}
+
+
+/**
  * Store problem data
  * - from default file
  * - from user input
@@ -25,12 +42,12 @@ class ProblemData {
         DeviceVector<real_t> m_d_stateWeight;  ///< Ptr to
         DeviceVector<real_t> m_d_inputWeight;  ///< Ptr to
         DeviceVector<real_t> m_d_stateConstraint;  ///< Ptr to
-        DeviceVector<ConvexCone*> m_d_stateConstraintCone;  ///< Ptr to
+        // DeviceVector<ConvexCone*> m_d_stateConstraintCone;  ///< Ptr to
         DeviceVector<real_t> m_d_inputConstraint;  ///< Ptr to
-        DeviceVector<ConvexCone*> m_d_inputConstraintCone;  ///< Ptr to
+        // DeviceVector<ConvexCone*> m_d_inputConstraintCone;  ///< Ptr to
         DeviceVector<real_t> m_d_riskMatE;  ///< Ptr to
         DeviceVector<real_t> m_d_riskMatF;  ///< Ptr to
-        DeviceVector<ConvexCone*> m_d_riskConeK;  ///< Ptr to
+        // DeviceVector<ConvexCone*> m_d_riskConeK;  ///< Ptr to
         DeviceVector<real_t> m_d_riskVecB;  ///< Ptr to
 
 	public:
@@ -69,13 +86,13 @@ class ProblemData {
             m_d_stateWeight.allocateOnDevice(m_numStates * m_numStates * (m_tree.numNodes() + m_tree.numLeafNodes()));
             m_d_inputWeight.allocateOnDevice(m_numInputs * m_numInputs * m_tree.numNodes());
             m_d_stateConstraint.allocateOnDevice(m_numStates * 2 * (m_tree.numNodes() + m_tree.numLeafNodes()));
-            m_d_stateConstraintCone.allocateOnDevice(m_tree.numNodes());
+            // m_d_stateConstraintCone.allocateOnDevice(m_tree.numNodes());
             m_d_inputConstraint.allocateOnDevice(m_numInputs * 2 * m_tree.numNodes());
-            m_d_inputConstraintCone.allocateOnDevice(m_tree.numNodes());
-            m_d_riskMatE.allocateOnDevice(0);
-            m_d_riskMatF.allocateOnDevice(0);
-            m_d_riskConeK.allocateOnDevice(m_tree.numNodes());
-            m_d_riskVecB.allocateOnDevice(0);
+            // m_d_inputConstraintCone.allocateOnDevice(m_tree.numNodes());
+            m_d_riskMatE.allocateOnDevice((m_tree.numEvents() * 2 + 1) * (m_tree.numEvents()) * m_tree.numNodes());
+            m_d_riskMatF.allocateOnDevice((m_tree.numEvents() * 2 + 1) * (1) * m_tree.numNodes());
+            // m_d_riskConeK.allocateOnDevice(m_tree.numNodes());
+            m_d_riskVecB.allocateOnDevice(m_tree.numEvents() * 2 + 1);
 
             /** Store array data from JSON in host memory */
             size_t len = m_numStates*m_numStates;
@@ -110,7 +127,7 @@ class ProblemData {
             hostRiskAlphas[0] = doc["riskMode1"][0].GetDouble();
 
             /** Transfer JSON array data to device */
-            // m_d_systemDynamics.upload();
+            m_d_systemDynamics.upload(repeat_n(hostSystemDynamics, m_tree.numNodes()));
             // m_d_inputDynamics.upload();
             // m_d_stateWeight.upload();
             // m_d_inputWeight.upload();
@@ -139,12 +156,12 @@ class ProblemData {
         DeviceVector<real_t>& stateWeight() { return m_d_stateWeight; }
         DeviceVector<real_t>& inputWeight() { return m_d_inputWeight; }
         DeviceVector<real_t>& stateConstraint() { return m_d_stateConstraint; }
-        DeviceVector<ConvexCone*>& stateConstraintCone() { return m_d_stateConstraintCone; }
+        // DeviceVector<ConvexCone*>& stateConstraintCone() { return m_d_stateConstraintCone; }
         DeviceVector<real_t>& inputConstraint() { return m_d_inputConstraint; }
-        DeviceVector<ConvexCone*>& inputConstraintCone() { return m_d_inputConstraintCone; }
+        // DeviceVector<ConvexCone*>& inputConstraintCone() { return m_d_inputConstraintCone; }
         DeviceVector<real_t>& riskMatE() { return m_d_riskMatE; }
         DeviceVector<real_t>& riskMatF() { return m_d_riskMatF; }
-        DeviceVector<ConvexCone*>& riskConeK() { return m_d_riskConeK; }
+        // DeviceVector<ConvexCone*>& riskConeK() { return m_d_riskConeK; }
         DeviceVector<real_t>& riskVecB() { return m_d_riskVecB; }
 
         /**

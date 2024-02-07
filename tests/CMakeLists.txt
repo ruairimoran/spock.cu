@@ -33,13 +33,14 @@ target_sources(spock_lib PRIVATE  # add .h files
 )
 target_sources(spock_lib PRIVATE  # add .cuh files
     ../src/tree.cuh 
+    ../src/problem.cuh
     ../src/cones.cuh
 )
 set_target_properties(spock_lib PROPERTIES 
     LINKER_LANGUAGE CUDA)
 # ----
 target_link_libraries(spock_lib PUBLIC 
-    spock_compiler_flags 
+    spock_compiler_flags
     -lcublas
     -lcudadevrt)
 target_include_directories(spock_lib
@@ -62,6 +63,7 @@ target_sources(spock_tests PRIVATE  # add .cpp files
 )
 target_sources(spock_tests PRIVATE  # add .cu files
     test_tree.cu 
+    test_problem.cu
     test_cones.cu
 )
 target_link_libraries(spock_tests PRIVATE 

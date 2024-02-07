@@ -12,7 +12,7 @@
  * @param[in] numNodes total number of nodes
  * @param[out] condProb device ptr to conditional probability of visiting node at index, given ancestor node visited
  */
-__global__ void populateProbabilities(size_t* anc, real_t* prob, size_t numNodes, real_t* condProb) {
+static __global__ void populateProbabilities(size_t* anc, real_t* prob, size_t numNodes, real_t* condProb) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i == 0) {
         condProb[i] = 1.0;
@@ -23,13 +23,26 @@ __global__ void populateProbabilities(size_t* anc, real_t* prob, size_t numNodes
 
 
 /**
+ * Computing number of children of each tree node
+ * @param[in] from device ptr to first child of node at index
+ * @param[in] to device ptr to last child of node at index
+ * @param[in] numNonleafNodes total number of nonleaf nodes
+ * @param[out] numChildren device ptr to number of children of node at index
+ */
+static __global__ void populateChildren(size_t* from, size_t* to, size_t numNonleafNodes, size_t* numChildren) {
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < numNonleafNodes) numChildren[i] = to[i] - from[i] + 1;
+}
+
+
+/**
  * Populating stagesFrom and stagesTo
  * @param[in] stages device ptr to stage of node at index
  * @param[in] numStages total number of stages
  * @param[out] stageFrom device ptr to first node of stage at index
  * @param[out] stageTo device ptr to last node of stage at index
  */
-__global__ void populateStages(size_t* stages, size_t numStages, size_t numNodes, size_t* stageFrom, size_t* stageTo) {
+static __global__ void populateStages(size_t* stages, size_t numStages, size_t numNodes, size_t* stageFrom, size_t* stageTo) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < numStages) {
         for (size_t j=0; j<numNodes; j++) {
@@ -70,6 +83,7 @@ class ScenarioTree {
         DeviceVector<size_t> m_d_events;  ///< Ptr to event occurred that led to node at index
         DeviceVector<size_t> m_d_childFrom;  ///< Ptr to first child of node at index
         DeviceVector<size_t> m_d_childTo;  ///< Ptr to last child of node at index
+        DeviceVector<size_t> m_d_numChildren;  ///< Ptr to number of children of node at index
         DeviceVector<size_t> m_d_stageFrom;  ///< Ptr to first node of stage at index
         DeviceVector<size_t> m_d_stageTo;  ///< Ptr to last node of stage at index
 
@@ -112,6 +126,7 @@ class ScenarioTree {
             m_d_events.allocateOnDevice(m_numNodes);
             m_d_childFrom.allocateOnDevice(m_numNonleafNodes);
             m_d_childTo.allocateOnDevice(m_numNonleafNodes);
+            m_d_numChildren.allocateOnDevice(m_numNonleafNodes);
             m_d_stageFrom.allocateOnDevice(m_numStages);
             m_d_stageTo.allocateOnDevice(m_numStages);
 
@@ -138,6 +153,8 @@ class ScenarioTree {
             /** Populate remaining arrays on device */
             populateProbabilities<<<m_numNodes, 1>>>(m_d_ancestors.get(), m_d_probabilities.get(), m_numNodes,
                                                      m_d_conditionalProbabilities.get());
+            populateChildren<<<m_numNonleafNodes, 1>>>(m_d_childFrom.get(), m_d_childTo.get(), m_numNonleafNodes, 
+                                                     m_d_numChildren.get());
             populateStages<<<m_numStages, 1>>>(m_d_stages.get(), m_numStages, m_numNodes,
                                                m_d_stageFrom.get(), m_d_stageTo.get());
         }
@@ -164,6 +181,7 @@ class ScenarioTree {
         DeviceVector<size_t>& events() { return m_d_events; }
         DeviceVector<size_t>& childFrom() { return m_d_childFrom; }
         DeviceVector<size_t>& childTo() { return m_d_childTo; }
+        DeviceVector<size_t>& numChildren() { return m_d_numChildren; }
         DeviceVector<size_t>& stageFrom() { return m_d_stageFrom; }
         DeviceVector<size_t>& stageTo() { return m_d_stageTo; }
 

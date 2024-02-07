@@ -78,6 +78,11 @@ TEST_F(MarkovTreeTest, GetChildTo) {
     EXPECT_EQ(m_hostDataIntNumNonleafNodes[2], 6);
 }
 
+TEST_F(MarkovTreeTest, GetNumChildren) {
+    m_mockTree->numChildren().download(m_hostDataIntNumNonleafNodes);
+    EXPECT_EQ(m_hostDataIntNumNonleafNodes[2], 2);
+}
+
 TEST_F(MarkovTreeTest, GetStageFrom) {
     m_mockTree->stageFrom().download(m_hostDataIntNumStages);
     EXPECT_EQ(m_hostDataIntNumStages[2], 3);

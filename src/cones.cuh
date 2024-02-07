@@ -2,26 +2,26 @@
 #include <iostream>
 
 
-__global__ void maxWithZero(real_t* vec, size_t n) {
+static __global__ void maxWithZero(real_t* vec, size_t n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) vec[i] = max(0., vec[i]);
 }
 
 
-__global__ void setToZero(real_t* vec, size_t n) {
+static __global__ void setToZero(real_t* vec, size_t n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) vec[i] = 0.;
 }
 
 
-__global__ void projectOnSocElse(real_t* vec, size_t n, real_t nrm, real_t last) {
+static __global__ void projectOnSocElse(real_t* vec, size_t n, real_t nrm, real_t last) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n - 1) vec[i] = last * (vec[i] / nrm);
     if (i == n - 1) vec[i] = last;
 }
 
 
-__global__ void projectOnSoc(real_t* vec, size_t n, real_t nrm) {
+static __global__ void projectOnSoc(real_t* vec, size_t n, real_t nrm) {
     if (nrm <= vec[n-1]) {
         // Do nothing!
     } else if (nrm <= -vec[n-1]) {

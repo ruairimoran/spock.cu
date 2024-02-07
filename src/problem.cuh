@@ -57,22 +57,71 @@ class ProblemData {
             std::vector<real_t> hostInputDynamics(m_numStates * m_numInputs * m_tree.numEvents());
             std::vector<real_t> hostStateWeight(m_numStates * m_numStates * m_tree.numEvents());
             std::vector<real_t> hostInputWeight(m_numInputs * m_numInputs * m_tree.numEvents());
-            std::vector<real_t> hostStateConstraint;
-            std::vector<real_t> hostInputConstraint;
+            std::vector<real_t> hostStateWeightTerminal(m_numStates * m_numStates * m_tree.numEvents());
+            std::vector<real_t> hostStateConstraintMinMax(m_numStates * 2 * m_tree.numEvents());
+            std::vector<real_t> hostInputConstraintMinMax(m_numInputs * 2 * m_tree.numEvents());
+            std::vector<real_t> hostStateConstraintTerminalMinMax(m_numStates * 2 * m_tree.numEvents());
+            std::vector<real_t> hostRiskAlphas(m_tree.numEvents());
 
             /** Allocate memory on device */
-            // m_d_stages.allocateOnDevice(m_numNodes);
+            m_d_systemDynamics.allocateOnDevice(m_numStates * m_numStates * m_tree.numNodes());
+            m_d_inputDynamics.allocateOnDevice(m_numInputs * m_numInputs * m_tree.numNodes());
+            m_d_stateWeight.allocateOnDevice(m_numStates * m_numStates * (m_tree.numNodes() + m_tree.numLeafNodes()));
+            m_d_inputWeight.allocateOnDevice(m_numInputs * m_numInputs * m_tree.numNodes());
+            m_d_stateConstraint.allocateOnDevice(m_numStates * 2 * (m_tree.numNodes() + m_tree.numLeafNodes()));
+            m_d_stateConstraintCone.allocateOnDevice(m_tree.numNodes());
+            m_d_inputConstraint.allocateOnDevice(m_numInputs * 2 * m_tree.numNodes());
+            m_d_inputConstraintCone.allocateOnDevice(m_tree.numNodes());
+            m_d_riskMatE.allocateOnDevice(0);
+            m_d_riskMatF.allocateOnDevice(0);
+            m_d_riskConeK.allocateOnDevice(m_tree.numNodes());
+            m_d_riskVecB.allocateOnDevice(0);
 
             /** Store array data from JSON in host memory */
-            // for (rapidjson::SizeType i = 0; i<m_numNodes; i++) {
-            //     if (i < m_numNonleafNodes) {
-            //         hostChildrenFrom[i] = doc["childrenFrom"][i].GetInt();
-            //     }
-            //     hostProbabilities[i] = doc["probabilities"][i].GetDouble();
-            // }
+            size_t len = m_numStates*m_numStates;
+            for (rapidjson::SizeType i = 0; i<len; i++) {
+                hostSystemDynamics[i] = doc["systemDynamicsMode0"][i].GetDouble();
+                hostSystemDynamics[i+len] = doc["systemDynamicsMode1"][i].GetDouble();
+                hostStateWeight[i] = doc["stateWeightMode0"][i].GetDouble();
+                hostStateWeight[i+len] = doc["stateWeightMode1"][i].GetDouble();
+                hostStateWeightTerminal[i] = doc["stateWeightMode0"][i].GetDouble();
+                hostStateWeightTerminal[i+len] = doc["stateWeightMode1"][i].GetDouble();
+            }
+            len = m_numInputs*m_numInputs;
+            for (rapidjson::SizeType i = 0; i<len; i++) {
+                hostInputDynamics[i] = doc["controlDynamicsMode0"][i].GetDouble();
+                hostInputDynamics[i+len] = doc["controlDynamicsMode1"][i].GetDouble();
+                hostInputWeight[i] = doc["inputWeightMode0"][i].GetDouble();
+                hostInputWeight[i+len] = doc["inputWeightMode1"][i].GetDouble();
+            }
+            len = m_numStates * 2;
+            for (rapidjson::SizeType i = 0; i<len; i++) {
+                hostStateConstraintMinMax[i] = doc["stateConstraintMode0"][i].GetDouble();
+                hostStateConstraintMinMax[i+len] = doc["stateConstraintMode1"][i].GetDouble();
+                hostStateConstraintTerminalMinMax[i] = doc["stateConstraintTerminalMode0"][i].GetDouble();
+                hostStateConstraintTerminalMinMax[i+len] = doc["stateConstraintTerminalMode1"][i].GetDouble();
+            }
+            len = m_numInputs * 2;
+            for (rapidjson::SizeType i = 0; i<len; i++) {
+                hostInputConstraintMinMax[i] = doc["inputConstraintMode0"][i].GetDouble();
+                hostInputConstraintMinMax[i+len] = doc["inputConstraintMode1"][i].GetDouble();
+            }
+            hostRiskAlphas[0] = doc["riskMode0"][0].GetDouble();
+            hostRiskAlphas[0] = doc["riskMode1"][0].GetDouble();
 
             /** Transfer JSON array data to device */
-            // m_d_stages.upload(hostStages);
+            // m_d_systemDynamics.upload();
+            // m_d_inputDynamics.upload();
+            // m_d_stateWeight.upload();
+            // m_d_inputWeight.upload();
+            // m_d_stateConstraint.upload();
+            // m_d_stateConstraintCone.upload();
+            // m_d_inputConstraint.upload();
+            // m_d_inputConstraintCone.upload();
+            // m_d_riskMatE.upload();
+            // m_d_riskMatF.upload();
+            // m_d_riskConeK.upload();
+            // m_d_riskVecB.upload();
         }
 
 		/**
@@ -83,9 +132,20 @@ class ProblemData {
         /**
          * Getters
          */
-        // bool isMarkovian() { return m_isMarkovian; }
-        // int numNonleafNodes() { return m_numNonleafNodes; }
-        // DeviceVector<int>& stages() { return m_d_stages; }
+        size_t numStates() { return m_numStates; }
+        size_t numInputs() { return m_numInputs; }
+        DeviceVector<real_t>& systemDynamics() { return m_d_systemDynamics; }
+        DeviceVector<real_t>& inputDynamics() { return m_d_inputDynamics; }
+        DeviceVector<real_t>& stateWeight() { return m_d_stateWeight; }
+        DeviceVector<real_t>& inputWeight() { return m_d_inputWeight; }
+        DeviceVector<real_t>& stateConstraint() { return m_d_stateConstraint; }
+        DeviceVector<ConvexCone*>& stateConstraintCone() { return m_d_stateConstraintCone; }
+        DeviceVector<real_t>& inputConstraint() { return m_d_inputConstraint; }
+        DeviceVector<ConvexCone*>& inputConstraintCone() { return m_d_inputConstraintCone; }
+        DeviceVector<real_t>& riskMatE() { return m_d_riskMatE; }
+        DeviceVector<real_t>& riskMatF() { return m_d_riskMatF; }
+        DeviceVector<ConvexCone*>& riskConeK() { return m_d_riskConeK; }
+        DeviceVector<real_t>& riskVecB() { return m_d_riskVecB; }
 
         /**
          * Debugging

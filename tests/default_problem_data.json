@@ -1,42 +1,64 @@
 {
 "stateSize": 3,
 "inputSize": 2,
-"systemDynamicsMode0": [1.0, 0.0, 0.0, 
+"systemDynamicsMode0": [
+    1.0, 0.0, 0.0, 
     0.0, 1.0, 0.0, 
     0.0, 0.0, 1.0],
-"systemDynamicsMode1": [-1.0, 0.0, 0.0, 
+"systemDynamicsMode1": [
+    -1.0, 0.0, 0.0, 
     0.0, -1.0, 0.0, 
     0.0, 0.0, -1.0],
-"controlDynamicsMode0": [1.0, 0.0, 
+"controlDynamicsMode0": [
+    1.0, 0.0, 
     0.0, -1.0, 
     1.0, 0.0],
-"controlDynamicsMode1": [1.0, 0.0, 
+"controlDynamicsMode1": [
+    1.0, 0.0, 
     0.0, -1.0, 
     1.0, 0.0],
-"stateWeightMode0": [1.0, 0.0, 0.0, 
+"stateWeightMode0": [
+    1.0, 0.0, 0.0, 
     0.0, 1.0, 0.0, 
     0.0, 0.0, 1.0],
-"stateWeightMode1": [100.0, 0.0, 0.0, 
+"stateWeightMode1": [
+    100.0, 0.0, 0.0, 
     0.0, 100.0, 0.0, 
     0.0, 0.0, 100.0],
-"inputWeightMode0": [10.0, 0.0,
+"inputWeightMode0": [
+    10.0, 0.0,
     0.0, 10.0,
     10.0, 0.0],
-"inputWeightMode1": [100.0, 0.0,
+"inputWeightMode1": [
+    100.0, 0.0,
     0.0, 100.0,
     100.0, 0.0],
-"stateWeightTerminalMode0": [1000.0, 0.0, 0.0, 
+"stateWeightTerminalMode0": [
+    1000.0, 0.0, 0.0, 
     0.0, 1000.0, 0.0, 
     0.0, 0.0, 1000.0],
-"stateWeightTerminalMode1": [10000.0, 0.0, 0.0, 
+"stateWeightTerminalMode1": [
+    10000.0, 0.0, 0.0, 
     0.0, 10000.0, 0.0, 
     0.0, 0.0, 10000.0],
-"stateConstraintMode0": ["Rectangle", -10.0, -10.0, -10.0, 10.0, 10.0, 10.0],
-"stateConstraintMode1": ["Rectangle", -20.0, -20.0, -20.0, 20.0, 20.0, 20.0],
-"inputConstraintMode0": ["Rectangle", -100.0, -100.0, 100.0, 100.0],
-"inputConstraintMode1": ["Rectangle", -200.0, -200.0, 200.0, 200.0],
-"stateConstraintTerminalMode0": ["Rectangle", -1.0, -1.0, -1.0, 1.0, 1.0, 1.0],
-"stateConstraintTerminalMode1": ["Rectangle", -2.0, -2.0, -2.0, 2.0, 2.0, 2.0],
-"riskMode0": ["AVaR", 0.95],
-"riskMode1": ["AVaR", 0.98]
+"stateConstraintMode0": [
+    -10.0, -10.0, -10.0, 
+    10.0, 10.0, 10.0],
+"stateConstraintMode1": [
+    -20.0, -20.0, -20.0, 
+    20.0, 20.0, 20.0],
+"inputConstraintMode0": [
+    -100.0, -100.0, 
+    100.0, 100.0],
+"inputConstraintMode1": [
+    -200.0, -200.0, 
+    200.0, 200.0],
+"stateConstraintTerminalMode0": [
+    -1.0, -1.0, -1.0, 
+    1.0, 1.0, 1.0],
+"stateConstraintTerminalMode1": [
+    -2.0, -2.0, -2.0, 
+    2.0, 2.0, 2.0],
+"riskMode0": [0.95],
+"riskMode1": [0.98]
 }

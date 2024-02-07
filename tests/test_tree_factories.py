@@ -24,7 +24,7 @@ class TestScenarioTree(unittest.TestCase):
     def setUpClass(cls) -> None:
         super().setUpClass()
         TestScenarioTree.__construct_tree_from_markov()
-
+    
     def test_markov_num_nodes(self):
         tree = TestScenarioTree.__tree_from_markov
         self.assertEqual(32, tree.num_nodes)
@@ -32,6 +32,10 @@ class TestScenarioTree(unittest.TestCase):
     def test_markov_num_nonleaf_nodes(self):
         tree = TestScenarioTree.__tree_from_markov
         self.assertEqual(20, tree.num_nonleaf_nodes)
+
+    def test_markov_num_events(self):
+        tree = TestScenarioTree.__tree_from_markov
+        self.assertEqual(3, tree.num_events)
 
     def test_markov_ancestor_of_node(self):
         tree = TestScenarioTree.__tree_from_markov

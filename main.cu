@@ -1,29 +1,40 @@
+/**
+ * must be run with separate compilation ON (-rdc=true)
+ * e.g.,
+ * nvcc -rdc=true main.cu && ./a.out
+*/
+
+#include "src/tree.cuh"
 #include "src/cones.cuh"
 #include <iostream>
 
 
 int main() {
-    Context context; /* Create one context only */
+    std::ifstream file("tests/default_tree_data.json"); 
+    ScenarioTree tree(file);
+  	tree.print();
 
-    /* Prepare some host and device data */
-    size_t n = 8;
-    DeviceVector<real_t> d_dataContainer(n);
-    std::vector<real_t> dataHost(n);
-    for (size_t i = 0; i < n; i=i+2) { dataHost[i] = -2. * (i + 1.); }
-    for (size_t i = 1; i < n; i=i+2) { dataHost[i] = 2. * (i + 1.); }
-    d_dataContainer.upload(dataHost);
+    // Context context; /* Create one context only */
 
-    /* Project to nonnegative orthant */
-    NonnegativeOrthant myCone(context);
-    myCone.projectOnCone(d_dataContainer.get(), d_dataContainer.capacity());
+    // /* Prepare some host and device data */
+    // size_t n = 8;
+    // DeviceVector<real_t> d_dataContainer(n);
+    // std::vector<real_t> dataHost(n);
+    // for (size_t i = 0; i < n; i=i+2) { dataHost[i] = -2. * (i + 1.); }
+    // for (size_t i = 1; i < n; i=i+2) { dataHost[i] = 2. * (i + 1.); }
+    // d_dataContainer.upload(dataHost);
 
-    /* Get the data back to the host and print it */
-    std::vector<real_t> b;
-    d_dataContainer.download(b);
-    for (size_t i = 0; i < n; i++) std::cout << b[i] << " ";
-    std::cout << std::endl;
+    // /* Project to nonnegative orthant */
+    // NonnegativeOrthantCone myCone(context);
+    // myCone.projectOnCone(d_dataContainer.get(), d_dataContainer.capacity());
 
-    /* Project to SOC; incomplete! */
-    SOC mySoc(context);
-    mySoc.projectOnCone(d_dataContainer.get(), d_dataContainer.capacity());
+    // /* Get the data back to the host and print it */
+    // std::vector<real_t> b;
+    // d_dataContainer.download(b);
+    // for (size_t i = 0; i < n; i++) std::cout << b[i] << " ";
+    // std::cout << std::endl;
+
+    // /* Project to SOC; incomplete! */
+    // SecondOrderCone mySoc(context);
+    // mySoc.projectOnCone(d_dataContainer.get(), d_dataContainer.capacity());
 }

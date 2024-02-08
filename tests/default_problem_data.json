@@ -33,11 +33,11 @@
     100.0, 0.0,
     0.0, 100.0,
     100.0, 0.0],
-"stateWeightTerminalMode0": [
+"stateWeightLeafMode0": [
     1000.0, 0.0, 0.0, 
     0.0, 1000.0, 0.0, 
     0.0, 0.0, 1000.0],
-"stateWeightTerminalMode1": [
+"stateWeightLeafMode1": [
     10000.0, 0.0, 0.0, 
     0.0, 10000.0, 0.0, 
     0.0, 0.0, 10000.0],
@@ -53,10 +53,10 @@
 "inputConstraintMode1": [
     -200.0, -200.0, 
     200.0, 200.0],
-"stateConstraintTerminalMode0": [
+"stateConstraintLeafMode0": [
     -1.0, -1.0, -1.0, 
     1.0, 1.0, 1.0],
-"stateConstraintTerminalMode1": [
+"stateConstraintLeafMode1": [
     -2.0, -2.0, -2.0, 
     2.0, 2.0, 2.0],
 "riskMode0": [0.95],

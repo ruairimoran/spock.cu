@@ -14,7 +14,7 @@ int main() {
     /** SCENARIO TREE */
     std::ifstream fileTree("tests/default_tree_data.json"); 
     ScenarioTree tree(fileTree);
-  	// tree.print();
+  	tree.print();
 
     /** PROBLEM DATA */
     // std::ifstream fileProblem("tests/default_problem_data.json"); 

@@ -30,25 +30,20 @@ test_all() {
     # Run C++ gtests using cmake
     # ------------------------------------
 
-    # -- generate simple tree for testing
+    # -- generate simple tree data for testing
     python tests/test_tree_main.py
 
-    # -- change into test directory
-    cd tests
-
-    # -- download gtest and create build files in tests/build
-    cmake -S . -B build -Wno-dev
+    # -- create build files
+    cmake -S . -B ./build -Wno-dev
 
     # -- build files in build folder
-    cmake --build build
-
-    # -- change into build directory
-    cd build
+    cmake --build ./build
 
     # -- run tests
-    ctest --output-on-failure
+    ctest --test-dir ./build/tests --output-on-failure
 
     # -- run compute sanitizer
+    cd ./build/tests
     /usr/local/cuda-12.3/bin/compute-sanitizer --tool memcheck --leak-check=full ./spock_tests
 }
 

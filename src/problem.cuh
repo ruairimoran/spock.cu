@@ -1,6 +1,6 @@
 #include "../include/stdgpu.h"
-// #include "tree.cuh"
-// #include "cones.cuh"
+#include "tree.cuh"
+#include "cones.cuh"
 #include <stdio.h>
 #include <fstream>
 #include <iostream>

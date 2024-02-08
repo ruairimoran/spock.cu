@@ -141,6 +141,7 @@ class ScenarioTree {
                 hostProbabilities[i] = doc["probabilities"][i].GetDouble();
                 hostEvents[i] = doc["events"][i].GetInt();
             }
+            ///< Note that anc[0] and events[0] will be max(size_t) on device because they are -1 on host
 
             /** Transfer JSON array data to device */
             m_d_stages.upload(hostStages);

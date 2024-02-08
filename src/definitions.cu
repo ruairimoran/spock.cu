@@ -47,7 +47,7 @@ __global__ void projectOnSoc(real_t* vec, size_t n, real_t nrm) {
  * @param[in] numNodes total number of nodes
  * @param[out] condProb device ptr to conditional probability of visiting node at index, given ancestor node visited
  */
-static __global__ void populateProbabilities(size_t* anc, real_t* prob, size_t numNodes, real_t* condProb) {
+__global__ void populateProbabilities(size_t* anc, real_t* prob, size_t numNodes, real_t* condProb) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i == 0) {
         condProb[i] = 1.0;
@@ -63,7 +63,7 @@ static __global__ void populateProbabilities(size_t* anc, real_t* prob, size_t n
  * @param[in] numNonleafNodes total number of nonleaf nodes
  * @param[out] numChildren device ptr to number of children of node at index
  */
-static __global__ void populateChildren(size_t* from, size_t* to, size_t numNonleafNodes, size_t* numChildren) {
+__global__ void populateChildren(size_t* from, size_t* to, size_t numNonleafNodes, size_t* numChildren) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < numNonleafNodes) numChildren[i] = to[i] - from[i] + 1;
 }
@@ -75,7 +75,7 @@ static __global__ void populateChildren(size_t* from, size_t* to, size_t numNonl
  * @param[out] stageFrom device ptr to first node of stage at index
  * @param[out] stageTo device ptr to last node of stage at index
  */
-static __global__ void populateStages(size_t* stages, size_t numStages, size_t numNodes, size_t* stageFrom, size_t* stageTo) {
+__global__ void populateStages(size_t* stages, size_t numStages, size_t numNodes, size_t* stageFrom, size_t* stageTo) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < numStages) {
         for (size_t j=0; j<numNodes; j++) {

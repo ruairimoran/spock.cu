@@ -10,16 +10,22 @@ FetchContent_MakeAvailable(googletest)
 # ----
 enable_testing()
 add_executable(spock_tests)
-target_sources(spock_tests PRIVATE  # add files
-    test_tree.cu 
-    test_problem.cu
-    test_cones.cu
+target_sources(spock_tests  # add files
+    PRIVATE
+        test_tree.cu 
+        test_problem.cu
+        test_cones.cu
 )
-# find_library(SPOCK_SRC_LOC spock_src.a PATHS ${CMAKE_CURRENT_SOURCE_DIR}/build REQUIRED ON)
-target_link_libraries(spock_tests PRIVATE 
-    ${SPOCK_SRC_LOC}
-    GTest::gtest 
-    GTest::gtest_main)
+target_link_libraries(spock_tests 
+    PRIVATE 
+        spock_src
+        GTest::gtest 
+        GTest::gtest_main)
+target_include_directories(spock_tests
+    PRIVATE
+        "${PROJECT_BINARY_DIR}"
+        "${PROJECT_SOURCE_DIR}/src"
+)
 include(GoogleTest)
 gtest_discover_tests(spock_tests)
 # ----

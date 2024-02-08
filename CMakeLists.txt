@@ -33,6 +33,7 @@ add_executable(spock)
 target_sources(spock PRIVATE  # add files
     main.cu
 )
+find_library(SPOCK_SRC_LOC spock_src REQUIRED ON)
 target_link_libraries(spock PRIVATE 
-    spock_src)
+    ${SPOCK_SRC_LOC})
 # ----

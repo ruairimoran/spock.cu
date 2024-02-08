@@ -1,3 +1,7 @@
+#ifndef __CUBLAS_CONTEXT__
+#define __CUBLAS_CONTEXT__
+
+
 class Context {
 
     private:
@@ -16,3 +20,5 @@ class Context {
             return cublasHandle;
         }
 };
+
+#endif

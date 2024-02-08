@@ -1,3 +1,5 @@
+#ifndef __PROBLEM__
+#define __PROBLEM__
 #include "../include/stdgpu.h"
 #include "tree.cuh"
 #include "cones.cuh"
@@ -5,23 +7,6 @@
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
-
-
-/**
- * Repeat original vector n times while concatenating
- * @param[in] originalVec vector to be repeated
- * @param[in] times number of times to repeat vector
- * @return a vector of n originalVec's joined together
-*/
-template<typename T>
-std::vector<T> repeat_n(const std::vector<T>& input, size_t n) {
-    std::vector<T> result(input.size() * n);
-    auto iter = result.begin();
-    for (size_t rep=0; rep<n; rep++, iter+=input.size()) {
-        std::copy(input.begin(), input.end(), iter);
-    }
-    return result;
-}
 
 
 /**
@@ -199,3 +184,5 @@ class ProblemData {
             std::cout << std::endl;
 		}
 };
+
+#endif

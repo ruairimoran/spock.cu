@@ -1,36 +1,12 @@
+#ifndef __CONES__
+#define __CONES__
 #include "../include/stdgpu.h"
-#include <iostream>
 
 
-static __global__ void maxWithZero(real_t* vec, size_t n) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n) vec[i] = max(0., vec[i]);
-}
-
-
-static __global__ void setToZero(real_t* vec, size_t n) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n) vec[i] = 0.;
-}
-
-
-static __global__ void projectOnSocElse(real_t* vec, size_t n, real_t nrm, real_t last) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n - 1) vec[i] = last * (vec[i] / nrm);
-    if (i == n - 1) vec[i] = last;
-}
-
-
-static __global__ void projectOnSoc(real_t* vec, size_t n, real_t nrm) {
-    if (nrm <= vec[n-1]) {
-        // Do nothing!
-    } else if (nrm <= -vec[n-1]) {
-        setToZero<<<1, n>>>(vec, n);
-    } else {
-        real_t avg = (nrm + vec[n-1]) / 2.;
-        projectOnSocElse<<<1, n>>>(vec, n, nrm, avg);
-    }
-}
+__global__ void maxWithZero(real_t* vec, size_t n);
+__global__ void setToZero(real_t* vec, size_t n);
+__global__ void projectOnSocElse(real_t* vec, size_t n, real_t nrm, real_t last);
+__global__ void projectOnSoc(real_t* vec, size_t n, real_t nrm);
 
 
 class ConvexCone {
@@ -163,3 +139,5 @@ class Cartesian : public ConvexCone {
             }
         }
 };
+
+#endif

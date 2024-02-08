@@ -15,8 +15,9 @@ target_sources(spock_tests PRIVATE  # add files
     test_problem.cu
     test_cones.cu
 )
+# find_library(SPOCK_SRC_LOC spock_src.a PATHS ${CMAKE_CURRENT_SOURCE_DIR}/build REQUIRED ON)
 target_link_libraries(spock_tests PRIVATE 
-    spock_src 
+    ${SPOCK_SRC_LOC}
     GTest::gtest 
     GTest::gtest_main)
 include(GoogleTest)

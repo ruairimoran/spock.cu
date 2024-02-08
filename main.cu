@@ -6,7 +6,7 @@
 
 #include "src/tree.cuh"
 // #include "src/problem.cuh"
-#include "src/cones.cuh"
+// #include "src/cones.cuh"
 #include <iostream>
 
 

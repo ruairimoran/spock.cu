@@ -64,81 +64,81 @@ void testSocElse(std::vector<real_t> testVec) {
 
 
 TEST_F(ConesTest, UniverseCone) {
-    UniverseCone myCone(context);
-    myCone.projectOnCone(m_d_data.get(), m_d_data.capacity());
+    UniverseCone myCone(context, m_n);
+    myCone.projectOnCone(m_d_data);
     m_d_data.download(m_hostTest);
     EXPECT_TRUE((m_hostTest == m_hostData));
 }
 
 TEST_F(ConesTest, UniverseDual) {
-    UniverseCone myCone(context);
-    myCone.projectOnDual(m_d_data.get(), m_d_data.capacity());
+    UniverseCone myCone(context, m_n);
+    myCone.projectOnDual(m_d_data);
     m_d_data.download(m_hostTest);
     EXPECT_TRUE((m_hostTest == m_hostZero));
 }
 
 TEST_F(ConesTest, ZeroCone) {
-    ZeroCone myCone(context);
-    myCone.projectOnCone(m_d_data.get(), m_d_data.capacity());
+    ZeroCone myCone(context, m_n);
+    myCone.projectOnCone(m_d_data);
     m_d_data.download(m_hostTest);
     EXPECT_TRUE((m_hostTest == m_hostZero));
 }
 
 TEST_F(ConesTest, ZeroDual) {
-    ZeroCone myCone(context);
-    myCone.projectOnDual(m_d_data.get(), m_d_data.capacity());
+    ZeroCone myCone(context, m_n);
+    myCone.projectOnDual(m_d_data);
     m_d_data.download(m_hostTest);
     EXPECT_TRUE((m_hostTest == m_hostData));
 }
 
 TEST_F(ConesTest, NonnegativeOrthantCone) {
-    NonnegativeOrthantCone myCone(context);
-    myCone.projectOnCone(m_d_data.get(), m_d_data.capacity());
+    NonnegativeOrthantCone myCone(context, m_n);
+    myCone.projectOnCone(m_d_data);
     m_d_data.download(m_hostTest);
     testNnocProjection(m_hostTest);
 }
 
 TEST_F(ConesTest, NonnegativeOrthantDual) {
-    NonnegativeOrthantCone myCone(context);
-    myCone.projectOnDual(m_d_data.get(), m_d_data.capacity());
+    NonnegativeOrthantCone myCone(context, m_n);
+    myCone.projectOnDual(m_d_data);
     m_d_data.download(m_hostTest);
     testNnocProjection(m_hostTest);
 }
 
 TEST_F(ConesTest, SecondOrderConeCone) {
-    SecondOrderCone myCone(context);
+    SecondOrderCone myCone(context, m_n);
     /** Testing `if` projection of SOC */
     m_d_data.upload(m_hostSocA);
-    myCone.projectOnCone(m_d_data.get(), m_d_data.capacity());
+    myCone.projectOnCone(m_d_data);
     m_d_data.download(m_hostTest);
     EXPECT_TRUE((m_hostTest == m_hostSocA));
     /** Testing `else if` projection of SOC */
     m_d_data.upload(m_hostSocB);
-    myCone.projectOnCone(m_d_data.get(), m_d_data.capacity());
+    myCone.projectOnCone(m_d_data);
     m_d_data.download(m_hostTest);
     EXPECT_TRUE((m_hostTest == m_hostZero));
     /** Testing `else` projection of SOC */
     m_d_data.upload(m_hostSocC);
-    myCone.projectOnCone(m_d_data.get(), m_d_data.capacity());
+    myCone.projectOnCone(m_d_data);
     m_d_data.download(m_hostTest);
     testSocElse(m_hostTest);
 }
 
 TEST_F(ConesTest, SecondOrderConeDual) {
-    SecondOrderCone myCone(context);
+    SecondOrderCone myCone(context, m_n);
     /** Testing `if` projection of SOC */
     m_d_data.upload(m_hostSocA);
-    myCone.projectOnDual(m_d_data.get(), m_d_data.capacity());
+    myCone.projectOnDual(m_d_data);
     m_d_data.download(m_hostTest);
     EXPECT_TRUE((m_hostTest == m_hostSocA));
     /** Testing `else if` projection of SOC */
     m_d_data.upload(m_hostSocB);
-    myCone.projectOnDual(m_d_data.get(), m_d_data.capacity());
+    myCone.projectOnDual(m_d_data);
     m_d_data.download(m_hostTest);
     EXPECT_TRUE((m_hostTest == m_hostZero));
     /** Testing `else` projection of SOC */
     m_d_data.upload(m_hostSocC);
-    myCone.projectOnDual(m_d_data.get(), m_d_data.capacity());
+    myCone.projectOnDual(m_d_data);
     m_d_data.download(m_hostTest);
     testSocElse(m_hostTest);
 }
@@ -146,67 +146,77 @@ TEST_F(ConesTest, SecondOrderConeDual) {
 TEST_F(ConesTest, CartesianCone) {
     // for (size_t i=0; i<m_n*m_numConeTypes; i++) { std::cerr << m_hostCart[i] << " "; }  ///< For debugging
     m_d_data.upload(m_hostCart);
-    UniverseCone myUniverseCone(context);
-    ZeroCone myZeroCone(context);
-    NonnegativeOrthantCone myNnocCone(context);
-    SecondOrderCone mySocCone(context);
-    std::vector<ConvexCone*> myConesVec {&myUniverseCone, &myZeroCone, &myNnocCone, &mySocCone};
-    std::vector<size_t> mySizesVec(m_numConeTypes, m_n);
-    Cartesian myCone(context, myConesVec, mySizesVec);
-    myCone.projectOnCone(m_d_data.get());
+    UniverseCone myUniv(context, m_n);
+    ZeroCone myZero(context, m_n);
+    NonnegativeOrthantCone myNnoc(context, m_n);
+    SecondOrderCone mySoc(context, m_n);
+    Cartesian myCone(context);
+    myCone.addCone(myUniv);
+    myCone.addCone(myZero);
+    myCone.addCone(myNnoc);
+    myCone.addCone(mySoc);
+    myCone.projectOnCone(m_d_data);
     m_d_data.download(m_hostCart);
     /** Test Universe cone */
     size_t index = 0;
-    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + mySizesVec[0]);
+    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
     EXPECT_TRUE((m_testCart == m_hostData));
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
     /** Test Zero cone */
-    index += mySizesVec[0];
-    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + mySizesVec[1]);
+    index += m_n;
+    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
     EXPECT_TRUE((m_testCart == m_hostZero));
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
     /** Test NnOC cone */
-    index += mySizesVec[1];
-    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + mySizesVec[2]);
+    index += m_n;
+    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
     testNnocProjection(m_testCart);
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
     /** Test SOC cone */
-    index += mySizesVec[2];
-    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + mySizesVec[3]);
+    index += m_n;
+    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
     testSocElse(m_testCart);
-    // for (size_t i=0; i<n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
+    // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
 }
 
 TEST_F(ConesTest, CartesianDual) {
     // for (size_t i=0; i<m_n*m_numConeTypes; i++) { std::cerr << m_hostCart[i] << " "; }  ///< For debugging
     m_d_data.upload(m_hostCart);
-    UniverseCone myUniverseCone(context);
-    ZeroCone myZeroCone(context);
-    NonnegativeOrthantCone myNnocCone(context);
-    SecondOrderCone mySocCone(context);
-    std::vector<ConvexCone*> myConesVec {&myUniverseCone, &myZeroCone, &myNnocCone, &mySocCone};
-    std::vector<size_t> mySizesVec(m_numConeTypes, m_n);
-    Cartesian myCone(context, myConesVec, mySizesVec);
-    myCone.projectOnDual(m_d_data.get());
+    UniverseCone myUniv(context, m_n);
+    ZeroCone myZero(context, m_n);
+    NonnegativeOrthantCone myNnoc(context, m_n);
+    SecondOrderCone mySoc(context, m_n);
+    Cartesian myCone(context);
+    myCone.addCone(myUniv);
+    myCone.addCone(myZero);
+    myCone.addCone(myNnoc);
+    myCone.addCone(mySoc);
+    myCone.projectOnDual(m_d_data);
     m_d_data.download(m_hostCart);
     /** Test Universe dual */
     size_t index = 0;
-    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + mySizesVec[0]);
+    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
     EXPECT_TRUE((m_testCart == m_hostZero));
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
     /** Test Zero dual */
-    index += mySizesVec[0];
-    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + mySizesVec[1]);
+    index += m_n;
+    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
     EXPECT_TRUE((m_testCart == m_hostData));
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
     /** Test NnOC dual */
-    index += mySizesVec[1];
-    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + mySizesVec[2]);
+    index += m_n;
+    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
     testNnocProjection(m_testCart);
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
     /** Test SOC dual */
-    index += mySizesVec[2];
-    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + mySizesVec[3]);
+    index += m_n;
+    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
     testSocElse(m_testCart);
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
+}
+
+TEST_F(ConesTest, FailDimension) {
+    m_d_data.upload(m_hostData);
+    UniverseCone myCone(context, m_n+1);
+    EXPECT_ANY_THROW(myCone.projectOnCone(m_d_data));
 }

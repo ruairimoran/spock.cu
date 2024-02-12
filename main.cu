@@ -1,29 +1,34 @@
+#include "include/stdgpu.h"
 #include "src/cones.cuh"
 #include <iostream>
+#include <math.h>
 
 
 int main() {
     Context context; /* Create one context only */
 
-    /* Prepare some host and device data */
-    size_t n = 8;
-    DeviceVector<real_t> d_dataContainer(n);
-    std::vector<real_t> dataHost(n);
-    for (size_t i = 0; i < n; i=i+2) { dataHost[i] = -2. * (i + 1.); }
-    for (size_t i = 1; i < n; i=i+2) { dataHost[i] = 2. * (i + 1.); }
-    d_dataContainer.upload(dataHost);
+    std::vector<real_t> xHost{4., -5., 6., 9., 8., 5., 9., -10., 9., 11.};
 
-    /* Project to nonnegative orthant */
-    NonnegativeOrthant myCone(context);
-    myCone.projectOnCone(d_dataContainer.get(), d_dataContainer.capacity());
+    /* PosOrth(3)*/
+    NonnegativeOrthantCone orthant(context, 3);
 
-    /* Get the data back to the host and print it */
-    std::vector<real_t> b;
-    d_dataContainer.download(b);
-    for (size_t i = 0; i < n; i++) std::cout << b[i] << " ";
-    std::cout << std::endl;
+    /* SOC(4) */
+    SecondOrderCone soc(context, 4);
 
-    /* Project to SOC; incomplete! */
-    SOC mySoc(context);
-    mySoc.projectOnCone(d_dataContainer.get(), d_dataContainer.capacity());
+    /* Cartesian product: X = PosOrth(3) x SOC(4) x PosOrth(3) */
+    Cartesian cartesian(context);
+    cartesian.addCone(orthant);
+    cartesian.addCone(soc);
+    cartesian.addCone(orthant);
+
+    DeviceVector<real_t> x(xHost);
+    cartesian.projectOnCone(x);
+
+    x.download(xHost);
+    printf("\nVector x after projection:\n");
+    for (real_t xi: xHost) {
+        printf("xi = %g\n", xi);
+    }
+
+    return 0;
 }

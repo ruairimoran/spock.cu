@@ -215,6 +215,11 @@ TEST_F(ConesTest, CartesianDual) {
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
 }
 
+TEST_F(ConesTest, Dimension) {
+    UniverseCone myUniv(context, m_n);
+    EXPECT_EQ(myUniv.dimension(), m_n);
+}
+
 TEST_F(ConesTest, FailDimension) {
     m_d_data.upload(m_hostData);
     UniverseCone myCone(context, m_n+1);

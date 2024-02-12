@@ -31,7 +31,7 @@ target_link_libraries(spock_compiler_flags
         $<BUILD_INTERFACE:developer_flags>)
 # ----
 add_subdirectory(src)
-add_subdirectory(tests)
+add_subdirectory(tests)  # comment out to not build tests
 # ----
 add_executable(spock)
 target_sources(spock  # add files

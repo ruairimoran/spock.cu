@@ -46,8 +46,8 @@ class ScenarioTree {
             doc.Parse(json.c_str());
 
             if (doc.HasParseError()) {
-              std::cerr << "Error parsing JSON: " << GetParseError_En(doc.GetParseError()) << std::endl;
-              throw std::invalid_argument("Cannot parse JSON file");
+              std::cerr << "Error parsing tree JSON: " << GetParseError_En(doc.GetParseError()) << std::endl;
+              throw std::invalid_argument("Cannot parse tree JSON file");
             }
 
             /** Store single element data from JSON in host memory */

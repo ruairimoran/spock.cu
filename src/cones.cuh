@@ -34,6 +34,25 @@ class ConvexCone {
 
 
 /**
+ * A null cone (Null)
+ * - used as placeholder
+*/
+class NullCone : public ConvexCone {
+    
+    public:
+        explicit NullCone(Context& context, size_t dim) : ConvexCone(context, dim) {}
+
+        void projectOnCone(DeviceVector<real_t>& d_vec) {
+            throw std::invalid_argument("Cannot project on null cone");
+        }
+        void projectOnDual(DeviceVector<real_t>& d_vec) {
+            projectOnCone(d_vec);
+        }
+
+};
+
+
+/**
  * The Universe cone (Univ)
  * - the set is R^n
  * - the dual is the Zero cone

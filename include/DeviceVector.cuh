@@ -1,19 +1,22 @@
 #ifndef __DEVICE_VECTOR__
 #define __DEVICE_VECTOR__
 
+
 /**
  * DeviceVector is a unique_ptr-type entity for device data.
  */
-template <typename TElement>
-struct DeviceVector {
+template<typename TElement>
+class DeviceVector {
 
     private:
         /** Pointer to device data */
         TElement *m_d_data = nullptr;
         /** Number of allocated elements */
         size_t m_numAllocatedElements = 0;
+        bool m_doDestroy = false;
 
-        bool destroy(){
+        bool destroy() {
+            if (!m_doDestroy) return false;
             if (m_d_data) cudaFree(m_d_data);
             m_numAllocatedElements = 0;
             m_d_data = nullptr;
@@ -24,15 +27,38 @@ struct DeviceVector {
         /**
          * Constructs a DeviceVector object
          */
-        DeviceVector() =default;
+        DeviceVector() = default;
 
         /**
          * Constructs a DeviceVector object and allocates
          * memory on the device for n elements
          */
-        DeviceVector(size_t n)
-        {
+        DeviceVector(size_t n) {
             allocateOnDevice(n);
+        }
+
+        /**
+         * Take a slice of another DeviceVector
+         *
+         * @param other other device vector
+         * @param from start (index)
+         * @param to end
+         */
+        DeviceVector(DeviceVector &other, size_t from, size_t to) {
+            m_doDestroy = false;
+            m_numAllocatedElements = to - from + 1;
+            m_d_data = other.m_d_data + from;
+        }
+
+        /**
+         * Create device vector from host vector.
+         * This allocates memory on the device and copies the host data.
+         *
+         * @param vec host vector
+         */
+        DeviceVector(const std::vector<TElement> &vec) {
+            allocateOnDevice(vec.size());
+            upload(vec);
         }
 
         /**
@@ -106,31 +132,42 @@ struct DeviceVector {
          *
          * @param vec
          */
-        void download(std::vector<TElement>& vec);
+        void download(std::vector<TElement> &vec);
+
+        /**
+         * Fetches just one value from the device
+         *
+         * Use sparingly
+         *
+         * @param i index
+         * @return entry of array at index i
+         */
+        TElement fetchElementFromDevice(size_t i);
 
         /**
          * Copy data to another memory position on the device.
          *
          * @param elsewhere destination
          */
-        void deviceCopyTo(DeviceVector<TElement>& elsewhere);
-
-        /**
-         * Copy slice of data to another memory position on the device.
-         *
-         * @param startIdx index of start of slice
-         * @param sliceSize number of `TElement`s in slice
-         * @param elsewhere destination
-         */
-        void deviceCopySliceTo(size_t startIdx, size_t sliceSize, DeviceVector<TElement>& elsewhere);
+        void deviceCopyTo(DeviceVector<TElement> &elsewhere);
 
 }; /* end of class */
+
+
+template<typename TElement>
+TElement DeviceVector<TElement>::fetchElementFromDevice(size_t i) {
+    DeviceVector<TElement> d_element(*this, i, i);
+    real_t xi[1];
+    d_element.download(xi);
+    return xi[0];
+}
 
 template<typename TElement>
 bool DeviceVector<TElement>::allocateOnDevice(size_t size) {
     if (size <= 0) return false;
     if (size <= m_numAllocatedElements) return true;
     destroy();
+    m_doDestroy = true;
     size_t buffer_size = size * sizeof(TElement);
     bool cudaStatus = cudaMalloc(&m_d_data, buffer_size);
     if (cudaStatus != cudaSuccess) return false;
@@ -159,19 +196,10 @@ void DeviceVector<TElement>::deviceCopyTo(DeviceVector<TElement>& elsewhere) {
 }
 
 template<typename TElement>
-void DeviceVector<TElement>::deviceCopySliceTo(size_t startIdx, size_t sliceSize, DeviceVector<TElement>& elsewhere) {
-    elsewhere.allocateOnDevice(sliceSize);
-    cudaMemcpy(elsewhere.get(),
-               &m_d_data[startIdx],
-               sliceSize * sizeof(TElement),
-               cudaMemcpyDeviceToDevice);
-}
-
-template<typename TElement>
 void DeviceVector<TElement>::download(TElement* hostData) {
     cudaMemcpy(hostData,
                m_d_data,
-               m_numAllocatedElements*sizeof(TElement),
+               m_numAllocatedElements * sizeof(TElement),
                cudaMemcpyDeviceToHost);
 }
 
@@ -180,8 +208,9 @@ void DeviceVector<TElement>::download(std::vector<TElement>& vec) {
     vec.resize(m_numAllocatedElements);
     cudaMemcpy(vec.data(),
                m_d_data,
-               m_numAllocatedElements*sizeof(TElement),
+               m_numAllocatedElements * sizeof(TElement),
                cudaMemcpyDeviceToHost);
 }
+
 
 #endif

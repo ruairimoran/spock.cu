@@ -18,21 +18,10 @@ __global__ void setToZero(real_t* vec, size_t n) {
     if (i < n) vec[i] = 0.;
 }
 
-__global__ void projectOnSocElse(real_t* vec, size_t n, real_t nrm, real_t last) {
+__global__ void projectOnSoc(real_t* vec, size_t n, real_t nrm, real_t scaling) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n - 1) vec[i] = last * (vec[i] / nrm);
-    if (i == n - 1) vec[i] = last;
-}
-
-__global__ void projectOnSoc(real_t* vec, size_t n, real_t nrm) {
-    if (nrm <= vec[n-1]) {
-        // Do nothing!
-    } else if (nrm <= -vec[n-1]) {
-        setToZero<<<1, n>>>(vec, n);
-    } else {
-        real_t avg = (nrm + vec[n-1]) / 2.;
-        projectOnSocElse<<<1, n>>>(vec, n, nrm, avg);
-    }
+    if (i < n - 1) vec[i] *= scaling;
+    if (i == n - 1) vec[i] = scaling * nrm;
 }
 
 

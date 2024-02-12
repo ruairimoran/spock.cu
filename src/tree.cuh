@@ -1,10 +1,7 @@
 #ifndef __TREE__
 #define __TREE__
 #include "../include/stdgpu.h"
-#include <stdio.h>
 #include <fstream>
-#include <iostream>
-#include <stdexcept>
 
 
 __global__ void populateProbabilities(size_t* anc, real_t* prob, size_t numNodes, real_t* condProb);

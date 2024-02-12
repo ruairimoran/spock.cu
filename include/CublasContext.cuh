@@ -8,17 +8,12 @@ class Context {
         cublasHandle_t cublasHandle;
         
     public:
-        explicit Context() noexcept {
-            cublasCreate(&cublasHandle);
-        }
+        explicit Context() noexcept { cublasCreate(&cublasHandle); }
 
-        virtual ~Context() noexcept {
-            cublasDestroy(cublasHandle);
-        }
+        virtual ~Context() noexcept { cublasDestroy(cublasHandle); }
 
-        cublasHandle_t &handle() {
-            return cublasHandle;
-        }
+        cublasHandle_t &handle() { return cublasHandle; }
+        
 };
 
 #endif

@@ -1,7 +1,7 @@
 /**
  * must be run with separate compilation ON (-rdc=true)
  * e.g.,
- * nvcc -rdc=true main.cu && ./a.out
+ * nvcc -lcublas -rdc=true main.cu && ./a.out
 */
 
 #include "src/tree.cuh"
@@ -22,23 +22,29 @@ int main() {
   	problem.print();
 
     /** CONES */
-    // Context context; /* Create one context only */
-    // /* Prepare some host and device data */
-    // size_t n = 8;
-    // DeviceVector<real_t> d_dataContainer(n);
-    // std::vector<real_t> dataHost(n);
-    // for (size_t i = 0; i < n; i=i+2) { dataHost[i] = -2. * (i + 1.); }
-    // for (size_t i = 1; i < n; i=i+2) { dataHost[i] = 2. * (i + 1.); }
-    // d_dataContainer.upload(dataHost);
-    // /* Project to nonnegative orthant */
-    // NonnegativeOrthantCone myCone(context);
-    // myCone.projectOnCone(d_dataContainer.get(), d_dataContainer.capacity());
-    // /* Get the data back to the host and print it */
-    // std::vector<real_t> b;
-    // d_dataContainer.download(b);
-    // for (size_t i = 0; i < n; i++) std::cout << b[i] << " ";
-    // std::cout << std::endl;
-    // /* Project to SOC; incomplete! */
-    // SecondOrderCone mySoc(context);
-    // mySoc.projectOnCone(d_dataContainer.get(), d_dataContainer.capacity());
+    Context context; /* Create one context only */
+    std::vector<real_t> xHost{4., -5., 6., 9., 8., 5., 9., -10., 9., 11.};
+
+    /* PosOrth(3)*/
+    NonnegativeOrthantCone orthant(context, 3);
+
+    /* SOC(4) */
+    SecondOrderCone soc(context, 4);
+
+    /* Cartesian product: X = PosOrth(3) x SOC(4) x PosOrth(3) */
+    Cartesian cartesian(context);
+    cartesian.addCone(orthant);
+    cartesian.addCone(soc);
+    cartesian.addCone(orthant);
+
+    DeviceVector<real_t> x(xHost);
+    cartesian.projectOnCone(x);
+
+    x.download(xHost);
+    printf("\nVector x after projection:\n");
+    for (real_t xi: xHost) {
+        printf("xi = %g\n", xi);
+    }
+
+    return 0;
 }

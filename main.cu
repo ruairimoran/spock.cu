@@ -5,8 +5,8 @@
 */
 
 #include "src/tree.cuh"
-// #include "src/problem.cuh"
-// #include "src/cones.cuh"
+#include "src/problem.cuh"
+#include "src/cones.cuh"
 #include <iostream>
 
 
@@ -17,9 +17,9 @@ int main() {
   	tree.print();
 
     /** PROBLEM DATA */
-    // std::ifstream fileProblem("tests/default_problem_data.json"); 
-    // ProblemData problem(tree, fileProblem);
-  	// problem.print();
+    std::ifstream fileProblem("tests/default_problem_data.json"); 
+    ProblemData problem(tree, fileProblem);
+  	problem.print();
 
     /** CONES */
     // Context context; /* Create one context only */

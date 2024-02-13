@@ -59,6 +59,6 @@
 "stateConstraintLeafMode1": [
     -2.0, -2.0, -2.0, 
     2.0, 2.0, 2.0],
-"riskMode0": [0.95],
-"riskMode1": [0.98]
+"riskType": "AVaR",
+"riskAlpha": [0.98]
 }

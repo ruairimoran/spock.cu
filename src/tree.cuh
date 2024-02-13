@@ -100,12 +100,12 @@ class ScenarioTree {
             m_d_childTo.upload(hostChildrenTo);
 
             /** Populate remaining arrays on device */
-            populateProbabilities<<<m_numNodes, 1>>>(m_d_ancestors.get(), m_d_probabilities.get(), m_numNodes,
-                                                     m_d_conditionalProbabilities.get());
-            populateChildren<<<m_numNonleafNodes, 1>>>(m_d_childFrom.get(), m_d_childTo.get(), m_numNonleafNodes, 
-                                                     m_d_numChildren.get());
-            populateStages<<<m_numStages, 1>>>(m_d_stages.get(), m_numStages, m_numNodes,
-                                               m_d_stageFrom.get(), m_d_stageTo.get());
+            populateProbabilities<<<DIM2BLOCKS(m_numNodes), THREADS_PER_BLOCK>>>(
+                m_d_ancestors.get(), m_d_probabilities.get(), m_numNodes, m_d_conditionalProbabilities.get());
+            populateChildren<<<DIM2BLOCKS(m_numNonleafNodes), THREADS_PER_BLOCK>>>(
+                m_d_childFrom.get(), m_d_childTo.get(), m_numNonleafNodes, m_d_numChildren.get());
+            populateStages<<<DIM2BLOCKS(m_numStages), THREADS_PER_BLOCK>>>(
+                m_d_stages.get(), m_numStages, m_numNodes, m_d_stageFrom.get(), m_d_stageTo.get());
         }
 
 		/**

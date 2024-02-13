@@ -86,3 +86,22 @@ __global__ void populateStages(size_t* stages, size_t numStages, size_t numNodes
 /** 
  * ProblemData methods
 */
+
+/**
+ * Populate risk at each nonleaf node
+*/
+__global__ void populateRisks(size_t numNonleaf, size_t* childFrom, size_t* childTo) {
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < numNonleaf) {
+        size_t chFrom = childFrom[i];
+        size_t chTo = childTo[i];
+        // eye = np.eye(self.__num_children);
+        riskMatEi = np.vstack((alpha*eye, -eye, np.ones((1, num_children))));
+        std::vector riskMatFi(2*chNum+1, 0.);
+        
+        std::vector<real_t> riskVecBi;
+        for (size_t j=chFrom; j<=chTo; j++) riskVecBi.push_back(m_tree.conditionalProbabilities().fetchElementFromDevice(j));
+        for (size_t j=chFrom; j<=chTo; j++) riskVecBi.push_back(0.);
+        riskVecBi.push_back(0.);
+    }
+}

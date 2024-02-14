@@ -157,7 +157,7 @@ class DeviceVector {
 template<typename TElement>
 TElement DeviceVector<TElement>::fetchElementFromDevice(size_t i) {
     DeviceVector<TElement> d_element(*this, i, i);
-    real_t xi[1];
+    TElement xi[1];
     d_element.download(xi);
     return xi[0];
 }

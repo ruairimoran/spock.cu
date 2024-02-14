@@ -6,7 +6,7 @@
 #include <fstream>
 
 
-__global__ void populateRisks();
+__global__ void populateRisks(size_t numNonleaf, size_t* childFrom, size_t* childTo, char riskType, real_t alpha);
 
 
 /**
@@ -34,10 +34,10 @@ class ProblemData {
         std::vector<std::unique_ptr<ConvexCone>> m_inputConstraintCone;  ///< Ptr to
         DeviceVector<real_t> m_d_stateConstraintLeaf;  ///< Ptr to
         std::vector<std::unique_ptr<ConvexCone>> m_stateConstraintLeafCone;  ///< Ptr to
-        DeviceVector<DeviceVector<real_t>> m_d_riskMatE;  ///< Ptr to
+        DeviceVector<real_t> m_d_riskMatE;  ///< Ptr to
         DeviceVector<real_t> m_d_riskMatF;  ///< Ptr to
         std::vector<std::unique_ptr<ConvexCone>> m_riskConK;  ///< Ptr to
-        DeviceVector<real_t> m_d_riskVecB;  ///< Ptr to
+        DeviceVector<DeviceVector<real_t>> m_d_riskVecB;  ///< Ptr to
 
 	public:
 		/**
@@ -86,9 +86,9 @@ class ProblemData {
             m_d_stateConstraint.allocateOnDevice(lenDoubleState * m_tree.numNodes());
             m_d_inputConstraint.allocateOnDevice(lenDoubleInput * m_tree.numNodes());
             m_d_stateConstraintLeaf.allocateOnDevice(lenDoubleState * m_tree.numNodes());
-            m_d_riskMatE.allocateOnDevice((m_tree.numEvents() * 2 + 1) * (m_tree.numEvents()) * m_tree.numNonleafNodes());
-            m_d_riskMatF.allocateOnDevice((m_tree.numEvents() * 2 + 1) * (1) * m_tree.numNonleafNodes());
-            m_d_riskVecB.allocateOnDevice((m_tree.numEvents() * 2 + 1) + m_tree.numNonleafNodes());
+            m_d_riskMatE.allocateOnDevice(m_tree.numNonleafNodes());
+            m_d_riskMatF.allocateOnDevice(m_tree.numNonleafNodes());
+            m_d_riskVecB.allocateOnDevice(m_tree.numNonleafNodes());
 
             /** Store array data from JSON in host memory */
             for (rapidjson::SizeType i = 0; i<lenStateMat; i++) {
@@ -117,8 +117,8 @@ class ProblemData {
                 jsonInputConstraint[i] = doc["inputConstraintMode0"][i].GetDouble();
                 jsonInputConstraint[i+lenDoubleInput] = doc["inputConstraintMode1"][i].GetDouble();
             }
-            jsonRiskType = *doc["riskType"].GetString();
-            jsonRiskAlpha = doc["riskAlpha"].GetDouble();
+            jsonRiskType = *doc["riskParams"][0].GetString();
+            jsonRiskAlpha = doc["riskParams"][1].GetDouble();
 
             /** Create full arrays on host */
             std::vector<size_t> hostEvents(m_tree.events().capacity());
@@ -134,53 +134,61 @@ class ProblemData {
             m_inputConstraintCone.push_back(std::make_unique<NullCone>(m_context, 0));
             std::vector<real_t> hostStateConstraintLeaf(lenDoubleState * m_tree.numNonleafNodes(), 0.);
             for (size_t i=0; i<m_tree.numNonleafNodes(); i++) m_stateConstraintLeafCone.push_back(std::make_unique<NullCone>(m_context, 0));
-            std::vector<real_t> hostRiskMatE;
-            std::vector<real_t> hostRiskMatF;
-            // m_riskConK = {};
-            std::vector<real_t> hostRiskVecB;
+//            std::vector<real_t> hostRiskMatE;
+//            std::vector<real_t> hostRiskMatF;
+//             m_riskConK = {};
+//            std::vector<real_t> hostRiskVecB;
             for (size_t i=1; i<m_tree.numNodes(); i++) {
                 size_t event = hostEvents[i];
-                hostSystemDynamics.insert(hostSystemDynamics.end(), 
-                    jsonSystemDynamics.begin() + (event * lenStateMat), 
-                    jsonSystemDynamics.begin() + (event * lenStateMat + lenStateMat));
-                hostInputDynamics.insert(hostInputDynamics.end(), 
-                    jsonInputDynamics.begin() + (event * lenInputDynMat), 
-                    jsonInputDynamics.begin() + (event * lenInputDynMat + lenInputDynMat));
-                hostStateWeight.insert(hostStateWeight.end(), 
-                    jsonStateWeight.begin() + (event * lenStateMat), 
-                    jsonStateWeight.begin() + (event * lenStateMat + lenStateMat));
-                hostInputWeight.insert(hostInputWeight.end(), 
-                    jsonInputWeight.begin() + (event * lenInputWgtMat), 
-                    jsonInputWeight.begin() + (event * lenInputWgtMat + lenInputWgtMat));
-                hostStateConstraint.insert(hostStateConstraint.end(), 
-                    jsonStateConstraint.begin() + (event * lenDoubleState), 
-                    jsonStateConstraint.begin() + (event * lenDoubleState + lenDoubleState));
+                hostSystemDynamics.insert(hostSystemDynamics.end(),
+                                          jsonSystemDynamics.begin() + (event * lenStateMat),
+                                          jsonSystemDynamics.begin() + (event * lenStateMat + lenStateMat));
+                hostInputDynamics.insert(hostInputDynamics.end(),
+                                         jsonInputDynamics.begin() + (event * lenInputDynMat),
+                                         jsonInputDynamics.begin() + (event * lenInputDynMat + lenInputDynMat));
+                hostStateWeight.insert(hostStateWeight.end(),
+                                       jsonStateWeight.begin() + (event * lenStateMat),
+                                       jsonStateWeight.begin() + (event * lenStateMat + lenStateMat));
+                hostInputWeight.insert(hostInputWeight.end(),
+                                       jsonInputWeight.begin() + (event * lenInputWgtMat),
+                                       jsonInputWeight.begin() + (event * lenInputWgtMat + lenInputWgtMat));
+                hostStateConstraint.insert(hostStateConstraint.end(),
+                                           jsonStateConstraint.begin() + (event * lenDoubleState),
+                                           jsonStateConstraint.begin() + (event * lenDoubleState + lenDoubleState));
                 m_stateConstraintCone.push_back(std::make_unique<NonnegativeOrthantCone>(m_context, lenDoubleState));
-                hostInputConstraint.insert(hostInputConstraint.end(), 
-                    jsonInputConstraint.begin() + (event * lenDoubleInput), 
-                    jsonInputConstraint.begin() + (event * lenDoubleInput + lenDoubleInput));
+                hostInputConstraint.insert(hostInputConstraint.end(),
+                                           jsonInputConstraint.begin() + (event * lenDoubleInput),
+                                           jsonInputConstraint.begin() + (event * lenDoubleInput + lenDoubleInput));
                 m_inputConstraintCone.push_back(std::make_unique<NonnegativeOrthantCone>(m_context, lenDoubleInput));
-                
-                if (i>=m_tree.numNonleafNodes()) {
-                    hostStateWeightLeaf.insert(hostStateWeightLeaf.end(), 
-                        jsonStateWeightLeaf.begin() + (event * lenStateMat), 
-                        jsonStateWeightLeaf.begin() + (event * lenStateMat + lenStateMat));
-                    hostStateConstraintLeaf.insert(hostStateConstraintLeaf.end(), 
-                        jsonStateConstraintLeaf.begin() + (event * lenDoubleState), 
-                        jsonStateConstraintLeaf.begin() + (event * lenDoubleState + lenDoubleState));
-                    m_stateConstraintLeafCone.push_back(std::make_unique<NonnegativeOrthantCone>(m_context, lenDoubleState));
-                }
 
-                populateRisks<<<DIM2BLOCKS(m_tree.numNonleafNodes()), THREADS_PER_BLOCK>>>();
-                if (i<m_tree.numNonleafNodes()) {
-                    size_t numCh = m_tree.numChildren().fetchElementFromDevice(i);
-                    NonnegativeOrthantCone nnoc(m_context, 2*numCh);
-                    ZeroCone zero(m_context, 1);
-                    Cartesian riskConKi(m_context);
-                    riskConKi.addCone(nnoc);
-                    riskConKi.addCone(zero);
-                    m_riskConK.push_back(riskConKi);
+                if (i >= m_tree.numNonleafNodes()) {
+                    hostStateWeightLeaf.insert(hostStateWeightLeaf.end(),
+                                               jsonStateWeightLeaf.begin() + (event * lenStateMat),
+                                               jsonStateWeightLeaf.begin() + (event * lenStateMat + lenStateMat));
+                    hostStateConstraintLeaf.insert(hostStateConstraintLeaf.end(),
+                                                   jsonStateConstraintLeaf.begin() + (event * lenDoubleState),
+                                                   jsonStateConstraintLeaf.begin() +
+                                                   (event * lenDoubleState + lenDoubleState));
+                    m_stateConstraintLeafCone.push_back(
+                            std::make_unique<NonnegativeOrthantCone>(m_context, lenDoubleState));
                 }
+            }
+
+            for (size_t i=0; i<m_tree.numNonleafNodes(); i++) {
+                size_t numCh = m_tree.numChildren().fetchElementFromDevice(i);
+                m_d_riskMatE.allocateOnDevice((m_tree.numEvents() * 2 + 1) * (m_tree.numEvents()) * m_tree.numNonleafNodes());
+                m_d_riskMatF.allocateOnDevice((m_tree.numEvents() * 2 + 1) * (1) * m_tree.numNonleafNodes());
+                m_d_riskVecB.allocateOnDevice((m_tree.numEvents() * 2 + 1) + m_tree.numNonleafNodes());
+
+                NonnegativeOrthantCone nnoc(m_context, 2*numCh);
+                ZeroCone zero(m_context, 1);
+                Cartesian riskConKi(m_context);
+                riskConKi.addCone(nnoc);
+                riskConKi.addCone(zero);
+                m_riskConK.push_back(std::make_unique<Cartesian>(riskConKi));
+                populateRisks<<<DIM2BLOCKS(m_tree.numNonleafNodes()), THREADS_PER_BLOCK>>>(
+                        m_tree.numNonleafNodes(), m_tree.childFrom().get(), m_tree.childTo().get(),
+                        jsonRiskType, jsonRiskAlpha);
             }
 
             /** Transfer array data to device */

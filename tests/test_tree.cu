@@ -15,7 +15,7 @@ class MarkovTreeTest : public testing::Test {
         std::vector<size_t> m_hostDataIntNumStages;
 
 	    MarkovTreeTest() {
-	        std::ifstream tree_data("../../tests/default_tree_data.json");
+	        std::ifstream tree_data("tests/default_tree_data.json");
 	        auto treeTemp = std::make_unique<ScenarioTree>(tree_data);
 	        m_mockTree = std::move(treeTemp);
             m_numNonleafNodes = m_mockTree->numNonleafNodes();

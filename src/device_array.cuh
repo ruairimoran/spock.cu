@@ -6,6 +6,12 @@
 #include <type_traits>
 #include <utility>
 
+template <typename T>
+	requires requires {
+		std::is_trivially_copyable_v<T>;
+	}
+class DeviceSlice;
+
 /// Manages an array of objects allocated on the device.
 /// The size of the array can be either a compile-time constant or a vaule specified at runtime.
 /// When the `DeviceArray` is destroyed, the associated memory will automatically be freed.
@@ -70,8 +76,8 @@ class DeviceArray {
 
 	/// Create a new `DeviceArray` instance with its contents copied from this one.
 	/// @return A `DeviceArray` which is a copy of this one.
-	/// @throw std::bad_alloc The allocation was unsuccessful.
-	/// @throw std::runtime_error An error occured during the copy.
+	/// @exception std::bad_alloc The allocation was unsuccessful.
+	/// @exception std::runtime_error An error occured during the copy.
 	DeviceArray clone() const {
 		DeviceArray cloned = [&] () {
 			if constexpr (Extent == std::dynamic_extent) {
@@ -139,9 +145,124 @@ class DeviceArray {
 		}
 	}
 
+	/// Create a non-owning view, or *slice*, of a subsequence of elements in this array.
+	/// @param start The index of the first element in this slice.
+	/// @param size  The number of elements in this slice. If not specified, it will default to
+	///              the number of elements in the array after `start`.
+	/// @return A `DeviceSlice` referring to a subsequence of elements in this array.
+	/// @warning Since a slice does not have ownership of its contents, it must not be allowed to
+	///          outlive this `DeviceArray`.
+	inline DeviceSlice<T> slice(size_t start, size_t size = std::dynamic_extent) const noexcept;
+
 	private:
 	DeviceArray(std::span<T, Extent> span) : span(span) {}
 	std::span<T, Extent> span;
 };
+
+/// `DeviceSlice` is a non-owning view of a sequence of objects in device memory. This sequence will
+/// typically be created from a `DeviceArray` or a sub-slice of another `DeviceSlice`. It can also
+/// be implicitly constructed from a `DeviceArray`.
+/// @warning Since this class does not have ownership of its contents, it must not be allowed to
+///          outlive the owner of those contents (e.g. the `DeviceArray` it was created from).
+template <typename T>
+	requires requires {
+		std::is_trivially_copyable_v<T>;
+	}
+class DeviceSlice {
+
+	public:
+
+	/// Create a new `DeviceArray` instance with its contents copied from this slice.
+	/// @return A `DeviceArray` which is an owned copy of this slice.
+	/// @throw std::bad_alloc The allocation was unsuccessful.
+	/// @throw std::runtime_error An error occured during the copy.
+	DeviceArray<T> clone() const {
+		DeviceArray cloned = DeviceArray<T>::alloc(this->size());
+
+		cudaError_t result = cudaMemcpy(cloned.data(), this->data(), this->size_bytes(), cudaMemcpyDeviceToDevice);
+		if (result != cudaSuccess) {
+			throw std::runtime_error(cudaGetErrorString(result));
+		}
+
+		return cloned;
+	}
+
+	/// @return A span representing the slice in device memory.
+	[[nodiscard]]
+	std::span<T> get() const noexcept {
+		return this->span;
+	}
+
+	/// @return A device pointer to the start of the slice, or nullptr if the slice is empty.
+	[[nodiscard]]
+	T* data() const noexcept {
+		return this->span.data();
+	}
+
+	/// @return The number of elements in the slice.
+	[[nodiscard]]
+	size_t size() const noexcept {
+		return this->span.size();
+	}
+
+	/// @return The size of the slice in bytes.
+	[[nodiscard]]
+	size_t size_bytes() const noexcept {
+		return this->span.size_bytes();
+	}
+
+	/// @return `true` if the slice is empty, `false` otherwise.
+	[[nodiscard]]
+	bool empty() const noexcept {
+		return this->span.empty();
+	}
+
+	/// Copy data from host memory to device memory.
+	/// @param src The region of host memory to copy from.
+	/// @exception std::runtime_error An error occured during the copy.
+	void upload(std::span<const T> src) const {
+		cudaError_t result = cudaMemcpy(this->span.data(), src.data(), src.size_bytes(), cudaMemcpyHostToDevice);
+		if (result != cudaSuccess) {
+			throw std::runtime_error(cudaGetErrorString(result));
+		}
+	}
+
+	/// Copy data from device memory to host memory.
+	/// @param dst The region of host memory to copy to.
+	/// @exception std::runtime_error An error occured during the copy.
+	void download(std::span<T> dst) const {
+		cudaError_t result = cudaMemcpy(dst.data(), this->span.data(), dst.size_bytes(), cudaMemcpyDeviceToHost);
+		if (result != cudaSuccess) {
+			throw std::runtime_error(cudaGetErrorString(result));
+		}
+	}
+
+	/// Create a sub-slice of the elements in this slice.
+	/// @param start The index of the first element in this slice.
+	/// @param size  The number of elements in this slice. If not specified, it will default to
+	///              the number of elements in the slice after `start`.
+	/// @return A `DeviceSlice` referring to a subsequence of elements in this slice.
+	DeviceSlice<T> slice(size_t start, size_t size = std::dynamic_extent) const noexcept {
+		return DeviceSlice<T>(this->span.subspan(start, size));
+	}
+
+	DeviceSlice() = default;
+	explicit DeviceSlice(std::span<T> span) : span(span) {}
+	DeviceSlice(const DeviceArray<T>& array) : span(array.get()) {}
+
+	private:
+	std::span<T> span;
+
+};
+
+
+template <typename T, size_t Extent>
+	requires requires {
+		std::is_trivially_copyable_v<T>;
+		Extent != 0;
+	}
+DeviceSlice<T> DeviceArray<T, Extent>::slice(size_t start, size_t size) const noexcept {
+	return DeviceSlice<T>(this->span.subspan(start, size));
+}
 
 #endif

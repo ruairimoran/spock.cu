@@ -56,7 +56,7 @@ class DeviceArray {
 
 	DeviceArray(const DeviceArray&) = delete;
 	DeviceArray(DeviceArray&& other) noexcept
-		: span(std::exchange(other.span, {})) {}
+		: span(std::move(other.span)) {}
 
 	DeviceArray& operator=(const DeviceArray&) = delete;
 	DeviceArray& operator=(DeviceArray&& other) noexcept {
@@ -73,9 +73,9 @@ class DeviceArray {
 	/// @throw std::bad_alloc The allocation was unsuccessful.
 	/// @throw std::runtime_error An error occured during the copy.
 	DeviceArray clone() const {
-		DeviceArray cloned = [] () {
+		DeviceArray cloned = [&] () {
 			if constexpr (Extent == std::dynamic_extent) {
-				return DeviceArray::alloc(array.size);
+				return DeviceArray::alloc(this->size());
 			} else {
 				return DeviceArray::alloc();
 			}

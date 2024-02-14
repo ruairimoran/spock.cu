@@ -8,17 +8,18 @@
 
 /// Manages an array of objects allocated on the device.
 /// The size of the array can be either a compile-time constant or a vaule specified at runtime.
-/// When the DeviceArray is destroyed, the associated memory will automatically be freed.
+/// When the `DeviceArray` is destroyed, the associated memory will automatically be freed.
 template <typename T, size_t Extent = std::dynamic_extent>
 	requires requires {
 		// T must be trivially copyable as it will be bytewise copied to the device.
 		std::is_trivially_copyable_v<T>;
+		Extent != 0;
 	}
 class DeviceArray {
 
 	public:
 
-	/// Create a new DeviceInstance with memory allocated on the device.
+	/// Create a new `DeviceArray` with memory allocated on the device.
 	/// This version allocates an amount of memory which is fixed at compile time.
 	/// @return A DeviceArray representing an uninitialised array of T in device memory.
 	/// @exception std::bad_alloc if the allocation was unsuccessful.
@@ -31,10 +32,10 @@ class DeviceArray {
 		return DeviceArray(std::span<T, Extent>(ptr, Extent));
 	}
 
-	/// Create a new DeviceInstance with memory allocated on the device.
+	/// Create a new `DeviceArray` with memory allocated on the device.
 	/// This version allocates an amount of memory which is specified at runtime.
 	/// @param size The size of the allocated array.
-	/// @return A DeviceArray representing an uninitialised array of T in device memory.
+	/// @return A `DeviceArray` representing an uninitialised array of T in device memory.
 	/// @exception std::bad_alloc The allocation was unsuccessful.
 	static DeviceArray alloc(size_t size) requires (Extent == std::dynamic_extent) {
 		if (size == 0) {
@@ -49,7 +50,7 @@ class DeviceArray {
 		return DeviceArray(std::span<T, Extent>(ptr, size));
 	}
 
-	/// Create a new DeviceInstance representing an empty array. This is only possible for arrays
+	/// Create a new `DeviceArray` representing an empty array. This is only possible for arrays
 	/// with dynamic extent. No memory will be allocated for this array.
 	DeviceArray() noexcept requires (Extent == std::dynamic_extent) = default;
 
@@ -65,6 +66,27 @@ class DeviceArray {
 
 	~DeviceArray() noexcept {
 		cudaFree(this->span.data());
+	}
+
+	/// Create a new `DeviceArray` instance with its contents copied from this one.
+	/// @return A `DeviceArray` which is a copy of this one.
+	/// @throw std::bad_alloc The allocation was unsuccessful.
+	/// @throw std::runtime_error An error occured during the copy.
+	DeviceArray clone() const {
+		DeviceArray cloned = [] () {
+			if constexpr (Extent == std::dynamic_extent) {
+				return DeviceArray::alloc(array.size);
+			} else {
+				return DeviceArray::alloc();
+			}
+		}();
+
+		cudaError_t result = cudaMemcpy(cloned.data(), this->data(), this->size_bytes(), cudaMemcpyDeviceToDevice);
+		if (result != cudaSuccess) {
+			throw std::runtime_error(cudaGetErrorString(result));
+		}
+
+		return cloned;
 	}
 
 	/// @return A span representing the allocated device memory.
@@ -99,7 +121,7 @@ class DeviceArray {
 
 	/// Copy data from host memory to device memory.
 	/// @param src The region of host memory to copy from.
-	/// @exception std::runtime_error if an error occurs during the copy.
+	/// @exception std::runtime_error An error occured during the copy.
 	void upload(std::span<const T> src) const {
 		cudaError_t result = cudaMemcpy(this->span.data(), src.data(), src.size_bytes(), cudaMemcpyHostToDevice);
 		if (result != cudaSuccess) {
@@ -109,7 +131,7 @@ class DeviceArray {
 
 	/// Copy data from device memory to host memory.
 	/// @param dst The region of host memory to copy to.
-	/// @exception std::runtime_error if an error occurs during the copy.
+	/// @exception std::runtime_error An error occured during the copy.
 	void download(std::span<T> dst) const {
 		cudaError_t result = cudaMemcpy(dst.data(), this->span.data(), dst.size_bytes(), cudaMemcpyDeviceToHost);
 		if (result != cudaSuccess) {

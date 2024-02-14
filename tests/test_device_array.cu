@@ -52,3 +52,18 @@ TEST(DeviceArray, Getters) {
 	EXPECT_EQ(array_span.data(), array.data());
 	EXPECT_EQ(array_span.size(), array.size());
 }
+
+TEST(DeviceArray, Clone) {
+	const std::array<float, 3> host_data = { 123.0f, 456.0f, 789.0f };
+	DeviceArray dev_data = DeviceArray<float, 3>::alloc();
+
+	DeviceArray cloned_data = dev_data.clone();
+	EXPECT_EQ(dev_data.size(), cloned_data.size());
+	
+	std::array<float, 3> downloaded_host_data;
+	cloned_data.download(downloaded_host_data);
+
+	for (int i = 0; i < 3; i++) {
+		EXPECT_EQ(downloaded_host_data[i], host_data[i]);
+	}
+}

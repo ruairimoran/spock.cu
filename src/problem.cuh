@@ -3,6 +3,7 @@
 #include "../include/stdgpu.h"
 #include "tree.cuh"
 #include "cones.cuh"
+#include "risks.cuh"
 #include <fstream>
 
 
@@ -34,10 +35,7 @@ class ProblemData {
         std::vector<std::unique_ptr<ConvexCone>> m_inputConstraintCone;  ///< Ptr to
         DeviceVector<real_t> m_d_stateConstraintLeaf;  ///< Ptr to
         std::vector<std::unique_ptr<ConvexCone>> m_stateConstraintLeafCone;  ///< Ptr to
-        DeviceVector<real_t> m_d_riskMatE;  ///< Ptr to
-        DeviceVector<real_t> m_d_riskMatF;  ///< Ptr to
-        std::vector<std::unique_ptr<ConvexCone>> m_riskConK;  ///< Ptr to
-        DeviceVector<DeviceVector<real_t>> m_d_riskVecB;  ///< Ptr to
+        std::vector<CoherentRisk> m_risk;  ///< Ptr to
 
 	public:
 		/**
@@ -86,9 +84,6 @@ class ProblemData {
             m_d_stateConstraint.allocateOnDevice(lenDoubleState * m_tree.numNodes());
             m_d_inputConstraint.allocateOnDevice(lenDoubleInput * m_tree.numNodes());
             m_d_stateConstraintLeaf.allocateOnDevice(lenDoubleState * m_tree.numNodes());
-            m_d_riskMatE.allocateOnDevice(m_tree.numNonleafNodes());
-            m_d_riskMatF.allocateOnDevice(m_tree.numNonleafNodes());
-            m_d_riskVecB.allocateOnDevice(m_tree.numNonleafNodes());
 
             /** Store array data from JSON in host memory */
             for (rapidjson::SizeType i = 0; i<lenStateMat; i++) {
@@ -134,10 +129,9 @@ class ProblemData {
             m_inputConstraintCone.push_back(std::make_unique<NullCone>(m_context, 0));
             std::vector<real_t> hostStateConstraintLeaf(lenDoubleState * m_tree.numNonleafNodes(), 0.);
             for (size_t i=0; i<m_tree.numNonleafNodes(); i++) m_stateConstraintLeafCone.push_back(std::make_unique<NullCone>(m_context, 0));
-//            std::vector<real_t> hostRiskMatE;
-//            std::vector<real_t> hostRiskMatF;
-//             m_riskConK = {};
-//            std::vector<real_t> hostRiskVecB;
+            m_d_riskMatE.allocateOnDevice(m_tree.numNonleafNodes());
+            m_d_riskMatF.allocateOnDevice(m_tree.numNonleafNodes());
+            m_d_riskVecB.resize(m_tree.numNonleafNodes());
             for (size_t i=1; i<m_tree.numNodes(); i++) {
                 size_t event = hostEvents[i];
                 hostSystemDynamics.insert(hostSystemDynamics.end(),
@@ -175,20 +169,13 @@ class ProblemData {
             }
 
             for (size_t i=0; i<m_tree.numNonleafNodes(); i++) {
-                size_t numCh = m_tree.numChildren().fetchElementFromDevice(i);
-                m_d_riskMatE.allocateOnDevice((m_tree.numEvents() * 2 + 1) * (m_tree.numEvents()) * m_tree.numNonleafNodes());
-                m_d_riskMatF.allocateOnDevice((m_tree.numEvents() * 2 + 1) * (1) * m_tree.numNonleafNodes());
-                m_d_riskVecB.allocateOnDevice((m_tree.numEvents() * 2 + 1) + m_tree.numNonleafNodes());
-
-                NonnegativeOrthantCone nnoc(m_context, 2*numCh);
-                ZeroCone zero(m_context, 1);
-                Cartesian riskConKi(m_context);
-                riskConKi.addCone(nnoc);
-                riskConKi.addCone(zero);
-                m_riskConK.push_back(std::make_unique<Cartesian>(riskConKi));
-                populateRisks<<<DIM2BLOCKS(m_tree.numNonleafNodes()), THREADS_PER_BLOCK>>>(
-                        m_tree.numNonleafNodes(), m_tree.childFrom().get(), m_tree.childTo().get(),
-                        jsonRiskType, jsonRiskAlpha);
+//                size_t numCh = m_tree.numChildren().fetchElementFromDevice(i);
+//                NonnegativeOrthantCone nnoc(m_context, numCh * 2);
+//                ZeroCone zero(m_context, 1);
+//                Cartesian riskConKi(m_context);
+//                riskConKi.addCone(nnoc);
+//                riskConKi.addCone(zero);
+//                m_riskConK.push_back(std::make_unique<Cartesian>(riskConKi));
             }
 
             /** Transfer array data to device */
@@ -222,10 +209,10 @@ class ProblemData {
         std::vector<std::unique_ptr<ConvexCone>>& inputConstraintCone() { return m_inputConstraintCone; }
         DeviceVector<real_t>& stateConstraintLeaf() { return m_d_stateConstraintLeaf; }
         std::vector<std::unique_ptr<ConvexCone>>& stateConstraintLeafCone() { return m_stateConstraintLeafCone; }
-        DeviceVector<DeviceVector<real_t>>& riskMatE() { return m_d_riskMatE; }
+        DeviceVector<real_t>& riskMatE() { return m_d_riskMatE; }
         DeviceVector<real_t>& riskMatF() { return m_d_riskMatF; }
         std::vector<std::unique_ptr<ConvexCone>>& riskConK() { return m_riskConK; }
-        DeviceVector<real_t>& riskVecB() { return m_d_riskVecB; }
+        std::vector<DeviceVector<real_t>>& riskVecB() { return m_d_riskVecB; }
 
         /**
          * Debugging

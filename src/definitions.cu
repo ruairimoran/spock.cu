@@ -9,19 +9,29 @@
 */
 
 __global__ void maxWithZero(real_t* vec, size_t n) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) vec[i] = max(0., vec[i]);
 }
 
 __global__ void setToZero(real_t* vec, size_t n) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) vec[i] = 0.;
 }
 
 __global__ void projectOnSoc(real_t* vec, size_t n, real_t nrm, real_t scaling) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n - 1) vec[i] *= scaling;
     if (i == n - 1) vec[i] = scaling * nrm;
+}
+
+
+/**
+ * Risk methods
+*/
+
+__global__ void vecAddB(real_t* vec, size_t ch, size_t* probs) {
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i<ch) vec[i] += probs[i];
 }
 
 
@@ -86,22 +96,3 @@ __global__ void populateStages(size_t* stages, size_t numStages, size_t numNodes
 /** 
  * ProblemData methods
 */
-
-/**
- * Populate risk at each nonleaf node
-*/
-__global__ void populateRisks(size_t numNonleaf, size_t* childFrom, size_t* childTo, char riskType, real_t alpha) {
-    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < numNonleaf) {
-        size_t chFrom = childFrom[i];
-        size_t chTo = childTo[i];
-        // eye = np.eye(self.__num_children);
-        riskMatEi = np.vstack((alpha*eye, -eye, np.ones((1, num_children))));
-        std::vector riskMatFi(2*chNum+1, 0.);
-
-        std::vector<real_t> riskVecBi;
-        for (size_t j=chFrom; j<=chTo; j++) riskVecBi.push_back(m_tree.conditionalProbabilities().fetchElementFromDevice(j));
-        for (size_t j=chFrom; j<=chTo; j++) riskVecBi.push_back(0.);
-        riskVecBi.push_back(0.);
-    }
-}

@@ -16,19 +16,20 @@ class ConvexCone {
 
         explicit ConvexCone(Context& context, size_t dim) : m_context(context), m_dimension(dim) {}
 
+        bool dimension_check(DeviceVector<real_t>& d_vec) {
+            if (d_vec.capacity() != m_dimension) {
+                std::cerr << "DeviceVector has capacity " << d_vec.capacity()
+                          << " but cone has dimension " << m_dimension << std::endl;
+                throw std::invalid_argument("DeviceVector and cone dimension mismatch");
+            }
+            return true;
+        }
+
     public:
         virtual ~ConvexCone() {}
         virtual void projectOnCone(DeviceVector<real_t>& d_vec) = 0;
         virtual void projectOnDual(DeviceVector<real_t>& d_vec) = 0;
         size_t dimension() { return m_dimension; }
-        bool dimension_check(DeviceVector<real_t>& d_vec) {
-            if (d_vec.capacity() != m_dimension) {
-                std::cerr << "DeviceVector has capacity " << d_vec.capacity()
-                    << " but cone has dimension " << m_dimension << std::endl;
-                throw std::invalid_argument("DeviceVector and cone dimension mismatch");
-            }
-            return true;
-        }
 
 };
 

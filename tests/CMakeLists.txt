@@ -28,5 +28,5 @@ target_include_directories(spock_tests
 )
 include(GoogleTest)
 gtest_discover_tests(spock_tests
-    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 # ----

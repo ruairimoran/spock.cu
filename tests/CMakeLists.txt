@@ -27,5 +27,6 @@ target_include_directories(spock_tests
         "${PROJECT_SOURCE_DIR}/src"
 )
 include(GoogleTest)
-gtest_discover_tests(spock_tests)
+gtest_discover_tests(spock_tests
+    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 # ----

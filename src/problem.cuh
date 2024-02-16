@@ -7,9 +7,6 @@
 #include <fstream>
 
 
-__global__ void populateRisks(size_t numNonleaf, size_t* childFrom, size_t* childTo, char riskType, real_t alpha);
-
-
 /**
  * Store problem data
  * - from default file
@@ -35,7 +32,7 @@ class ProblemData {
         std::vector<std::unique_ptr<ConvexCone>> m_inputConstraintCone;  ///< Ptr to
         DeviceVector<real_t> m_d_stateConstraintLeaf;  ///< Ptr to
         std::vector<std::unique_ptr<ConvexCone>> m_stateConstraintLeafCone;  ///< Ptr to
-        std::vector<CoherentRisk> m_risk;  ///< Ptr to
+        std::vector<std::unique_ptr<CoherentRisk>> m_risk;  ///< Ptr to
 
 	public:
 		/**
@@ -72,7 +69,7 @@ class ProblemData {
             std::vector<real_t> jsonStateConstraint(lenDoubleState * m_tree.numEvents());
             std::vector<real_t> jsonInputConstraint(lenDoubleInput * m_tree.numEvents());
             std::vector<real_t> jsonStateConstraintLeaf(lenDoubleState * m_tree.numEvents());
-            char jsonRiskType;
+            std::string jsonRiskType;
             real_t jsonRiskAlpha;
 
             /** Allocate memory on device */
@@ -112,12 +109,10 @@ class ProblemData {
                 jsonInputConstraint[i] = doc["inputConstraintMode0"][i].GetDouble();
                 jsonInputConstraint[i+lenDoubleInput] = doc["inputConstraintMode1"][i].GetDouble();
             }
-            jsonRiskType = *doc["riskParams"][0].GetString();
+            jsonRiskType = doc["riskParams"][0].GetString();
             jsonRiskAlpha = doc["riskParams"][1].GetDouble();
 
             /** Create full arrays on host */
-            std::vector<size_t> hostEvents(m_tree.events().capacity());
-            m_tree.events().download(hostEvents);
             std::vector<real_t> hostSystemDynamics(lenStateMat, 0.);
             std::vector<real_t> hostInputDynamics(lenInputDynMat, 0.);
             std::vector<real_t> hostStateWeight(lenStateMat, 0.);
@@ -129,9 +124,9 @@ class ProblemData {
             m_inputConstraintCone.push_back(std::make_unique<NullCone>(m_context, 0));
             std::vector<real_t> hostStateConstraintLeaf(lenDoubleState * m_tree.numNonleafNodes(), 0.);
             for (size_t i=0; i<m_tree.numNonleafNodes(); i++) m_stateConstraintLeafCone.push_back(std::make_unique<NullCone>(m_context, 0));
-            m_d_riskMatE.allocateOnDevice(m_tree.numNonleafNodes());
-            m_d_riskMatF.allocateOnDevice(m_tree.numNonleafNodes());
-            m_d_riskVecB.resize(m_tree.numNonleafNodes());
+
+            std::vector<size_t> hostEvents(m_tree.events().capacity());
+            m_tree.events().download(hostEvents);
             for (size_t i=1; i<m_tree.numNodes(); i++) {
                 size_t event = hostEvents[i];
                 hostSystemDynamics.insert(hostSystemDynamics.end(),
@@ -169,13 +164,18 @@ class ProblemData {
             }
 
             for (size_t i=0; i<m_tree.numNonleafNodes(); i++) {
-//                size_t numCh = m_tree.numChildren().fetchElementFromDevice(i);
-//                NonnegativeOrthantCone nnoc(m_context, numCh * 2);
-//                ZeroCone zero(m_context, 1);
-//                Cartesian riskConKi(m_context);
-//                riskConKi.addCone(nnoc);
-//                riskConKi.addCone(zero);
-//                m_riskConK.push_back(std::make_unique<Cartesian>(riskConKi));
+                if (jsonRiskType == "AVaR") {
+                    m_risk.push_back(std::make_unique<AVaR>(m_context,
+                                                            i,
+                                                            jsonRiskAlpha,
+                                                            m_tree.numChildren(),
+                                                            m_tree.childFrom(),
+                                                            m_tree.conditionalProbabilities()));
+                } else {
+                    std::cerr << "Risk type " << jsonRiskType
+                        << " is not supported. Supported types include: AVaR" << std::endl;
+                    throw std::invalid_argument("Risk type not supported");
+                }
             }
 
             /** Transfer array data to device */
@@ -209,10 +209,7 @@ class ProblemData {
         std::vector<std::unique_ptr<ConvexCone>>& inputConstraintCone() { return m_inputConstraintCone; }
         DeviceVector<real_t>& stateConstraintLeaf() { return m_d_stateConstraintLeaf; }
         std::vector<std::unique_ptr<ConvexCone>>& stateConstraintLeafCone() { return m_stateConstraintLeafCone; }
-        DeviceVector<real_t>& riskMatE() { return m_d_riskMatE; }
-        DeviceVector<real_t>& riskMatF() { return m_d_riskMatF; }
-        std::vector<std::unique_ptr<ConvexCone>>& riskConK() { return m_riskConK; }
-        std::vector<DeviceVector<real_t>>& riskVecB() { return m_d_riskVecB; }
+        std::vector<std::unique_ptr<CoherentRisk>>& risk() { return m_risk; }
 
         /**
          * Debugging
@@ -311,6 +308,13 @@ class ProblemData {
             std::cout << "Leaf state constraint cone dimension: ";
             for (size_t i=0; i<len; i++) {
                 std::cout << m_stateConstraintLeafCone[i]->dimension() << " ";
+            }
+            std::cout << std::endl;
+
+            len = m_tree.numNonleafNodes();
+            std::cout << "Risk cone dimension: ";
+            for (size_t i=0; i<len; i++) {
+                std::cout << m_risk[i]->cone().dimension() << " ";
             }
             std::cout << std::endl;
 		}

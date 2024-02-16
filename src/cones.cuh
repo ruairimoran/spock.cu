@@ -3,9 +3,9 @@
 #include "../include/stdgpu.h"
 
 
-__global__ void maxWithZero(real_t* vec, size_t n);
-__global__ void setToZero(real_t* vec, size_t n);
-__global__ void projectOnSoc(real_t* vec, size_t n, real_t nrm, real_t scaling);
+__global__ void d_maxWithZero(real_t* vec, size_t n);
+__global__ void d_setToZero(real_t* vec, size_t n);
+__global__ void d_projectOnSoc(real_t* vec, size_t n, real_t nrm, real_t scaling);
 
 
 class ConvexCone {
@@ -69,7 +69,7 @@ class UniverseCone : public ConvexCone {
         }
         void projectOnDual(DeviceVector<real_t>& d_vec) {
             dimension_check(d_vec);
-            setToZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.get(), m_dimension);
+            d_setToZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.get(), m_dimension);
         }
 
 };
@@ -87,7 +87,7 @@ class ZeroCone : public ConvexCone {
 
         void projectOnCone(DeviceVector<real_t>& d_vec) {
             dimension_check(d_vec);
-            setToZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.get(), m_dimension);
+            d_setToZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.get(), m_dimension);
         }
         void projectOnDual(DeviceVector<real_t>& d_vec) {
             dimension_check(d_vec);
@@ -109,7 +109,7 @@ class NonnegativeOrthantCone : public ConvexCone {
 
         void projectOnCone(DeviceVector<real_t>& d_vec) {
             dimension_check(d_vec);
-            maxWithZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.get(), m_dimension);
+            d_maxWithZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.get(), m_dimension);
         }
         void projectOnDual(DeviceVector<real_t>& d_vec) {
             projectOnCone(d_vec);
@@ -139,10 +139,10 @@ class SecondOrderCone : public ConvexCone {
             if (nrm <= vecLastElement) {
                 return;  // Do nothing!
             } else if (nrm <= -vecLastElement) {
-                setToZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.get(), m_dimension);
+                d_setToZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.get(), m_dimension);
             } else {
                 real_t scaling = (nrm + vecLastElement) / (2. * nrm);
-                projectOnSoc<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.get(), m_dimension, nrm, scaling);
+                d_projectOnSoc<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.get(), m_dimension, nrm, scaling);
             }
         }
         void projectOnDual(DeviceVector<real_t>& d_vec) {

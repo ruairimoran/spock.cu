@@ -4,9 +4,9 @@
 #include <fstream>
 
 
-__global__ void populateProbabilities(size_t* anc, real_t* prob, size_t numNodes, real_t* condProb);
-__global__ void populateChildren(size_t* from, size_t* to, size_t numNonleafNodes, size_t* numChildren);
-__global__ void populateStages(size_t* stages, size_t numStages, size_t numNodes, size_t* stageFrom, size_t* stageTo);
+__global__ void d_populateProbabilities(size_t* anc, real_t* prob, size_t numNodes, real_t* condProb);
+__global__ void d_populateChildren(size_t* from, size_t* to, size_t numNonleafNodes, size_t* numChildren);
+__global__ void d_populateStages(size_t* stages, size_t numStages, size_t numNodes, size_t* stageFrom, size_t* stageTo);
 
 
 /**
@@ -100,11 +100,11 @@ class ScenarioTree {
             m_d_childTo.upload(hostChildrenTo);
 
             /** Populate remaining arrays on device */
-            populateProbabilities<<<DIM2BLOCKS(m_numNodes), THREADS_PER_BLOCK>>>(
+            d_populateProbabilities<<<DIM2BLOCKS(m_numNodes), THREADS_PER_BLOCK>>>(
                 m_d_ancestors.get(), m_d_probabilities.get(), m_numNodes, m_d_conditionalProbabilities.get());
-            populateChildren<<<DIM2BLOCKS(m_numNonleafNodes), THREADS_PER_BLOCK>>>(
+            d_populateChildren<<<DIM2BLOCKS(m_numNonleafNodes), THREADS_PER_BLOCK>>>(
                 m_d_childFrom.get(), m_d_childTo.get(), m_numNonleafNodes, m_d_numChildren.get());
-            populateStages<<<DIM2BLOCKS(m_numStages), THREADS_PER_BLOCK>>>(
+            d_populateStages<<<DIM2BLOCKS(m_numStages), THREADS_PER_BLOCK>>>(
                 m_d_stages.get(), m_numStages, m_numNodes, m_d_stageFrom.get(), m_d_stageTo.get());
         }
 

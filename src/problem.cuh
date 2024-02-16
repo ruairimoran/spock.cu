@@ -36,7 +36,7 @@ class ProblemData {
 
 	public:
 		/**
-		 * Constructor from default JSON file stream
+		 * Constructor from JSON file stream
 		 */
 		ProblemData(ScenarioTree& tree, std::ifstream& file) : m_tree(tree) {
             std::string json((std::istreambuf_iterator<char>(file)),

@@ -15,6 +15,7 @@ target_sources(spock_tests  # add files
         test_tree.cu 
         test_problem.cu
         test_cones.cu
+        test_risks.cu
 )
 target_link_libraries(spock_tests 
     PRIVATE 

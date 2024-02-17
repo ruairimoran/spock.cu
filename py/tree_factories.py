@@ -47,6 +47,13 @@ class ScenarioTree:
         return np.sum(self.__stages < (self.num_stages - 1))
 
     @property
+    def num_events(self):
+        """
+        :return: total number of events
+        """
+        return max(self.__w_idx) + 1
+    
+    @property
     def num_nodes(self):
         """
         :return: total number of nodes of the tree
@@ -163,6 +170,8 @@ class ScenarioTree:
         template = env.get_template("tree_data.json.jinja2")
         output = template.render(timestamp=current_timestamp,
                                  is_markovian=self.is_markovian,
+                                 is_iid=self.is_iid,
+                                 num_events=self.num_events,
                                  num_nonleaf_nodes=self.num_nonleaf_nodes,
                                  num_nodes=self.num_nodes,
                                  num_stages=self.num_stages,
@@ -171,7 +180,7 @@ class ScenarioTree:
                                  probabilities=self.__probability,
                                  events=self.__w_idx,
                                  children=self.__children)
-        output_path = "tests/tree_data.json" if testing else "py/tree_data.json"
+        output_path = "tests/default_tree_data.json" if testing else "py/tree_data.json"
         with open(output_path, "w") as fh:
             fh.write(output)
     

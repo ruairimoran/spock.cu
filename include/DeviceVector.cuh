@@ -24,7 +24,6 @@ class DeviceVector {
         }
 
     public:
-
         /**
          * Constructs a DeviceVector object
          */
@@ -106,7 +105,8 @@ class DeviceVector {
          * @param vec vector to be uploaded
          * @return true iff the uploading is successful
          */
-        bool upload(const std::vector<TElement> &vec) {
+        bool upload(const std::vector<TElement>& vec)
+        {
             return upload(vec.data(), vec.size());
         }
 
@@ -125,7 +125,7 @@ class DeviceVector {
          *
          * @param hostData destination memory position on host
          */
-        void download(TElement *hostData);
+        void download(TElement* hostData);
 
         /**
          * Download the device data to a vector
@@ -157,7 +157,7 @@ class DeviceVector {
 template<typename TElement>
 TElement DeviceVector<TElement>::fetchElementFromDevice(size_t i) {
     DeviceVector<TElement> d_element(*this, i, i);
-    real_t xi[1];
+    TElement xi[1];
     d_element.download(xi);
     return xi[0];
 }
@@ -187,7 +187,7 @@ bool DeviceVector<TElement>::upload(const TElement *dataArray, size_t size) {
 }
 
 template<typename TElement>
-void DeviceVector<TElement>::deviceCopyTo(DeviceVector<TElement> &elsewhere) {
+void DeviceVector<TElement>::deviceCopyTo(DeviceVector<TElement>& elsewhere) {
     elsewhere.allocateOnDevice(m_numAllocatedElements);
     cudaMemcpy(elsewhere.get(),
                m_d_data,
@@ -196,7 +196,7 @@ void DeviceVector<TElement>::deviceCopyTo(DeviceVector<TElement> &elsewhere) {
 }
 
 template<typename TElement>
-void DeviceVector<TElement>::download(TElement *hostData) {
+void DeviceVector<TElement>::download(TElement* hostData) {
     cudaMemcpy(hostData,
                m_d_data,
                m_numAllocatedElements * sizeof(TElement),
@@ -204,8 +204,8 @@ void DeviceVector<TElement>::download(TElement *hostData) {
 }
 
 template<typename TElement>
-void DeviceVector<TElement>::download(std::vector<TElement> &vec) {
-    vec.reserve(m_numAllocatedElements);
+void DeviceVector<TElement>::download(std::vector<TElement>& vec) {
+    vec.resize(m_numAllocatedElements);
     cudaMemcpy(vec.data(),
                m_d_data,
                m_numAllocatedElements * sizeof(TElement),

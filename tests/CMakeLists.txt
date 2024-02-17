@@ -12,10 +12,11 @@ enable_testing()
 add_executable(spock_tests)
 target_sources(spock_tests  # add files
     PRIVATE
-        test_tree.cu 
-        test_problem.cu
+        test_tree.cu
         test_cones.cu
         test_risks.cu
+        test_problem.cu
+        test_cache.cu
 )
 target_link_libraries(spock_tests 
     PRIVATE 

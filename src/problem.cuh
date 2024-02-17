@@ -4,7 +4,6 @@
 #include "tree.cuh"
 #include "cones.cuh"
 #include "risks.cuh"
-#include <fstream>
 
 
 /**

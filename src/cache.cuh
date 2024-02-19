@@ -17,12 +17,16 @@ class Cache {
 private:
     ScenarioTree& m_tree;  ///< Previously created scenario tree of problem
     ProblemData& m_data;  ///< Previously created data of problem
+    real_t m_tol = 0;
+    size_t m_maxIters = 0;
+    size_t m_countOperations = 0;
 
 public:
     /**
      * Constructor
      */
-    Cache(ScenarioTree& tree, ProblemData& data) : m_tree(tree), m_data(data) {
+    Cache(ScenarioTree& tree, ProblemData& data, real_t tol, size_t maxIters) :
+        m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters) {
         /** Transfer array data to device */
 //        m_d_systemDynamics.upload(hostSystemDynamics);
     }
@@ -35,7 +39,8 @@ public:
     /**
      * Getters
      */
-//    size_t numStates() { return m_numStates; }
+    size_t maxIters() { return m_maxIters; }
+    size_t& countOperations() { return m_countOperations; }
 
     /**
      * Debugging

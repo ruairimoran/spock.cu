@@ -23,12 +23,16 @@ int main() {
   	problem.print();
 
     /** CACHE */
-    Cache cache(tree, problem);
+    real_t tol = 1e-4;
+    size_t maxIters = 20;
+    Cache cache(tree, problem, tol, maxIters);
     cache.print();
 
     /** VANILLA CP */
-    size_t exit_status = cp(cache);
+    std::vector<real_t> initState = {.1, -.2, .3};
+    size_t exit_status = cp(cache, initState);
     std::cout << "cp exit status: " << exit_status << std::endl;
+    std::cout << "num iterations: " << cache.countOperations() << std::endl;
 
     return 0;
 }

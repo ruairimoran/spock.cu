@@ -84,6 +84,7 @@ class AVaR : public CoherentRisk {
         void preF(DeviceVector<real_t>& d_vec) { return; }
         ConvexCone& cone() { return m_riskConeK; }
         void vecAddB(DeviceVector<real_t>& d_vec) {
+            dimension_check(d_vec);
             d_avarVecAddB<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(
                     d_vec.get(), m_node, m_d_numCh.get(), m_d_chFrom.get(), m_d_condProbs.get());
         }

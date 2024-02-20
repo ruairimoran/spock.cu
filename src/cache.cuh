@@ -7,6 +7,9 @@
 #include "risks.cuh"
 
 
+__global__ void d_vanillaCp(real_t tol, size_t maxIters);
+
+
 /**
  * Cache of methods for proximal algorithms
  *
@@ -19,10 +22,12 @@ private:
     ProblemData& m_data;  ///< Previously created data of problem
     real_t m_tol = 0;
     size_t m_maxIters = 0;
-    size_t m_countOperations = 0;
     DeviceVector<real_t> m_d_prim;
     size_t sizeOfPrimal = 0;
     DeviceVector<real_t> m_d_dual;
+
+    DeviceVector<real_t> m_d_countIterations;
+    DeviceVector<real_t> m_d_cacheError;
 
 public:
     /**
@@ -38,9 +43,11 @@ public:
 
         /** Allocate memory on device */
         m_d_prim.allocateOnDevice(sizeOfPrimal);
+        m_d_countIterations.allocateOnDevice(1);
+        m_d_cacheError.allocateOnDevice(m_maxIters);
 
         /** Transfer array data to device */
-//        m_d_systemDynamics.upload(hostSystemDynamics);
+//        m_d_tol.upload(vecTol);
     }
 
     /**
@@ -51,8 +58,8 @@ public:
     /**
      * Getters
      */
+    real_t tol() { return m_tol; }
     size_t maxIters() { return m_maxIters; }
-    size_t& countOperations() { return m_countOperations; }
 
     /**
      * Setters
@@ -67,21 +74,38 @@ public:
     }
 
     /**
+     * Algorithms
+     */
+    void vanillaCp();
+
+    /**
      * Debugging
      */
-    void print(){
-        std::cout << "Tolerance: " << m_tol << std::endl;
-        std::cout << "Max iterations: " << m_maxIters << std::endl;
-        std::cout << "Num iterations: " << m_countOperations << std::endl;
-
-        std::vector<real_t> hostData(sizeOfPrimal);
-        m_d_prim.download(hostData);
-        std::cout << "Primal (from device): ";
-        for (size_t i=0; i<sizeOfPrimal; i++) {
-            std::cout << hostData[i] << " ";
-        }
-        std::cout << std::endl;
-    }
+    void print();
 };
+
+
+void Cache::vanillaCp() {
+    d_vanillaCp<<<1, 1>>>(m_tol, m_maxIters);
+}
+
+
+void Cache::print() {
+    std::cout << "Tolerance: " << m_tol << std::endl;
+    std::cout << "Max iterations: " << m_maxIters << std::endl;
+    std::vector<real_t> hostData;
+
+    hostData.resize(1);
+    m_d_countIterations.download(hostData);
+    std::cout << "Number iterations (from device): " << hostData[0] << std::endl;
+
+    hostData.resize(sizeOfPrimal);
+    m_d_prim.download(hostData);
+    std::cout << "Primal (from device): ";
+    for (size_t i=0; i<sizeOfPrimal; i++) {
+        std::cout << hostData[i] << " ";
+    }
+    std::cout << std::endl;
+}
 
 #endif

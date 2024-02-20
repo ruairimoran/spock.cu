@@ -7,7 +7,7 @@
 #include "risks.cuh"
 
 
-__global__ void d_vanillaCp(real_t tol, size_t maxIters);
+__global__ void d_vanillaCp(real_t tol, size_t maxIters, size_t* numIters);
 
 
 /**
@@ -26,7 +26,7 @@ private:
     size_t sizeOfPrimal = 0;
     DeviceVector<real_t> m_d_dual;
 
-    DeviceVector<real_t> m_d_countIterations;
+    DeviceVector<size_t> m_d_countIterations;
     DeviceVector<real_t> m_d_cacheError;
 
 public:
@@ -86,24 +86,25 @@ public:
 
 
 void Cache::vanillaCp() {
-    d_vanillaCp<<<1, 1>>>(m_tol, m_maxIters);
+    d_vanillaCp<<<1, 1>>>(m_tol, m_maxIters, m_d_countIterations.get());
 }
 
 
 void Cache::print() {
     std::cout << "Tolerance: " << m_tol << std::endl;
     std::cout << "Max iterations: " << m_maxIters << std::endl;
-    std::vector<real_t> hostData;
+    std::vector<size_t> hostDataSize;
+    std::vector<real_t> hostDataReal;
 
-    hostData.resize(1);
-    m_d_countIterations.download(hostData);
-    std::cout << "Number iterations (from device): " << hostData[0] << std::endl;
+    hostDataSize.resize(1);
+    m_d_countIterations.download(hostDataSize);
+    std::cout << "Number iterations (from device): " << hostDataSize[0] << std::endl;
 
-    hostData.resize(sizeOfPrimal);
-    m_d_prim.download(hostData);
+    hostDataReal.resize(sizeOfPrimal);
+    m_d_prim.download(hostDataReal);
     std::cout << "Primal (from device): ";
     for (size_t i=0; i<sizeOfPrimal; i++) {
-        std::cout << hostData[i] << " ";
+        std::cout << hostDataReal[i] << " ";
     }
     std::cout << std::endl;
 }

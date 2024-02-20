@@ -5,6 +5,58 @@
 
 
 /**
+ * Vanilla cp device functions
+*/
+
+__global__ void computeError(size_t* numIters) {
+    numIters[0] += 1;
+}
+
+
+/** 
+ * Cache methods
+*/
+
+__global__ void d_vanillaCp(real_t tol, size_t maxIters, size_t* numIters) {
+    numIters[0] = 0;
+    for (size_t i=0; i<maxIters; i++) {
+        computeError<<<1, 1>>>(numIters);
+    }
+}
+
+
+/**
+ * Risk methods
+*/
+
+__global__ void d_avarVecAddB(real_t* vec, size_t node, size_t* numCh, size_t* chFrom, real_t* probs) {
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < numCh[node]) vec[i] += probs[chFrom[node] + i];
+}
+
+
+/**
+ * Cone methods
+*/
+
+__global__ void d_maxWithZero(real_t* vec, size_t n) {
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) vec[i] = max(0., vec[i]);
+}
+
+__global__ void d_setToZero(real_t* vec, size_t n) {
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) vec[i] = 0.;
+}
+
+__global__ void d_projectOnSoc(real_t* vec, size_t n, real_t nrm, real_t scaling) {
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n - 1) vec[i] *= scaling;
+    if (i == n - 1) vec[i] = scaling * nrm;
+}
+
+
+/**
  * ScenarioTree methods
 */
 
@@ -59,44 +111,4 @@ __global__ void d_populateStages(size_t* stages, size_t numStages, size_t numNod
             }
         }
     }
-}
-
-
-/** 
- * Cone methods
-*/
-
-__global__ void d_maxWithZero(real_t* vec, size_t n) {
-    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n) vec[i] = max(0., vec[i]);
-}
-
-__global__ void d_setToZero(real_t* vec, size_t n) {
-    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n) vec[i] = 0.;
-}
-
-__global__ void d_projectOnSoc(real_t* vec, size_t n, real_t nrm, real_t scaling) {
-    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n - 1) vec[i] *= scaling;
-    if (i == n - 1) vec[i] = scaling * nrm;
-}
-
-
-/**
- * Risk methods
-*/
-
-__global__ void d_avarVecAddB(real_t* vec, size_t node, size_t* numCh, size_t* chFrom, real_t* probs) {
-    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < numCh[node]) vec[i] += probs[chFrom[node] + i];
-}
-
-
-/** 
- * Cache methods
-*/
-
-__global__ void d_vanillaCp(real_t tol, size_t maxIters) {
-    /// do nothing!
 }

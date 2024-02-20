@@ -31,6 +31,7 @@ int main() {
     /** VANILLA CP */
     std::vector<real_t> initState = {.1, -.2, .3};
     size_t exit_status = cp(cache, initState);
+    cache.print();
     std::cout << "cp exit status: " << exit_status << std::endl;
     std::cout << "num iterations: " << cache.countOperations() << std::endl;
 

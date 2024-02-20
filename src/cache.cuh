@@ -20,6 +20,9 @@ private:
     real_t m_tol = 0;
     size_t m_maxIters = 0;
     size_t m_countOperations = 0;
+    DeviceVector<real_t> m_d_prim;
+    size_t sizeOfPrimal = 0;
+    DeviceVector<real_t> m_d_dual;
 
 public:
     /**
@@ -27,6 +30,15 @@ public:
      */
     Cache(ScenarioTree& tree, ProblemData& data, real_t tol, size_t maxIters) :
         m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters) {
+        sizeOfPrimal = m_tree.numNodes() * m_data.numStates()  ///< States of all nodes
+                + m_tree.numNonleafNodes() * m_data.numInputs()  ///< Inputs of all nonleaf nodes
+                + m_tree.numNonleafNodes() * m_tree.numEvents()  ///< Y for all nonleaf nodes
+                + m_tree.numNodes()  ///< Tau for all child nodes
+                + m_tree.numNodes();  ///< S for all child nodes
+
+        /** Allocate memory on device */
+        m_d_prim.allocateOnDevice(sizeOfPrimal);
+
         /** Transfer array data to device */
 //        m_d_systemDynamics.upload(hostSystemDynamics);
     }
@@ -43,19 +55,32 @@ public:
     size_t& countOperations() { return m_countOperations; }
 
     /**
+     * Setters
+     */
+    void initialiseState(std::vector<real_t> initState) {
+        if (initState.size() != m_data.numStates()) {
+            std::cerr << "Error initialising state: problem setup for " << m_data.numStates()
+                << " but given " << initState.size() << " states" << std::endl;
+            throw std::invalid_argument("Incorrect dimension of initial state");
+        }
+        m_d_prim.upload(initState);
+    }
+
+    /**
      * Debugging
      */
     void print(){
-        std::cout << "hello from cache" << std::endl;
+        std::cout << "Tolerance: " << m_tol << std::endl;
+        std::cout << "Max iterations: " << m_maxIters << std::endl;
+        std::cout << "Num iterations: " << m_countOperations << std::endl;
 
-//        size_t len = m_numStates * m_numStates * m_tree.numNodes();
-//        std::vector<real_t> hostData(len);
-//        m_d_systemDynamics.download(hostData);
-//        std::cout << "System dynamics (from device): ";
-//        for (size_t i=0; i<len; i++) {
-//            std::cout << hostData[i] << " ";
-//        }
-
+        std::vector<real_t> hostData(sizeOfPrimal);
+        m_d_prim.download(hostData);
+        std::cout << "Primal (from device): ";
+        for (size_t i=0; i<sizeOfPrimal; i++) {
+            std::cout << hostData[i] << " ";
+        }
+        std::cout << std::endl;
     }
 };
 

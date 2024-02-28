@@ -5,11 +5,12 @@
 
 
 /**
- * Vanilla cp device functions
+ * General
 */
 
-__global__ void computeError(size_t* numIters) {
-    numIters[0] += 1;
+__device__ size_t d_getIdxMat(size_t node, size_t row, size_t col, size_t rows, size_t cols=0) {
+    if (cols == 0) cols = rows;
+    return (node * rows * cols) + (row * cols + col);
 }
 
 
@@ -17,10 +18,10 @@ __global__ void computeError(size_t* numIters) {
  * Cache methods
 */
 
-__global__ void d_vanillaCp(real_t tol, size_t maxIters, size_t* numIters) {
-    numIters[0] = 0;
-    for (size_t i=0; i<maxIters; i++) {
-        computeError<<<1, 1>>>(numIters);
+__global__ void d_setPToId(real_t* matP, size_t node, size_t numStates) {
+    if (blockIdx.x == threadIdx.x) {
+        size_t idx = d_getIdxMat(node, blockIdx.x, threadIdx.x, numStates);
+        matP[idx] = 1.0;
     }
 }
 

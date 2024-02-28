@@ -30,7 +30,7 @@ int main() {
 
     /** VANILLA CP */
     std::vector<real_t> initState = {.1, -.2, .3};
-    size_t exit_status = cp(cache, initState);
+    size_t exit_status = runCp(cache, initState);
     std::cout << "cp exit status: " << exit_status << std::endl;
     cache.print();
 

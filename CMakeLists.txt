@@ -47,3 +47,17 @@ target_include_directories(spock
         "${PROJECT_SOURCE_DIR}/src"
 )
 # ----
+add_executable(play)
+target_sources(play  # add files
+        PRIVATE
+        playground/play.cu
+)
+target_link_libraries(play
+        PRIVATE
+        spock_src)
+target_include_directories(play
+        PRIVATE
+        "${PROJECT_BINARY_DIR}"
+        "${PROJECT_SOURCE_DIR}/src"
+)
+# ----

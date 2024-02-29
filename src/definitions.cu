@@ -1,4 +1,4 @@
-/** 
+/**
  * Definitions for CUDA kernels 
 */
 #include "../include/stdgpu.h"
@@ -8,22 +8,22 @@
  * General
 */
 
-__device__ size_t d_getIdxMat(size_t node, size_t row, size_t col, size_t rows, size_t cols=0) {
+__host__ __device__ size_t getIdxMat(size_t node, size_t row, size_t col, size_t rows, size_t cols=0) {
     if (cols == 0) cols = rows;
     return (node * rows * cols) + (row * cols + col);
+}
+
+__global__ void d_setMatToId(real_t* mat, size_t node, size_t numRows) {
+    if (blockIdx.x == threadIdx.x) {
+        size_t idx = getIdxMat(node, blockIdx.x, threadIdx.x, numRows);
+        mat[idx] = 1.0;
+    }
 }
 
 
 /** 
  * Cache methods
 */
-
-__global__ void d_setPToId(real_t* matP, size_t node, size_t numStates) {
-    if (blockIdx.x == threadIdx.x) {
-        size_t idx = d_getIdxMat(node, blockIdx.x, threadIdx.x, numStates);
-        matP[idx] = 1.0;
-    }
-}
 
 
 /**
@@ -93,21 +93,21 @@ __global__ void d_populateChildren(size_t* from, size_t* to, size_t numNonleafNo
  * Populating stagesFrom and stagesTo
  * @param[in] stages device ptr to stage of node at index
  * @param[in] numStages total number of stages
- * @param[out] stageFrom device ptr to first node of stage at index
- * @param[out] stageTo device ptr to last node of stage at index
+ * @param[out] nodeFrom device ptr to first node of stage at index
+ * @param[out] nodeTo device ptr to last node of stage at index
  */
-__global__ void d_populateStages(size_t* stages, size_t numStages, size_t numNodes, size_t* stageFrom, size_t* stageTo) {
+__global__ void d_populateStages(size_t* stages, size_t numStages, size_t numNodes, size_t* nodeFrom, size_t* nodeTo) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < numStages) {
         for (size_t j=0; j<numNodes; j++) {
             if (stages[j] == i) {
-                stageFrom[i] = j;
+                nodeFrom[i] = j;
                 break;
             }
         }
         for (size_t j=numNodes-1; ; j--) {
             if (stages[j] == i) {
-                stageTo[i] = j;
+                nodeTo[i] = j;
                 break;
             }
         }

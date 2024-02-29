@@ -15,7 +15,7 @@ size_t runCp(Cache& cache, std::vector<real_t> initialState) {
     cache.vanillaCp();  ///< run vanilla cp algorithm
     const auto tock = std::chrono::high_resolution_clock::now();
     auto durationMilli = std::chrono::duration<double, std::milli>(tock - tick).count();
-    std::cout << "timer stopped in " << durationMilli << " ms" << std::endl;
+    std::cout << "timer stopped:  " << durationMilli << " ms" << std::endl;
     return 0;
 }
 

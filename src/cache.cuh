@@ -7,7 +7,8 @@
 #include "risks.cuh"
 
 
-__global__ void d_setPToId(real_t* matP, size_t node, size_t numRows);
+__host__ __device__ size_t getIdxMat(size_t node, size_t row, size_t col, size_t rows, size_t cols=0);
+__global__ void d_setMatToId(real_t* mat, size_t node, size_t numRows);
 
 
 /**
@@ -120,7 +121,10 @@ void Cache::initialiseState(std::vector<real_t> initState) {
 
 
 void Cache::offline_projection_setup() {
-    /** Offline: projection on dynamics */
+    /**
+     * Offline: projection on dynamics
+     */
+     /** allocate device memory for dynamics projection data*/
     m_d_P.allocateOnDevice(m_data.numStates() * m_data.numStates() * m_tree.numNodes());
     m_d_q.allocateOnDevice(m_data.numStates() * m_tree.numNodes());
     m_d_K.allocateOnDevice(m_data.numInputs() * m_data.numStates() * m_tree.numNonleafNodes());
@@ -128,35 +132,56 @@ void Cache::offline_projection_setup() {
     m_d_choleskyLo.allocateOnDevice(m_data.numInputs() * m_data.numInputs() * m_tree.numNonleafNodes());
     m_d_choleskyUp.allocateOnDevice(m_data.numInputs() * m_data.numInputs() * m_tree.numNonleafNodes());
     m_d_dynamicsSum.allocateOnDevice(m_data.numStates() * m_data.numStates() * m_tree.numNodes());
+    /** set all leaf P matrices to identity */
     for (size_t i=m_tree.numNonleafNodes(); i<m_tree.numNodes(); i++) {
-        d_setPToId<<<m_data.numStates(), THREADS_PER_BLOCK>>>(m_d_P.get(), i, m_data.numStates());
+        d_setMatToId<<<m_data.numStates(), THREADS_PER_BLOCK>>>(m_d_P.get(), i, m_data.numStates());
     }
-//    for (size_t i=m_tree.numNonleafNodes(); i<m_tree.numNodes(); i++) {
-//        m_d_P = eye(state_size);
-//    }
-//    for (i in reversed(range(self.__num_nonleaf_nodes))) {
-//        children_of_i = self.__raocp.tree.children_of(i);
-//        sum_for_r = 0;
-//        sum_for_k = 0;
-//        for (j in children_of_i) {
-//            sum_for_r = sum_for_r + \
-//                                self.__raocp.control_dynamics_at_node(j).T @ self.__P[j] @ \
-//                                self.__raocp.control_dynamics_at_node(j);
-//            sum_for_k = sum_for_k + \
-//                                self.__raocp.control_dynamics_at_node(j).T @ self.__P[j] @ \
-//                                self.__raocp.state_dynamics_at_node(j);
-//        }
-//        r_tilde = np.eye(self.__control_size) + sum_for_r;
-//        self.__cholesky_data[i] = scipy.linalg.cho_factor(r_tilde);
-//        self.__K[i] = scipy.linalg.cho_solve(self.__cholesky_data[i], -sum_for_k);
-//        sum_for_p = 0;
-//        for (j in children_of_i) {
-//            self.__sum_of_dynamics[j] = self.__raocp.state_dynamics_at_node(j) \
-//                + self.__raocp.control_dynamics_at_node(j) @ self.__K[i];
-//            sum_for_p = sum_for_p + self.__sum_of_dynamics[j].T @ self.__P[j] @ self.__sum_of_dynamics[j];
-//        }
-//        self.__P[i] = np.eye(self.__state_size) + self.__K[i].T @ self.__K[i] + sum_for_p;
-//    }
+    for (size_t stage=m_tree.numStages()-2; stage>=0; stage--) {
+        size_t nodeFrom = m_tree.nodeFrom().fetchElementFromDevice(stage);
+        size_t nodeTo = m_tree.nodeTo().fetchElementFromDevice(stage);
+        for (size_t node=nodeFrom; node<=nodeTo; node++) {
+            size_t chFrom = m_tree.childFrom().fetchElementFromDevice(node);
+            size_t chTo = m_tree.childTo().fetchElementFromDevice(node);
+            DeviceVector<real_t> d_matPB(m_data.numStates() * m_data.numInputs());
+            DeviceVector<real_t> d_sumR(std::vector(m_data.numInputs() * m_data.numInputs(), 0.0));
+            DeviceVector<real_t> d_sumK(std::vector(m_data.numInputs() * m_data.numStates(), 0.0));
+            for (size_t child=chFrom; child<=chTo; child++) {
+                real_t alpha = 1.0;
+                real_t beta = 0.0;
+                size_t sizeP = m_data.numStates();
+                size_t sizeB = m_data.numInputs();
+//                gpuErrChk(cublasDgemm(m_data.cuH(), CUBLAS_OP_N, CUBLAS_OP_T,
+//                                      sizeP, sizeB, sizeP, &alpha,
+//                                      DeviceVector(m_d_P,
+//                                                   getIdxMat(child, 0, 0, sizeP),
+//                                                   getIdxMat(child, sizeP, sizeP, sizeP)),
+//                                      sizeP,
+//                                      DeviceVector(m_data.inputDynamics(),
+//                                                   getIdxMat(child, 0, 0, sizeP, sizeB),
+//                                                   getIdxMat(child, sizeP, sizeB, sizeP, sizeB)),
+//                                      sizeP,
+//                                      &beta, d_matPB, sizeB));
+//                gpuErrChk(cublasDgemm(m_data.cuH(), transb, transc, m, n, k, &alpha, d_AB, ldab, d_C, ldc, &beta, d_D, ldd));
+//                sum_for_r = sum_for_r + \
+//                                    self.__raocp.control_dynamics_at_node(j).T @ self.__P[j] @ \
+//                                    self.__raocp.control_dynamics_at_node(j);
+//                sum_for_k = sum_for_k + \
+//                                    self.__raocp.control_dynamics_at_node(j).T @ self.__P[j] @ \
+//                                    self.__raocp.state_dynamics_at_node(j);
+            }
+//            r_tilde = np.eye(self.__control_size) + sum_for_r;
+//            self.__cholesky_data[i] = scipy.linalg.cho_factor(r_tilde);
+//            self.__K[i] = scipy.linalg.cho_solve(self.__cholesky_data[i], -sum_for_k);
+//            sum_for_p = 0;
+//            for (j in children_of_i) {
+//                self.__sum_of_dynamics[j] = self.__raocp.state_dynamics_at_node(j) + \
+//                    self.__raocp.control_dynamics_at_node(j) @ self.__K[i];
+//                sum_for_p = sum_for_p + self.__sum_of_dynamics[j].T @ self.__P[j] @ self.__sum_of_dynamics[j];
+//            }
+//            self.__P[i] = np.eye(self.__state_size) + self.__K[i].T @ self.__K[i] + sum_for_p;
+        }
+    if (stage == 0) break;
+    }
 //
 //    /** Offline: projection on kernel */
 //    m_d_kernelConstraintMat.allocateOnDevice(_ * m_tree.numNonleafNodes());

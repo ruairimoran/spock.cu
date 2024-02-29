@@ -6,7 +6,7 @@
 
 __global__ void d_populateProbabilities(size_t* anc, real_t* prob, size_t numNodes, real_t* condProb);
 __global__ void d_populateChildren(size_t* from, size_t* to, size_t numNonleafNodes, size_t* numChildren);
-__global__ void d_populateStages(size_t* stages, size_t numStages, size_t numNodes, size_t* stageFrom, size_t* stageTo);
+__global__ void d_populateStages(size_t* stages, size_t numStages, size_t numNodes, size_t* nodeFrom, size_t* nodeTo);
 
 
 /**
@@ -32,8 +32,8 @@ class ScenarioTree {
         DeviceVector<size_t> m_d_childFrom;  ///< Ptr to first child of node at index
         DeviceVector<size_t> m_d_childTo;  ///< Ptr to last child of node at index
         DeviceVector<size_t> m_d_numChildren;  ///< Ptr to number of children of node at index
-        DeviceVector<size_t> m_d_stageFrom;  ///< Ptr to first node of stage at index
-        DeviceVector<size_t> m_d_stageTo;  ///< Ptr to last node of stage at index
+        DeviceVector<size_t> m_d_nodeFrom;  ///< Ptr to first node of stage at index
+        DeviceVector<size_t> m_d_nodeTo;  ///< Ptr to last node of stage at index
 
 	public:
 		/**
@@ -75,8 +75,8 @@ class ScenarioTree {
             m_d_childFrom.allocateOnDevice(m_numNonleafNodes);
             m_d_childTo.allocateOnDevice(m_numNonleafNodes);
             m_d_numChildren.allocateOnDevice(m_numNonleafNodes);
-            m_d_stageFrom.allocateOnDevice(m_numStages);
-            m_d_stageTo.allocateOnDevice(m_numStages);
+            m_d_nodeFrom.allocateOnDevice(m_numStages);
+            m_d_nodeTo.allocateOnDevice(m_numStages);
 
             /** Store array data from JSON in host memory */
             for (rapidjson::SizeType i = 0; i<m_numNodes; i++) {
@@ -105,7 +105,7 @@ class ScenarioTree {
             d_populateChildren<<<DIM2BLOCKS(m_numNonleafNodes), THREADS_PER_BLOCK>>>(
                 m_d_childFrom.get(), m_d_childTo.get(), m_numNonleafNodes, m_d_numChildren.get());
             d_populateStages<<<DIM2BLOCKS(m_numStages), THREADS_PER_BLOCK>>>(
-                m_d_stages.get(), m_numStages, m_numNodes, m_d_stageFrom.get(), m_d_stageTo.get());
+                m_d_stages.get(), m_numStages, m_numNodes, m_d_nodeFrom.get(), m_d_nodeTo.get());
         }
 
 		/**
@@ -131,8 +131,8 @@ class ScenarioTree {
         DeviceVector<size_t>& childFrom() { return m_d_childFrom; }
         DeviceVector<size_t>& childTo() { return m_d_childTo; }
         DeviceVector<size_t>& numChildren() { return m_d_numChildren; }
-        DeviceVector<size_t>& stageFrom() { return m_d_stageFrom; }
-        DeviceVector<size_t>& stageTo() { return m_d_stageTo; }
+        DeviceVector<size_t>& nodeFrom() { return m_d_nodeFrom; }
+        DeviceVector<size_t>& nodeTo() { return m_d_nodeTo; }
 
         /**
          * Debugging
@@ -197,14 +197,14 @@ class ScenarioTree {
 			}
 			std::cout << std::endl;
 
-            m_d_stageFrom.download(hostDataIntNumStages);
+            m_d_nodeFrom.download(hostDataIntNumStages);
             std::cout << "Stage::from (from device): ";
             for (size_t i=0; i<m_numStages; i++) {
                 std::cout << hostDataIntNumStages[i] << " ";
             }
             std::cout << std::endl;
 
-            m_d_stageTo.download(hostDataIntNumStages);
+            m_d_nodeTo.download(hostDataIntNumStages);
             std::cout << "Stage::to (from device): ";
             for (size_t i=0; i<m_numStages; i++) {
                 std::cout << hostDataIntNumStages[i] << " ";

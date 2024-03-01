@@ -142,26 +142,21 @@ void Cache::offline_projection_setup() {
         for (size_t node=nodeFrom; node<=nodeTo; node++) {
             size_t chFrom = m_tree.childFrom().fetchElementFromDevice(node);
             size_t chTo = m_tree.childTo().fetchElementFromDevice(node);
-            DeviceVector<real_t> d_matPB(m_data.numStates() * m_data.numInputs());
             DeviceVector<real_t> d_sumR(std::vector(m_data.numInputs() * m_data.numInputs(), 0.0));
             DeviceVector<real_t> d_sumK(std::vector(m_data.numInputs() * m_data.numStates(), 0.0));
             for (size_t child=chFrom; child<=chTo; child++) {
-                real_t alpha = 1.0;
-                real_t beta = 0.0;
                 size_t sizeP = m_data.numStates();
                 size_t sizeB = m_data.numInputs();
-//                gpuErrChk(cublasDgemm(m_data.cuH(), CUBLAS_OP_N, CUBLAS_OP_T,
-//                                      sizeP, sizeB, sizeP, &alpha,
-//                                      DeviceVector(m_d_P,
-//                                                   getIdxMat(child, 0, 0, sizeP),
-//                                                   getIdxMat(child, sizeP, sizeP, sizeP)),
-//                                      sizeP,
-//                                      DeviceVector(m_data.inputDynamics(),
-//                                                   getIdxMat(child, 0, 0, sizeP, sizeB),
-//                                                   getIdxMat(child, sizeP, sizeB, sizeP, sizeB)),
-//                                      sizeP,
-//                                      &beta, d_matPB, sizeB));
-//                gpuErrChk(cublasDgemm(m_data.cuH(), transb, transc, m, n, k, &alpha, d_AB, ldab, d_C, ldc, &beta, d_D, ldd));
+                DeviceVector<real_t> d_matP(m_d_P,
+                                              getIdxMat(child, 0, 0, sizeP),
+                                              getIdxMat(child, sizeP, sizeP, sizeP));
+                DeviceVector<real_t> d_matB(m_data.inputDynamics(),
+                                              getIdxMat(child, 0, 0, sizeP, sizeB),
+                                              getIdxMat(child, sizeP, sizeB, sizeP, sizeB));
+                DeviceVector<real_t> d_matPB(m_data.numStates() * m_data.numInputs());
+                gpuMatMul(m_data.context(), sizeP, sizeP, sizeB, d_matP, d_matB, d_matPB);
+                DeviceVector<real_t> d_matBPB(m_data.numInputs() * m_data.numInputs());
+                gpuMatMul(m_data.context(), sizeP, sizeP, sizeB, d_matB, d_matPB, d_matBPB, true);
 //                sum_for_r = sum_for_r + \
 //                                    self.__raocp.control_dynamics_at_node(j).T @ self.__P[j] @ \
 //                                    self.__raocp.control_dynamics_at_node(j);

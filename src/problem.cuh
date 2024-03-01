@@ -196,7 +196,7 @@ class ProblemData {
         /**
          * Getters
          */
-        Context cuH() { return m_context; }
+        Context& context() { return m_context; }
         size_t numStates() { return m_numStates; }
         size_t numInputs() { return m_numInputs; }
         DeviceVector<real_t>& systemDynamics() { return m_d_systemDynamics; }

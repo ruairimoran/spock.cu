@@ -1,11 +1,11 @@
 {
 "stateSize": 3,
 "inputSize": 2,
-"systemDynamicsMode0": [
+"stateDynamicsMode0": [
     1.0, 0.0, 0.0, 
     0.0, 1.0, 0.0, 
     0.0, 0.0, 1.0],
-"systemDynamicsMode1": [
+"stateDynamicsMode1": [
     -1.0, 0.0, 0.0, 
     0.0, -1.0, 0.0, 
     0.0, 0.0, -1.0],

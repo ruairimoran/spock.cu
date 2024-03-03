@@ -17,7 +17,7 @@ target_sources(spock_tests  # add files
         test_risks.cu
         test_problem.cu
         test_cache.cu
-        test_functions.cu
+        test_wrappers.cu
 )
 target_link_libraries(spock_tests
     PRIVATE

@@ -8,5 +8,6 @@ target_link_libraries(spock_src
     PUBLIC 
         spock_compiler_flags
         -lcublas
+        -lcusolver
         -lcudadevrt)
 # ----

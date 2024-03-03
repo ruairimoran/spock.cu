@@ -20,7 +20,7 @@ class ProblemData {
         Context m_context;  ///< Handle for cublas
         size_t m_numStates = 0;  ///< Total number system states
         size_t m_numInputs = 0;  ///< Total number control inputs
-        DeviceVector<real_t> m_d_systemDynamics;  ///< Ptr to
+        DeviceVector<real_t> m_d_stateDynamics;  ///< Ptr to
         DeviceVector<real_t> m_d_inputDynamics;  ///< Ptr to
         DeviceVector<real_t> m_d_stateWeight;  ///< Ptr to
         DeviceVector<real_t> m_d_inputWeight;  ///< Ptr to
@@ -60,7 +60,7 @@ class ProblemData {
             size_t lenDoubleInput = m_numInputs * 2;
 
             /** Allocate memory on host for JSON data */
-            std::vector<real_t> jsonSystemDynamics(lenStateMat * m_tree.numEvents());
+            std::vector<real_t> jsonStateDynamics(lenStateMat * m_tree.numEvents());
             std::vector<real_t> jsonInputDynamics(lenInputDynMat * m_tree.numEvents());
             std::vector<real_t> jsonStateWeight(lenStateMat * m_tree.numEvents());
             std::vector<real_t> jsonInputWeight(lenInputWgtMat * m_tree.numEvents());
@@ -72,7 +72,7 @@ class ProblemData {
             real_t jsonRiskAlpha;
 
             /** Allocate memory on device */
-            m_d_systemDynamics.allocateOnDevice(lenStateMat * m_tree.numNodes());
+            m_d_stateDynamics.allocateOnDevice(lenStateMat * m_tree.numNodes());
             m_d_inputDynamics.allocateOnDevice(lenInputDynMat * m_tree.numNodes());
             m_d_stateWeight.allocateOnDevice(lenStateMat * m_tree.numNodes());
             m_d_inputWeight.allocateOnDevice(lenInputWgtMat * m_tree.numNodes());
@@ -83,8 +83,8 @@ class ProblemData {
 
             /** Store array data from JSON in host memory */
             for (rapidjson::SizeType i = 0; i<lenStateMat; i++) {
-                jsonSystemDynamics[i] = doc["systemDynamicsMode0"][i].GetDouble();
-                jsonSystemDynamics[i+lenStateMat] = doc["systemDynamicsMode1"][i].GetDouble();
+                jsonStateDynamics[i] = doc["stateDynamicsMode0"][i].GetDouble();
+                jsonStateDynamics[i+lenStateMat] = doc["stateDynamicsMode1"][i].GetDouble();
                 jsonStateWeight[i] = doc["stateWeightMode0"][i].GetDouble();
                 jsonStateWeight[i+lenStateMat] = doc["stateWeightMode1"][i].GetDouble();
                 jsonStateWeightLeaf[i] = doc["stateWeightLeafMode0"][i].GetDouble();
@@ -112,7 +112,7 @@ class ProblemData {
             jsonRiskAlpha = doc["riskParams"][1].GetDouble();
 
             /** Create full arrays on host */
-            std::vector<real_t> hostSystemDynamics(lenStateMat, 0.);
+            std::vector<real_t> hostStateDynamics(lenStateMat, 0.);
             std::vector<real_t> hostInputDynamics(lenInputDynMat, 0.);
             std::vector<real_t> hostStateWeight(lenStateMat, 0.);
             std::vector<real_t> hostInputWeight(lenInputWgtMat, 0.);
@@ -128,9 +128,9 @@ class ProblemData {
             m_tree.events().download(hostEvents);
             for (size_t i=1; i<m_tree.numNodes(); i++) {
                 size_t event = hostEvents[i];
-                hostSystemDynamics.insert(hostSystemDynamics.end(),
-                                          jsonSystemDynamics.begin() + (event * lenStateMat),
-                                          jsonSystemDynamics.begin() + (event * lenStateMat + lenStateMat));
+                hostStateDynamics.insert(hostStateDynamics.end(),
+                                          jsonStateDynamics.begin() + (event * lenStateMat),
+                                          jsonStateDynamics.begin() + (event * lenStateMat + lenStateMat));
                 hostInputDynamics.insert(hostInputDynamics.end(),
                                          jsonInputDynamics.begin() + (event * lenInputDynMat),
                                          jsonInputDynamics.begin() + (event * lenInputDynMat + lenInputDynMat));
@@ -178,7 +178,7 @@ class ProblemData {
             }
 
             /** Transfer array data to device */
-            m_d_systemDynamics.upload(hostSystemDynamics);
+            m_d_stateDynamics.upload(hostStateDynamics);
             m_d_inputDynamics.upload(hostInputDynamics);
             m_d_stateWeight.upload(hostStateWeight);
             m_d_inputWeight.upload(hostInputWeight);
@@ -199,7 +199,7 @@ class ProblemData {
         Context& context() { return m_context; }
         size_t numStates() { return m_numStates; }
         size_t numInputs() { return m_numInputs; }
-        DeviceVector<real_t>& systemDynamics() { return m_d_systemDynamics; }
+        DeviceVector<real_t>& stateDynamics() { return m_d_stateDynamics; }
         DeviceVector<real_t>& inputDynamics() { return m_d_inputDynamics; }
         DeviceVector<real_t>& stateWeight() { return m_d_stateWeight; }
         DeviceVector<real_t>& inputWeight() { return m_d_inputWeight; }
@@ -220,8 +220,8 @@ class ProblemData {
 
             size_t len = m_numStates * m_numStates * m_tree.numNodes();
             std::vector<real_t> hostData(len);
-            m_d_systemDynamics.download(hostData);
-            std::cout << "System dynamics (from device): ";
+            m_d_stateDynamics.download(hostData);
+            std::cout << "State dynamics (from device): ";
             for (size_t i=0; i<len; i++) {
                 std::cout << hostData[i] << " ";
             }

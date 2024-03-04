@@ -20,7 +20,7 @@ int main(void) {
 
     gpuCholeskySetup(context, n, d_workspace);
     gpuCholeskyFactor(context, n, d_workspace, d_A, d_info, true);
-    gpuCholeskySolve(context, n, d_A, d_x, d_b, d_info, true);
+    gpuCholeskySolve(context, n, 1, d_A, d_x, d_b, d_info, true);
 
     d_x.download(hostData);
     std::cout << "x (from device): ";

@@ -213,7 +213,7 @@ void Cache::offline_projection_setup() {
                                             getIdxMat(child, 0, 0, m_numStates, m_numStates),
                                             getIdxMat(child, m_numStates, m_numStates, m_numStates, m_numStates));
                 gpuMatAdd(m_data.context(), m_numStates, m_numStates, d_matA, d_matBK, d_matD);
-                DeviceVector<real_t> d_matDPD(m_numStates);
+                DeviceVector<real_t> d_matDPD(m_numStates * m_numStates);
                 gpuMatMul(m_data.context(), m_numStates, m_numStates, m_numStates, d_matD, d_matP, d_matDPD, true);
                 gpuMatMul(m_data.context(), m_numStates, m_numStates, m_numStates, d_matDPD, d_matD, d_matDPD);
                 gpuMatAdd(m_data.context(), m_numStates, m_numStates, d_matDPD, d_forP, d_forP);

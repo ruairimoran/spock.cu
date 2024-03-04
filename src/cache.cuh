@@ -152,7 +152,7 @@ void Cache::offline_projection_setup() {
     m_d_dynamicsSum.allocateOnDevice(m_numStates * m_numStates * m_tree.numNodes());
     /** set all leaf P matrices to identity */
     for (size_t i = m_tree.numNonleafNodes(); i < m_tree.numNodes(); i++) {
-        d_setMatToId<<<m_numStates, THREADS_PER_BLOCK>>>(m_d_P.get(), i, m_numStates);
+        d_setMatToId<<<m_numStates, THREADS_PER_BLOCK>>>(m_d_P.get(), m_numStates, i);
     }
     for (size_t stage = m_tree.numStages() - 2; true; stage--) {  ///< we don't need `stage >= 0` because size_t
         size_t nodeFrom = m_tree.nodeFrom().fetchElementFromDevice(stage);

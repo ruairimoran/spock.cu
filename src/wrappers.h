@@ -14,6 +14,43 @@ void typeError(T functionDescription) {
 
 
 /**
+ * Transpose matrix on a device
+ *
+ * The cuBLAS library uses column-major order for data layout. We use row-major order.
+ * They can be easily exchanged: a row-major matrix is the transpose of it's column-major data.
+ * In terms of row-major matrices, this function computes C = A.T.
+ * To do this, we use cuBLAS to compute C.T = (A.T).T.
+ * The transpose of A and C do not have to be computed,
+ * as cuBLAS reads and writes column-major data, which is the transposes of the given row-major data.
+ *
+ * @tparam T type of elements in the matrices
+ * @param context cuBLAS handle
+ * @param rows rows of A
+ * @param cols cols of A
+ * @param A input matrix
+ * @param C output matrix
+ */
+template<typename T>
+void gpuMatT(Context &context, size_t rows, size_t cols,
+             DeviceVector<T> &A,
+             DeviceVector<T> &C) {
+    T alpha = 1.0;
+    T beta = 0.0;
+    if constexpr (std::is_same_v<T, double>) {
+        gpuErrChk(cublasDgeam(context.blas(),
+                              CUBLAS_OP_T,
+                              CUBLAS_OP_N,
+                              rows, cols,
+                              &alpha,
+                              A.get(), cols,
+                              &beta,
+                              A.get(), rows,
+                              C.get(), rows));
+    } else { typeError(__PRETTY_FUNCTION__); }
+}
+
+
+/**
  * Add two matrices on a device
  *
  * The cuBLAS library uses column-major order for data layout. We use row-major order.
@@ -36,11 +73,14 @@ void typeError(T functionDescription) {
  */
 template<typename T>
 void gpuMatAdd(Context &context, size_t rows, size_t cols,
-               DeviceVector<T> &A, DeviceVector<T> &B, DeviceVector<T> &C, bool transA = false, bool transB = false) {
+               DeviceVector<T> &A,
+               DeviceVector<T> &B,
+               DeviceVector<T> &C,
+               bool transA = false, bool transB = false) {
     cublasOperation_t opA = transA ? CUBLAS_OP_T : CUBLAS_OP_N;
     cublasOperation_t opB = transB ? CUBLAS_OP_T : CUBLAS_OP_N;
-    const T alpha = 1.0;
-    const T beta = 1.0;
+    T alpha = 1.0;
+    T beta = 1.0;
     size_t lda, ldb = 0;
     if (not transA && not transB) {
         lda = cols;
@@ -97,11 +137,14 @@ void gpuMatAdd(Context &context, size_t rows, size_t cols,
  */
 template<typename T>
 void gpuMatMul(Context &context, size_t m, size_t k, size_t n,
-               DeviceVector<T> &A, DeviceVector<T> &B, DeviceVector<T> &C, bool transA = false, bool transB = false) {
+               DeviceVector<T> &A,
+               DeviceVector<T> &B,
+               DeviceVector<T> &C,
+               bool transA = false, bool transB = false) {
     cublasOperation_t opA = transA ? CUBLAS_OP_T : CUBLAS_OP_N;
     cublasOperation_t opB = transB ? CUBLAS_OP_T : CUBLAS_OP_N;
-    const T alpha = 1.0;
-    const T beta = 0.0;
+    T alpha = 1.0;
+    T beta = 0.0;
     size_t lda, ldb = 0;
     if (not transA && not transB) {
         lda = k;
@@ -139,11 +182,12 @@ void gpuMatMul(Context &context, size_t m, size_t k, size_t n,
  *
  * @tparam T type of elements in the workspace (i.e., element type of matrix to be decomposed)
  * @param context cusolver handle
- * @param n dimension of solution vector
+ * @param n n=rows=cols of matrix to be decomposed
  * @param d_workspace workspace for Cholesky decomposition
  */
 template<typename T>
-void gpuCholeskySetup(Context &context, size_t n, DeviceVector<T> &d_workspace) {
+void gpuCholeskySetup(Context &context, size_t n,
+                      DeviceVector<T> &d_workspace) {
     int workspaceSize = 0;
     double *nullPtr = NULL;
     if constexpr (std::is_same_v<T, double>) {
@@ -166,14 +210,15 @@ void gpuCholeskySetup(Context &context, size_t n, DeviceVector<T> &d_workspace) 
  *
  * @tparam T type of elements in matrix to be decomposed
  * @param context cusolver handle
- * @param n dimension of solution vector
+ * @param n n=rows=cols of matrix
  * @param d_workspace workspace for Cholesky decomposition
  * @param d_cholesky matrix to be operated upon, and overwritten with lower-triangular result
  * @param d_info device storage for outcome status of decomposition
  * @param devInfo whether to check outcome status for errors
  */
 template<typename T>
-void gpuCholeskyFactor(Context &context, size_t n, DeviceVector<T> &d_workspace,
+void gpuCholeskyFactor(Context &context, size_t n,
+                       DeviceVector<T> &d_workspace,
                        DeviceVector<T> &d_cholesky,
                        DeviceVector<int> &d_info,
                        bool devInfo = false) {
@@ -198,19 +243,20 @@ void gpuCholeskyFactor(Context &context, size_t n, DeviceVector<T> &d_workspace,
 /**
  * Solve linear system using previously computed Cholesky decomposition
  *
- * Solve the linear system Ax=b for vector x, using the previously computed
+ * Solve the linear system Ax=b for x, using the previously computed
  * lower-triangular part of the Cholesky decomposition of matrix A.
  *
  * @param context cusolver handle
- * @param n dimension of solution vector
+ * @param solRows number of rows of solution
+ * @param solCols number of columns of solution
  * @param d_cholesky lower-triangular matrix result of Cholesky decomposition on A
  * @param d_solution solution of linear system, x
- * @param d_affine affine vector of linear system, b
+ * @param d_affine affine part of linear system, b
  * @param d_info device storage for outcome status of solving system
  * @param devInfo whether to check outcome status for errors
  */
 template<typename T>
-void gpuCholeskySolve(Context &context, size_t n,
+void gpuCholeskySolve(Context &context, size_t solRows, size_t solCols,
                       DeviceVector<T> &d_cholesky,
                       DeviceVector<T> &d_solution,
                       DeviceVector<T> &d_affine,
@@ -220,12 +266,12 @@ void gpuCholeskySolve(Context &context, size_t n,
     if constexpr (std::is_same_v<T, double>) {
         gpuErrChk(cusolverDnDpotrs(context.solver(),
                                    CUBLAS_FILL_MODE_UPPER,
-                                   n,
-                                   1,
+                                   solRows,
+                                   solCols,
                                    d_cholesky.get(),
-                                   n,
+                                   solRows,
                                    d_solution.get(),
-                                   n,
+                                   solRows,
                                    d_info.get()));
     } else { typeError(__PRETTY_FUNCTION__); }
     gpuErrChk(cudaDeviceSynchronize());

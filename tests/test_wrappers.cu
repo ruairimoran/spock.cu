@@ -3,6 +3,24 @@
 #include "../src/wrappers.h"
 
 
+TEST(MatTransposeTest, At) {
+    Context context;
+    size_t rows = 3;
+    size_t cols = 2;
+    std::vector<real_t> matA{1, 3,
+                             5, 7,
+                             9, 11};
+    DeviceVector<real_t> d_matA(matA);
+    DeviceVector<real_t> d_matAt(rows*cols);
+    gpuMatT(context, rows, cols, d_matA, d_matAt);
+    std::vector<real_t> hostData(rows * cols);
+    d_matAt.download(hostData);
+    std::vector<real_t> expectedResult{1, 5, 9,
+                                       3, 7, 11};
+    ASSERT_EQ(hostData, expectedResult);
+}
+
+
 TEST(MatAddTest, APlusB) {
     Context context;
     size_t rows = 3;
@@ -229,9 +247,9 @@ TEST(CholeskyDecompositionTest, Factor) {
     DeviceVector<real_t> d_A(A);
     DeviceVector<real_t> d_C(n * n);
     gpuMatMul(context, n, n, n, d_A, d_A, d_C, false, true);
-    //* setup */
+    /** setup */
     gpuCholeskySetup(context, n, d_workspace);
-    //* factor */
+    /** factor */
     gpuCholeskyFactor(context, n, d_workspace, d_C, d_info, true);
     std::vector<real_t> hostData(n * n);
     d_C.download(hostData);
@@ -240,7 +258,7 @@ TEST(CholeskyDecompositionTest, Factor) {
     }
 }
 
-TEST(CholeskyDecompositionTest, FactorAndSolve) {
+TEST(CholeskyDecompositionTest, FactorAndSolveWithVec) {
     Context context;
     size_t n = 3;
     DeviceVector<real_t> d_workspace;
@@ -251,16 +269,50 @@ TEST(CholeskyDecompositionTest, FactorAndSolve) {
     DeviceVector<real_t> d_A(A);
     DeviceVector<real_t> d_C(n * n);
     gpuMatMul(context, n, n, n, d_A, d_A, d_C, false, true);
-    //* setup */
+    /** setup */
     gpuCholeskySetup(context, n, d_workspace);
-    //* factor */
+    /** factor */
     gpuCholeskyFactor(context, n, d_workspace, d_C, d_info, true);
-    //* solve */
+    /** solve */
     DeviceVector<real_t> d_x(n);
     DeviceVector<real_t> d_b(std::vector<real_t>({17, 97, 281}));
-    gpuCholeskySolve(context, n, d_C, d_x, d_b, d_info, true);
+    gpuCholeskySolve(context, n, 1, d_C, d_x, d_b, d_info, true);
     std::vector<real_t> hostData(n);
     d_x.download(hostData);
     std::vector<real_t> expectedResult{1, 2, 3};
+    ASSERT_EQ(hostData, expectedResult);
+}
+
+TEST(CholeskyDecompositionTest, FactorAndSolveWithMat) {
+    Context context;
+    size_t n = 3;
+    size_t len = n * n;
+    DeviceVector<real_t> d_workspace;
+    DeviceVector<int> d_info(1);
+    std::vector<real_t> A{1, 0, 0,
+                          2, 3, 0,
+                          4, 5, 6};
+    DeviceVector<real_t> d_A(A);
+    DeviceVector<real_t> d_C(len);
+    gpuMatMul(context, n, n, n, d_A, d_A, d_C, false, true);
+    /** setup */
+    gpuCholeskySetup(context, n, d_workspace);
+    /** factor */
+    gpuCholeskyFactor(context, n, d_workspace, d_C, d_info, true);
+    /**
+     * solve:
+     * - Solver reads/writes with column-major order, so we need to transpose input B and output X
+     * - Function already transposes input C
+     * */
+    DeviceVector<real_t> d_X(len);
+    DeviceVector<real_t> d_Xt(len);
+    DeviceVector<real_t> d_B(std::vector<real_t>({37, 44, 51, 215, 253, 291, 635, 739, 843}));
+    DeviceVector<real_t> d_Bt(len);
+    gpuMatT(context, n, n, d_B, d_Bt);
+    gpuCholeskySolve(context, n, n, d_C, d_Xt, d_Bt, d_info, true);
+    gpuMatT(context, n, n, d_Xt, d_X);
+    std::vector<real_t> hostData(len);
+    d_X.download(hostData);
+    std::vector<real_t> expectedResult{1, 2, 3, 4, 5, 6, 7, 8, 9};
     ASSERT_EQ(hostData, expectedResult);
 }

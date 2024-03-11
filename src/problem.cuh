@@ -2,16 +2,17 @@
 #define __PROBLEM__
 #include "../include/stdgpu.h"
 #include "tree.cuh"
-#include "cones.cuh"
+#include "constraints.cuh"
 #include "risks.cuh"
 
 
 /**
- * Store problem data
- * - from default file
- * - from user input
+ * Store problem data:
+ * - from file
  *
- * Note: `d_` indicates a device pointer
+ * Notes:
+ * - use column-major storage
+ * - `d_` indicates a device pointer
  */
 class ProblemData {
 
@@ -49,12 +50,12 @@ class ProblemData {
             }
 
             /** Store single element data from JSON in host memory */
-            m_numStates = doc["stateSize"].GetInt();
-            m_numInputs = doc["inputSize"].GetInt();
+            m_numStates = doc["numStates"].GetInt();
+            m_numInputs = doc["numInputs"].GetInt();
 
             /** Sizes */
             size_t lenStateMat = m_numStates * m_numStates;
-            size_t lenInputDynMat = m_numStates * m_numInputs;
+            size_t lenInputDynMat = m_numInputs * m_numStates;
             size_t lenInputWgtMat = m_numInputs * m_numInputs;
             size_t lenDoubleState = m_numStates * 2;
             size_t lenDoubleInput = m_numInputs * 2;
@@ -108,8 +109,8 @@ class ProblemData {
                 jsonInputConstraint[i] = doc["inputConstraintMode0"][i].GetDouble();
                 jsonInputConstraint[i+lenDoubleInput] = doc["inputConstraintMode1"][i].GetDouble();
             }
-            jsonRiskType = doc["riskParams"][0].GetString();
-            jsonRiskAlpha = doc["riskParams"][1].GetDouble();
+            jsonRiskType = doc["risk"]["type"].GetString();
+            jsonRiskAlpha = doc["risk"]["alpha"].GetDouble();
 
             /** Create full arrays on host */
             std::vector<real_t> hostStateDynamics(lenStateMat, 0.);

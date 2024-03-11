@@ -34,6 +34,19 @@ __global__ void d_negate(real_t *data, size_t n, size_t node = 0) {
 
 
 /**
+ * Constraints methods
+*/
+
+__global__ void d_projectRectangle(size_t dimension, real_t *vec, real_t *lowerBound, real_t *upperBound) {
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < dimension) {
+        if (vec[i] < lowerBound[i]) vec[i] = lowerBound[i];
+        if (vec[i] > upperBound[i]) vec[i] = upperBound[i];
+    }
+}
+
+
+/**
  * Risk methods
 */
 

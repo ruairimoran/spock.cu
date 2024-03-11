@@ -61,7 +61,7 @@
     {"type": "Rectangle"},
     {"lb": [-2.0, -2.0, -2.0]},
     {"ub": [2.0, 2.0, 2.0]}],
-"riskParams": [
+"risk": [
     {"type": "AVaR"},
     {"alpha": 0.98}]
 }

@@ -1,31 +1,83 @@
+#include <iomanip>
 #include "../include/stdgpu.h"
 #include "wrappers.h"
 
 
 int main(void) {
-    std::vector<real_t> hostData;
-    Context context;
-    size_t n = 3;
-    size_t len = n * n;
-    hostData.resize(len);
+    // --- gesvd only supports Nrows >= Ncols
+    // --- column major memory ordering
 
-    std::vector<real_t> A{1, 0, 1,
-                          -1, 3, 0,
-                          0, 1, 5};
-    DeviceVector<real_t> d_A(A);
-    DeviceVector<real_t> d_x(n);
-    DeviceVector<real_t> d_b(std::vector<real_t>({1, 6, 15}));
-    DeviceVector<real_t> d_workspace;
+    const int Nrows = 7;
+    const int Ncols = 5;
+
+    // --- cuSOLVE input/output parameters/arrays
+    int workspaceSize = 0;
     DeviceVector<int> d_info(1);
 
-    gpuCholeskySetup(context, n, d_workspace);
-    gpuCholeskyFactor(context, n, d_workspace, d_A, d_info, true);
-    gpuCholeskySolve(context, n, 1, d_A, d_x, d_b, d_info, true);
+    // --- CUDA solver initialization
+    Context context;
+    cusolverDnHandle_t solver_handle = context.solver();
 
-    d_x.download(hostData);
-    std::cout << "x (from device): ";
-    for (size_t i = 0; i < n; i++) { std::cout << hostData[i] << " "; }
-    std::cout << std::endl;
+    // --- Singular values threshold
+    double threshold = 1e-12;
+
+    // --- Setting the host, Nrows x Ncols matrix
+    double *h_A = (double *)malloc(Nrows * Ncols * sizeof(double));
+    for(int j = 0; j < Nrows; j++)
+        for(int i = 0; i < Ncols; i++)
+            h_A[j + i*Nrows] = (i + j*j) * sqrt((double)(i + j));
+
+    // --- Setting the device matrix and moving the host matrix to the device
+    DeviceVector<real_t> d_A(Nrows * Ncols);
+
+    // --- host side SVD results space
+    std::vector<real_t> U(Nrows * Nrows);
+    std::vector<real_t> V(Ncols * Ncols);
+    std::vector<real_t> S(std::min(Nrows, Ncols));
+
+    // --- device side SVD workspace and matrices
+    DeviceVector<real_t> d_U(Nrows * Nrows);
+    DeviceVector<real_t> d_V(Ncols * Ncols);
+    DeviceVector<real_t> d_S(std::min(Nrows, Ncols));
+
+    // --- CUDA SVD initialization
+    cusolverDnDgesvd_bufferSize(solver_handle, Nrows, Ncols, &workspaceSize);
+    DeviceVector<real_t> d_workspace(workspaceSize);
+
+    // --- CUDA SVD execution
+    cusolverDnDgesvd(solver_handle, 'A', 'A', Nrows, Ncols, d_A, Nrows, d_S, d_U, Nrows, d_V, Ncols, d_workspace, workspaceSize, NULL, d_nfo);
+    std::vector<int> info(1);
+    d_info.download(info);
+    if (info[0] != 0) std::cout << "Unsuccessful SVD execution\n\n";
+
+    // --- Moving the results from device to host
+    d_S.download(S);
+    d_U.download(U);
+    d_V.download(V);
+
+    for(int i = 0; i < std::min(Nrows, Ncols); i++)
+        std::cout << "d_S["<<i<<"] = " << std::setprecision(15) << S[i] << std::endl;
+
+    printf("\n\n");
+
+    int count = 0;
+    bool flag = 0;
+    while (!flag) {
+        if (S[count] < threshold) flag = 1;
+        if (count == std::min(Nrows, Ncols)) flag = 1;
+        count++;
+    }
+    count--;
+    printf("The null space of A has dimension %i\n\n", std::min(Ncols, Nrows) - count);
+
+    for(int j = count; j < Ncols; j++) {
+        printf("Basis vector nr. %i\n", j - count);
+        for(int i = 0; i < Ncols; i++)
+            std::cout << "d_V["<<i<<"] = " << std::setprecision(15) << U[j*Ncols + i] << std::endl;
+        printf("\n");
+    }
+
+    cusolverDnDestroy(solver_handle);
 
     return 0;
 }

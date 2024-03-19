@@ -64,7 +64,7 @@ void testSocElse(std::vector<real_t> testVec) {
 
 TEST_F(ConesTest, UniverseCone) {
     UniverseCone myCone(m_context, m_n);
-    myCone.projectOnCone(m_d_data);
+    myCone.project(m_d_data);
     m_d_data.download(m_hostTest);
     EXPECT_TRUE((m_hostTest == m_hostData));
 }
@@ -78,7 +78,7 @@ TEST_F(ConesTest, UniverseDual) {
 
 TEST_F(ConesTest, ZeroCone) {
     ZeroCone myCone(m_context, m_n);
-    myCone.projectOnCone(m_d_data);
+    myCone.project(m_d_data);
     m_d_data.download(m_hostTest);
     EXPECT_TRUE((m_hostTest == m_hostZero));
 }
@@ -92,7 +92,7 @@ TEST_F(ConesTest, ZeroDual) {
 
 TEST_F(ConesTest, NonnegativeOrthantCone) {
     NonnegativeOrthantCone myCone(m_context, m_n);
-    myCone.projectOnCone(m_d_data);
+    myCone.project(m_d_data);
     m_d_data.download(m_hostTest);
     testNnocProjection(m_hostTest);
 }
@@ -108,17 +108,17 @@ TEST_F(ConesTest, SecondOrderConeCone) {
     SecondOrderCone myCone(m_context, m_n);
     /** Testing `if` projection of SOC */
     m_d_data.upload(m_hostSocA);
-    myCone.projectOnCone(m_d_data);
+    myCone.project(m_d_data);
     m_d_data.download(m_hostTest);
     EXPECT_TRUE((m_hostTest == m_hostSocA));
     /** Testing `else if` projection of SOC */
     m_d_data.upload(m_hostSocB);
-    myCone.projectOnCone(m_d_data);
+    myCone.project(m_d_data);
     m_d_data.download(m_hostTest);
     EXPECT_TRUE((m_hostTest == m_hostZero));
     /** Testing `else` projection of SOC */
     m_d_data.upload(m_hostSocC);
-    myCone.projectOnCone(m_d_data);
+    myCone.project(m_d_data);
     m_d_data.download(m_hostTest);
     testSocElse(m_hostTest);
 }
@@ -154,7 +154,7 @@ TEST_F(ConesTest, CartesianCone) {
     myCone.addCone(myZero);
     myCone.addCone(myNnoc);
     myCone.addCone(mySoc);
-    myCone.projectOnCone(m_d_data);
+    myCone.project(m_d_data);
     m_d_data.download(m_hostCart);
     /** Test Universe cone */
     size_t index = 0;
@@ -222,5 +222,5 @@ TEST_F(ConesTest, Dimension) {
 TEST_F(ConesTest, FailDimension) {
     m_d_data.upload(m_hostData);
     UniverseCone myCone(m_context, m_n+1);
-    EXPECT_ANY_THROW(myCone.projectOnCone(m_d_data));
+    EXPECT_ANY_THROW(myCone.project(m_d_data));
 }

@@ -16,13 +16,6 @@ void typeError(T functionDescription) {
 /**
  * Transpose matrix on a device
  *
- * The cuBLAS library uses column-major order for data layout. We use row-major order.
- * They can be easily exchanged: a row-major matrix is the transpose of it's column-major data.
- * In terms of row-major matrices, this function computes C = A.T.
- * To do this, we use cuBLAS to compute C.T = (A.T).T.
- * The transpose of A and C do not have to be computed,
- * as cuBLAS reads and writes column-major data, which is the transposes of the given row-major data.
- *
  * @tparam T type of elements in the matrices
  * @param context cuBLAS handle
  * @param rows rows of A
@@ -53,14 +46,6 @@ void gpuMatT(Context &context, size_t rows, size_t cols,
 /**
  * Add two matrices on a device
  *
- * The cuBLAS library uses column-major order for data layout. We use row-major order.
- * They can be easily exchanged: a row-major matrix is the transpose of it's column-major data.
- * If op(A) is false, op(A) = A. If true, op(A) = A.T.
- * In terms of row-major matrices, this function computes C = op(A) + op(B).
- * To do this, we use cuBLAS to compute C.T = op(A.T) + op(B.T).
- * The transpose of A, B, and C do not have to be computed,
- * as cuBLAS reads and writes column-major data, which is the transposes of the given row-major data.
- *
  * @tparam T type of elements in the matrices
  * @param context cuBLAS handle
  * @param rows outer dimension of op(A)
@@ -81,29 +66,16 @@ void gpuMatAdd(Context &context, size_t rows, size_t cols,
     cublasOperation_t opB = transB ? CUBLAS_OP_T : CUBLAS_OP_N;
     T alpha = 1.0;
     T beta = 1.0;
-    size_t lda, ldb = 0;
-    if (not transA && not transB) {
-        lda = cols;
-        ldb = cols;
-    }
-    if (transA && not transB) {
-        lda = rows;
-        ldb = cols;
-    }
-    if (not transA && transB) {
-        lda = cols;
-        ldb = rows;
-    }
-    if (transA && transB) {
-        lda = rows;
-        ldb = rows;
-    }
-    size_t ldc = cols;
+
+    size_t lda = transA ? cols : rows;
+    size_t ldb = transB ? cols : rows;
+    size_t ldc = rows;
+
     if constexpr (std::is_same_v<T, double>) {
         gpuErrChk(cublasDgeam(context.blas(),
                               opA,
                               opB,
-                              cols, rows,
+                              rows, cols,
                               &alpha,
                               A.get(), lda,
                               &beta,
@@ -115,14 +87,6 @@ void gpuMatAdd(Context &context, size_t rows, size_t cols,
 
 /**
  * Multiply two matrices on a device
- *
- * The cuBLAS library uses column-major order for data layout. We use row-major order.
- * They can be easily exchanged: a row-major matrix is the transpose of it's column-major data.
- * If op(A) is false, op(A) = A. If true, op(A) = A.T.
- * In terms of row-major matrices, this function computes C = op(A) * op(B).
- * To do this, we use cuBLAS to compute C.T = op(B.T) * op(A.T).
- * The transpose of A, B, and C do not have to be computed,
- * as cuBLAS reads and writes column-major data, which is the transposes of the given row-major data.
  *
  * @tparam T type of elements in the matrices
  * @param context cuBLAS handle
@@ -145,32 +109,19 @@ void gpuMatMul(Context &context, size_t m, size_t k, size_t n,
     cublasOperation_t opB = transB ? CUBLAS_OP_T : CUBLAS_OP_N;
     T alpha = 1.0;
     T beta = 0.0;
-    size_t lda, ldb = 0;
-    if (not transA && not transB) {
-        lda = k;
-        ldb = n;
-    }
-    if (transA && not transB) {
-        lda = m;
-        ldb = n;
-    }
-    if (not transA && transB) {
-        lda = k;
-        ldb = k;
-    }
-    if (transA && transB) {
-        lda = m;
-        ldb = k;
-    }
-    size_t ldc = n;
+
+    size_t lda = transA ? k : m;
+    size_t ldb = transB ? n : k;
+    size_t ldc = m;
+
     if constexpr (std::is_same_v<T, double>) {
         gpuErrChk(cublasDgemm(context.blas(),
-                              opB,
                               opA,
-                              n, m, k,
+                              opB,
+                              m, n, k,
                               &alpha,
-                              B.get(), ldb,
                               A.get(), lda,
+                              B.get(), ldb,
                               &beta,
                               C.get(), ldc));
     } else { typeError(__PRETTY_FUNCTION__); }
@@ -192,7 +143,7 @@ void gpuCholeskySetup(Context &context, size_t n,
     double *nullPtr = NULL;
     if constexpr (std::is_same_v<T, double>) {
         gpuErrChk(cusolverDnDpotrf_bufferSize(context.solver(),
-                                              CUBLAS_FILL_MODE_UPPER,
+                                              CUBLAS_FILL_MODE_LOWER,
                                               n,
                                               nullPtr,
                                               n,
@@ -224,7 +175,7 @@ void gpuCholeskyFactor(Context &context, size_t n,
                        bool devInfo = false) {
     if constexpr (std::is_same_v<T, double>) {
         gpuErrChk(cusolverDnDpotrf(context.solver(),
-                                   CUBLAS_FILL_MODE_UPPER,
+                                   CUBLAS_FILL_MODE_LOWER,
                                    n,
                                    d_cholesky.get(),
                                    n,
@@ -265,7 +216,7 @@ void gpuCholeskySolve(Context &context, size_t solRows, size_t solCols,
     d_affine.deviceCopyTo(d_solution);
     if constexpr (std::is_same_v<T, double>) {
         gpuErrChk(cusolverDnDpotrs(context.solver(),
-                                   CUBLAS_FILL_MODE_UPPER,
+                                   CUBLAS_FILL_MODE_LOWER,
                                    solRows,
                                    solCols,
                                    d_cholesky.get(),

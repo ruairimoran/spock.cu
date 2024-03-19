@@ -1,6 +1,6 @@
 #include <iomanip>
 #include "../include/stdgpu.h"
-#include "wrappers.h"
+#include "../src/wrappers.h"
 
 
 int main(void) {
@@ -45,7 +45,7 @@ int main(void) {
     DeviceVector<real_t> d_workspace(workspaceSize);
 
     // --- CUDA SVD execution
-    cusolverDnDgesvd(solver_handle, 'A', 'A', Nrows, Ncols, d_A, Nrows, d_S, d_U, Nrows, d_V, Ncols, d_workspace, workspaceSize, NULL, d_nfo);
+    cusolverDnDgesvd(solver_handle, 'A', 'A', Nrows, Ncols, d_A.get(), Nrows, d_S.get(), d_U.get(), Nrows, d_V.get(), Ncols, d_workspace.get(), workspaceSize, NULL, d_info.get());
     std::vector<int> info(1);
     d_info.download(info);
     if (info[0] != 0) std::cout << "Unsuccessful SVD execution\n\n";

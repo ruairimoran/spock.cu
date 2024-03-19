@@ -10,7 +10,7 @@
 
 __host__ __device__ size_t getIdxMat(size_t node, size_t row, size_t col, size_t rows, size_t cols = 0) {
     if (cols == 0) cols = rows;
-    return (node * rows * cols) + (row * cols + col);
+    return (node * rows * cols) + (col * rows + row);
 }
 
 __global__ void d_setMatToId(real_t *mat, size_t numRows, size_t node = 0) {

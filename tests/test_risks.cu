@@ -39,7 +39,7 @@ TEST_F(RisksTest, AvarConeProject) {
                 m_tree->numChildren(),
                 m_tree->childFrom(),
                 m_tree->conditionalProbabilities());
-    myRisk.cone().projectOnCone(m_d_data);
+    myRisk.cone().project(m_d_data);
     m_d_data.download(m_hostTest);
     EXPECT_TRUE((m_hostTest != m_hostData));
 }

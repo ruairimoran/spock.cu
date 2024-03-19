@@ -25,21 +25,27 @@ TEST(MatAddTest, APlusB) {
     Context context;
     size_t rows = 3;
     size_t cols = 2;
-    std::vector<real_t> matA{1, 3,
-                             5, 7,
-                             9, 11};
-    std::vector<real_t> matB{0, 2,
-                             4, 6,
-                             8, 10};
+    std::vector<real_t> matA{
+        1, 3,
+        5, 7,
+        9, 11
+    };
+    std::vector<real_t> matB{
+        0, 2,
+        4, 6,
+        8, 10
+    };
     DeviceVector<real_t> d_matA(matA);
     DeviceVector<real_t> d_matB(matB);
     DeviceVector<real_t> d_matAPlusB(rows * cols);
     gpuMatAdd(context, rows, cols, d_matA, d_matB, d_matAPlusB);
     std::vector<real_t> hostData(rows * cols);
     d_matAPlusB.download(hostData);
-    std::vector<real_t> expectedResult{1, 5,
-                                       9, 13,
-                                       17, 21};
+    std::vector<real_t> expectedResult{
+        1, 5,
+        9, 13,
+        17, 21
+    };
     ASSERT_EQ(hostData, expectedResult);
 }
 
@@ -47,20 +53,25 @@ TEST(MatAddTest, AtPlusB) {
     Context context;
     size_t rows = 3;
     size_t cols = 2;
-    std::vector<real_t> matA{1, 5, 9,
-                             3, 7, 11};
-    std::vector<real_t> matB{0, 2,
-                             4, 6,
-                             8, 10};
+    std::vector<real_t> matA{
+        1, 3,
+        5, 7,
+        9, 11
+    };
+    std::vector<real_t> matB{
+        0, 4, 8,
+        2, 6, 10
+    };
     DeviceVector<real_t> d_matA(matA);
     DeviceVector<real_t> d_matB(matB);
     DeviceVector<real_t> d_matAtPlusB(rows * cols);
     gpuMatAdd(context, rows, cols, d_matA, d_matB, d_matAtPlusB, true);
     std::vector<real_t> hostData(rows * cols);
     d_matAtPlusB.download(hostData);
-    std::vector<real_t> expectedResult{1, 5,
-                                       9, 13,
-                                       17, 21};
+    std::vector<real_t> expectedResult{
+        1, 9, 17,
+        5, 13, 21
+    };
     ASSERT_EQ(hostData, expectedResult);
 }
 
@@ -68,20 +79,25 @@ TEST(MatAddTest, APlusBt) {
     Context context;
     size_t rows = 3;
     size_t cols = 2;
-    std::vector<real_t> matA{1, 3,
-                             5, 7,
-                             9, 11};
-    std::vector<real_t> matB{0, 4, 8,
-                             2, 6, 10};
+    std::vector<real_t> matA{
+        1, 5, 9,
+        3, 7, 11
+    };
+    std::vector<real_t> matB{
+        0, 2,
+        4, 6,
+        8, 10
+    };
     DeviceVector<real_t> d_matA(matA);
     DeviceVector<real_t> d_matB(matB);
     DeviceVector<real_t> d_matAPlusBt(rows * cols);
     gpuMatAdd(context, rows, cols, d_matA, d_matB, d_matAPlusBt, false, true);
     std::vector<real_t> hostData(rows * cols);
     d_matAPlusBt.download(hostData);
-    std::vector<real_t> expectedResult{1, 5,
-                                       9, 13,
-                                       17, 21};
+    std::vector<real_t> expectedResult{
+        1, 9, 17,
+        5, 13, 21
+    };
     ASSERT_EQ(hostData, expectedResult);
 }
 
@@ -89,19 +105,26 @@ TEST(MatAddTest, AtPlusBt) {
     Context context;
     size_t rows = 3;
     size_t cols = 2;
-    std::vector<real_t> matA{1, 5, 9,
-                             3, 7, 11};
-    std::vector<real_t> matB{0, 4, 8,
-                             2, 6, 10};
+    std::vector<real_t> matA{
+        1, 3,
+        5, 7,
+        9, 11
+    };
+    std::vector<real_t> matB{
+        0, 2,
+        4, 6,
+        8, 10
+    };
     DeviceVector<real_t> d_matA(matA);
     DeviceVector<real_t> d_matB(matB);
     DeviceVector<real_t> d_matAtPlusBt(rows * cols);
     gpuMatAdd(context, rows, cols, d_matA, d_matB, d_matAtPlusBt, true, true);
     std::vector<real_t> hostData(rows * cols);
     d_matAtPlusBt.download(hostData);
-    std::vector<real_t> expectedResult{1, 5,
-                                       9, 13,
-                                       17, 21};
+    std::vector<real_t> expectedResult{
+        1, 9, 17,
+        5, 13, 21
+    };
     ASSERT_EQ(hostData, expectedResult);
 }
 
@@ -109,16 +132,18 @@ TEST(MatAddTest, APlusAStoredInA) {
     Context context;
     size_t rows = 3;
     size_t cols = 2;
-    std::vector<real_t> matA{1, 3,
-                             5, 7,
-                             9, 11};
+    std::vector<real_t> matA{
+        1, 5, 9,
+        3, 7, 11
+    };
     DeviceVector<real_t> d_matA(matA);
     gpuMatAdd(context, rows, cols, d_matA, d_matA, d_matA);
     std::vector<real_t> hostData(rows * cols);
     d_matA.download(hostData);
-    std::vector<real_t> expectedResult{2, 6,
-                                       10, 14,
-                                       18, 22};
+    std::vector<real_t> expectedResult{
+        2, 10, 18,
+        6, 14, 22
+    };
     ASSERT_EQ(hostData, expectedResult);
 }
 
@@ -128,23 +153,30 @@ TEST(MatMulTest, AB) {
     size_t m = 4;
     size_t k = 3;
     size_t n = 2;
-    std::vector<real_t> matA{1, 2, 3,
-                             4, 5, 6,
-                             7, 8, 9,
-                             10, 11, 12};
-    std::vector<real_t> matB{1, 2,
-                             3, 4,
-                             5, 6};
+
+    std::vector<real_t> matA{
+        1, 4, 7, 10,
+        2, 5, 8, 11,
+        3, 6, 9, 12
+    };
+
+    std::vector<real_t> matB{
+        1, 3, 5,
+        2, 4, 6,
+    };
+
     DeviceVector<real_t> d_matA(matA);
     DeviceVector<real_t> d_matB(matB);
     DeviceVector<real_t> d_matAB(m * n);
     gpuMatMul(context, m, k, n, d_matA, d_matB, d_matAB);
     std::vector<real_t> hostData(m * n);
     d_matAB.download(hostData);
-    std::vector<real_t> expectedResult{22, 28,
-                                       49, 64,
-                                       76, 100,
-                                       103, 136};
+
+    std::vector<real_t> expectedResult{
+        22, 49, 76, 103,
+        28, 64, 100, 136
+    };
+
     ASSERT_EQ(hostData, expectedResult);
 }
 
@@ -153,22 +185,31 @@ TEST(MatMulTest, AtB) {
     size_t m = 4;
     size_t k = 3;
     size_t n = 2;
-    std::vector<real_t> matA{1, 2, 3, 4,
-                             5, 6, 7, 8,
-                             9, 10, 11, 12};
-    std::vector<real_t> matB{1, 2,
-                             3, 4,
-                             5, 6};
+
+    std::vector<real_t> matA{
+        1, 5, 9,
+        2, 6, 10,
+        3, 7, 11,
+        4, 8, 12
+    };
+
+    std::vector<real_t> matB{
+        1, 3, 5,
+        2, 4, 6
+    };
+
     DeviceVector<real_t> d_matA(matA);
     DeviceVector<real_t> d_matB(matB);
     DeviceVector<real_t> d_matAtB(m * n);
     gpuMatMul(context, m, k, n, d_matA, d_matB, d_matAtB, true);
     std::vector<real_t> hostData(m * n);
     d_matAtB.download(hostData);
-    std::vector<real_t> expectedResult{61, 76,
-                                       70, 88,
-                                       79, 100,
-                                       88, 112};
+
+    std::vector<real_t> expectedResult{
+        61, 70, 79, 88,
+        76, 88, 100, 112
+    };
+
     ASSERT_EQ(hostData, expectedResult);
 }
 
@@ -177,22 +218,31 @@ TEST(MatMulTest, ABt) {
     size_t m = 4;
     size_t k = 3;
     size_t n = 2;
-    std::vector<real_t> matA{1, 2, 3,
-                             4, 5, 6,
-                             7, 8, 9,
-                             10, 11, 12};
-    std::vector<real_t> matB{1, 2, 3,
-                             4, 5, 6};
+
+    std::vector<real_t> matA{
+        1, 4, 7, 10,
+        2, 5, 8, 11,
+        3, 6, 9, 12
+    };
+
+    std::vector<real_t> matB{
+        1, 4,
+        2, 5,
+        3, 6
+    };
+
     DeviceVector<real_t> d_matA(matA);
     DeviceVector<real_t> d_matB(matB);
     DeviceVector<real_t> d_matABt(m * n);
     gpuMatMul(context, m, k, n, d_matA, d_matB, d_matABt, false, true);
     std::vector<real_t> hostData(m * n);
     d_matABt.download(hostData);
-    std::vector<real_t> expectedResult{14, 32,
-                                       32, 77,
-                                       50, 122,
-                                       68, 167};
+
+    std::vector<real_t> expectedResult{
+        14, 32, 50, 68,
+        32, 77, 122, 167
+    };
+
     ASSERT_EQ(hostData, expectedResult);
 }
 
@@ -201,37 +251,56 @@ TEST(MatMulTest, AtBt) {
     size_t m = 4;
     size_t k = 3;
     size_t n = 2;
-    std::vector<real_t> matA{1, 2, 3, 4,
-                             5, 6, 7, 8,
-                             9, 10, 11, 12};
-    std::vector<real_t> matB{1, 2, 3,
-                             4, 5, 6};
+
+    std::vector<real_t> matA{
+        1, 5, 9,
+        2, 6, 10,
+        3, 7, 11,
+        4, 8, 12
+    };
+
+    std::vector<real_t> matB{
+        1, 4,
+        2, 5,
+        3, 6
+    };
+
     DeviceVector<real_t> d_matA(matA);
     DeviceVector<real_t> d_matB(matB);
     DeviceVector<real_t> d_matAtBt(m * n);
     gpuMatMul(context, m, k, n, d_matA, d_matB, d_matAtBt, true, true);
     std::vector<real_t> hostData(m * n);
     d_matAtBt.download(hostData);
-    std::vector<real_t> expectedResult{38, 83,
-                                       44, 98,
-                                       50, 113,
-                                       56, 128};
+
+    std::vector<real_t> expectedResult{
+        38, 44, 50, 56,
+        83, 98, 113, 128
+    };
+
     ASSERT_EQ(hostData, expectedResult);
 }
 
 TEST(MatMulTest, AAStoredInA) {
     Context context;
     size_t n = 3;
-    std::vector<real_t> matA{1, 2, 3,
-                             4, 5, 6,
-                             7, 8, 9};
+    
+    std::vector<real_t> matA{
+        1, 4, 7,
+        2, 5, 8,
+        3, 6, 9
+    };
+    
     DeviceVector<real_t> d_matA(matA);
     gpuMatMul(context, n, n, n, d_matA, d_matA, d_matA);
     std::vector<real_t> hostData(n * n);
     d_matA.download(hostData);
-    std::vector<real_t> expectedResult{30, 36, 42,
-                                       66, 81, 96,
-                                       102, 126, 150};
+    
+    std::vector<real_t> expectedResult{
+        30, 66, 102,
+        36, 81, 126,
+        42, 96, 150
+    };
+
     ASSERT_EQ(hostData, expectedResult);
 }
 
@@ -241,9 +310,11 @@ TEST(CholeskyDecompositionTest, Factor) {
     size_t n = 3;
     DeviceVector<real_t> d_workspace;
     DeviceVector<int> d_info(1);
-    std::vector<real_t> A{1, 0, 0,
-                          2, 3, 0,
-                          4, 5, 6};
+    std::vector<real_t> A{
+        1, 2, 4,
+        0, 3, 5,
+        0, 0, 6
+    };
     DeviceVector<real_t> d_A(A);
     DeviceVector<real_t> d_C(n * n);
     gpuMatMul(context, n, n, n, d_A, d_A, d_C, false, true);
@@ -253,7 +324,7 @@ TEST(CholeskyDecompositionTest, Factor) {
     gpuCholeskyFactor(context, n, d_workspace, d_C, d_info, true);
     std::vector<real_t> hostData(n * n);
     d_C.download(hostData);
-    for (size_t i: {0, 3, 4, 6, 7, 8}) {
+    for (size_t i: {0, 1, 2, 4, 5, 8}) {
         ASSERT_EQ(hostData[i], A[i]);
     }
 }
@@ -263,9 +334,9 @@ TEST(CholeskyDecompositionTest, FactorAndSolveWithVec) {
     size_t n = 3;
     DeviceVector<real_t> d_workspace;
     DeviceVector<int> d_info(1);
-    std::vector<real_t> A{1, 0, 0,
-                          2, 3, 0,
-                          4, 5, 6};
+    std::vector<real_t> A{1, 2, 4,
+                          0, 3, 5,
+                          0, 0, 6};
     DeviceVector<real_t> d_A(A);
     DeviceVector<real_t> d_C(n * n);
     gpuMatMul(context, n, n, n, d_A, d_A, d_C, false, true);
@@ -289,9 +360,9 @@ TEST(CholeskyDecompositionTest, FactorAndSolveWithMat) {
     size_t len = n * n;
     DeviceVector<real_t> d_workspace;
     DeviceVector<int> d_info(1);
-    std::vector<real_t> A{1, 0, 0,
-                          2, 3, 0,
-                          4, 5, 6};
+    std::vector<real_t> A{1, 2, 4,
+                          0, 3, 5,
+                          0, 0, 6};
     DeviceVector<real_t> d_A(A);
     DeviceVector<real_t> d_C(len);
     gpuMatMul(context, n, n, n, d_A, d_A, d_C, false, true);

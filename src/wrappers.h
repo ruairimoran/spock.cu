@@ -1,8 +1,65 @@
-#ifndef __WRAPPERS__
-#define __WRAPPERS__
+#ifndef WRAPPERS_H
+#define WRAPPERS_H
 
 #include "../include/stdgpu.h"
 
+#include <source_location>
+
+namespace internal {
+
+template <typename T>
+cusolverStatus_t gesvdBufferSizeGeneric(cusolverDnHandle_t handle, int m, int n, int* lwork);
+
+template <>
+cusolverStatus_t gesvdBufferSizeGeneric<float>(cusolverDnHandle_t handle, int m, int n, int* lwork) {
+    return cusolverDnSgesvd_bufferSize(handle, m, n, lwork);
+}
+
+template <>
+cusolverStatus_t gesvdBufferSizeGeneric<double>(cusolverDnHandle_t handle, int m, int n, int* lwork) {
+    return cusolverDnDgesvd_bufferSize(handle, m, n, lwork);
+}
+
+cusolverStatus_t gesvdGeneric(
+    cusolverDnHandle_t handle,
+    signed char jobu, signed char jobvt,
+    int m, int n,
+    float* A, int lda,
+    float* S, 
+    float* U, int ldu,
+    float* VT, int ldvt,
+    float* work,
+    int lwork,
+    float* rwork,
+    int* info
+) {
+    return cusolverDnSgesvd(handle, jobu, jobvt, m, n, A, lda, S, U, ldu, VT, ldvt, work, lwork, rwork, info);
+}
+
+cusolverStatus_t gesvdGeneric(
+    cusolverDnHandle_t handle,
+    signed char jobu, signed char jobvt,
+    int m, int n,
+    double* A, int lda,
+    double* S, 
+    double* U, int ldu,
+    double* VT, int ldvt,
+    double* work,
+    int lwork,
+    double* rwork,
+    int* info
+) {
+    return cusolverDnDgesvd(handle, jobu, jobvt, m, n, A, lda, S, U, ldu, VT, ldvt, work, lwork, rwork, info);
+}
+
+}
+
+inline void gpuCheckError(cusolverStatus_t status, std::source_location loc = std::source_location::current()) {
+    if (status != CUSOLVER_STATUS_SUCCESS) {
+        std::cerr << "cuSOLVER error: " << status << " (" << loc.file_name() << ":" << loc.line() << ")\n";
+        exit(EXIT_FAILURE);
+    }
+}
 
 /**
  * Handle template type error
@@ -83,7 +140,6 @@ void gpuMatAdd(Context &context, size_t rows, size_t cols,
                               C.get(), ldc));
     } else { typeError(__PRETTY_FUNCTION__); }
 }
-
 
 /**
  * Multiply two matrices on a device
@@ -233,5 +289,50 @@ void gpuCholeskySolve(Context &context, size_t solRows, size_t solCols,
     }
 }
 
+template <typename T>
+void gpuSVDSetup(Context& context, int numRows, int numCols, DeviceVector<T>& d_workspace) {
+    int workspaceSize;
+    gpuCheckError(internal::gesvdBufferSizeGeneric<T>(
+        context.solver(),
+        numRows, numCols,
+        &workspaceSize
+    ));
+    d_workspace.allocateOnDevice(workspaceSize);
+}
+
+template <typename T>
+void gpuSVDFactorise(
+    Context& context,
+    int numRows,
+    int numCols,
+    DeviceVector<T>& d_workspace,
+    DeviceVector<T>& d_A,
+    DeviceVector<T>& d_S,
+    DeviceVector<T>& d_U,
+    DeviceVector<T>& d_VT,
+    DeviceVector<int>& d_info,
+    bool devInfo = false
+) {
+    gpuCheckError(internal::gesvdGeneric(
+        context.solver(),
+        'A', 'A',
+        numRows, numCols,
+        d_A.get(), numRows,
+        d_S.get(),
+        d_U.get(), numRows,
+        d_VT.get(), numCols,
+        d_workspace.get(), d_workspace.capacity(),
+        nullptr,
+        d_info.get()
+    ));
+
+    if (devInfo) {
+        std::vector<int> info(1);
+        d_info.download(info);
+        if (info[0] != 0) {
+            std::cerr << "SVD factorisation failed with status " << info[0] << "\n";
+        }
+    }
+}
 
 #endif

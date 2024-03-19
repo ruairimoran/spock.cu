@@ -41,14 +41,11 @@ int main(void) {
     DeviceVector<real_t> d_S(std::min(Nrows, Ncols));
 
     // --- CUDA SVD initialization
-    cusolverDnDgesvd_bufferSize(solver_handle, Nrows, Ncols, &workspaceSize);
-    DeviceVector<real_t> d_workspace(workspaceSize);
+    DeviceVector<real_t> d_workspace;
+    gpuSVDSetup(context, Nrows, Ncols, d_workspace);
 
     // --- CUDA SVD execution
-    cusolverDnDgesvd(solver_handle, 'A', 'A', Nrows, Ncols, d_A.get(), Nrows, d_S.get(), d_U.get(), Nrows, d_V.get(), Ncols, d_workspace.get(), workspaceSize, NULL, d_info.get());
-    std::vector<int> info(1);
-    d_info.download(info);
-    if (info[0] != 0) std::cout << "Unsuccessful SVD execution\n\n";
+    gpuSVDFactorise(context, Nrows, Ncols, d_workspace, d_A, d_S, d_U, d_V, d_info, true);
 
     // --- Moving the results from device to host
     d_S.download(S);
@@ -76,8 +73,6 @@ int main(void) {
             std::cout << "d_V["<<i<<"] = " << std::setprecision(15) << U[j*Ncols + i] << std::endl;
         printf("\n");
     }
-
-    cusolverDnDestroy(solver_handle);
 
     return 0;
 }

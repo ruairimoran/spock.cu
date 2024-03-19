@@ -13,7 +13,8 @@ enable_language(CUDA)
 add_library(spock_compiler_flags INTERFACE)
 target_compile_features(spock_compiler_flags 
     INTERFACE 
-        cxx_std_20)
+        cxx_std_20
+        cuda_std_20)
 set(CMAKE_CXX_EXTENSIONS OFF)
 # ----
 add_library(developer_flags INTERFACE)

@@ -1,7 +1,9 @@
+#include <array>
+
 #include <gtest/gtest.h>
+
 #include "../include/stdgpu.h"
 #include "../src/wrappers.h"
-
 
 TEST(MatTransposeTest, At) {
     Context context;
@@ -325,7 +327,7 @@ TEST(CholeskyDecompositionTest, Factor) {
     std::vector<real_t> hostData(n * n);
     d_C.download(hostData);
     for (size_t i: {0, 1, 2, 4, 5, 8}) {
-        ASSERT_EQ(hostData[i], A[i]);
+        EXPECT_EQ(hostData[i], A[i]);
     }
 }
 
@@ -370,11 +372,7 @@ TEST(CholeskyDecompositionTest, FactorAndSolveWithMat) {
     gpuCholeskySetup(context, n, d_workspace);
     /** factor */
     gpuCholeskyFactor(context, n, d_workspace, d_C, d_info, true);
-    /**
-     * solve:
-     * - Solver reads/writes with column-major order, so we need to transpose input B and output X
-     * - Function already transposes input C
-     * */
+    /** solve */
     DeviceVector<real_t> d_X(len);
     DeviceVector<real_t> d_Xt(len);
     DeviceVector<real_t> d_B(std::vector<real_t>({37, 44, 51, 215, 253, 291, 635, 739, 843}));
@@ -386,4 +384,76 @@ TEST(CholeskyDecompositionTest, FactorAndSolveWithMat) {
     d_X.download(hostData);
     std::vector<real_t> expectedResult{1, 2, 3, 4, 5, 6, 7, 8, 9};
     ASSERT_EQ(hostData, expectedResult);
+}
+
+TEST(SVDTest, Factorise) {
+
+    Context context;
+
+    constexpr size_t rows = 5;
+    constexpr size_t cols = 4;
+
+    const std::vector<real_t> A{
+        1, 0, 0, 0, 2,
+        0, 0, 3, 0, 0,
+        0, 0, 0, 0, 0,
+        0, 2, 0, 0, 0
+    };
+    DeviceVector<real_t> d_A{A};
+
+    DeviceVector<real_t> d_S{rows};
+    DeviceVector<real_t> d_U{rows * rows};
+    DeviceVector<real_t> d_VT{cols * cols};
+    DeviceVector<int> d_info{1};
+
+    DeviceVector<real_t> d_workspace;
+    gpuSVDSetup(context, rows, cols, d_workspace);
+
+    gpuSVDFactorise(
+        context,
+        rows, cols,
+        d_workspace,
+        d_A,
+        d_S,
+        d_U,
+        d_VT,
+        d_info,
+        true
+    );
+
+    std::vector<real_t> S;
+    d_S.download(S);
+    std::vector<real_t> U;
+    d_U.download(U);
+    std::vector<real_t> VT;
+    d_VT.download(VT);
+
+    constexpr std::array<real_t, cols> expectedS = {
+        3, 2.23606797749979, 2, 0
+    };
+
+    constexpr std::array<real_t, rows* rows> expectedU = {
+        0, 0, -1, 0, 0,
+        -0.4472135954999579, 0, 0, 0, -0.8944271909999159,
+        0, -1, 0, 0, 0,
+        0, 0, 0, 1, 0,
+        -0.8944271909999159, 0, 0, 0, 0.4472135954999579
+    };
+
+    constexpr std::array<real_t, cols * cols> expectedVT = {
+        0, -1, 0, 0,
+        -1, 0, 0, 0,
+        0, 0, 0, -1,
+        0, 0, -1, 0
+    };
+
+    for (size_t i = 0; i < cols; i++) {
+        EXPECT_FLOAT_EQ(S[i], expectedS[i]);
+    }
+    for (size_t i = 0; i < rows * rows; i++) {
+        EXPECT_FLOAT_EQ(U[i], expectedU[i]);
+    }
+    for (size_t i = 0; i < cols * cols; i++) {
+        EXPECT_FLOAT_EQ(VT[i], expectedVT[i]);
+    }
 }

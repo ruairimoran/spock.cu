@@ -11,16 +11,16 @@ template <typename T>
 cusolverStatus_t gesvdBufferSizeGeneric(cusolverDnHandle_t handle, int m, int n, int* lwork);
 
 template <>
-cusolverStatus_t gesvdBufferSizeGeneric<float>(cusolverDnHandle_t handle, int m, int n, int* lwork) {
+inline cusolverStatus_t gesvdBufferSizeGeneric<float>(cusolverDnHandle_t handle, int m, int n, int* lwork) {
     return cusolverDnSgesvd_bufferSize(handle, m, n, lwork);
 }
 
 template <>
-cusolverStatus_t gesvdBufferSizeGeneric<double>(cusolverDnHandle_t handle, int m, int n, int* lwork) {
+inline cusolverStatus_t gesvdBufferSizeGeneric<double>(cusolverDnHandle_t handle, int m, int n, int* lwork) {
     return cusolverDnDgesvd_bufferSize(handle, m, n, lwork);
 }
 
-cusolverStatus_t gesvdGeneric(
+inline cusolverStatus_t gesvdGeneric(
     cusolverDnHandle_t handle,
     signed char jobu, signed char jobvt,
     int m, int n,
@@ -36,7 +36,7 @@ cusolverStatus_t gesvdGeneric(
     return cusolverDnSgesvd(handle, jobu, jobvt, m, n, A, lda, S, U, ldu, VT, ldvt, work, lwork, rwork, info);
 }
 
-cusolverStatus_t gesvdGeneric(
+inline cusolverStatus_t gesvdGeneric(
     cusolverDnHandle_t handle,
     signed char jobu, signed char jobvt,
     int m, int n,
@@ -313,7 +313,7 @@ void gpuSVDFactorise(
     DeviceVector<int>& d_info,
     bool devInfo = false
 ) {
-    gpuCheckError(internal::gesvdGeneric(
+    const cusolverStatus_t status = internal::gesvdGeneric(
         context.solver(),
         'A', 'A',
         numRows, numCols,
@@ -324,7 +324,7 @@ void gpuSVDFactorise(
         d_workspace.get(), d_workspace.capacity(),
         nullptr,
         d_info.get()
-    ));
+    );
 
     if (devInfo) {
         std::vector<int> info(1);
@@ -333,6 +333,8 @@ void gpuSVDFactorise(
             std::cerr << "SVD factorisation failed with status " << info[0] << "\n";
         }
     }
+
+    gpuCheckError(status);
 }
 
 #endif

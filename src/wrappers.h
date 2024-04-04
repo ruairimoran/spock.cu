@@ -2,8 +2,7 @@
 #define WRAPPERS_H
 
 #include "../include/stdgpu.h"
-
-#include <source_location>
+//#include <source_location>
 
 namespace internal {
 
@@ -54,12 +53,7 @@ inline cusolverStatus_t gesvdGeneric(
 
 }
 
-inline void gpuCheckError(cusolverStatus_t status, std::source_location loc = std::source_location::current()) {
-    if (status != CUSOLVER_STATUS_SUCCESS) {
-        std::cerr << "cuSOLVER error: " << status << " (" << loc.file_name() << ":" << loc.line() << ")\n";
-        exit(EXIT_FAILURE);
-    }
-}
+//inline void gpuCheckError(cusolverStatus_t status, std::source_location loc = std::source_location::current()) {
 
 /**
  * Handle template type error

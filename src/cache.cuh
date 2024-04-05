@@ -1,5 +1,5 @@
-#ifndef __CACHE__
-#define __CACHE__
+#ifndef CACHE_CUH
+#define CACHE_CUH
 
 #include "../include/stdgpu.h"
 #include "tree.cuh"

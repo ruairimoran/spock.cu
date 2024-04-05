@@ -42,10 +42,10 @@ int main(void) {
 
     // --- CUDA SVD initialization
     DeviceVector<real_t> d_workspace;
-    gpuSVDSetup(context, Nrows, Ncols, d_workspace);
+    gpuSvdSetup(context, Nrows, Ncols, d_workspace);
 
     // --- CUDA SVD execution
-    gpuSVDFactorise(context, Nrows, Ncols, d_workspace, d_A, d_S, d_U, d_V, d_info, true);
+    gpuSvdFactor(context, Nrows, Ncols, d_workspace, d_A, d_S, d_U, d_V, d_info, true);
 
     // --- Moving the results from device to host
     d_S.download(S);
@@ -53,7 +53,7 @@ int main(void) {
     d_V.download(V);
 
     for(int i = 0; i < std::min(Nrows, Ncols); i++)
-        std::cout << "d_S["<<i<<"] = " << std::setprecision(15) << S[i] << std::endl;
+        std::cout << "d_S["<<i<<"] = " << std::setprecision(15) << S[i] << "\n";
 
     printf("\n\n");
 
@@ -70,7 +70,7 @@ int main(void) {
     for(int j = count; j < Ncols; j++) {
         printf("Basis vector nr. %i\n", j - count);
         for(int i = 0; i < Ncols; i++)
-            std::cout << "d_V["<<i<<"] = " << std::setprecision(15) << U[j*Ncols + i] << std::endl;
+            std::cout << "d_V["<<i<<"] = " << std::setprecision(15) << U[j*Ncols + i] << "\n";
         printf("\n");
     }
 

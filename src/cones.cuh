@@ -1,5 +1,5 @@
-#ifndef __CONES__
-#define __CONES__
+#ifndef CONES_CUH
+#define CONES_CUH
 
 #include "../include/stdgpu.h"
 

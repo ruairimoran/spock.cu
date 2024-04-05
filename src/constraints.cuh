@@ -1,5 +1,5 @@
-#ifndef __CONSTRAINTS__
-#define __CONSTRAINTS__
+#ifndef CONSTRAINTS_CUH
+#define CONSTRAINTS_CUH
 
 #include "../include/stdgpu.h"
 #include "cones.cuh"

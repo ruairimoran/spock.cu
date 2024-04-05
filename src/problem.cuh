@@ -1,5 +1,5 @@
-#ifndef __PROBLEM__
-#define __PROBLEM__
+#ifndef PROBLEM_CUH
+#define PROBLEM_CUH
 #include "../include/stdgpu.h"
 #include "tree.cuh"
 #include "constraints.cuh"

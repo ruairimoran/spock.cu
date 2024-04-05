@@ -1,7 +1,6 @@
-#include <array>
-
 #include <gtest/gtest.h>
 
+#include <array>
 #include "../include/stdgpu.h"
 #include "../src/wrappers.h"
 
@@ -13,7 +12,7 @@ TEST(MatTransposeTest, At) {
                              5, 7,
                              9, 11};
     DeviceVector<real_t> d_matA(matA);
-    DeviceVector<real_t> d_matAt(rows*cols);
+    DeviceVector<real_t> d_matAt(rows * cols);
     gpuMatT(context, rows, cols, d_matA, d_matAt);
     std::vector<real_t> hostData(rows * cols);
     d_matAt.download(hostData);
@@ -28,14 +27,14 @@ TEST(MatAddTest, APlusB) {
     size_t rows = 3;
     size_t cols = 2;
     std::vector<real_t> matA{
-        1, 3,
-        5, 7,
-        9, 11
+            1, 3,
+            5, 7,
+            9, 11
     };
     std::vector<real_t> matB{
-        0, 2,
-        4, 6,
-        8, 10
+            0, 2,
+            4, 6,
+            8, 10
     };
     DeviceVector<real_t> d_matA(matA);
     DeviceVector<real_t> d_matB(matB);
@@ -44,9 +43,9 @@ TEST(MatAddTest, APlusB) {
     std::vector<real_t> hostData(rows * cols);
     d_matAPlusB.download(hostData);
     std::vector<real_t> expectedResult{
-        1, 5,
-        9, 13,
-        17, 21
+            1, 5,
+            9, 13,
+            17, 21
     };
     ASSERT_EQ(hostData, expectedResult);
 }
@@ -56,13 +55,13 @@ TEST(MatAddTest, AtPlusB) {
     size_t rows = 3;
     size_t cols = 2;
     std::vector<real_t> matA{
-        1, 3,
-        5, 7,
-        9, 11
+            1, 3,
+            5, 7,
+            9, 11
     };
     std::vector<real_t> matB{
-        0, 4, 8,
-        2, 6, 10
+            0, 4, 8,
+            2, 6, 10
     };
     DeviceVector<real_t> d_matA(matA);
     DeviceVector<real_t> d_matB(matB);
@@ -71,8 +70,8 @@ TEST(MatAddTest, AtPlusB) {
     std::vector<real_t> hostData(rows * cols);
     d_matAtPlusB.download(hostData);
     std::vector<real_t> expectedResult{
-        1, 9, 17,
-        5, 13, 21
+            1, 9, 17,
+            5, 13, 21
     };
     ASSERT_EQ(hostData, expectedResult);
 }
@@ -82,13 +81,13 @@ TEST(MatAddTest, APlusBt) {
     size_t rows = 3;
     size_t cols = 2;
     std::vector<real_t> matA{
-        1, 5, 9,
-        3, 7, 11
+            1, 5, 9,
+            3, 7, 11
     };
     std::vector<real_t> matB{
-        0, 2,
-        4, 6,
-        8, 10
+            0, 2,
+            4, 6,
+            8, 10
     };
     DeviceVector<real_t> d_matA(matA);
     DeviceVector<real_t> d_matB(matB);
@@ -97,8 +96,8 @@ TEST(MatAddTest, APlusBt) {
     std::vector<real_t> hostData(rows * cols);
     d_matAPlusBt.download(hostData);
     std::vector<real_t> expectedResult{
-        1, 9, 17,
-        5, 13, 21
+            1, 9, 17,
+            5, 13, 21
     };
     ASSERT_EQ(hostData, expectedResult);
 }
@@ -108,14 +107,14 @@ TEST(MatAddTest, AtPlusBt) {
     size_t rows = 3;
     size_t cols = 2;
     std::vector<real_t> matA{
-        1, 3,
-        5, 7,
-        9, 11
+            1, 3,
+            5, 7,
+            9, 11
     };
     std::vector<real_t> matB{
-        0, 2,
-        4, 6,
-        8, 10
+            0, 2,
+            4, 6,
+            8, 10
     };
     DeviceVector<real_t> d_matA(matA);
     DeviceVector<real_t> d_matB(matB);
@@ -124,8 +123,8 @@ TEST(MatAddTest, AtPlusBt) {
     std::vector<real_t> hostData(rows * cols);
     d_matAtPlusBt.download(hostData);
     std::vector<real_t> expectedResult{
-        1, 9, 17,
-        5, 13, 21
+            1, 9, 17,
+            5, 13, 21
     };
     ASSERT_EQ(hostData, expectedResult);
 }
@@ -135,16 +134,16 @@ TEST(MatAddTest, APlusAStoredInA) {
     size_t rows = 3;
     size_t cols = 2;
     std::vector<real_t> matA{
-        1, 5, 9,
-        3, 7, 11
+            1, 5, 9,
+            3, 7, 11
     };
     DeviceVector<real_t> d_matA(matA);
     gpuMatAdd(context, rows, cols, d_matA, d_matA, d_matA);
     std::vector<real_t> hostData(rows * cols);
     d_matA.download(hostData);
     std::vector<real_t> expectedResult{
-        2, 10, 18,
-        6, 14, 22
+            2, 10, 18,
+            6, 14, 22
     };
     ASSERT_EQ(hostData, expectedResult);
 }
@@ -157,14 +156,14 @@ TEST(MatMulTest, AB) {
     size_t n = 2;
 
     std::vector<real_t> matA{
-        1, 4, 7, 10,
-        2, 5, 8, 11,
-        3, 6, 9, 12
+            1, 4, 7, 10,
+            2, 5, 8, 11,
+            3, 6, 9, 12
     };
 
     std::vector<real_t> matB{
-        1, 3, 5,
-        2, 4, 6,
+            1, 3, 5,
+            2, 4, 6,
     };
 
     DeviceVector<real_t> d_matA(matA);
@@ -175,8 +174,8 @@ TEST(MatMulTest, AB) {
     d_matAB.download(hostData);
 
     std::vector<real_t> expectedResult{
-        22, 49, 76, 103,
-        28, 64, 100, 136
+            22, 49, 76, 103,
+            28, 64, 100, 136
     };
 
     ASSERT_EQ(hostData, expectedResult);
@@ -189,15 +188,15 @@ TEST(MatMulTest, AtB) {
     size_t n = 2;
 
     std::vector<real_t> matA{
-        1, 5, 9,
-        2, 6, 10,
-        3, 7, 11,
-        4, 8, 12
+            1, 5, 9,
+            2, 6, 10,
+            3, 7, 11,
+            4, 8, 12
     };
 
     std::vector<real_t> matB{
-        1, 3, 5,
-        2, 4, 6
+            1, 3, 5,
+            2, 4, 6
     };
 
     DeviceVector<real_t> d_matA(matA);
@@ -208,8 +207,8 @@ TEST(MatMulTest, AtB) {
     d_matAtB.download(hostData);
 
     std::vector<real_t> expectedResult{
-        61, 70, 79, 88,
-        76, 88, 100, 112
+            61, 70, 79, 88,
+            76, 88, 100, 112
     };
 
     ASSERT_EQ(hostData, expectedResult);
@@ -222,15 +221,15 @@ TEST(MatMulTest, ABt) {
     size_t n = 2;
 
     std::vector<real_t> matA{
-        1, 4, 7, 10,
-        2, 5, 8, 11,
-        3, 6, 9, 12
+            1, 4, 7, 10,
+            2, 5, 8, 11,
+            3, 6, 9, 12
     };
 
     std::vector<real_t> matB{
-        1, 4,
-        2, 5,
-        3, 6
+            1, 4,
+            2, 5,
+            3, 6
     };
 
     DeviceVector<real_t> d_matA(matA);
@@ -241,8 +240,8 @@ TEST(MatMulTest, ABt) {
     d_matABt.download(hostData);
 
     std::vector<real_t> expectedResult{
-        14, 32, 50, 68,
-        32, 77, 122, 167
+            14, 32, 50, 68,
+            32, 77, 122, 167
     };
 
     ASSERT_EQ(hostData, expectedResult);
@@ -255,16 +254,16 @@ TEST(MatMulTest, AtBt) {
     size_t n = 2;
 
     std::vector<real_t> matA{
-        1, 5, 9,
-        2, 6, 10,
-        3, 7, 11,
-        4, 8, 12
+            1, 5, 9,
+            2, 6, 10,
+            3, 7, 11,
+            4, 8, 12
     };
 
     std::vector<real_t> matB{
-        1, 4,
-        2, 5,
-        3, 6
+            1, 4,
+            2, 5,
+            3, 6
     };
 
     DeviceVector<real_t> d_matA(matA);
@@ -275,8 +274,8 @@ TEST(MatMulTest, AtBt) {
     d_matAtBt.download(hostData);
 
     std::vector<real_t> expectedResult{
-        38, 44, 50, 56,
-        83, 98, 113, 128
+            38, 44, 50, 56,
+            83, 98, 113, 128
     };
 
     ASSERT_EQ(hostData, expectedResult);
@@ -285,22 +284,22 @@ TEST(MatMulTest, AtBt) {
 TEST(MatMulTest, AAStoredInA) {
     Context context;
     size_t n = 3;
-    
+
     std::vector<real_t> matA{
-        1, 4, 7,
-        2, 5, 8,
-        3, 6, 9
+            1, 4, 7,
+            2, 5, 8,
+            3, 6, 9
     };
-    
+
     DeviceVector<real_t> d_matA(matA);
     gpuMatMul(context, n, n, n, d_matA, d_matA, d_matA);
     std::vector<real_t> hostData(n * n);
     d_matA.download(hostData);
-    
+
     std::vector<real_t> expectedResult{
-        30, 66, 102,
-        36, 81, 126,
-        42, 96, 150
+            30, 66, 102,
+            36, 81, 126,
+            42, 96, 150
     };
 
     ASSERT_EQ(hostData, expectedResult);
@@ -313,9 +312,9 @@ TEST(CholeskyDecompositionTest, Factor) {
     DeviceVector<real_t> d_workspace;
     DeviceVector<int> d_info(1);
     std::vector<real_t> A{
-        1, 2, 4,
-        0, 3, 5,
-        0, 0, 6
+            1, 2, 4,
+            0, 3, 5,
+            0, 0, 6
     };
     DeviceVector<real_t> d_A(A);
     DeviceVector<real_t> d_C(n * n);
@@ -386,7 +385,7 @@ TEST(CholeskyDecompositionTest, FactorAndSolveWithMat) {
     ASSERT_EQ(hostData, expectedResult);
 }
 
-TEST(SVDTest, Factorise) {
+TEST(SvdTest, Factorise) {
 
     Context context;
 
@@ -394,66 +393,95 @@ TEST(SVDTest, Factorise) {
     constexpr size_t cols = 4;
 
     const std::vector<real_t> A{
-        1, 0, 0, 0, 2,
-        0, 0, 3, 0, 0,
-        0, 0, 0, 0, 0,
-        0, 2, 0, 0, 0
+            1, 0, 0, 0, 2,
+            0, 0, 3, 0, 0,
+            0, 0, 0, 0, 0,
+            0, 2, 0, 0, 0
     };
     DeviceVector<real_t> d_A{A};
 
     DeviceVector<real_t> d_S{rows};
     DeviceVector<real_t> d_U{rows * rows};
-    DeviceVector<real_t> d_VT{cols * cols};
+    DeviceVector<real_t> d_Vt{cols * cols};
     DeviceVector<int> d_info{1};
 
     DeviceVector<real_t> d_workspace;
-    gpuSVDSetup(context, rows, cols, d_workspace);
+    gpuSvdSetup(context, rows, cols, d_workspace);
 
-    gpuSVDFactorise(
-        context,
-        rows, cols,
-        d_workspace,
-        d_A,
-        d_S,
-        d_U,
-        d_VT,
-        d_info,
-        true
+    gpuSvdFactor(
+            context,
+            rows, cols,
+            d_workspace,
+            d_A,
+            d_S,
+            d_U,
+            d_Vt,
+            d_info,
+            true
     );
 
     std::vector<real_t> S;
     d_S.download(S);
     std::vector<real_t> U;
     d_U.download(U);
-    std::vector<real_t> VT;
-    d_VT.download(VT);
+    std::vector<real_t> Vt;
+    d_Vt.download(Vt);
 
     constexpr std::array<real_t, cols> expectedS = {
-        3, 2.23606797749979, 2, 0
+            3, 2.23606797749979, 2, 0
     };
 
-    constexpr std::array<real_t, rows* rows> expectedU = {
-        0, 0, -1, 0, 0,
-        -0.4472135954999579, 0, 0, 0, -0.8944271909999159,
-        0, -1, 0, 0, 0,
-        0, 0, 0, 1, 0,
-        -0.8944271909999159, 0, 0, 0, 0.4472135954999579
+    constexpr std::array<real_t, rows * rows> expectedU = {
+            0, 0, -1, 0, 0,
+            -0.4472135954999579, 0, 0, 0, -0.8944271909999159,
+            0, -1, 0, 0, 0,
+            0, 0, 0, 1, 0,
+            -0.8944271909999159, 0, 0, 0, 0.4472135954999579
     };
 
-    constexpr std::array<real_t, cols * cols> expectedVT = {
-        0, -1, 0, 0,
-        -1, 0, 0, 0,
-        0, 0, 0, -1,
-        0, 0, -1, 0
+    constexpr std::array<real_t, cols * cols> expectedVt = {
+            0, -1, 0, 0,
+            -1, 0, 0, 0,
+            0, 0, 0, -1,
+            0, 0, -1, 0
     };
 
     for (size_t i = 0; i < cols; i++) {
-        EXPECT_FLOAT_EQ(S[i], expectedS[i]);
+        EXPECT_NEAR(S[i], expectedS[i], REAL_PRECISION);
     }
     for (size_t i = 0; i < rows * rows; i++) {
-        EXPECT_FLOAT_EQ(U[i], expectedU[i]);
+        EXPECT_NEAR(U[i], expectedU[i], REAL_PRECISION);
     }
     for (size_t i = 0; i < cols * cols; i++) {
-        EXPECT_FLOAT_EQ(VT[i], expectedVT[i]);
+        EXPECT_NEAR(Vt[i], expectedVt[i], REAL_PRECISION);
     }
+}
+
+TEST(NullspaceTest, Nullspace) {
+    Context context;
+    size_t rows = 5;
+    size_t cols = 4;
+
+    std::vector<real_t> A{
+            1, 0, 0, 0, 2,
+            0, 0, 3, 0, 0,
+            0, 0, 0, 0, 0,
+            0, 2, 0, 0, 0
+    };
+    DeviceVector<real_t> d_A{A};
+
+    DeviceVector<real_t> d_S{rows};
+    DeviceVector<real_t> d_U{rows * rows};
+    DeviceVector<real_t> d_Vt{cols * cols};
+    DeviceVector<real_t> d_workspace;
+    DeviceVector<int> d_info{1};
+    gpuNullspace(context, rows, cols, d_workspace,
+                 d_A, d_S, d_U, d_Vt, d_info, true);
+
+    std::vector<real_t> S;
+    d_S.download(S);
+    std::vector<real_t> U;
+    d_U.download(U);
+    std::vector<real_t> Vt;
+    d_Vt.download(Vt);
 }

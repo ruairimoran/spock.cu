@@ -1,5 +1,5 @@
-#ifndef __RISKS__
-#define __RISKS__
+#ifndef RISKS_CUH
+#define RISKS_CUH
 
 #include "../include/stdgpu.h"
 #include "cones.cuh"

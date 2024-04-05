@@ -1,78 +1,128 @@
-#include <iomanip>
 #include "../include/stdgpu.h"
-#include "../src/wrappers.h"
+#include "wrappers.cuh"
 
+template <typename T>
+void printVector(std::vector<T> A) {
+    for (size_t i = 0; i < A.size(); i++) {
+            std::cout << A[i] << "\t";
+    }
+    std::cout << "\n\n";
+}
 
-int main(void) {
-    // --- gesvd only supports Nrows >= Ncols
-    // --- column major memory ordering
+template <typename T>
+void printMatrix(std::vector<T> A, size_t numRows, size_t numCols) {
+    for (size_t r = 0; r < numRows; r++) {
+        for (size_t c = 0; c < numCols; c++) {
+            std::cout << A[r * numCols + c] << "\t";
+        }
+        std::cout << "\n";
+    }
+    std::cout << "\n";
+}
 
-    const int Nrows = 7;
-    const int Ncols = 5;
+int main() {
+//    // Matrix A (rows x cols) with rows > cols
+//    size_t rows = 4;
+//    size_t cols = 3;
+//    std::vector<real_t> Arow = {1, 2, 3,
+//                                4, 5, 6,
+//                                7, 8, 9,
+//                                10, 11, 12};
+//    std::vector<real_t> Acol;
+//    row2col(Acol, Arow, rows, cols);
+//
+//    // Allocate device memory for A
+//    DeviceVector<real_t> d_A(Acol);
+//
+//    // cuBLAS and cuSolver initialization
+//    Context context;
+//
+//    // Workspace and information variables
+//    DeviceVector<real_t> d_workspace;
+//    DeviceVector<int> d_info(1);
+//
+//    // SVD calculation
+//    gpuSvdSetup(context, rows, cols, d_workspace);
+//
+//    DeviceVector<real_t> d_S(rows);
+//    DeviceVector<real_t> d_U(rows * rows);
+//    DeviceVector<real_t> d_Vt(cols * cols);
+//    bool devInfo = true;
+//
+//    gpuSvdFactor(context, rows, cols, d_workspace, d_A, d_S, d_U, d_Vt, d_info, devInfo);
+//
+//    if (devInfo) {
+//        int info;
+//        d_info.download(&info);
+//        if (info != 0) {
+//            std::cerr << "SVD computation failed with error code " << info << std::endl;
+//            return EXIT_FAILURE;
+//        }
+//    }
+//
+//    // Compute null space matrix
+//    DeviceVector<real_t> d_nullspace(d_Vt);
+//
+//    // Print null space matrix
+//    std::vector<real_t> nullspace;
+//    d_nullspace.download(nullspace);
+//    std::cout << "Nullspace matrix:" << "\n";
+//    printMatrix(nullspace, cols, cols);
+//
+//    // Project example vector onto the nullspace of A
+//    std::vector<real_t> vec = {1, 1, 1};  // Example vector
+//    DeviceVector<real_t> d_vec(vec);
+//
+//    DeviceVector<real_t> d_vecProjected(cols);
+//
+//    // Calculate projection
+////    projection = self.__null_space_matrix[i] @ \
+////                np.linalg.lstsq(self.__null_space_matrix[i], full_stack, rcond=None)[0]
+//    gpuMatVecMul(context, cols, cols, d_nullspace, d_vec, d_vecProjected, true);
+//
+//    // Retrieve result
+//    std::vector<real_t> vecProjected(cols);
+//    d_vecProjected.download(vecProjected);
+//    std::cout << "Projection of the vector onto the nullspace of A:" << "\n";
+//    printVector(vecProjected);
+//
+//    // Check result
+//    DeviceVector<real_t> d_Ax(cols);
+//    gpuMatVecMul(context, rows, cols, d_A, d_vecProjected, d_Ax);
+//    std::vector<real_t> Ax(cols);
+//    d_Ax.download(Ax);
+//    std::cout << "A * projected vector (should be zeros):" << "\n";
+//    printVector(Ax);
 
-    // --- cuSOLVE input/output parameters/arrays
-    int workspaceSize = 0;
-    DeviceVector<int> d_info(1);
-
-    // --- CUDA solver initialization
     Context context;
-    cusolverDnHandle_t solver_handle = context.solver();
+    size_t rows = 2;
+    size_t cols = 2;
+//    std::vector<real_t> A = {
+//            1, 0, 0, 0, 2,
+//            0, 0, 3, 0, 0,
+//            0, 0, 0, 0, 0,
+//            0, 2, 0, 0, 0
+//    };  ///< column order
 
-    // --- Singular values threshold
-    double threshold = 1e-12;
+    std::vector<real_t> A = {1, 0, 0, 4};
+    row2col(A, A, rows, cols);
+    DeviceVector<real_t> d_A(A);
 
-    // --- Setting the host, Nrows x Ncols matrix
-    double *h_A = (double *)malloc(Nrows * Ncols * sizeof(double));
-    for(int j = 0; j < Nrows; j++)
-        for(int i = 0; i < Ncols; i++)
-            h_A[j + i*Nrows] = (i + j*j) * sqrt((double)(i + j));
+    DeviceVector<real_t> d_x(cols);
 
-    // --- Setting the device matrix and moving the host matrix to the device
-    DeviceVector<real_t> d_A(Nrows * Ncols);
+    std::vector<real_t> b = {1, 2};
+    DeviceVector<real_t> d_b(b);
 
-    // --- host side SVD results space
-    std::vector<real_t> U(Nrows * Nrows);
-    std::vector<real_t> V(Ncols * Ncols);
-    std::vector<real_t> S(std::min(Nrows, Ncols));
-
-    // --- device side SVD workspace and matrices
-    DeviceVector<real_t> d_U(Nrows * Nrows);
-    DeviceVector<real_t> d_V(Ncols * Ncols);
-    DeviceVector<real_t> d_S(std::min(Nrows, Ncols));
-
-    // --- CUDA SVD initialization
     DeviceVector<real_t> d_workspace;
-    gpuSvdSetup(context, Nrows, Ncols, d_workspace);
 
-    // --- CUDA SVD execution
-    gpuSvdFactor(context, Nrows, Ncols, d_workspace, d_A, d_S, d_U, d_V, d_info, true);
+    gpuLeastSquaresSetup(context, rows, cols, d_workspace, d_A, d_x, d_b);
+    gpuLeastSquaresSolve(context, rows, cols, d_workspace, d_A, d_x, d_b, true);
 
-    // --- Moving the results from device to host
-    d_S.download(S);
-    d_U.download(U);
-    d_V.download(V);
-
-    for(int i = 0; i < std::min(Nrows, Ncols); i++)
-        std::cout << "d_S["<<i<<"] = " << std::setprecision(15) << S[i] << "\n";
-
-    printf("\n\n");
-
-    int count = 0;
-    bool flag = 0;
-    while (!flag) {
-        if (S[count] < threshold) flag = 1;
-        if (count == std::min(Nrows, Ncols)) flag = 1;
-        count++;
-    }
-    count--;
-    printf("The null space of A has dimension %i\n\n", std::min(Ncols, Nrows) - count);
-
-    for(int j = count; j < Ncols; j++) {
-        printf("Basis vector nr. %i\n", j - count);
-        for(int i = 0; i < Ncols; i++)
-            std::cout << "d_V["<<i<<"] = " << std::setprecision(15) << U[j*Ncols + i] << "\n";
-        printf("\n");
-    }
+    std::vector<real_t> hostData(cols);
+    d_x.download(hostData);
+    std::vector<real_t> expectedResult{1, 0.5};
+    printVector(expectedResult);
+    printVector(hostData);
 
     return 0;
 }

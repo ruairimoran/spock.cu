@@ -6,7 +6,7 @@
 #include "problem.cuh"
 #include "cones.cuh"
 #include "risks.cuh"
-#include "wrappers.h"
+#include "wrappers.cuh"
 
 
 __host__ __device__ size_t getIdxMat(size_t node, size_t row, size_t col, size_t rows, size_t cols = 0);
@@ -184,13 +184,13 @@ void Cache::offline_projection_setup() {
                                             getIdxMat(child, m_numStates, m_numStates, m_numStates));
 
                 DeviceVector<real_t> d_matBP(m_numInputs * m_numStates);
-                gpuMatMul(m_data.context(), m_numInputs, m_numStates, m_numStates, d_matB, d_matP, d_matBP, true);
+                gpuMatMatMul(m_data.context(), m_numInputs, m_numStates, m_numStates, d_matB, d_matP, d_matBP, true);
 
                 DeviceVector<real_t> d_matBPB(m_numInputs * m_numInputs);
-                gpuMatMul(m_data.context(), m_numInputs, m_numStates, m_numInputs, d_matBP, d_matB, d_matBPB);
+                gpuMatMatMul(m_data.context(), m_numInputs, m_numStates, m_numInputs, d_matBP, d_matB, d_matBPB);
 
                 DeviceVector<real_t> d_matBPA(m_numInputs * m_numStates);
-                gpuMatMul(m_data.context(), m_numInputs, m_numStates, m_numStates, d_matBP, d_matA, d_matBPA);
+                gpuMatMatMul(m_data.context(), m_numInputs, m_numStates, m_numStates, d_matBP, d_matA, d_matBPA);
                 gpuMatAdd(m_data.context(), m_numInputs, m_numInputs, d_matBPB, d_forR, d_forR);
                 gpuMatAdd(m_data.context(), m_numInputs, m_numStates, d_matBPA, d_forK, d_forK);
             }
@@ -225,7 +225,7 @@ void Cache::offline_projection_setup() {
                                             getIdxMat(child, 0, 0, m_numStates),
                                             getIdxMat(child, m_numStates, m_numStates, m_numStates));
                 DeviceVector<real_t> d_matBK(m_numStates * m_numStates);
-                gpuMatMul(m_data.context(), m_numStates, m_numInputs, m_numStates, d_matB, d_matK, d_matBK);
+                gpuMatMatMul(m_data.context(), m_numStates, m_numInputs, m_numStates, d_matB, d_matK, d_matBK);
                 
                 DeviceVector<real_t> d_matD(m_d_dynamicsSum,
                                             getIdxMat(child, 0, 0, m_numStates, m_numStates),
@@ -233,8 +233,8 @@ void Cache::offline_projection_setup() {
                 gpuMatAdd(m_data.context(), m_numStates, m_numStates, d_matA, d_matBK, d_matD);
 
                 DeviceVector<real_t> d_matDPD(m_numStates * m_numStates);
-                gpuMatMul(m_data.context(), m_numStates, m_numStates, m_numStates, d_matD, d_matP, d_matDPD, true);
-                gpuMatMul(m_data.context(), m_numStates, m_numStates, m_numStates, d_matDPD, d_matD, d_matDPD);
+                gpuMatMatMul(m_data.context(), m_numStates, m_numStates, m_numStates, d_matD, d_matP, d_matDPD, true);
+                gpuMatMatMul(m_data.context(), m_numStates, m_numStates, m_numStates, d_matDPD, d_matD, d_matDPD);
                 gpuMatAdd(m_data.context(), m_numStates, m_numStates, d_matDPD, d_forP, d_forP);
             }
 
@@ -242,7 +242,7 @@ void Cache::offline_projection_setup() {
                                         getIdxMat(node, 0, 0, m_numStates),
                                         getIdxMat(node, m_numStates, m_numStates, m_numStates));
             DeviceVector<real_t> d_matKK(m_numStates * m_numStates);
-            gpuMatMul(m_data.context(), m_numStates, m_numInputs, m_numStates, d_matK, d_matK, d_matKK, true);
+            gpuMatMatMul(m_data.context(), m_numStates, m_numInputs, m_numStates, d_matK, d_matK, d_matKK, true);
             gpuMatAdd(m_data.context(), m_numStates, m_numStates, d_matKK, d_forP, d_forP);
             gpuMatAdd(m_data.context(), m_numStates, m_numStates, d_idState, d_forP, d_matP);
         }

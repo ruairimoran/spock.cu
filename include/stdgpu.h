@@ -52,4 +52,30 @@ inline void gpuAssert(T code, std::source_location loc, bool abort = true) {
 }
 
 
+/**
+ * Convert between row- and column-major ordering of vector-stored matrices
+ */
+template<typename T>
+inline void row2col(std::vector<T> &dstCol, std::vector<T> &srcRow, size_t numRows, size_t numCols) {
+    dstCol.resize(srcRow.size());
+    std::vector<T> copySrc(srcRow);
+    for (size_t r = 0; r < numRows; r++) {
+        for (size_t c = 0; c < numCols; c++) {
+            dstCol[c * numRows + r] = copySrc[r * numCols + c];
+        }
+    }
+}
+
+template<typename T>
+inline void col2row(std::vector<T> &dstRow, std::vector<T> &srcCol, size_t numRows, size_t numCols) {
+    dstRow.resize(srcCol.size());
+    std::vector<T> copySrc(srcCol);
+    for (size_t r = 0; r < numRows; r++) {
+        for (size_t c = 0; c < numCols; c++) {
+            dstRow[r * numCols + c] = copySrc[c * numRows + r];
+        }
+    }
+}
+
+
 #endif

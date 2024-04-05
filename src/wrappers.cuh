@@ -24,6 +24,25 @@ namespace generic {
     }
 
     /**
+    * Generic function for cublas `gemv`
+    */
+    template<typename T>
+    cublasStatus_t gemv(cublasHandle_t handle, cublasOperation_t trans, int m, int n,
+                        T &alpha, T *A, int ldA, T *x, int incx, T &beta, T *y, int incy);
+
+    inline cublasStatus_t
+    gemv(cublasHandle_t handle, cublasOperation_t trans, int m, int n,
+         float &alpha, float *A, int ldA, float *x, int incx, float &beta, float *y, int incy) {
+        return cublasSgemv(handle, trans, m, n, &alpha, A, ldA, x, incx, &beta, y, incy);
+    }
+
+    inline cublasStatus_t
+    gemv(cublasHandle_t handle, cublasOperation_t trans, int m, int n,
+         double &alpha, double *A, int ldA, double *x, int incx, double &beta, double *y, int incy) {
+        return cublasDgemv(handle, trans, m, n, &alpha, A, ldA, x, incx, &beta, y, incy);
+    }
+
+    /**
     * Generic function for cublas `gemm`
     */
     template<typename T>
@@ -143,6 +162,50 @@ namespace generic {
                                   double *work, int lwork, double *rwork, int *info) {
         return cusolverDnDgesvd(handle, jobU, jobVt, m, n, A, ldA, S, U, ldU, Vt, ldVt, work, lwork, rwork, info);
     }
+
+    /**
+    * Generic function for cusolverDn `gels_bufferSize`
+    */
+    template<typename T>
+    cusolverStatus_t
+    gelsBufferSize(cusolverDnHandle_t handle, int m, int n, int nrhs, T *d_A, int ldA, T *d_b, int ldb,
+                   T *d_x, int ldx, void *d_workspace, size_t *lwork);
+
+    template<>
+    inline cusolverStatus_t
+    gelsBufferSize(cusolverDnHandle_t handle, int m, int n, int nrhs, float *d_A, int ldA, float *d_b, int ldb,
+                   float *d_x, int ldx, void *d_workspace, size_t *lwork) {
+        return cusolverDnSSgels_bufferSize(handle, m, n, nrhs, d_A, ldA, d_b, ldb, d_x, ldx, d_workspace, lwork);
+    }
+
+    template<>
+    inline cusolverStatus_t
+    gelsBufferSize(cusolverDnHandle_t handle, int m, int n, int nrhs, double *d_A, int ldA, double *d_b, int ldb,
+                   double *d_x, int ldx, void *d_workspace, size_t *lwork) {
+        return cusolverDnDDgels_bufferSize(handle, m, n, nrhs, d_A, ldA, d_b, ldb, d_x, ldx, d_workspace, lwork);
+    }
+
+    /**
+    * Generic function for cusolverDn `gels`
+    */
+    template<typename T>
+    cusolverStatus_t
+    gels(cusolverDnHandle_t handle, int m, int n, int nrhs, T *d_A, int ldA, T *d_b, int ldb, T *d_x, int ldx,
+         void *d_workspace, size_t lwork, int *iter, int *d_info);
+
+    inline cusolverStatus_t
+    gels(cusolverDnHandle_t handle, int m, int n, int nrhs, float *d_A, int ldA, float *d_b, int ldb, float *d_x,
+         int ldx, void *d_workspace, size_t lwork, int *iter, int *d_info) {
+        return cusolverDnSSgels(handle, m, n, nrhs, d_A, ldA, d_b, ldb, d_x, ldx,
+                                d_workspace, lwork, iter, d_info);
+    }
+
+    inline cusolverStatus_t
+    gels(cusolverDnHandle_t handle, int m, int n, int nrhs, double *d_A, int ldA, double *d_b, int ldb, double *d_x,
+         int ldx, void *d_workspace, size_t lwork, int *iter, int *d_info) {
+        return cusolverDnDDgels(handle, m, n, nrhs, d_A, ldA, d_b, ldb, d_x, ldx,
+                                d_workspace, lwork, iter, d_info);
+    }
 }
 
 
@@ -199,6 +262,38 @@ void gpuMatAdd(Context &context, size_t numRows, size_t numCols,
                             alpha, A.get(), lda, beta, B.get(), ldb, C.get(), ldc));
 }
 
+
+/**
+ * Multiply matrix and vector on a device
+ *
+ * @tparam T type of elements in the matrices
+ * @param context cuBLAS handle
+ * @param numRows rows of op(A)
+ * @param numCols columns of op(A)
+ * @param A input matrix
+ * @param x input vector
+ * @param y output vector
+ * @param transA whether to transpose A
+ */
+template<typename T>
+void gpuMatVecMul(Context &context, size_t numRows, size_t numCols,
+                  DeviceVector<T> &A,
+                  DeviceVector<T> &x,
+                  DeviceVector<T> &y,
+                  bool transA = false) {
+    cublasOperation_t opA = transA ? CUBLAS_OP_T : CUBLAS_OP_N;
+    T alpha = 1.0;
+    T beta = 0.0;
+
+    size_t lda = numRows;
+    size_t incx = 1;
+    size_t incy = 1;
+
+    gpuErrChk(generic::gemv(context.blas(), opA, numRows, numCols,
+                            alpha, A.get(), lda, x.get(), incx, beta, y.get(), incy));
+}
+
+
 /**
  * Multiply two matrices on a device
  *
@@ -214,11 +309,11 @@ void gpuMatAdd(Context &context, size_t numRows, size_t numCols,
  * @param transB whether to transpose B
  */
 template<typename T>
-void gpuMatMul(Context &context, size_t m, size_t k, size_t n,
-               DeviceVector<T> &A,
-               DeviceVector<T> &B,
-               DeviceVector<T> &C,
-               bool transA = false, bool transB = false) {
+void gpuMatMatMul(Context &context, size_t m, size_t k, size_t n,
+                  DeviceVector<T> &A,
+                  DeviceVector<T> &B,
+                  DeviceVector<T> &C,
+                  bool transA = false, bool transB = false) {
     cublasOperation_t opA = transA ? CUBLAS_OP_T : CUBLAS_OP_N;
     cublasOperation_t opB = transB ? CUBLAS_OP_T : CUBLAS_OP_N;
     T alpha = 1.0;
@@ -329,7 +424,7 @@ void gpuCholeskySolve(Context &context, size_t numRowsSol, size_t numColsSol,
 
 
 template<typename T>
-void gpuSvdSetup(Context &context, int numRows, int numCols, DeviceVector<T> &d_workspace) {
+void gpuSvdSetup(Context &context, size_t numRows, size_t numCols, DeviceVector<T> &d_workspace) {
     int workspaceSize;
     gpuErrChk(generic::gesvdBufferSize<T>(context.solver(), numRows, numCols, &workspaceSize));
     d_workspace.allocateOnDevice(workspaceSize);
@@ -339,8 +434,8 @@ void gpuSvdSetup(Context &context, int numRows, int numCols, DeviceVector<T> &d_
 template<typename T>
 void gpuSvdFactor(
         Context &context,
-        int numRows,
-        int numCols,
+        size_t numRows,
+        size_t numCols,
         DeviceVector<T> &d_workspace,
         DeviceVector<T> &d_A,
         DeviceVector<T> &d_S,
@@ -372,19 +467,104 @@ void gpuSvdFactor(
 template<typename T>
 void gpuNullspace(
         Context &context,
-        int numRows,
-        int numCols,
-        DeviceVector<T> &d_workspace,
+        size_t numRows,
+        size_t numCols,
         DeviceVector<T> &d_A,
-        DeviceVector<T> &d_S,
-        DeviceVector<T> &d_U,
-        DeviceVector<T> &d_Vt,
-        DeviceVector<int> &d_info,
+        DeviceVector<T> &d_nullspace,
         bool devInfo = false
 ) {
+    DeviceVector<real_t> d_S(numRows);
+    DeviceVector<real_t> d_U(numRows * numRows);
+    d_nullspace.allocateOnDevice(numCols * numCols);
+    DeviceVector<real_t> d_workspace;
+    DeviceVector<int> d_info{1};
     gpuSvdSetup(context, numRows, numCols, d_workspace);
-    gpuSvdFactor(context, numRows, numCols, d_workspace, d_A, d_S, d_U, d_Vt, d_info, devInfo);
-
+    gpuSvdFactor(context, numRows, numCols, d_workspace, d_A, d_S, d_U, d_nullspace, d_info, devInfo);
 }
+
+
+template<typename T>
+void gpuLeastSquaresSetup(
+        Context &context,
+        size_t numRows,
+        size_t numCols,
+        DeviceVector<T> &d_workspace,
+        DeviceVector<T> &d_A,
+        DeviceVector<T> &d_x,
+        DeviceVector<T> &d_b) {
+    size_t workspaceSize;
+    gpuErrChk(generic::gelsBufferSize(context.solver(), numRows, numCols, 1, d_A.get(), numRows,
+                                      d_b.get(), numRows, d_x.get(), numCols, d_workspace.get(),
+                                      &workspaceSize));
+    d_workspace.allocateOnDevice(workspaceSize);
+}
+
+
+/**
+ * Solve least squares for x in Ax=b
+ *
+ * For iteration debugging, if iter is:
+ *     <0 : iterative refinement has failed, main precision (Inputs/Outputs precision) factorization has been performed.
+ *     -1 : taking into account machine parameters, n, nrhs, it is a priori not worth working in lower precision
+ *     -2 : overflow of an entry when moving from main to lower precision
+ *     -3 : failure during the factorization
+ *     -5 : overflow occurred during computation
+ *     -50: solver stopped the iterative refinement after reaching maximum allowed iterations.
+ *     >0 : iter is a number of iterations solver performed to reach convergence criteria
+ *
+ * @tparam T
+ * @param context
+ * @param numRows
+ * @param numCols
+ * @param d_workspace
+ * @param d_A
+ * @param d_x
+ * @param d_b
+ * @param devInfo
+ */
+template<typename T>
+void gpuLeastSquaresSolve(
+        Context &context,
+        size_t numRows,
+        size_t numCols,
+        DeviceVector<T> &d_workspace,
+        DeviceVector<T> &d_A,
+        DeviceVector<T> &d_x,
+        DeviceVector<T> &d_b,
+        bool devInfo = false) {
+    DeviceVector<int> d_iters(1);
+    DeviceVector<int> d_info(1);
+    size_t cap = d_workspace.capacity();
+    const cusolverStatus_t status = generic::gels(context.solver(),
+                                                  numRows,
+                                                  numCols,
+                                                  1,
+                                                  d_A.get(),
+                                                  numRows,
+                                                  d_b.get(),
+                                                  numRows,
+                                                  d_x.get(),
+                                                  numCols,
+                                                  d_workspace.get(),
+                                                  d_workspace.capacity(),
+                                                  d_iters.get(),
+                                                  d_info.get());
+
+    if (devInfo) {
+        std::vector<int> info(1);
+        d_info.download(info);
+        if (info[0] != 0) {
+            std::cerr << "Least squares solve failed with status " << info[0] << "\n";
+        }
+        std::vector<int> iters(1);
+        d_iters.download(iters);
+        if (iters[0] < 0) {
+            std::cerr << "Least squares solve failed with iterations " << iters[0] << "\n";
+        }
+    }
+
+    gpuErrChk(status);
+}
+
 
 #endif

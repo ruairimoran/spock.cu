@@ -12,6 +12,7 @@ enable_testing()
 add_executable(spock_tests)
 target_sources(spock_tests  # add files
     PRIVATE
+        test_stdgpu.cu
         test_wrappers.cu
         test_tree.cu
         test_cones.cu

@@ -2,7 +2,7 @@
 
 #include <array>
 #include "../include/stdgpu.h"
-#include "../src/wrappers.h"
+#include "../src/wrappers.cuh"
 
 TEST(MatTransposeTest, At) {
     Context context;
@@ -149,6 +149,98 @@ TEST(MatAddTest, APlusAStoredInA) {
 }
 
 
+TEST(MatVecTest, Ax) {
+    Context context;
+    size_t m = 4;
+    size_t n = 5;
+
+    std::vector<real_t> matA{
+            1, 2, 3, 4, 5,
+            6, 7, 8, 9, 10,
+            11, 12, 13, 14, 15,
+            16, 17, 18, 19, 20
+    };
+    row2col(matA, matA, m, n);
+
+    std::vector<real_t> vecx{
+            1, 2, 3, 4, 5
+    };
+
+    DeviceVector<real_t> d_matA(matA);
+    DeviceVector<real_t> d_vecx(vecx);
+    DeviceVector<real_t> d_vecAx(m);
+    gpuMatVecMul(context, m, n, d_matA, d_vecx, d_vecAx);
+    std::vector<real_t> hostData(m);
+    d_vecAx.download(hostData);
+
+    std::vector<real_t> expectedResult{
+            55, 130, 205, 280
+    };
+
+    ASSERT_EQ(hostData, expectedResult);
+}
+
+TEST(MatVecTest, Atx) {
+    Context context;
+    size_t m = 4;
+    size_t n = 5;
+
+    std::vector<real_t> matA{
+            1, 2, 3, 4, 5,
+            6, 7, 8, 9, 10,
+            11, 12, 13, 14, 15,
+            16, 17, 18, 19, 20
+    };
+    row2col(matA, matA, m, n);
+
+    std::vector<real_t> vecx{
+            1, 2, 3, 4
+    };
+
+    DeviceVector<real_t> d_matA(matA);
+    DeviceVector<real_t> d_vecx(vecx);
+    DeviceVector<real_t> d_vecAtx(n);
+    gpuMatVecMul(context, m, n, d_matA, d_vecx, d_vecAtx, true);
+    std::vector<real_t> hostData(n);
+    d_vecAtx.download(hostData);
+
+    std::vector<real_t> expectedResult{
+            110, 120, 130, 140, 150
+    };
+
+    ASSERT_EQ(hostData, expectedResult);
+}
+
+TEST(MatVecTest, AxStoredInx) {
+    Context context;
+    size_t m = 4;
+
+    std::vector<real_t> matA{
+            1, 2, 3, 4,
+            5, 6, 7, 8,
+            9, 10, 11, 12,
+            13, 14, 15, 16
+    };
+    row2col(matA, matA, m, m);
+
+    std::vector<real_t> vecx{
+            1, 2, 3, 4
+    };
+
+    DeviceVector<real_t> d_matA(matA);
+    DeviceVector<real_t> d_vecx(vecx);
+    gpuMatVecMul(context, m, m, d_matA, d_vecx, d_vecx);
+    std::vector<real_t> hostData(m);
+    d_vecx.download(hostData);
+
+    std::vector<real_t> expectedResult{
+            30, 70, 110, 150
+    };
+
+    ASSERT_EQ(hostData, expectedResult);
+}
+
+
 TEST(MatMulTest, AB) {
     Context context;
     size_t m = 4;
@@ -169,7 +261,7 @@ TEST(MatMulTest, AB) {
     DeviceVector<real_t> d_matA(matA);
     DeviceVector<real_t> d_matB(matB);
     DeviceVector<real_t> d_matAB(m * n);
-    gpuMatMul(context, m, k, n, d_matA, d_matB, d_matAB);
+    gpuMatMatMul(context, m, k, n, d_matA, d_matB, d_matAB);
     std::vector<real_t> hostData(m * n);
     d_matAB.download(hostData);
 
@@ -202,7 +294,7 @@ TEST(MatMulTest, AtB) {
     DeviceVector<real_t> d_matA(matA);
     DeviceVector<real_t> d_matB(matB);
     DeviceVector<real_t> d_matAtB(m * n);
-    gpuMatMul(context, m, k, n, d_matA, d_matB, d_matAtB, true);
+    gpuMatMatMul(context, m, k, n, d_matA, d_matB, d_matAtB, true);
     std::vector<real_t> hostData(m * n);
     d_matAtB.download(hostData);
 
@@ -235,7 +327,7 @@ TEST(MatMulTest, ABt) {
     DeviceVector<real_t> d_matA(matA);
     DeviceVector<real_t> d_matB(matB);
     DeviceVector<real_t> d_matABt(m * n);
-    gpuMatMul(context, m, k, n, d_matA, d_matB, d_matABt, false, true);
+    gpuMatMatMul(context, m, k, n, d_matA, d_matB, d_matABt, false, true);
     std::vector<real_t> hostData(m * n);
     d_matABt.download(hostData);
 
@@ -269,7 +361,7 @@ TEST(MatMulTest, AtBt) {
     DeviceVector<real_t> d_matA(matA);
     DeviceVector<real_t> d_matB(matB);
     DeviceVector<real_t> d_matAtBt(m * n);
-    gpuMatMul(context, m, k, n, d_matA, d_matB, d_matAtBt, true, true);
+    gpuMatMatMul(context, m, k, n, d_matA, d_matB, d_matAtBt, true, true);
     std::vector<real_t> hostData(m * n);
     d_matAtBt.download(hostData);
 
@@ -292,7 +384,7 @@ TEST(MatMulTest, AAStoredInA) {
     };
 
     DeviceVector<real_t> d_matA(matA);
-    gpuMatMul(context, n, n, n, d_matA, d_matA, d_matA);
+    gpuMatMatMul(context, n, n, n, d_matA, d_matA, d_matA);
     std::vector<real_t> hostData(n * n);
     d_matA.download(hostData);
 
@@ -318,7 +410,7 @@ TEST(CholeskyDecompositionTest, Factor) {
     };
     DeviceVector<real_t> d_A(A);
     DeviceVector<real_t> d_C(n * n);
-    gpuMatMul(context, n, n, n, d_A, d_A, d_C, false, true);
+    gpuMatMatMul(context, n, n, n, d_A, d_A, d_C, false, true);
     /** setup */
     gpuCholeskySetup(context, n, d_workspace);
     /** factor */
@@ -340,7 +432,7 @@ TEST(CholeskyDecompositionTest, FactorAndSolveWithVec) {
                           0, 0, 6};
     DeviceVector<real_t> d_A(A);
     DeviceVector<real_t> d_C(n * n);
-    gpuMatMul(context, n, n, n, d_A, d_A, d_C, false, true);
+    gpuMatMatMul(context, n, n, n, d_A, d_A, d_C, false, true);
     /** setup */
     gpuCholeskySetup(context, n, d_workspace);
     /** factor */
@@ -366,7 +458,7 @@ TEST(CholeskyDecompositionTest, FactorAndSolveWithMat) {
                           0, 0, 6};
     DeviceVector<real_t> d_A(A);
     DeviceVector<real_t> d_C(len);
-    gpuMatMul(context, n, n, n, d_A, d_A, d_C, false, true);
+    gpuMatMatMul(context, n, n, n, d_A, d_A, d_C, false, true);
     /** setup */
     gpuCholeskySetup(context, n, d_workspace);
     /** factor */
@@ -461,27 +553,39 @@ TEST(NullspaceTest, Nullspace) {
     Context context;
     size_t rows = 5;
     size_t cols = 4;
-
-    std::vector<real_t> A{
+    std::vector<real_t> A = {
             1, 0, 0, 0, 2,
             0, 0, 3, 0, 0,
             0, 0, 0, 0, 0,
             0, 2, 0, 0, 0
-    };
-    DeviceVector<real_t> d_A{A};
+    };  ///< column order
+    DeviceVector<real_t> d_A(A);
+    DeviceVector<real_t> d_nullspace;
+    gpuNullspace(context, rows, cols,d_A, d_nullspace, true);
 
-    DeviceVector<real_t> d_S{rows};
-    DeviceVector<real_t> d_U{rows * rows};
-    DeviceVector<real_t> d_Vt{cols * cols};
+    std::vector<real_t> nullspace;
+    d_nullspace.download(nullspace);
+}
+
+TEST(LeastSquaresTest, LeastSquares) {
+    Context context;
+    size_t rows = 5;
+    size_t cols = 4;
+    std::vector<real_t> A = {
+            1, 0, 0, 0, 2,
+            0, 0, 3, 0, 0,
+            0, 0, 0, 0, 0,
+            0, 2, 0, 0, 0
+    };  ///< column order
+    DeviceVector<real_t> d_A(A);
+    DeviceVector<real_t> d_x(cols);
+    std::vector<real_t> b = {1, 2, 3, 4, 5};
+    DeviceVector<real_t> d_b(b);
     DeviceVector<real_t> d_workspace;
-    DeviceVector<int> d_info{1};
-    gpuNullspace(context, rows, cols, d_workspace,
-                 d_A, d_S, d_U, d_Vt, d_info, true);
-
-    std::vector<real_t> S;
-    d_S.download(S);
-    std::vector<real_t> U;
-    d_U.download(U);
-    std::vector<real_t> Vt;
-    d_Vt.download(Vt);
+    gpuLeastSquaresSetup(context, rows, cols, d_workspace, d_A, d_x, d_b);
+    gpuLeastSquaresSolve(context, rows, cols, d_workspace, d_A, d_x, d_b, true);
+    std::vector<real_t> hostData(cols);
+    d_x.download(hostData);
+    std::vector<real_t> expectedResult{2.2, 1, 0, 1};
+    ASSERT_EQ(hostData, expectedResult);
 }

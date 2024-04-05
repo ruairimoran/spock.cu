@@ -578,14 +578,11 @@ TEST(LeastSquaresTest, LeastSquares) {
             0, 2, 0, 0, 0
     };  ///< column order
     DeviceVector<real_t> d_A(A);
-    DeviceVector<real_t> d_x(cols);
     std::vector<real_t> b = {1, 2, 3, 4, 5};
     DeviceVector<real_t> d_b(b);
-    DeviceVector<real_t> d_workspace;
-    gpuLeastSquaresSetup(context, rows, cols, d_workspace, d_A, d_x, d_b);
-    gpuLeastSquaresSolve(context, rows, cols, d_workspace, d_A, d_x, d_b, true);
+    gpuLeastSquares(context, rows, cols, d_A, d_b, true);
     std::vector<real_t> hostData(cols);
-    d_x.download(hostData);
+    d_b.download(hostData);
     std::vector<real_t> expectedResult{2.2, 1, 0, 1};
     ASSERT_EQ(hostData, expectedResult);
 }

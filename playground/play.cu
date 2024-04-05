@@ -113,7 +113,7 @@ int main() {
     std::vector<real_t> b = {1, 2};
     DeviceVector<real_t> d_b(b);
 
-    const size_t batchSize = 1;
+//    const size_t batchSize = 1;
 //    std::array<real_t*, batchSize> d_arrayA = {d_A.get()};
 //    std::array<real_t*, batchSize> d_arrayC = {d_b.get()};
 

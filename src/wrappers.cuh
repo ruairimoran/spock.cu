@@ -168,8 +168,8 @@ namespace generic {
     */
     template<typename T>
     cublasStatus_t
-    gels(cublasHandle_t handle, cublasOperation_t trans, int m, int n, int nrhs, T *Aarray[], int lda, T *Carray[],
-         int ldc, int *info, int *devInfoArray, int batchSize);
+    gels(cublasHandle_t handle, cublasOperation_t trans, int m, int n, int nrhs, T *Aarray[], int lda,
+         T *Carray[], int ldc, int *info, int *devInfoArray, int batchSize);
 
     inline cublasStatus_t
     gels(cublasHandle_t handle, cublasOperation_t trans, int m, int n, int nrhs, float *Aarray[], int lda,
@@ -476,11 +476,36 @@ void gpuLeastSquares(
         Context &context,
         size_t numRows,
         size_t numCols,
-        DeviceVector<T> d_A,
-        DeviceVector<T> d_C,
+        DeviceVector<T> d_A_,
+        DeviceVector<T> d_C_,
+        size_t batchSize = 1,
         bool devInfo = false) {
-    T* d_arrayA[] = {d_A.get()};
-    T* d_arrayC[] = {d_C.get()};
+//    std::vector<real_t*> arrayA = {d_A.get()};
+//    DeviceVector<real_t*> d_arrayA(arrayA);
+//    std::vector<real_t*> arrayC = {d_C.get()};
+//    DeviceVector<real_t*> d_arrayC(arrayC);
+    T *A;
+    T *b;
+    A = (T*) malloc(numRows * numCols * sizeof(T));
+    b = (T*) malloc(numRows *  sizeof(T));
+    A[0] = 1;
+    A[1] = 0;
+    A[2] = 0;
+    A[3] = 4;
+    b[0] = 1;
+    b[1] = 2;
+    T *d_A;
+    T *d_b;
+    cudaMalloc(&d_A, numRows * numCols * sizeof(T));
+    cudaMalloc(&d_b, numRows * sizeof(T));
+    cudaMemcpy(d_A, A, numRows * numCols * sizeof(T), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b, numRows * 1 * sizeof(T), cudaMemcpyHostToDevice);
+    T **d_arrayA;
+    T **d_arrayb;
+    cudaMalloc(&d_arrayA, sizeof(T*));
+    cudaMalloc(&d_arrayb, sizeof(T*));
+    cudaMemcpy(d_arrayA, &d_A, sizeof(T*), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_arrayb, &d_b, sizeof(T*), cudaMemcpyHostToDevice);
     DeviceVector<int> d_info(1);
     DeviceVector<int> d_infoArray(1);
     const cublasStatus_t status = generic::gels(context.blas(),
@@ -490,11 +515,11 @@ void gpuLeastSquares(
                                                 1,
                                                 d_arrayA,
                                                 numRows,
-                                                d_arrayC,
+                                                d_arrayb,
                                                 numRows,
                                                 d_info.get(),
                                                 d_infoArray.get(),
-                                                1);
+                                                batchSize);
 
     if (devInfo) {
         std::vector<int> info(1);
@@ -510,6 +535,10 @@ void gpuLeastSquares(
     }
 
     gpuErrChk(status);
+    cudaFree(d_A);
+    cudaFree(d_b);
+    cudaFree(d_arrayA);
+    cudaFree(d_arrayb);
 }
 
 

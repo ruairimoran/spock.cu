@@ -164,47 +164,23 @@ namespace generic {
     }
 
     /**
-    * Generic function for cusolverDn `gels_bufferSize`
+    * Generic function for cublas `gels`
     */
     template<typename T>
-    cusolverStatus_t
-    gelsBufferSize(cusolverDnHandle_t handle, int m, int n, int nrhs, T *d_A, int ldA, T *d_b, int ldb,
-                   T *d_x, int ldx, void *d_workspace, size_t *lwork);
+    cublasStatus_t
+    gels(cublasHandle_t handle, cublasOperation_t trans, int m, int n, int nrhs, T *Aarray[], int lda, T *Carray[],
+         int ldc, int *info, int *devInfoArray, int batchSize);
 
-    template<>
-    inline cusolverStatus_t
-    gelsBufferSize(cusolverDnHandle_t handle, int m, int n, int nrhs, float *d_A, int ldA, float *d_b, int ldb,
-                   float *d_x, int ldx, void *d_workspace, size_t *lwork) {
-        return cusolverDnSSgels_bufferSize(handle, m, n, nrhs, d_A, ldA, d_b, ldb, d_x, ldx, d_workspace, lwork);
+    inline cublasStatus_t
+    gels(cublasHandle_t handle, cublasOperation_t trans, int m, int n, int nrhs, float *Aarray[], int lda,
+         float *Carray[], int ldc, int *info, int *devInfoArray, int batchSize) {
+        return cublasSgelsBatched(handle, trans, m, n, nrhs, Aarray, lda, Carray, ldc, info, devInfoArray, batchSize);
     }
 
-    template<>
-    inline cusolverStatus_t
-    gelsBufferSize(cusolverDnHandle_t handle, int m, int n, int nrhs, double *d_A, int ldA, double *d_b, int ldb,
-                   double *d_x, int ldx, void *d_workspace, size_t *lwork) {
-        return cusolverDnDDgels_bufferSize(handle, m, n, nrhs, d_A, ldA, d_b, ldb, d_x, ldx, d_workspace, lwork);
-    }
-
-    /**
-    * Generic function for cusolverDn `gels`
-    */
-    template<typename T>
-    cusolverStatus_t
-    gels(cusolverDnHandle_t handle, int m, int n, int nrhs, T *d_A, int ldA, T *d_b, int ldb, T *d_x, int ldx,
-         void *d_workspace, size_t lwork, int *iter, int *d_info);
-
-    inline cusolverStatus_t
-    gels(cusolverDnHandle_t handle, int m, int n, int nrhs, float *d_A, int ldA, float *d_b, int ldb, float *d_x,
-         int ldx, void *d_workspace, size_t lwork, int *iter, int *d_info) {
-        return cusolverDnSSgels(handle, m, n, nrhs, d_A, ldA, d_b, ldb, d_x, ldx,
-                                d_workspace, lwork, iter, d_info);
-    }
-
-    inline cusolverStatus_t
-    gels(cusolverDnHandle_t handle, int m, int n, int nrhs, double *d_A, int ldA, double *d_b, int ldb, double *d_x,
-         int ldx, void *d_workspace, size_t lwork, int *iter, int *d_info) {
-        return cusolverDnDDgels(handle, m, n, nrhs, d_A, ldA, d_b, ldb, d_x, ldx,
-                                d_workspace, lwork, iter, d_info);
+    inline cublasStatus_t
+    gels(cublasHandle_t handle, cublasOperation_t trans, int m, int n, int nrhs, double *Aarray[], int lda,
+         double *Carray[], int ldc, int *info, int *devInfoArray, int batchSize) {
+        return cublasDgelsBatched(handle, trans, m, n, nrhs, Aarray, lda, Carray, ldc, info, devInfoArray, batchSize);
     }
 }
 
@@ -483,83 +459,53 @@ void gpuNullspace(
 }
 
 
-template<typename T>
-void gpuLeastSquaresSetup(
-        Context &context,
-        size_t numRows,
-        size_t numCols,
-        DeviceVector<T> &d_workspace,
-        DeviceVector<T> &d_A,
-        DeviceVector<T> &d_x,
-        DeviceVector<T> &d_b) {
-    size_t workspaceSize;
-    gpuErrChk(generic::gelsBufferSize(context.solver(), numRows, numCols, 1, d_A.get(), numRows,
-                                      d_b.get(), numRows, d_x.get(), numCols, d_workspace.get(),
-                                      &workspaceSize));
-    d_workspace.allocateOnDevice(workspaceSize);
-}
-
-
 /**
  * Solve least squares for x in Ax=b
  *
- * For iteration debugging, if iter is:
- *     <0 : iterative refinement has failed, main precision (Inputs/Outputs precision) factorization has been performed.
- *     -1 : taking into account machine parameters, n, nrhs, it is a priori not worth working in lower precision
- *     -2 : overflow of an entry when moving from main to lower precision
- *     -3 : failure during the factorization
- *     -5 : overflow occurred during computation
- *     -50: solver stopped the iterative refinement after reaching maximum allowed iterations.
- *     >0 : iter is a number of iterations solver performed to reach convergence criteria
- *
- * @tparam T
- * @param context
- * @param numRows
- * @param numCols
- * @param d_workspace
- * @param d_A
- * @param d_x
- * @param d_b
- * @param devInfo
+ * For debugging:
+ *      info:
+ *          If info=0, the parameters passed to the function are valid
+ *          If info<0, the parameter in position -info is invalid
+ *      infoArray:
+ *          If non-null, every element devInfoArray[i] contain a value V with the following meaning:
+ *              V = 0 : the i-th problem was successfully solved
+ *              V > 0 : the V-th diagonal element of the Aarray[i] is zero. Aarray[i] does not have full rank.
  */
 template<typename T>
-void gpuLeastSquaresSolve(
+void gpuLeastSquares(
         Context &context,
         size_t numRows,
         size_t numCols,
-        DeviceVector<T> &d_workspace,
-        DeviceVector<T> &d_A,
-        DeviceVector<T> &d_x,
-        DeviceVector<T> &d_b,
+        DeviceVector<T> d_A,
+        DeviceVector<T> d_C,
         bool devInfo = false) {
-    DeviceVector<int> d_iters(1);
+    T* d_arrayA[] = {d_A.get()};
+    T* d_arrayC[] = {d_C.get()};
     DeviceVector<int> d_info(1);
-    size_t cap = d_workspace.capacity();
-    const cusolverStatus_t status = generic::gels(context.solver(),
-                                                  numRows,
-                                                  numCols,
-                                                  1,
-                                                  d_A.get(),
-                                                  numRows,
-                                                  d_b.get(),
-                                                  numRows,
-                                                  d_x.get(),
-                                                  numCols,
-                                                  d_workspace.get(),
-                                                  d_workspace.capacity(),
-                                                  d_iters.get(),
-                                                  d_info.get());
+    DeviceVector<int> d_infoArray(1);
+    const cublasStatus_t status = generic::gels(context.blas(),
+                                                CUBLAS_OP_N,
+                                                numRows,
+                                                numCols,
+                                                1,
+                                                d_arrayA,
+                                                numRows,
+                                                d_arrayC,
+                                                numRows,
+                                                d_info.get(),
+                                                d_infoArray.get(),
+                                                1);
 
     if (devInfo) {
         std::vector<int> info(1);
         d_info.download(info);
         if (info[0] != 0) {
-            std::cerr << "Least squares solve failed with status " << info[0] << "\n";
+            std::cerr << "Least squares solve failed with info " << info[0] << "\n";
         }
-        std::vector<int> iters(1);
-        d_iters.download(iters);
-        if (iters[0] < 0) {
-            std::cerr << "Least squares solve failed with iterations " << iters[0] << "\n";
+        std::vector<int> infoArray(1);
+        d_infoArray.download(infoArray);
+        if (infoArray[0] < 0) {
+            std::cerr << "Least squares solve failed with infoArray[0] " << infoArray[0] << "\n";
         }
     }
 

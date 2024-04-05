@@ -113,10 +113,11 @@ int main() {
     std::vector<real_t> b = {1, 2};
     DeviceVector<real_t> d_b(b);
 
-    DeviceVector<real_t> d_workspace;
+    const size_t batchSize = 1;
+//    std::array<real_t*, batchSize> d_arrayA = {d_A.get()};
+//    std::array<real_t*, batchSize> d_arrayC = {d_b.get()};
 
-    gpuLeastSquaresSetup(context, rows, cols, d_workspace, d_A, d_x, d_b);
-    gpuLeastSquaresSolve(context, rows, cols, d_workspace, d_A, d_x, d_b, true);
+    gpuLeastSquares(context, rows, cols, d_A, d_b, true);
 
     std::vector<real_t> hostData(cols);
     d_x.download(hostData);

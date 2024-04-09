@@ -73,11 +73,15 @@ int main() {
     std::vector<real_t> vec = {1, 1, 1};  // Example vector
     DeviceVector<real_t> d_vec(vec);
 
-    DeviceVector<real_t> d_vecProjected(cols);
-
     // Calculate projection
+    DeviceVector<real_t> d_vecProjected(cols);
 //    projection = self.__null_space_matrix[i] @ \
 //                np.linalg.lstsq(self.__null_space_matrix[i], full_stack, rcond=None)[0]
+    std::vector<real_t*> ptrsA = {d_nullspace.get()};
+    DeviceVector<real_t*> d_ptrsA(ptrsA);
+    std::vector<real_t*> ptrsb = {d_vec.get()};
+    DeviceVector<real_t*> d_ptrsb(ptrsb);
+    gpuLeastSquares(context, cols, cols, d_ptrsA, d_ptrsb, true);
     gpuMatVecMul(context, cols, cols, d_nullspace, d_vec, d_vecProjected, true);
 
     // Retrieve result

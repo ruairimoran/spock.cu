@@ -476,69 +476,41 @@ void gpuLeastSquares(
         Context &context,
         size_t numRows,
         size_t numCols,
-        DeviceVector<T> d_A_,
-        DeviceVector<T> d_C_,
-        size_t batchSize = 1,
+        DeviceVector<T*> &ptrsA,
+        DeviceVector<T*> &ptrsC,
         bool devInfo = false) {
-//    std::vector<real_t*> arrayA = {d_A.get()};
-//    DeviceVector<real_t*> d_arrayA(arrayA);
-//    std::vector<real_t*> arrayC = {d_C.get()};
-//    DeviceVector<real_t*> d_arrayC(arrayC);
-    T *A;
-    T *b;
-    A = (T*) malloc(numRows * numCols * sizeof(T));
-    b = (T*) malloc(numRows *  sizeof(T));
-    A[0] = 1;
-    A[1] = 0;
-    A[2] = 0;
-    A[3] = 4;
-    b[0] = 1;
-    b[1] = 2;
-    T *d_A;
-    T *d_b;
-    cudaMalloc(&d_A, numRows * numCols * sizeof(T));
-    cudaMalloc(&d_b, numRows * sizeof(T));
-    cudaMemcpy(d_A, A, numRows * numCols * sizeof(T), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_b, b, numRows * 1 * sizeof(T), cudaMemcpyHostToDevice);
-    T **d_arrayA;
-    T **d_arrayb;
-    cudaMalloc(&d_arrayA, sizeof(T*));
-    cudaMalloc(&d_arrayb, sizeof(T*));
-    cudaMemcpy(d_arrayA, &d_A, sizeof(T*), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_arrayb, &d_b, sizeof(T*), cudaMemcpyHostToDevice);
-    DeviceVector<int> d_info(1);
-    DeviceVector<int> d_infoArray(1);
+    size_t batchSize = ptrsA.capacity();
+    DeviceVector<T*> d_arrayA(ptrsA);
+    DeviceVector<T*> d_arrayC(ptrsC);
+    int info = 0;
+    DeviceVector<int> d_infoArray(batchSize);
     const cublasStatus_t status = generic::gels(context.blas(),
                                                 CUBLAS_OP_N,
                                                 numRows,
                                                 numCols,
                                                 1,
-                                                d_arrayA,
+                                                d_arrayA.get(),
                                                 numRows,
-                                                d_arrayb,
+                                                d_arrayC.get(),
                                                 numRows,
-                                                d_info.get(),
+                                                &info,
                                                 d_infoArray.get(),
                                                 batchSize);
 
     if (devInfo) {
-        std::vector<int> info(1);
-        d_info.download(info);
-        if (info[0] != 0) {
-            std::cerr << "Least squares solve failed with info " << info[0] << "\n";
+        if (info != 0) {
+            std::cerr << "Least squares solve failed with info " << info << "\n";
         }
-        std::vector<int> infoArray(1);
+        std::vector<int> infoArray(batchSize);
         d_infoArray.download(infoArray);
-        if (infoArray[0] < 0) {
-            std::cerr << "Least squares solve failed with infoArray[0] " << infoArray[0] << "\n";
+        for (size_t i = 0; i < batchSize; i++) {
+            if (infoArray[i] < 0) {
+                std::cerr << "Least squares solve failed with infoArray[" << i << "] = " << infoArray[i] << "\n";
+            }
         }
     }
 
     gpuErrChk(status);
-    cudaFree(d_A);
-    cudaFree(d_b);
-    cudaFree(d_arrayA);
-    cudaFree(d_arrayb);
 }
 
 

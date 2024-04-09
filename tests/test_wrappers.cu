@@ -553,15 +553,10 @@ TEST(NullspaceTest, Nullspace) {
     Context context;
     size_t rows = 5;
     size_t cols = 4;
-    std::vector<real_t> A = {
-            1, 0, 0, 0, 2,
-            0, 0, 3, 0, 0,
-            0, 0, 0, 0, 0,
-            0, 2, 0, 0, 0
-    };  ///< column order
+    std::vector<real_t> A = {1, 0, 0, 4};  ///< column order
     DeviceVector<real_t> d_A(A);
     DeviceVector<real_t> d_nullspace;
-    gpuNullspace(context, rows, cols,d_A, d_nullspace, true);
+    gpuNullspace(context, rows, cols, d_A, d_nullspace, true);
 
     std::vector<real_t> nullspace;
     d_nullspace.download(nullspace);
@@ -569,20 +564,37 @@ TEST(NullspaceTest, Nullspace) {
 
 TEST(LeastSquaresTest, LeastSquares) {
     Context context;
-    size_t rows = 5;
-    size_t cols = 4;
-    std::vector<real_t> A = {
-            1, 0, 0, 0, 2,
-            0, 0, 3, 0, 0,
-            0, 0, 0, 0, 0,
-            0, 2, 0, 0, 0
-    };  ///< column order
-    DeviceVector<real_t> d_A(A);
-    std::vector<real_t> b = {1, 2, 3, 4, 5};
-    DeviceVector<real_t> d_b(b);
-    gpuLeastSquares(context, rows, cols, d_A, d_b, true);
+    size_t rows = 3;
+    size_t cols = 2;
+
+    std::vector<real_t> A1 = {1, 0, 2, 0, 3, 6};  ///< column order
+    DeviceVector<real_t> d_A1(A1);
+    std::vector<real_t> b1 = {1, 2, 3};
+    DeviceVector<real_t> d_b1(b1);
+
+    std::vector<real_t> A2 = {1, 3, 2, 3, 2, 1};  ///< column order
+    DeviceVector<real_t> d_A2(A2);
+    std::vector<real_t> b2 = {1, 2, 3};
+    DeviceVector<real_t> d_b2(b2);
+
+    std::vector<real_t*> ptrsA = {d_A1.get(), d_A2.get()};
+    std::vector<real_t*> ptrsb = {d_b1.get(), d_b2.get()};
+    DeviceVector<real_t*> arrayA(ptrsA);
+    DeviceVector<real_t*> arrayb(ptrsb);
+    gpuLeastSquares(context, rows, cols, arrayA, arrayb, true);
     std::vector<real_t> hostData(cols);
-    d_b.download(hostData);
-    std::vector<real_t> expectedResult{2.2, 1, 0, 1};
-    ASSERT_EQ(hostData, expectedResult);
+
+    DeviceVector<real_t> d_x1(d_b1, 0, cols);
+    d_x1.download(hostData);
+    std::vector<real_t> expectedResult1{0.33333333333333, 0.444444444444444};
+    for (size_t i = 0; i < cols; i++) {
+        EXPECT_NEAR(hostData[i], expectedResult1[i], REAL_PRECISION);
+    }
+
+    DeviceVector<real_t> d_x2(d_b2, 0, cols);
+    d_x2.download(hostData);
+    std::vector<real_t> expectedResult2{0.96, -0.04};
+    for (size_t i = 0; i < cols; i++) {
+        EXPECT_NEAR(hostData[i], expectedResult2[i], REAL_PRECISION);
+    }
 }

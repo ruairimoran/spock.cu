@@ -18,8 +18,8 @@ void gpuMatT(Context &context, size_t numRows, size_t numCols, DeviceVector<T> &
     T alpha = 1.0;
     T beta = 0.0;
     DeviceVector<T> transpose(numRows * numCols);
-    gpuErrChk(generic::geam(context.blas(), CUBLAS_OP_T, CUBLAS_OP_N, numRows, numCols,
-                            alpha, A.get(), numCols, beta, A.get(), numRows, transpose.get(), numRows));
+    gpuErrChk(cuLib::geam(context.blas(), CUBLAS_OP_T, CUBLAS_OP_N, numRows, numCols,
+                          alpha, A.get(), numCols, beta, A.get(), numRows, transpose.get(), numRows));
     transpose.deviceCopyTo(A);
 }
 
@@ -52,8 +52,8 @@ void gpuMatAdd(Context &context, size_t numRows, size_t numCols,
     size_t ldb = transB ? numCols : numRows;
     size_t ldc = numRows;
 
-    gpuErrChk(generic::geam(context.blas(), opA, opB, numRows, numCols,
-                            alpha, A.get(), lda, beta, B.get(), ldb, C.get(), ldc));
+    gpuErrChk(cuLib::geam(context.blas(), opA, opB, numRows, numCols,
+                          alpha, A.get(), lda, beta, B.get(), ldb, C.get(), ldc));
 }
 
 
@@ -83,8 +83,8 @@ void gpuMatVecMul(Context &context, size_t numRows, size_t numCols,
     size_t incx = 1;
     size_t incy = 1;
 
-    gpuErrChk(generic::gemv(context.blas(), opA, numRows, numCols,
-                            alpha, A.get(), lda, x.get(), incx, beta, y.get(), incy));
+    gpuErrChk(cuLib::gemv(context.blas(), opA, numRows, numCols,
+                          alpha, A.get(), lda, x.get(), incx, beta, y.get(), incy));
 }
 
 
@@ -117,8 +117,8 @@ void gpuMatMatMul(Context &context, size_t m, size_t k, size_t n,
     size_t ldb = transB ? n : k;
     size_t ldc = m;
 
-    gpuErrChk(generic::gemm(context.blas(), opA, opB, m, n, k,
-                            alpha, A.get(), lda, B.get(), ldb, beta, C.get(), ldc));
+    gpuErrChk(cuLib::gemm(context.blas(), opA, opB, m, n, k,
+                          alpha, A.get(), lda, B.get(), ldb, beta, C.get(), ldc));
 }
 
 
@@ -216,7 +216,7 @@ void gpuCholeskySolve(Context &context, size_t numRowsSol, size_t numColsSol,
 template<typename T>
 void gpuSvdSetup(Context &context, size_t numRows, size_t numCols, DeviceVector<T> &d_workspace) {
     int workspaceSize;
-    gpuErrChk(generic::gesvdBufferSize<T>(context.solver(), numRows, numCols, &workspaceSize));
+    gpuErrChk(cuLib::gesvdBufferSize<T>(context.solver(), numRows, numCols, &workspaceSize));
     d_workspace.allocateOnDevice(workspaceSize);
 }
 
@@ -234,12 +234,12 @@ void gpuSvdFactor(
         bool devInfo = false
 ) {
     DeviceVector<int> d_info(1);
-    const cusolverStatus_t status = generic::gesvd(context.solver(), 'A', 'A', numRows, numCols,
-                                                   d_A.get(), numRows,
-                                                   d_S.get(),
-                                                   d_U.get(), numRows,
-                                                   d_Vt.get(), numCols,
-                                                   d_workspace.get(), d_workspace.capacity(), nullptr, d_info.get());
+    const cusolverStatus_t status = cuLib::gesvd(context.solver(), 'A', 'A', numRows, numCols,
+                                                 d_A.get(), numRows,
+                                                 d_S.get(),
+                                                 d_U.get(), numRows,
+                                                 d_Vt.get(), numCols,
+                                                 d_workspace.get(), d_workspace.capacity(), nullptr, d_info.get());
 
     if (devInfo) {
         int info = d_info.fetchElementFromDevice(0);
@@ -312,18 +312,18 @@ void gpuLeastSquares(
     DeviceVector<T *> d_arrayC(ptrsC);
     int info = 0;
     DeviceVector<int> d_infoArray(batchSize);
-    const cublasStatus_t status = generic::gels(context.blas(),
-                                                CUBLAS_OP_N,
-                                                numRows,
-                                                numCols,
-                                                1,
-                                                d_arrayA.get(),
-                                                numRows,
-                                                d_arrayC.get(),
-                                                numRows,
-                                                &info,
-                                                d_infoArray.get(),
-                                                batchSize);
+    const cublasStatus_t status = cuLib::gels(context.blas(),
+                                              CUBLAS_OP_N,
+                                              numRows,
+                                              numCols,
+                                              1,
+                                              d_arrayA.get(),
+                                              numRows,
+                                              d_arrayC.get(),
+                                              numRows,
+                                              &info,
+                                              d_infoArray.get(),
+                                              batchSize);
 
     if (devInfo) {
         if (info != 0) {

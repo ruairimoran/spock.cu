@@ -581,12 +581,12 @@ TEST(NullspaceTest, Nullspace) {
     size_t NCols = 0;  // num cols nullspace
     gpuNullspace(context, rows, cols, d_A, d_nullspace, NCols, true);
     EXPECT_EQ(NCols, 2);
-    size_t nNull = cols * NCols;
-    DeviceVector<real_t> d_AN(nNull);
+    size_t nAN = rows * NCols;
+    DeviceVector<real_t> d_AN(nAN);
     gpuMatMatMul(context, rows, cols, NCols, d_A, d_nullspace, d_AN);
-    std::vector<real_t> AN(nNull);
+    std::vector<real_t> AN(nAN);
     d_AN.download(AN);
-    for (size_t i = 0; i < nNull; i++) {
+    for (size_t i = 0; i < nAN; i++) {
         EXPECT_NEAR(AN[i], 0.0, REAL_PRECISION);
     }
 }

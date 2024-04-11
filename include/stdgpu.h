@@ -18,7 +18,7 @@
 #include "rapidjson/document.h"
 #include "rapidjson/error/en.h"
 #include "DeviceVector.cuh"
-#include "CublasContext.cuh"
+#include "cuContext.cuh"
 
 /**
  * Check for errors when calling GPU functions
@@ -80,7 +80,7 @@ inline void col2row(std::vector<T> &dstRow, std::vector<T> &srcCol, size_t numRo
 }
 
 
-namespace generic {
+namespace cuLib {
     /**
     * Generic function for cublas `nrm2`
     */

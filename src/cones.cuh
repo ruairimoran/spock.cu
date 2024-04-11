@@ -144,7 +144,7 @@ public:
         dimension_check(d_vec);
         /** Determine the 2-norm of the first (n - 1) elements of d_vec */
         real_t nrm;
-        generic::nrm2(m_context.blas(), m_dimension - 1, d_vec.get(), 1, &nrm);
+        cuLib::nrm2(m_context.blas(), m_dimension - 1, d_vec.get(), 1, &nrm);
         float vecLastElement = d_vec.fetchElementFromDevice(m_dimension - 1);
         if (nrm <= vecLastElement) {
             return;  // Do nothing!

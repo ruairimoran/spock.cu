@@ -606,21 +606,22 @@ TEST(LeastSquaresTest, LeastSquares) {
     std::vector<real_t> b2 = {1, 2, 3};
     DeviceVector<real_t> d_b2(b2);
 
-    std::vector<real_t*> ptrsA = {d_A1.get(), d_A2.get()};
-    std::vector<real_t*> ptrsb = {d_b1.get(), d_b2.get()};
-    DeviceVector<real_t*> arrayA(ptrsA);
-    DeviceVector<real_t*> arrayb(ptrsb);
-    gpuLeastSquares(context, rows, cols, arrayA, arrayb, true);
+    std::vector<real_t *> ptrsA = {d_A1.get(), d_A2.get()};
+    std::vector<real_t *> ptrsb = {d_b1.get(), d_b2.get()};
+    DeviceVector<real_t *> d_arrayA(ptrsA);
+    DeviceVector<real_t *> d_arrayb(ptrsb);
+    gpuLeastSquares(context, rows, cols, d_arrayA, d_arrayb, true);
+
     std::vector<real_t> hostData(cols);
 
-    DeviceVector<real_t> d_x1(d_b1, 0, cols);
+    DeviceVector<real_t> d_x1(d_b1, 0, cols - 1);
     d_x1.download(hostData);
     std::vector<real_t> expectedResult1{0.33333333333333, 0.444444444444444};
     for (size_t i = 0; i < cols; i++) {
         EXPECT_NEAR(hostData[i], expectedResult1[i], REAL_PRECISION);
     }
 
-    DeviceVector<real_t> d_x2(d_b2, 0, cols);
+    DeviceVector<real_t> d_x2(d_b2, 0, cols - 1);
     d_x2.download(hostData);
     std::vector<real_t> expectedResult2{0.96, -0.04};
     for (size_t i = 0; i < cols; i++) {

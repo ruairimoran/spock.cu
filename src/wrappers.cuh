@@ -304,12 +304,10 @@ void gpuLeastSquares(
         Context &context,
         size_t numRows,
         size_t numCols,
-        DeviceVector<T *> &ptrsA,
-        DeviceVector<T *> &ptrsC,
+        DeviceVector<T *> &d_ptrsA,
+        DeviceVector<T *> &d_ptrsC,
         bool devInfo = false) {
-    size_t batchSize = ptrsA.capacity();
-    DeviceVector<T *> d_arrayA(ptrsA);
-    DeviceVector<T *> d_arrayC(ptrsC);
+    size_t batchSize = d_ptrsA.capacity();
     int info = 0;
     DeviceVector<int> d_infoArray(batchSize);
     const cublasStatus_t status = cuLib::gels(context.blas(),
@@ -317,9 +315,9 @@ void gpuLeastSquares(
                                               numRows,
                                               numCols,
                                               1,
-                                              d_arrayA.get(),
+                                              d_ptrsA.get(),
                                               numRows,
-                                              d_arrayC.get(),
+                                              d_ptrsC.get(),
                                               numRows,
                                               &info,
                                               d_infoArray.get(),

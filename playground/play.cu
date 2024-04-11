@@ -44,7 +44,7 @@ int main() {
     std::cout << "A:" << "\n";
     printMatrix(A_, rows, cols);
 
-    std::vector<real_t> N_(cols* NCols);
+    std::vector<real_t> N_(cols * NCols);
     d_N.download(N_);
     col2row(N_, N_, cols, NCols);
     std::cout << "N:" << "\n";

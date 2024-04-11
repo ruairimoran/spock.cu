@@ -270,7 +270,7 @@ void gpuNullspace(
 
     size_t nVt = numCols * numCols;
     DeviceVector<T> d_S(numCols);
-    DeviceVector<T> d_U(n);
+    DeviceVector<T> d_U(numRows * numRows);
     DeviceVector<T> d_Vt(nVt);
     gpuSvdFactor(context, numRows, numCols, d_workspace, d_copyA, d_S, d_U, d_Vt, devInfo);
 

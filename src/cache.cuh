@@ -196,7 +196,7 @@ void Cache::offline_projection_setup() {
             }
 
             gpuMatAdd(m_data.context(), m_numInputs, m_numInputs, d_idInput, d_forR, d_forR);
-            gpuCholeskyFactor(m_data.context(), m_numInputs, d_workspace, d_forR, d_info, true);
+            gpuCholeskyFactor(m_data.context(), m_numInputs, d_workspace, d_forR, true);
 
             DeviceVector<real_t> d_matL(m_d_choleskyLo,
                                         getIdxMat(node, 0, 0, m_numInputs),
@@ -205,12 +205,12 @@ void Cache::offline_projection_setup() {
             d_negate<<<m_numInputs * m_numStates, THREADS_PER_BLOCK>>>(d_forK.get(), m_numInputs * m_numStates);
 
             DeviceVector<real_t> d_matKt(m_numInputs * m_numStates);
-            gpuCholeskySolve(m_data.context(), m_numInputs, m_numStates, d_matL, d_matKt, d_forK, d_info, true);
+            gpuCholeskySolve(m_data.context(), m_numInputs, m_numStates, d_matL, d_matKt, d_forK, true);
 
             DeviceVector<real_t> d_matK(m_d_K,
                                         getIdxMat(node, 0, 0, m_numInputs, m_numStates),
                                         getIdxMat(node, m_numInputs, m_numStates, m_numInputs, m_numStates));
-            gpuMatT(m_data.context(), m_numInputs, m_numStates, d_matKt, d_matK);
+//            gpuMatT(m_data.context(), m_numInputs, m_numStates, d_matKt, d_matK);
 
             /** compute each P */
             DeviceVector<real_t> d_forP(std::vector(m_numStates * m_numStates, 0.0));

@@ -192,17 +192,16 @@ namespace generic {
  * @param context cuBLAS handle
  * @param numRows rows of A
  * @param numCols cols of A
- * @param A input matrix
- * @param C output matrix
+ * @param A matrix
  */
 template<typename T>
-void gpuMatT(Context &context, size_t numRows, size_t numCols,
-             DeviceVector<T> &A,
-             DeviceVector<T> &C) {
+void gpuMatT(Context &context, size_t numRows, size_t numCols, DeviceVector<T> &A) {
     T alpha = 1.0;
     T beta = 0.0;
+    DeviceVector<T> transpose(numRows * numCols);
     gpuErrChk(generic::geam(context.blas(), CUBLAS_OP_T, CUBLAS_OP_N, numRows, numCols,
-                            alpha, A.get(), numCols, beta, A.get(), numRows, C.get(), numRows));
+                            alpha, A.get(), numCols, beta, A.get(), numRows, transpose.get(), numRows));
+    transpose.deviceCopyTo(A);
 }
 
 
@@ -334,15 +333,14 @@ void gpuCholeskySetup(Context &context, size_t n,
  * @param n n=rows=cols of matrix
  * @param d_workspace workspace for Cholesky decomposition
  * @param d_cholesky matrix to be operated upon, and overwritten with lower-triangular result
- * @param d_info device storage for outcome status of decomposition
  * @param devInfo whether to check outcome status for errors
  */
 template<typename T>
 void gpuCholeskyFactor(Context &context, size_t n,
                        DeviceVector<T> &d_workspace,
                        DeviceVector<T> &d_cholesky,
-                       DeviceVector<int> &d_info,
                        bool devInfo = false) {
+    DeviceVector<int> d_info(1);
     const cusolverStatus_t status = cusolverDnDpotrf(context.solver(), CUBLAS_FILL_MODE_LOWER, n,
                                                      d_cholesky.get(), n,
                                                      d_workspace.get(),
@@ -350,9 +348,8 @@ void gpuCholeskyFactor(Context &context, size_t n,
                                                      d_info.get());
 
     if (devInfo) {
-        std::vector<int> info(1);
-        d_info.download(info);
-        if (info[0] != 0) std::cerr << "Cholesky factorization failed with status: " << info[0] << "\n";
+        int info = d_info.fetchElementFromDevice(0);
+        if (info != 0) std::cerr << "Cholesky factorization failed with status: " << info << "\n";
     }
 
     gpuErrChk(status);
@@ -371,7 +368,6 @@ void gpuCholeskyFactor(Context &context, size_t n,
  * @param d_cholesky lower-triangular matrix result of Cholesky decomposition on A
  * @param d_solution solution of linear system, x
  * @param d_affine affine part of linear system, b
- * @param d_info device storage for outcome status of solving system
  * @param devInfo whether to check outcome status for errors
  */
 template<typename T>
@@ -379,20 +375,19 @@ void gpuCholeskySolve(Context &context, size_t numRowsSol, size_t numColsSol,
                       DeviceVector<T> &d_cholesky,
                       DeviceVector<T> &d_solution,
                       DeviceVector<T> &d_affine,
-                      DeviceVector<int> &d_info,
                       bool devInfo = false) {
+    DeviceVector<int> d_info(1);
     d_affine.deviceCopyTo(d_solution);
     const cusolverStatus_t status = cusolverDnDpotrs(context.solver(), CUBLAS_FILL_MODE_LOWER,
                                                      numRowsSol, numColsSol,
                                                      d_cholesky.get(), numRowsSol,
                                                      d_solution.get(), numRowsSol,
                                                      d_info.get());
-    gpuErrChk(cudaDeviceSynchronize());
+//    gpuErrChk(cudaDeviceSynchronize());
 
     if (devInfo) {
-        std::vector<int> info(1);
-        d_info.download(info);
-        if (info[0] != 0) std::cerr << "Cholesky solver failed with status: " << info[0] << "\n";
+        int info = d_info.fetchElementFromDevice(0);
+        if (info != 0) std::cerr << "Cholesky solver failed with status: " << info << "\n";
     }
 
     gpuErrChk(status);
@@ -417,22 +412,20 @@ void gpuSvdFactor(
         DeviceVector<T> &d_S,
         DeviceVector<T> &d_U,
         DeviceVector<T> &d_Vt,
-        DeviceVector<int> &d_info,
         bool devInfo = false
 ) {
+    DeviceVector<int> d_info(1);
     const cusolverStatus_t status = generic::gesvd(context.solver(), 'A', 'A', numRows, numCols,
                                                    d_A.get(), numRows,
                                                    d_S.get(),
                                                    d_U.get(), numRows,
                                                    d_Vt.get(), numCols,
-                                                   d_workspace.get(), d_workspace.capacity(), nullptr, d_info.get()
-    );
+                                                   d_workspace.get(), d_workspace.capacity(), nullptr, d_info.get());
 
     if (devInfo) {
-        std::vector<int> info(1);
-        d_info.download(info);
-        if (info[0] != 0) {
-            std::cerr << "SVD factorisation failed with status " << info[0] << "\n";
+        int info = d_info.fetchElementFromDevice(0);
+        if (info != 0) {
+            std::cerr << "SVD factorisation failed with status " << info << "\n";
         }
     }
 
@@ -447,15 +440,31 @@ void gpuNullspace(
         size_t numCols,
         DeviceVector<T> &d_A,
         DeviceVector<T> &d_nullspace,
-        bool devInfo = false
-) {
-    DeviceVector<real_t> d_S(numRows);
-    DeviceVector<real_t> d_U(numRows * numRows);
-    d_nullspace.allocateOnDevice(numCols * numCols);
-    DeviceVector<real_t> d_workspace;
-    DeviceVector<int> d_info{1};
+        size_t &nullspaceCols,
+        bool devInfo = false) {
+    size_t n = numRows * numCols;
+    DeviceVector<T> d_copyA(n);
+    d_A.deviceCopyTo(d_copyA);
+
+    DeviceVector<T> d_workspace;
     gpuSvdSetup(context, numRows, numCols, d_workspace);
-    gpuSvdFactor(context, numRows, numCols, d_workspace, d_A, d_S, d_U, d_nullspace, d_info, devInfo);
+
+    size_t nVt = numCols * numCols;
+    DeviceVector<T> d_S(numCols);
+    DeviceVector<T> d_U(n);
+    DeviceVector<T> d_Vt(nVt);
+    gpuSvdFactor(context, numRows, numCols, d_workspace, d_copyA, d_S, d_U, d_Vt, devInfo);
+
+    std::vector<T> S(numCols);
+    d_S.download(S);
+    size_t i;
+    for (i = 0; i < numCols; i++) { if (S[i] < REAL_PRECISION) break; }
+    nullspaceCols = numCols - i;
+    size_t idx = nVt - (numCols * nullspaceCols);
+    gpuMatT(context, numCols, numCols, d_Vt);
+    DeviceVector<T> d_N(d_Vt, idx, nVt - 1);
+    d_nullspace.allocateOnDevice(nVt - idx);
+    d_N.deviceCopyTo(d_nullspace);
 }
 
 
@@ -476,12 +485,12 @@ void gpuLeastSquares(
         Context &context,
         size_t numRows,
         size_t numCols,
-        DeviceVector<T*> &ptrsA,
-        DeviceVector<T*> &ptrsC,
+        DeviceVector<T *> &ptrsA,
+        DeviceVector<T *> &ptrsC,
         bool devInfo = false) {
     size_t batchSize = ptrsA.capacity();
-    DeviceVector<T*> d_arrayA(ptrsA);
-    DeviceVector<T*> d_arrayC(ptrsC);
+    DeviceVector<T *> d_arrayA(ptrsA);
+    DeviceVector<T *> d_arrayC(ptrsC);
     int info = 0;
     DeviceVector<int> d_infoArray(batchSize);
     const cublasStatus_t status = generic::gels(context.blas(),

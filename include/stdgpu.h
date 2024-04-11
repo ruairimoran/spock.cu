@@ -57,6 +57,7 @@ inline void gpuAssert(T code, std::source_location loc, bool abort = true) {
  */
 template<typename T>
 inline void row2col(std::vector<T> &dstCol, std::vector<T> &srcRow, size_t numRows, size_t numCols) {
+    if (numRows * numCols != srcRow.size()) std::cerr << "row2col dimension mismatch" << "\n";
     dstCol.resize(srcRow.size());
     std::vector<T> copySrc(srcRow);
     for (size_t r = 0; r < numRows; r++) {
@@ -68,6 +69,7 @@ inline void row2col(std::vector<T> &dstCol, std::vector<T> &srcRow, size_t numRo
 
 template<typename T>
 inline void col2row(std::vector<T> &dstRow, std::vector<T> &srcCol, size_t numRows, size_t numCols) {
+    if (numRows * numCols != srcCol.size()) std::cerr << "col2row dimension mismatch" << "\n";
     dstRow.resize(srcCol.size());
     std::vector<T> copySrc(srcCol);
     for (size_t r = 0; r < numRows; r++) {

@@ -17,7 +17,7 @@ protected:
     std::vector<real_t> m_hostTest;
     RisksTest() {
         std::ifstream tree_data("../../tests/default_tree_data.json");
-        m_tree = std::make_unique<ScenarioTree>(tree_data);
+        m_tree = std::make_unique<ScenarioTree>(m_context, tree_data);
         m_n = m_tree->numChildren().fetchElementFromDevice(m_node) * 2 + 1;
         m_d_data.allocateOnDevice(m_n);
         m_hostData.resize(m_n);

@@ -1,28 +1,32 @@
-#ifndef __STANDARD_GPU_INCLUDE__
-#define __STANDARD_GPU_INCLUDE__
-
-
-#define real_t double
-#define REAL_PRECISION 1e-12
-#define H2D cudaMemcpyHostToDevice
-#define D2H cudaMemcpyDeviceToHost
-#define THREADS_PER_BLOCK 512
-#define DIM2BLOCKS(n) ((n) / THREADS_PER_BLOCK + ((n) % THREADS_PER_BLOCK != 0))
-
 #include <vector>
 #include <cublas_v2.h>
 #include <cusolverDn.h>
 #include <iostream>
 #include <source_location>
-
 #include "rapidjson/document.h"
 #include "rapidjson/error/en.h"
 #include "DeviceVector.cuh"
-#include "cuContext.cuh"
 
-/**
- * Check for errors when calling GPU functions
- */
+#ifndef GPU__
+#define GPU__
+
+
+/* ------------------------------------------------------------------------------------
+ *  Definitions
+ * ------------------------------------------------------------------------------------ */
+
+#define real_t double
+#define REAL_PRECISION 1e-12
+#define THREADS_PER_BLOCK 512
+#define DIM2BLOCKS(n) ((n) / THREADS_PER_BLOCK + ((n) % THREADS_PER_BLOCK != 0))
+#define H2D cudaMemcpyHostToDevice
+#define D2H cudaMemcpyDeviceToHost
+
+
+/* ------------------------------------------------------------------------------------
+ *  Error check for Cuda functions
+ * ------------------------------------------------------------------------------------ */
+
 #define gpuErrChk(status) { gpuAssert((status), std::source_location::current()); }
 
 template<typename T>
@@ -52,9 +56,10 @@ inline void gpuAssert(T code, std::source_location loc, bool abort = true) {
 }
 
 
-/**
- * Convert between row- and column-major ordering of vector-stored matrices
- */
+/* ------------------------------------------------------------------------------------
+*  Convert between row- and column-major ordering of vector-stored matrices
+* ------------------------------------------------------------------------------------ */
+
 template<typename T>
 inline void row2col(std::vector<T> &dstCol, std::vector<T> &srcRow, size_t numRows, size_t numCols) {
     if (numRows * numCols != srcRow.size()) std::cerr << "row2col dimension mismatch" << "\n";
@@ -79,6 +84,10 @@ inline void col2row(std::vector<T> &dstRow, std::vector<T> &srcCol, size_t numRo
     }
 }
 
+
+/* ------------------------------------------------------------------------------------
+ *  Namespace that generalises float and double Cuda functions
+ * ------------------------------------------------------------------------------------ */
 
 namespace cuLib {
     /**

@@ -4,7 +4,7 @@
  * $ cmake -S . -B ./build -Wno-dev && cmake --build ./build && ./build/spock
 */
 
-#include "include/stdgpu.h"
+#include "include/gpu.cuh"
 #include "src/tree.cuh"
 #include "src/problem.cuh"
 #include "src/cache.cuh"
@@ -12,20 +12,22 @@
 
 
 int main() {
+    Context context;
+
     /** SCENARIO TREE */
     std::ifstream fileTree("tests/default_tree_data.json"); 
-    ScenarioTree tree(fileTree);
+    ScenarioTree tree(context, fileTree);
   	tree.print();
 
     /** PROBLEM DATA */
     std::ifstream fileProblem("tests/default_problem_data.json"); 
-    ProblemData problem(tree, fileProblem);
+    ProblemData problem(context, tree, fileProblem);
   	problem.print();
 
     /** CACHE */
     real_t tol = 1e-4;
     size_t maxIters = 20;
-    Cache cache(tree, problem, tol, maxIters);
+    Cache cache(context, tree, problem, tol, maxIters);
     cache.print();
 
     /** VANILLA CP */

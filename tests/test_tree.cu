@@ -4,29 +4,30 @@
 
 class MarkovTreeTest : public testing::Test {
 
-	protected:
-	    std::unique_ptr<ScenarioTree> m_mockTree;
-        size_t m_numNonleafNodes;
-        size_t m_numNodes;
-        size_t m_numStages;
-        std::vector<size_t> m_hostDataIntNumNonleafNodes;
-        std::vector<size_t> m_hostDataIntNumNodes;
-        std::vector<real_t> m_hostDataRealNumNodes;
-        std::vector<size_t> m_hostDataIntNumStages;
+protected:
+    Context m_context;
+    std::unique_ptr<ScenarioTree> m_mockTree;
+    size_t m_numNonleafNodes;
+    size_t m_numNodes;
+    size_t m_numStages;
+    std::vector<size_t> m_hostDataIntNumNonleafNodes;
+    std::vector<size_t> m_hostDataIntNumNodes;
+    std::vector<real_t> m_hostDataRealNumNodes;
+    std::vector<size_t> m_hostDataIntNumStages;
 
-	    MarkovTreeTest() {
-	        std::ifstream tree_data("../../tests/default_tree_data.json");
-            m_mockTree = std::make_unique<ScenarioTree>(tree_data);
-            m_numNonleafNodes = m_mockTree->numNonleafNodes();
-            m_numNodes = m_mockTree->numNodes();
-            m_numStages = m_mockTree->numStages();
-            m_hostDataIntNumNonleafNodes.resize(m_numNonleafNodes);
-            m_hostDataIntNumNodes.resize(m_numNodes);
-            m_hostDataRealNumNodes.resize(m_numNodes);
-            m_hostDataIntNumStages.resize(m_numStages);
-        };
+    MarkovTreeTest() {
+        std::ifstream tree_data("../../tests/default_tree_data.json");
+        m_mockTree = std::make_unique<ScenarioTree>(m_context, tree_data);
+        m_numNonleafNodes = m_mockTree->numNonleafNodes();
+        m_numNodes = m_mockTree->numNodes();
+        m_numStages = m_mockTree->numStages();
+        m_hostDataIntNumNonleafNodes.resize(m_numNonleafNodes);
+        m_hostDataIntNumNodes.resize(m_numNodes);
+        m_hostDataRealNumNodes.resize(m_numNodes);
+        m_hostDataIntNumStages.resize(m_numStages);
+    };
 
-        virtual ~MarkovTreeTest() {}
+    virtual ~MarkovTreeTest() {}
 };
 
 

@@ -1,7 +1,7 @@
 #ifndef CONSTRAINTS_CUH
 #define CONSTRAINTS_CUH
 
-#include "../include/stdgpu.h"
+#include "../include/gpu.cuh"
 #include "cones.cuh"
 
 

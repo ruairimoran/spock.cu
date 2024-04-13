@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
-
-#include "../include/stdgpu.h"
+#include "../include/gpu.cuh"
 
 
 class OrderMajorTest : public testing::Test {

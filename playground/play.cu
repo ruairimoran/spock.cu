@@ -1,4 +1,3 @@
-#include "../include/stdgpu.h"
 #include "wrappers.cuh"
 
 template<typename T>
@@ -21,6 +20,8 @@ void printMatrix(std::vector<T> A, size_t numRows, size_t numCols) {
 }
 
 int main() {
+    Context context;
+
     // Matrix A (rows x cols) with rows >= cols
     size_t rows = 4;
     size_t cols = 3;
@@ -29,10 +30,9 @@ int main() {
                              1, 2, 3,
                              1, 2, 3};
     row2col(A, A, rows, cols);
-    DeviceVector<real_t> d_A(A);
-    DeviceVector<real_t> d_N;  // nullspace
+    DeviceVector<real_t> d_A(context, A);
+    DeviceVector<real_t> d_N(context, 0);  // nullspace
 
-    Context context;
     size_t NCols = 0;
     gpuNullspace(context, rows, cols, d_A, d_N, NCols, true);
     std::cout << "num nullspace cols: " << NCols << "\n";
@@ -51,7 +51,7 @@ int main() {
     printMatrix(N_, cols, NCols);
 
     size_t nAN = rows * NCols;
-    DeviceVector<real_t> d_AN(nAN);
+    DeviceVector<real_t> d_AN(context, nAN);
     gpuMatMatMul(context, rows, cols, NCols, d_A, d_N, d_AN);
     std::vector<real_t> AN(nAN);
     d_AN.download(AN);

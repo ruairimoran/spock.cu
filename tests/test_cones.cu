@@ -11,7 +11,7 @@ class ConesTest : public testing::Test {
         /** Prepare some host and device data */
         size_t m_n = 64;
         size_t m_numConeTypes = 4;
-        DeviceVector<real_t> m_d_data = DeviceVector<real_t>(m_n);
+        DeviceVector<real_t> m_d_data = DeviceVector<real_t>(m_context, m_n);;
         std::vector<real_t> m_hostData = std::vector<real_t>(m_n);
         std::vector<real_t> m_hostTest = std::vector<real_t>(m_n);
         std::vector<real_t> m_hostZero = std::vector<real_t>(m_n);

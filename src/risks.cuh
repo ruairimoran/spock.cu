@@ -1,7 +1,7 @@
 #ifndef RISKS_CUH
 #define RISKS_CUH
 
-#include "../include/stdgpu.h"
+#include "../include/gpu.cuh"
 #include "cones.cuh"
 
 

@@ -1,7 +1,7 @@
+#include "../include/gpu.cuh"
+
 #ifndef WRAPPERS_H
 #define WRAPPERS_H
-
-#include "../include/stdgpu.h"
 
 
 /**
@@ -17,8 +17,8 @@ template<typename T>
 void gpuMatT(Context &context, size_t numRows, size_t numCols, DeviceVector<T> &A) {
     T alpha = 1.0;
     T beta = 0.0;
-    DeviceVector<T> transpose(numRows * numCols);
-    gpuErrChk(cuLib::geam(context.blas(), CUBLAS_OP_T, CUBLAS_OP_N, numRows, numCols,
+    DeviceVector<T> transpose(context, numRows * numCols);
+    gpuErrChk(cuLib::geam(context.cuBlasHandle(), CUBLAS_OP_T, CUBLAS_OP_N, numRows, numCols,
                           alpha, A.get(), numCols, beta, A.get(), numRows, transpose.get(), numRows));
     transpose.deviceCopyTo(A);
 }
@@ -52,7 +52,7 @@ void gpuMatAdd(Context &context, size_t numRows, size_t numCols,
     size_t ldb = transB ? numCols : numRows;
     size_t ldc = numRows;
 
-    gpuErrChk(cuLib::geam(context.blas(), opA, opB, numRows, numCols,
+    gpuErrChk(cuLib::geam(context.cuBlasHandle(), opA, opB, numRows, numCols,
                           alpha, A.get(), lda, beta, B.get(), ldb, C.get(), ldc));
 }
 
@@ -83,7 +83,7 @@ void gpuMatVecMul(Context &context, size_t numRows, size_t numCols,
     size_t incx = 1;
     size_t incy = 1;
 
-    gpuErrChk(cuLib::gemv(context.blas(), opA, numRows, numCols,
+    gpuErrChk(cuLib::gemv(context.cuBlasHandle(), opA, numRows, numCols,
                           alpha, A.get(), lda, x.get(), incx, beta, y.get(), incy));
 }
 
@@ -117,7 +117,7 @@ void gpuMatMatMul(Context &context, size_t m, size_t k, size_t n,
     size_t ldb = transB ? n : k;
     size_t ldc = m;
 
-    gpuErrChk(cuLib::gemm(context.blas(), opA, opB, m, n, k,
+    gpuErrChk(cuLib::gemm(context.cuBlasHandle(), opA, opB, m, n, k,
                           alpha, A.get(), lda, B.get(), ldb, beta, C.get(), ldc));
 }
 
@@ -135,7 +135,7 @@ void gpuCholeskySetup(Context &context, size_t n,
                       DeviceVector<T> &d_workspace) {
     int workspaceSize = 0;
     double *nullPtr = NULL;
-    gpuErrChk(cusolverDnDpotrf_bufferSize(context.solver(), CUBLAS_FILL_MODE_LOWER, n,
+    gpuErrChk(cusolverDnDpotrf_bufferSize(context.cuSolverHandle(), CUBLAS_FILL_MODE_LOWER, n,
                                           nullPtr, n, &workspaceSize));
     d_workspace.allocateOnDevice(workspaceSize);
 }
@@ -159,8 +159,8 @@ void gpuCholeskyFactor(Context &context, size_t n,
                        DeviceVector<T> &d_workspace,
                        DeviceVector<T> &d_cholesky,
                        bool devInfo = false) {
-    DeviceVector<int> d_info(1);
-    const cusolverStatus_t status = cusolverDnDpotrf(context.solver(), CUBLAS_FILL_MODE_LOWER, n,
+    DeviceVector<int> d_info(context, 1);
+    const cusolverStatus_t status = cusolverDnDpotrf(context.cuSolverHandle(), CUBLAS_FILL_MODE_LOWER, n,
                                                      d_cholesky.get(), n,
                                                      d_workspace.get(),
                                                      d_workspace.capacity(),
@@ -195,9 +195,9 @@ void gpuCholeskySolve(Context &context, size_t numRowsSol, size_t numColsSol,
                       DeviceVector<T> &d_solution,
                       DeviceVector<T> &d_affine,
                       bool devInfo = false) {
-    DeviceVector<int> d_info(1);
+    DeviceVector<int> d_info(context, 1);
     d_affine.deviceCopyTo(d_solution);
-    const cusolverStatus_t status = cusolverDnDpotrs(context.solver(), CUBLAS_FILL_MODE_LOWER,
+    const cusolverStatus_t status = cusolverDnDpotrs(context.cuSolverHandle(), CUBLAS_FILL_MODE_LOWER,
                                                      numRowsSol, numColsSol,
                                                      d_cholesky.get(), numRowsSol,
                                                      d_solution.get(), numRowsSol,
@@ -216,7 +216,7 @@ void gpuCholeskySolve(Context &context, size_t numRowsSol, size_t numColsSol,
 template<typename T>
 void gpuSvdSetup(Context &context, size_t numRows, size_t numCols, DeviceVector<T> &d_workspace) {
     int workspaceSize;
-    gpuErrChk(cuLib::gesvdBufferSize<T>(context.solver(), numRows, numCols, &workspaceSize));
+    gpuErrChk(cuLib::gesvdBufferSize<T>(context.cuSolverHandle(), numRows, numCols, &workspaceSize));
     d_workspace.allocateOnDevice(workspaceSize);
 }
 
@@ -233,8 +233,8 @@ void gpuSvdFactor(
         DeviceVector<T> &d_Vt,
         bool devInfo = false
 ) {
-    DeviceVector<int> d_info(1);
-    const cusolverStatus_t status = cuLib::gesvd(context.solver(), 'N', 'A', numRows, numCols,
+    DeviceVector<int> d_info(context, 1);
+    const cusolverStatus_t status = cuLib::gesvd(context.cuSolverHandle(), 'N', 'A', numRows, numCols,
                                                  d_A.get(), numRows,
                                                  d_S.get(),
                                                  d_U.get(), numRows,
@@ -262,16 +262,16 @@ void gpuNullspace(
         size_t &nullspaceCols,
         bool devInfo = false) {
     size_t n = numRows * numCols;
-    DeviceVector<T> d_copyA(n);
+    DeviceVector<T> d_copyA(context, n);
     d_A.deviceCopyTo(d_copyA);
 
-    DeviceVector<T> d_workspace;
+    DeviceVector<T> d_workspace(context, 0);
     gpuSvdSetup(context, numRows, numCols, d_workspace);
 
     size_t nVt = numCols * numCols;
-    DeviceVector<T> d_S(numCols);
-    DeviceVector<T> d_U(numRows * numRows);
-    DeviceVector<T> d_Vt(nVt);
+    DeviceVector<T> d_S(context, numCols);
+    DeviceVector<T> d_U(context, numRows * numRows);
+    DeviceVector<T> d_Vt(context, nVt);
     gpuSvdFactor(context, numRows, numCols, d_workspace, d_copyA, d_S, d_U, d_Vt, devInfo);
 
     std::vector<T> S(numCols);
@@ -309,8 +309,8 @@ void gpuLeastSquares(
         bool devInfo = false) {
     size_t batchSize = d_ptrsA.capacity();
     int info = 0;
-    DeviceVector<int> d_infoArray(batchSize);
-    const cublasStatus_t status = cuLib::gels(context.blas(),
+    DeviceVector<int> d_infoArray(context, batchSize);
+    const cublasStatus_t status = cuLib::gels(context.cuBlasHandle(),
                                               CUBLAS_OP_N,
                                               numRows,
                                               numCols,

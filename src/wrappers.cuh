@@ -234,7 +234,7 @@ void gpuSvdFactor(
         bool devInfo = false
 ) {
     DeviceVector<int> d_info(1);
-    const cusolverStatus_t status = cuLib::gesvd(context.solver(), 'A', 'A', numRows, numCols,
+    const cusolverStatus_t status = cuLib::gesvd(context.solver(), 'N', 'A', numRows, numCols,
                                                  d_A.get(), numRows,
                                                  d_S.get(),
                                                  d_U.get(), numRows,

@@ -532,21 +532,11 @@ TEST(SvdTest, Factorise) {
 
     std::vector<real_t> S;
     d_S.download(S);
-    std::vector<real_t> U;
-    d_U.download(U);
     std::vector<real_t> Vt;
     d_Vt.download(Vt);
 
     constexpr std::array<real_t, cols> expectedS = {
             3, 2.23606797749979, 2, 0
-    };
-
-    constexpr std::array<real_t, rows * rows> expectedU = {
-            0, 0, -1, 0, 0,
-            -0.4472135954999579, 0, 0, 0, -0.8944271909999159,
-            0, -1, 0, 0, 0,
-            0, 0, 0, 1, 0,
-            -0.8944271909999159, 0, 0, 0, 0.4472135954999579
     };
 
     constexpr std::array<real_t, cols * cols> expectedVt = {
@@ -558,9 +548,6 @@ TEST(SvdTest, Factorise) {
 
     for (size_t i = 0; i < cols; i++) {
         EXPECT_NEAR(S[i], expectedS[i], REAL_PRECISION);
-    }
-    for (size_t i = 0; i < rows * rows; i++) {
-        EXPECT_NEAR(U[i], expectedU[i], REAL_PRECISION);
     }
     for (size_t i = 0; i < cols * cols; i++) {
         EXPECT_NEAR(Vt[i], expectedVt[i], REAL_PRECISION);

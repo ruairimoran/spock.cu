@@ -1,63 +1,88 @@
 {
-"stateSize": 3,
-"inputSize": 2,
-"stateDynamicsMode0": [
-    1.0, 0.0, 0.0, 
-    0.0, 1.0, 0.0, 
-    0.0, 0.0, 1.0],
-"stateDynamicsMode1": [
-    -1.0, 0.0, 0.0, 
-    0.0, -1.0, 0.0, 
-    0.0, 0.0, -1.0],
-"controlDynamicsMode0": [
-    1.0, 0.0, 
-    0.0, -1.0, 
-    1.0, 0.0],
-"controlDynamicsMode1": [
-    -1.0, 0.0, 
-    0.0, 1.0, 
-    -1.0, 0.0],
-"stateWeightMode0": [
-    1.0, 0.0, 0.0, 
-    0.0, 1.0, 0.0, 
-    0.0, 0.0, 1.0],
-"stateWeightMode1": [
-    100.0, 0.0, 0.0, 
-    0.0, 100.0, 0.0, 
-    0.0, 0.0, 100.0],
-"inputWeightMode0": [
-    10.0, 0.0,
-    0.0, 10.0,
-    10.0, 0.0],
-"inputWeightMode1": [
-    100.0, 0.0,
-    0.0, 100.0,
-    100.0, 0.0],
-"stateWeightLeafMode0": [
-    1000.0, 0.0, 0.0, 
-    0.0, 1000.0, 0.0, 
-    0.0, 0.0, 1000.0],
-"stateWeightLeafMode1": [
-    10000.0, 0.0, 0.0, 
-    0.0, 10000.0, 0.0, 
-    0.0, 0.0, 10000.0],
-"stateConstraintMode0": [
-    -10.0, -10.0, -10.0, 
-    10.0, 10.0, 10.0],
-"stateConstraintMode1": [
-    -20.0, -20.0, -20.0, 
-    20.0, 20.0, 20.0],
-"inputConstraintMode0": [
-    -100.0, -100.0, 
-    100.0, 100.0],
-"inputConstraintMode1": [
-    -200.0, -200.0, 
-    200.0, 200.0],
-"stateConstraintLeafMode0": [
-    -1.0, -1.0, -1.0, 
-    1.0, 1.0, 1.0],
-"stateConstraintLeafMode1": [
-    -2.0, -2.0, -2.0, 
-    2.0, 2.0, 2.0],
-"riskParams": ["AVaR", 0.98]
+    "numStates": 3,
+    "numInputs": 2,
+    "stateDynamicsMode0": [
+        1.0, 0.0, 0.0, 
+        0.0, 1.0, 0.0, 
+        0.0, 0.0, 1.0
+    ],
+    "stateDynamicsMode1": [
+        -1.0, 0.0, 0.0, 
+        0.0, -1.0, 0.0, 
+        0.0, 0.0, -1.0
+    ],
+    "controlDynamicsMode0": [
+        1.0, 0.0,
+        0.0, -1.0,
+        1.0, 0.0
+    ],
+    "controlDynamicsMode1": [
+        -1.0, 0.0,
+        0.0, 1.0,
+        -1.0, 0.0
+    ],
+    "stateWeightMode0": [
+        1.0, 0.0, 0.0, 
+        0.0, 1.0, 0.0, 
+        0.0, 0.0, 1.0
+    ],
+    "stateWeightMode1": [
+        100.0, 0.0, 0.0, 
+        0.0, 100.0, 0.0, 
+        0.0, 0.0, 100.0
+    ],
+    "inputWeightMode0": [
+        10.0, 0.0,
+        0.0, 10.0,
+        10.0, 0.0
+    ],
+    "inputWeightMode1": [
+        100.0, 0.0,
+        0.0, 100.0,
+        100.0, 0.0
+    ],
+    "stateWeightLeafMode0": [
+        1000.0, 0.0, 0.0, 
+        0.0, 1000.0, 0.0, 
+        0.0, 0.0, 1000.0
+    ],
+    "stateWeightLeafMode1": [
+        10000.0, 0.0, 0.0, 
+        0.0, 10000.0, 0.0, 
+        0.0, 0.0, 10000.0
+    ],
+    "stateConstraintMode0": {
+        "type": "rectangle",
+        "lowerBound": [-10.0, -10.0, -10.0],
+        "upperBound": [10.0, 10.0, 10.0]
+    },
+    "stateConstraintMode1": {
+        "type": "rectangle",
+        "lowerBound": [-20.0, -20.0, -20.0],
+        "upperBound": [20.0, 20.0, 20.0]
+    },
+    "inputConstraintMode0": {
+        "type": "rectangle",
+        "lowerBound": [-100.0, -100.0],
+        "upperBound": [100.0, 100.0]
+    },
+    "inputConstraintMode1": {
+        "type": "rectangle",
+        "lowerBound": [-200.0, -200.0],
+        "upperBound": [200.0, 200.0]
+    },
+    "stateConstraintLeafMode0": {
+        "type": "rectangle",
+        "lowerBound": [-1.0, -1.0, -1.0],
+        "upperBound": [1.0, 1.0, 1.0]
+    },
+    "stateConstraintLeafMode1": {
+        "type": "rectangle",
+        "lowerBound": [-2.0, -2.0, -2.0],
+        "upperBound": [2.0, 2.0, 2.0]
+    },
+    "risk": {
+        "type": "avar",
+        "alpha": 0.98
+    }
 }

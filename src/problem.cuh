@@ -1,17 +1,38 @@
-#ifndef __PROBLEM__
-#define __PROBLEM__
+#ifndef PROBLEM_CUH
+#define PROBLEM_CUH
 #include "../include/stdgpu.h"
 #include "tree.cuh"
-#include "cones.cuh"
+#include "constraints.cuh"
 #include "risks.cuh"
 
+static void pushColumnMajor(std::vector<real_t>& dst, const real_t* src, size_t rows, size_t cols) {
+    dst.reserve(dst.size() + rows * cols);
+    for (size_t c = 0; c < cols; c++) {
+        for (size_t r = 0; r < rows; r++) {
+            dst.push_back(src[r * cols + c]);
+        }
+    }
+}
+
+static void parseConstraint(std::vector<real_t>& dst, const rapidjson::Value& value, size_t length) {
+    if (value["type"].GetString() != std::string("rectangle")) {
+        throw std::runtime_error("invalid constraint type");
+    }
+    for (size_t i = 0; i < length; i++) {
+        dst.push_back(value["lowerBound"][i].GetDouble());
+    }
+    for (size_t i = 0; i < length; i++) {
+        dst.push_back(value["upperBound"][i].GetDouble());
+    }
+}
 
 /**
- * Store problem data
- * - from default file
- * - from user input
+ * Store problem data:
+ * - from file
  *
- * Note: `d_` indicates a device pointer
+ * Notes:
+ * - use column-major storage
+ * - `d_` indicates a device pointer
  */
 class ProblemData {
 
@@ -49,12 +70,12 @@ class ProblemData {
             }
 
             /** Store single element data from JSON in host memory */
-            m_numStates = doc["stateSize"].GetInt();
-            m_numInputs = doc["inputSize"].GetInt();
+            m_numStates = doc["numStates"].GetInt();
+            m_numInputs = doc["numInputs"].GetInt();
 
             /** Sizes */
             size_t lenStateMat = m_numStates * m_numStates;
-            size_t lenInputDynMat = m_numStates * m_numInputs;
+            size_t lenInputDynMat = m_numInputs * m_numStates;
             size_t lenInputWgtMat = m_numInputs * m_numInputs;
             size_t lenDoubleState = m_numStates * 2;
             size_t lenDoubleInput = m_numInputs * 2;
@@ -65,9 +86,9 @@ class ProblemData {
             std::vector<real_t> jsonStateWeight(lenStateMat * m_tree.numEvents());
             std::vector<real_t> jsonInputWeight(lenInputWgtMat * m_tree.numEvents());
             std::vector<real_t> jsonStateWeightLeaf(lenStateMat * m_tree.numEvents());
-            std::vector<real_t> jsonStateConstraint(lenDoubleState * m_tree.numEvents());
-            std::vector<real_t> jsonInputConstraint(lenDoubleInput * m_tree.numEvents());
-            std::vector<real_t> jsonStateConstraintLeaf(lenDoubleState * m_tree.numEvents());
+            std::vector<real_t> jsonStateConstraint{};
+            std::vector<real_t> jsonInputConstraint{};
+            std::vector<real_t> jsonStateConstraintLeaf{};
             std::string jsonRiskType;
             real_t jsonRiskAlpha;
 
@@ -90,26 +111,26 @@ class ProblemData {
                 jsonStateWeightLeaf[i] = doc["stateWeightLeafMode0"][i].GetDouble();
                 jsonStateWeightLeaf[i+lenStateMat] = doc["stateWeightLeafMode1"][i].GetDouble();
             }
+
             for (rapidjson::SizeType i = 0; i<lenInputDynMat; i++) {
                 jsonInputDynamics[i] = doc["controlDynamicsMode0"][i].GetDouble();
                 jsonInputDynamics[i+lenInputDynMat] = doc["controlDynamicsMode1"][i].GetDouble();
             }
+
             for (rapidjson::SizeType i = 0; i<lenInputWgtMat; i++) {
                 jsonInputWeight[i] = doc["inputWeightMode0"][i].GetDouble();
                 jsonInputWeight[i+lenInputWgtMat] = doc["inputWeightMode1"][i].GetDouble();
             }
-            for (rapidjson::SizeType i = 0; i<lenDoubleState; i++) {
-                jsonStateConstraint[i] = doc["stateConstraintMode0"][i].GetDouble();
-                jsonStateConstraint[i+lenDoubleState] = doc["stateConstraintMode1"][i].GetDouble();
-                jsonStateConstraintLeaf[i] = doc["stateConstraintLeafMode0"][i].GetDouble();
-                jsonStateConstraintLeaf[i+lenDoubleState] = doc["stateConstraintLeafMode1"][i].GetDouble();
-            }
-            for (rapidjson::SizeType i = 0; i<lenDoubleInput; i++) {
-                jsonInputConstraint[i] = doc["inputConstraintMode0"][i].GetDouble();
-                jsonInputConstraint[i+lenDoubleInput] = doc["inputConstraintMode1"][i].GetDouble();
-            }
-            jsonRiskType = doc["riskParams"][0].GetString();
-            jsonRiskAlpha = doc["riskParams"][1].GetDouble();
+
+            parseConstraint(jsonStateConstraint, doc["stateConstraintMode0"], m_numStates);
+            parseConstraint(jsonStateConstraint, doc["stateConstraintMode1"], m_numStates);
+            parseConstraint(jsonStateConstraintLeaf, doc["stateConstraintLeafMode0"], m_numStates);
+            parseConstraint(jsonStateConstraintLeaf, doc["stateConstraintLeafMode1"], m_numStates);
+            parseConstraint(jsonInputConstraint, doc["inputConstraintMode0"], m_numInputs);
+            parseConstraint(jsonInputConstraint, doc["inputConstraintMode1"], m_numInputs);
+
+            jsonRiskType = doc["risk"]["type"].GetString();
+            jsonRiskAlpha = doc["risk"]["alpha"].GetDouble();
 
             /** Create full arrays on host */
             std::vector<real_t> hostStateDynamics(lenStateMat, 0.);
@@ -117,32 +138,30 @@ class ProblemData {
             std::vector<real_t> hostStateWeight(lenStateMat, 0.);
             std::vector<real_t> hostInputWeight(lenInputWgtMat, 0.);
             std::vector<real_t> hostStateWeightLeaf(lenStateMat * m_tree.numNonleafNodes(), 0.);
+
             std::vector<real_t> hostStateConstraint(lenDoubleState, 0.);
             m_stateConstraintCone.push_back(std::make_unique<NullCone>(m_context, 0));
+            
             std::vector<real_t> hostInputConstraint(lenDoubleInput, 0.);
             m_inputConstraintCone.push_back(std::make_unique<NullCone>(m_context, 0));
+            
             std::vector<real_t> hostStateConstraintLeaf(lenDoubleState * m_tree.numNonleafNodes(), 0.);
             for (size_t i=0; i<m_tree.numNonleafNodes(); i++) m_stateConstraintLeafCone.push_back(std::make_unique<NullCone>(m_context, 0));
 
             std::vector<size_t> hostEvents(m_tree.events().capacity());
             m_tree.events().download(hostEvents);
+
             for (size_t i=1; i<m_tree.numNodes(); i++) {
                 size_t event = hostEvents[i];
-                hostStateDynamics.insert(hostStateDynamics.end(),
-                                          jsonStateDynamics.begin() + (event * lenStateMat),
-                                          jsonStateDynamics.begin() + (event * lenStateMat + lenStateMat));
-                hostInputDynamics.insert(hostInputDynamics.end(),
-                                         jsonInputDynamics.begin() + (event * lenInputDynMat),
-                                         jsonInputDynamics.begin() + (event * lenInputDynMat + lenInputDynMat));
-                hostStateWeight.insert(hostStateWeight.end(),
-                                       jsonStateWeight.begin() + (event * lenStateMat),
-                                       jsonStateWeight.begin() + (event * lenStateMat + lenStateMat));
-                hostInputWeight.insert(hostInputWeight.end(),
-                                       jsonInputWeight.begin() + (event * lenInputWgtMat),
-                                       jsonInputWeight.begin() + (event * lenInputWgtMat + lenInputWgtMat));
+                pushColumnMajor(hostStateDynamics, jsonStateDynamics.data() + (event * lenStateMat), m_numStates, m_numStates);
+                pushColumnMajor(hostInputDynamics, jsonInputDynamics.data() + (event * lenInputDynMat), m_numStates, m_numInputs);
+                pushColumnMajor(hostStateWeight, jsonStateWeight.data() + (event * lenStateMat), m_numStates, m_numStates);
+                pushColumnMajor(hostInputWeight, jsonInputWeight.data() + (event * lenInputWgtMat), m_numInputs, m_numInputs);
+
                 hostStateConstraint.insert(hostStateConstraint.end(),
                                            jsonStateConstraint.begin() + (event * lenDoubleState),
                                            jsonStateConstraint.begin() + (event * lenDoubleState + lenDoubleState));
+
                 m_stateConstraintCone.push_back(std::make_unique<NonnegativeOrthantCone>(m_context, lenDoubleState));
                 hostInputConstraint.insert(hostInputConstraint.end(),
                                            jsonInputConstraint.begin() + (event * lenDoubleInput),
@@ -163,7 +182,7 @@ class ProblemData {
             }
 
             for (size_t i=0; i<m_tree.numNonleafNodes(); i++) {
-                if (jsonRiskType == "AVaR") {
+                if (jsonRiskType == "avar") {
                     m_risk.push_back(std::make_unique<AVaR>(m_context,
                                                             i,
                                                             jsonRiskAlpha,
@@ -172,7 +191,7 @@ class ProblemData {
                                                             m_tree.conditionalProbabilities()));
                 } else {
                     std::cerr << "Risk type " << jsonRiskType
-                        << " is not supported. Supported types include: AVaR" << std::endl;
+                        << " is not supported. Supported types include: avar" << std::endl;
                     throw std::invalid_argument("Risk type not supported");
                 }
             }

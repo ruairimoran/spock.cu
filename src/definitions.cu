@@ -10,7 +10,7 @@
 
 __host__ __device__ size_t getIdxMat(size_t node, size_t row, size_t col, size_t rows, size_t cols = 0) {
     if (cols == 0) cols = rows;
-    return (node * rows * cols) + (row * cols + col);
+    return (node * rows * cols) + (col * rows + row);
 }
 
 __global__ void d_setMatToId(real_t *mat, size_t numRows, size_t node = 0) {
@@ -31,6 +31,19 @@ __global__ void d_negate(real_t *data, size_t n, size_t node = 0) {
 /** 
  * Cache methods
 */
+
+
+/**
+ * Constraints methods
+*/
+
+__global__ void d_projectRectangle(size_t dimension, real_t *vec, real_t *lowerBound, real_t *upperBound) {
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < dimension) {
+        if (vec[i] < lowerBound[i]) vec[i] = lowerBound[i];
+        if (vec[i] > upperBound[i]) vec[i] = upperBound[i];
+    }
+}
 
 
 /**

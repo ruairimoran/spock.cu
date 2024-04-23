@@ -1,5 +1,5 @@
-#ifndef __CHAMBOLLE_POCK__
-#define __CHAMBOLLE_POCK__
+#ifndef CP_CUH
+#define CP_CUH
 #include "../include/stdgpu.h"
 #include "cache.cuh"
 #include <chrono>

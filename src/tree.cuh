@@ -1,5 +1,5 @@
-#ifndef __TREE__
-#define __TREE__
+#ifndef TREE_CUH
+#define TREE_CUH
 #include "../include/stdgpu.h"
 #include <fstream>
 

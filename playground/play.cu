@@ -1,31 +1,62 @@
 #include "../include/stdgpu.h"
-#include "wrappers.h"
+#include "wrappers.cuh"
 
+template<typename T>
+void printVector(std::vector<T> A) {
+    for (size_t i = 0; i < A.size(); i++) {
+        std::cout << A[i] << "\t";
+    }
+    std::cout << "\n\n";
+}
 
-int main(void) {
-    std::vector<real_t> hostData;
-    Context context;
-    size_t n = 3;
-    size_t len = n * n;
-    hostData.resize(len);
+template<typename T>
+void printMatrix(std::vector<T> A, size_t numRows, size_t numCols) {
+    for (size_t r = 0; r < numRows; r++) {
+        for (size_t c = 0; c < numCols; c++) {
+            std::cout << A[r * numCols + c] << "\t";
+        }
+        std::cout << "\n";
+    }
+    std::cout << "\n";
+}
 
-    std::vector<real_t> A{1, 0, 1,
-                          -1, 3, 0,
-                          0, 1, 5};
+int main() {
+    // Matrix A (rows x cols) with rows >= cols
+    size_t rows = 4;
+    size_t cols = 3;
+    std::vector<real_t> A = {1, 2, 3,
+                             1, 2, 3,
+                             1, 2, 3,
+                             1, 2, 3};
+    row2col(A, A, rows, cols);
     DeviceVector<real_t> d_A(A);
-    DeviceVector<real_t> d_x(n);
-    DeviceVector<real_t> d_b(std::vector<real_t>({1, 6, 15}));
-    DeviceVector<real_t> d_workspace;
-    DeviceVector<int> d_info(1);
+    DeviceVector<real_t> d_N;  // nullspace
 
-    gpuCholeskySetup(context, n, d_workspace);
-    gpuCholeskyFactor(context, n, d_workspace, d_A, d_info, true);
-    gpuCholeskySolve(context, n, 1, d_A, d_x, d_b, d_info, true);
+    Context context;
+    size_t NCols = 0;
+    gpuNullspace(context, rows, cols, d_A, d_N, NCols, true);
+    std::cout << "num nullspace cols: " << NCols << "\n";
 
-    d_x.download(hostData);
-    std::cout << "x (from device): ";
-    for (size_t i = 0; i < n; i++) { std::cout << hostData[i] << " "; }
-    std::cout << std::endl;
+    // Check result
+    std::vector<real_t> A_(rows * cols);
+    d_A.download(A_);
+    col2row(A_, A_, rows, cols);
+    std::cout << "A:" << "\n";
+    printMatrix(A_, rows, cols);
+
+    std::vector<real_t> N_(cols * NCols);
+    d_N.download(N_);
+    col2row(N_, N_, cols, NCols);
+    std::cout << "N:" << "\n";
+    printMatrix(N_, cols, NCols);
+
+    size_t nAN = rows * NCols;
+    DeviceVector<real_t> d_AN(nAN);
+    gpuMatMatMul(context, rows, cols, NCols, d_A, d_N, d_AN);
+    std::vector<real_t> AN(nAN);
+    d_AN.download(AN);
+    std::cout << "A * nullspace (should be zeros):" << "\n";
+    printMatrix(AN, rows, NCols);
 
     return 0;
 }

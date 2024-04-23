@@ -5,7 +5,6 @@
 class MarkovTreeTest : public testing::Test {
 
 protected:
-    Context m_context;
     std::unique_ptr<ScenarioTree> m_mockTree;
     size_t m_numNonleafNodes;
     size_t m_numNodes;
@@ -17,7 +16,7 @@ protected:
 
     MarkovTreeTest() {
         std::ifstream tree_data("../../tests/default_tree_data.json");
-        m_mockTree = std::make_unique<ScenarioTree>(m_context, tree_data);
+        m_mockTree = std::make_unique<ScenarioTree>(tree_data);
         m_numNonleafNodes = m_mockTree->numNonleafNodes();
         m_numNodes = m_mockTree->numNodes();
         m_numStages = m_mockTree->numStages();

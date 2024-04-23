@@ -12,22 +12,20 @@
 
 
 int main() {
-    Context context;
-
     /** SCENARIO TREE */
     std::ifstream fileTree("tests/default_tree_data.json"); 
-    ScenarioTree tree(context, fileTree);
+    ScenarioTree tree(fileTree);
   	tree.print();
 
     /** PROBLEM DATA */
     std::ifstream fileProblem("tests/default_problem_data.json"); 
-    ProblemData problem(context, tree, fileProblem);
+    ProblemData problem(tree, fileProblem);
   	problem.print();
 
     /** CACHE */
     real_t tol = 1e-4;
     size_t maxIters = 20;
-    Cache cache(context, tree, problem, tol, maxIters);
+    Cache cache(tree, problem, tol, maxIters);
     cache.print();
 
     /** VANILLA CP */

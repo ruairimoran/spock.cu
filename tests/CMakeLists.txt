@@ -12,23 +12,22 @@ enable_testing()
 add_executable(spock_tests)
 target_sources(spock_tests  # add files
     PRIVATE
-        test_gpu.cu
-        test_wrappers.cu
-        test_tree.cu
-        test_cones.cu
-        test_risks.cu
-        test_problem.cu
-        test_cache.cu
+    test_tree.cu
+    test_cones.cu
+    test_risks.cu
+    test_problem.cu
+    test_cache.cu
 )
 target_link_libraries(spock_tests
     PRIVATE
-        spock_src
-        GTest::gtest
-        GTest::gtest_main)
+    spock_src
+    GTest::gtest
+    GTest::gtest_main)
 target_include_directories(spock_tests
     PRIVATE
-        "${PROJECT_BINARY_DIR}"
-        "${PROJECT_SOURCE_DIR}/src"
+    "${GPUTILS_SOURCE_DIR}/include"  # includes GPUtils directory
+    "${PROJECT_SOURCE_DIR}/src"
+    "${PROJECT_BINARY_DIR}"
 )
 include(GoogleTest)
 gtest_discover_tests(spock_tests)

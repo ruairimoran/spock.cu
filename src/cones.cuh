@@ -14,16 +14,16 @@ __global__ void d_projectOnSoc(real_t *vec, size_t n, real_t nrm, real_t scaling
 class ConvexCone {
 
 protected:
-    Context &m_context;
     size_t m_dimension = 0;
+    size_t m_axis = 0;  // 0=rows, 1=cols, 2=mats
 
-    explicit ConvexCone(Context &context, size_t dim) : m_context(context), m_dimension(dim) {}
+    explicit ConvexCone(size_t dim) : m_dimension(dim) {}
 
-    bool dimension_check(DeviceVector<real_t> &d_vec) {
-        if (d_vec.capacity() != m_dimension) {
-            std::cerr << "DeviceVector has capacity " << d_vec.capacity()
-                      << " but cone has dimension " << m_dimension << std::endl;
-            throw std::invalid_argument("DeviceVector and cone dimension mismatch");
+    bool dimension_check(DTensor<real_t> &d_vec) {
+        if (d_vec.numRows() != m_dimension || d_vec.numCols() != 1 || d_vec.numMats() != 1) {
+            std::cerr << "DTensor is [" << d_vec.numRows() << " x " << d_vec.numCols() << " x " << d_vec.numMats() << "]"
+                      << " but cone has dimensions [" << m_dimension  << " x " << 1 << " x " << 1 << "]\n";
+            throw std::invalid_argument("DTensor and cone dimensions mismatch");
         }
         return true;
     }
@@ -31,9 +31,9 @@ protected:
 public:
     virtual ~ConvexCone() {}
 
-    virtual void project(DeviceVector<real_t> &d_vec) = 0;
+    virtual void project(DTensor<real_t> &d_vec) = 0;
 
-    virtual void projectOnDual(DeviceVector<real_t> &d_vec) = 0;
+    virtual void projectOnDual(DTensor<real_t> &d_vec) = 0;
 
     size_t dimension() { return m_dimension; }
 
@@ -47,13 +47,13 @@ public:
 class NullCone : public ConvexCone {
 
 public:
-    explicit NullCone(Context &context, size_t dim) : ConvexCone(context, dim) {}
+    explicit NullCone(size_t dim) : ConvexCone(dim) {}
 
-    void project(DeviceVector<real_t> &d_vec) {
+    void project(DTensor<real_t> &d_vec) {
         throw std::invalid_argument("Cannot project on null cone");
     }
 
-    void projectOnDual(DeviceVector<real_t> &d_vec) {
+    void projectOnDual(DTensor<real_t> &d_vec) {
         project(d_vec);
     }
 
@@ -68,16 +68,16 @@ public:
 class UniverseCone : public ConvexCone {
 
 public:
-    explicit UniverseCone(Context &context, size_t dim) : ConvexCone(context, dim) {}
+    explicit UniverseCone(size_t dim) : ConvexCone(dim) {}
 
-    void project(DeviceVector<real_t> &d_vec) {
+    void project(DTensor<real_t> &d_vec) {
         dimension_check(d_vec);
         return;  // Do nothing!
     }
 
-    void projectOnDual(DeviceVector<real_t> &d_vec) {
+    void projectOnDual(DTensor<real_t> &d_vec) {
         dimension_check(d_vec);
-        d_setToZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.get(), m_dimension);
+        d_setToZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), m_dimension);
     }
 
 };
@@ -91,14 +91,14 @@ public:
 class ZeroCone : public ConvexCone {
 
 public:
-    explicit ZeroCone(Context &context, size_t dim) : ConvexCone(context, dim) {}
+    explicit ZeroCone(size_t dim) : ConvexCone(dim) {}
 
-    void project(DeviceVector<real_t> &d_vec) {
+    void project(DTensor<real_t> &d_vec) {
         dimension_check(d_vec);
-        d_setToZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.get(), m_dimension);
+        d_setToZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), m_dimension);
     }
 
-    void projectOnDual(DeviceVector<real_t> &d_vec) {
+    void projectOnDual(DTensor<real_t> &d_vec) {
         dimension_check(d_vec);
         return;  // Do nothing!
     }
@@ -114,14 +114,14 @@ public:
 class NonnegativeOrthantCone : public ConvexCone {
 
 public:
-    explicit NonnegativeOrthantCone(Context &context, size_t dim) : ConvexCone(context, dim) {}
+    explicit NonnegativeOrthantCone(size_t dim) : ConvexCone(dim) {}
 
-    void project(DeviceVector<real_t> &d_vec) {
+    void project(DTensor<real_t> &d_vec) {
         dimension_check(d_vec);
-        d_maxWithZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.get(), m_dimension);
+        d_maxWithZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), m_dimension);
     }
 
-    void projectOnDual(DeviceVector<real_t> &d_vec) {
+    void projectOnDual(DTensor<real_t> &d_vec) {
         project(d_vec);
     }
 
@@ -138,25 +138,25 @@ public:
 class SecondOrderCone : public ConvexCone {
 
 public:
-    explicit SecondOrderCone(Context &context, size_t dim) : ConvexCone(context, dim) {}
+    explicit SecondOrderCone(size_t dim) : ConvexCone(dim) {}
 
-    void project(DeviceVector<real_t> &d_vec) {
+    void project(DTensor<real_t> &d_vec) {
         dimension_check(d_vec);
         /** Determine the 2-norm of the first (n - 1) elements of d_vec */
-        real_t nrm;
-        cuLib::nrm2(m_context.cuBlasHandle(), m_dimension - 1, d_vec.get(), 1, &nrm);
-        float vecLastElement = d_vec.fetchElementFromDevice(m_dimension - 1);
+        DTensor<real_t> vecFirstPart(d_vec, m_axis, 0, m_dimension - 2);
+        real_t nrm = vecFirstPart.normF();
+        float vecLastElement = d_vec(m_dimension - 1);
         if (nrm <= vecLastElement) {
             return;  // Do nothing!
         } else if (nrm <= -vecLastElement) {
-            d_setToZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.get(), m_dimension);
+            d_setToZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), m_dimension);
         } else {
             real_t scaling = (nrm + vecLastElement) / (2. * nrm);
-            d_projectOnSoc<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.get(), m_dimension, nrm, scaling);
+            d_projectOnSoc<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), m_dimension, nrm, scaling);
         }
     }
 
-    void projectOnDual(DeviceVector<real_t> &d_vec) {
+    void projectOnDual(DTensor<real_t> &d_vec) {
         project(d_vec);
     }
 
@@ -174,32 +174,32 @@ private:
     std::vector<ConvexCone *> m_cones;
 
 public:
-    explicit Cartesian(Context &context) : ConvexCone(context, 0) {}
+    explicit Cartesian() : ConvexCone(0) {}
 
     void addCone(ConvexCone &cone) {
         m_cones.push_back(&cone);
         m_dimension += cone.dimension();
     }
 
-    void project(DeviceVector<real_t> &d_vec) {
+    void project(DTensor<real_t> &d_vec) {
         dimension_check(d_vec);
         size_t start = 0;
         for (ConvexCone *set: m_cones) {
             size_t coneDim = set->dimension();
             size_t end = start + coneDim - 1;
-            DeviceVector<real_t> vecSlice(d_vec, start, end);
+            DTensor<real_t> vecSlice(d_vec, m_axis, start, end);
             set->project(vecSlice);
             start += coneDim;
         }
     }
 
-    void projectOnDual(DeviceVector<real_t> &d_vec) {
+    void projectOnDual(DTensor<real_t> &d_vec) {
         dimension_check(d_vec);
         size_t start = 0;
         for (ConvexCone *set: m_cones) {
             size_t coneDim = set->dimension();
             size_t end = start + coneDim - 1;
-            DeviceVector<real_t> vecSlice(d_vec, start, end);
+            DTensor<real_t> vecSlice(d_vec, m_axis, start, end);
             set->projectOnDual(vecSlice);
             start += coneDim;
         }

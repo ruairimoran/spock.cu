@@ -6,15 +6,14 @@
 class ProblemDataTest : public testing::Test {
 
 protected:
-    Context m_context;
     std::unique_ptr<ScenarioTree> m_tree;
     std::unique_ptr<ProblemData> m_data;
 
     ProblemDataTest() {
         std::ifstream tree_data("../../tests/default_tree_data.json");
-        m_tree = std::make_unique<ScenarioTree>(m_context, tree_data);
+        m_tree = std::make_unique<ScenarioTree>(tree_data);
         std::ifstream problem_data("../../tests/default_problem_data.json");
-        m_data = std::make_unique<ProblemData>(m_context, *m_tree, problem_data);
+        m_data = std::make_unique<ProblemData>(*m_tree, problem_data);
     };
 
     virtual ~ProblemDataTest() {}

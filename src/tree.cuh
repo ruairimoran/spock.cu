@@ -49,7 +49,7 @@ public:
         doc.Parse(json.c_str());
 
         if (doc.HasParseError()) {
-            std::cerr << "Error parsing tree JSON: " << GetParseError_En(doc.GetParseError()) << std::endl;
+            std::cerr << "Error parsing tree JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
             throw std::invalid_argument("Cannot parse tree JSON file");
         }
 
@@ -70,16 +70,16 @@ public:
         std::vector<size_t> hostChildrenTo(m_numNonleafNodes);
 
         /** Allocate memory on device */
-        m_d_stages(m_numNodes);
-        m_d_ancestors(m_numNodes);
-        m_d_probabilities(m_numNodes);
-        m_d_conditionalProbabilities(m_numNodes);
-        m_d_events(m_numNodes);
-        m_d_childFrom(m_numNonleafNodes);
-        m_d_childTo(m_numNonleafNodes);
-        m_d_numChildren(m_numNonleafNodes);
-        m_d_nodeFrom(m_numStages);
-        m_d_nodeTo(m_numStages);
+        DTensor<size_t> d_stages(m_numNodes);
+        DTensor<size_t> d_ancestors(m_numNodes);
+        DTensor<real_t> d_probabilities(m_numNodes);
+        DTensor<real_t> d_conditionalProbabilities(m_numNodes);
+        DTensor<size_t> d_events(m_numNodes);
+        DTensor<size_t> d_childFrom(m_numNonleafNodes);
+        DTensor<size_t> d_childTo(m_numNonleafNodes);
+        DTensor<size_t> d_numChildren(m_numNonleafNodes);
+        DTensor<size_t> d_nodeFrom(m_numStages);
+        DTensor<size_t> d_nodeTo(m_numStages);
 
         /** Store array data from JSON in host memory */
         for (rapidjson::SizeType i = 0; i < m_numNodes; i++) {
@@ -95,20 +95,32 @@ public:
         ///< Note that anc[0] and events[0] will be max(size_t) on device because they are -1 on host
 
         /** Transfer JSON array data to device */
-        m_d_stages.upload(hostStages);
-        m_d_ancestors.upload(hostAncestors);
-        m_d_probabilities.upload(hostProbabilities);
-        m_d_events.upload(hostEvents);
-        m_d_childFrom.upload(hostChildrenFrom);
-        m_d_childTo.upload(hostChildrenTo);
+        d_stages.upload(hostStages);
+        d_ancestors.upload(hostAncestors);
+        d_probabilities.upload(hostProbabilities);
+        d_events.upload(hostEvents);
+        d_childFrom.upload(hostChildrenFrom);
+        d_childTo.upload(hostChildrenTo);
 
         /** Populate remaining arrays on device */
         d_populateProbabilities<<<DIM2BLOCKS(m_numNodes), THREADS_PER_BLOCK>>>(
-                m_d_ancestors.raw(), m_d_probabilities.raw(), m_numNodes, m_d_conditionalProbabilities.raw());
+                d_ancestors.raw(), d_probabilities.raw(), m_numNodes, d_conditionalProbabilities.raw());
         d_populateChildren<<<DIM2BLOCKS(m_numNonleafNodes), THREADS_PER_BLOCK>>>(
-                m_d_childFrom.raw(), m_d_childTo.raw(), m_numNonleafNodes, m_d_numChildren.raw());
+                d_childFrom.raw(), d_childTo.raw(), m_numNonleafNodes, d_numChildren.raw());
         d_populateStages<<<DIM2BLOCKS(m_numStages), THREADS_PER_BLOCK>>>(
-                m_d_stages.raw(), m_numStages, m_numNodes, m_d_nodeFrom.raw(), m_d_nodeTo.raw());
+                d_stages.raw(), m_numStages, m_numNodes, d_nodeFrom.raw(), d_nodeTo.raw());
+
+        /** Assign tensors to class attribute */
+        m_d_stages = d_stages;
+        m_d_ancestors = d_ancestors;
+        m_d_probabilities = d_probabilities;
+        m_d_conditionalProbabilities = d_conditionalProbabilities;
+        m_d_events = d_events;
+        m_d_childFrom = d_childFrom;
+        m_d_childTo = d_childTo;
+        m_d_numChildren = d_numChildren;
+        m_d_nodeFrom = d_nodeFrom;
+        m_d_nodeTo = d_nodeTo;
     }
 
     /**
@@ -157,78 +169,19 @@ public:
      * Debugging
      */
     void print() {
-        std::vector<size_t> hostDataIntNumNonleafNodes(m_numNonleafNodes);
-        std::vector<size_t> hostDataIntNumNodes(m_numNodes);
-        std::vector<real_t> hostDataRealNumNodes(m_numNodes);
-        std::vector<size_t> hostDataIntNumStages(m_numStages);
-
-        std::cout << "Number of events: " << m_numEvents << std::endl;
-        std::cout << "Number of nonleaf nodes: " << m_numNonleafNodes << std::endl;
-        std::cout << "Number of nodes: " << m_numNodes << std::endl;
-        std::cout << "Number of stages: " << m_numStages << std::endl;
-
-        m_d_stages.download(hostDataIntNumNodes);
-        std::cout << "Stages (from device): ";
-        for (size_t i = 0; i < m_numNodes; i++) {
-            std::cout << hostDataIntNumNodes[i] << " ";
-        }
-        std::cout << std::endl;
-
-        m_d_ancestors.download(hostDataIntNumNodes);
-        std::cout << "Ancestors (from device): ";
-        for (size_t i = 0; i < m_numNodes; i++) {
-            std::cout << hostDataIntNumNodes[i] << " ";
-        }
-        std::cout << std::endl;
-
-        m_d_probabilities.download(hostDataRealNumNodes);
-        std::cout << "Probabilities (from device): ";
-        for (size_t i = 0; i < m_numNodes; i++) {
-            std::cout << hostDataRealNumNodes[i] << " ";
-        }
-        std::cout << std::endl;
-
-        m_d_conditionalProbabilities.download(hostDataRealNumNodes);
-        std::cout << "Conditional probabilities (from device): ";
-        for (size_t i = 0; i < m_numNodes; i++) {
-            std::cout << hostDataRealNumNodes[i] << " ";
-        }
-        std::cout << std::endl;
-
-        m_d_events.download(hostDataIntNumNodes);
-        std::cout << "Events (from device): ";
-        for (size_t i = 0; i < m_numNodes; i++) {
-            std::cout << hostDataIntNumNodes[i] << " ";
-        }
-        std::cout << std::endl;
-
-        m_d_childFrom.download(hostDataIntNumNonleafNodes);
-        std::cout << "Children::from (from device): ";
-        for (size_t i = 0; i < m_numNonleafNodes; i++) {
-            std::cout << hostDataIntNumNonleafNodes[i] << " ";
-        }
-        std::cout << std::endl;
-
-        m_d_childTo.download(hostDataIntNumNonleafNodes);
-        std::cout << "Children::to (from device): ";
-        for (size_t i = 0; i < m_numNonleafNodes; i++) {
-            std::cout << hostDataIntNumNonleafNodes[i] << " ";
-        }
-        std::cout << std::endl;
-
-        m_d_nodeFrom.download(hostDataIntNumStages);
-        std::cout << "Stage::from (from device): ";
-        for (size_t i = 0; i < m_numStages; i++) {
-            std::cout << hostDataIntNumStages[i] << " ";
-        }
-        std::cout << std::endl;
-
-        m_d_nodeTo.download(hostDataIntNumStages);
-        std::cout << "Stage::to (from device): ";
-        for (size_t i = 0; i < m_numStages; i++) {
-            std::cout << hostDataIntNumStages[i] << " ";
-        }
-        std::cout << std::endl;
+        std::cout << "Number of events: " << m_numEvents << "\n";
+        std::cout << "Number of nonleaf nodes: " << m_numNonleafNodes << "\n";
+        std::cout << "Number of nodes: " << m_numNodes << "\n";
+        std::cout << "Number of stages: " << m_numStages << "\n";
+        std::cout << "Stages (from device): " << m_d_stages << "\n";
+        std::cout << "Ancestors (from device): " << m_d_ancestors << "\n";
+        std::cout << "Probabilities (from device): " << m_d_probabilities << "\n";
+        std::cout << "Conditional probabilities (from device): " << m_d_conditionalProbabilities << "\n";
+        std::cout << "Events (from device): " << m_d_events << "\n";
+        std::cout << "Children::from (from device): " << m_d_childFrom << "\n";
+        std::cout << "Children::to (from device): " << m_d_childTo << "\n";
+        std::cout << "Stage::from (from device): " << m_d_nodeFrom << "\n";
+        std::cout << "Stage::to (from device): " << m_d_nodeTo << "\n";
     }
 };
 

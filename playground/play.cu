@@ -1,28 +1,29 @@
 #include "../include/gpu.cuh"
 
 
+class thisOne {
+private:
+    DTensor<real_t> mats;
+
+public:
+    thisOne() {
+        size_t n = 3;
+        std::vector<real_t> mat{1, 1, 1,
+                                1, 1, 1,
+                                1, 1, 1};
+        mats(DTensor<real_t>{mat, n});
+        std::cout << mats << "\n";
+    }
+
+    ~thisOne() {}
+
+    void print() {
+        std::cout << mats << "\n";
+    }
+};
+
 int main() {
-    size_t m = 3;
-    size_t n = 7;
-    std::vector<real_t> mat{1, -2, 3, 4, -1, -1, -1,
-                            1, 2, -3, 4, -1, -1, -1,
-                            -1, 3, 5, -7, -1, -1, -1};
-    DTensor<real_t> mats(m, n, 1);
-    mats.upload(mat, rowMajor);
-
-    Nullspace<real_t> ns = Nullspace(mats);
-
-    std::vector<real_t> vec{1, 2, 3, 4, 5, 6, 7};
-    DTensor<real_t> vecs(vec, n);
-
-    ns.project(vecs);
-
-    std::cout << mats << "\n";
-    std::cout << vecs << "\n";
-
-    DTensor<real_t> op(m, 1, 1);
-    op.addAB(mats, vecs);
-    std::cout << op << "\n";
+    thisOne here;
 
     return 0;
 }

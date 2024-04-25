@@ -10,6 +10,7 @@ class ConesTest : public testing::Test {
         size_t m_n = 64;
         size_t m_numConeTypes = 4;
         DTensor<real_t> m_d_data = DTensor<real_t>(m_n);
+        DTensor<real_t> m_d_dataCart = DTensor<real_t>(m_n * m_numConeTypes);
         std::vector<real_t> m_hostData = std::vector<real_t>(m_n);
         std::vector<real_t> m_hostTest = std::vector<real_t>(m_n);
         std::vector<real_t> m_hostZero = std::vector<real_t>(m_n);
@@ -142,7 +143,7 @@ TEST_F(ConesTest, SecondOrderConeDual) {
 
 TEST_F(ConesTest, CartesianCone) {
     // for (size_t i=0; i<m_n*m_numConeTypes; i++) { std::cerr << m_hostCart[i] << " "; }  ///< For debugging
-    m_d_data.upload(m_hostCart);
+    m_d_dataCart.upload(m_hostCart);
     UniverseCone myUniv(m_n);
     ZeroCone myZero(m_n);
     NonnegativeOrthantCone myNnoc(m_n);
@@ -152,8 +153,8 @@ TEST_F(ConesTest, CartesianCone) {
     myCone.addCone(myZero);
     myCone.addCone(myNnoc);
     myCone.addCone(mySoc);
-    myCone.project(m_d_data);
-    m_d_data.download(m_hostCart);
+    myCone.project(m_d_dataCart);
+    m_d_dataCart.download(m_hostCart);
     /** Test Universe cone */
     size_t index = 0;
     m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
@@ -178,7 +179,7 @@ TEST_F(ConesTest, CartesianCone) {
 
 TEST_F(ConesTest, CartesianDual) {
     // for (size_t i=0; i<m_n*m_numConeTypes; i++) { std::cerr << m_hostCart[i] << " "; }  ///< For debugging
-    m_d_data.upload(m_hostCart);
+    m_d_dataCart.upload(m_hostCart);
     UniverseCone myUniv(m_n);
     ZeroCone myZero(m_n);
     NonnegativeOrthantCone myNnoc(m_n);
@@ -188,8 +189,8 @@ TEST_F(ConesTest, CartesianDual) {
     myCone.addCone(myZero);
     myCone.addCone(myNnoc);
     myCone.addCone(mySoc);
-    myCone.projectOnDual(m_d_data);
-    m_d_data.download(m_hostCart);
+    myCone.projectOnDual(m_d_dataCart);
+    m_d_dataCart.download(m_hostCart);
     /** Test Universe dual */
     size_t index = 0;
     m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);

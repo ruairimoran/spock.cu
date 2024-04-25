@@ -12,8 +12,6 @@ __host__ __device__ size_t getIdxMat(size_t node, size_t row, size_t col, size_t
 
 __global__ void d_setMatToId(real_t *mat, size_t numRows, size_t node = 0);
 
-__global__ void d_negate(real_t *data, size_t n, size_t node = 0);
-
 
 /**
  * Cache of methods for proximal algorithms
@@ -25,34 +23,34 @@ class Cache {
 private:
     ScenarioTree &m_tree;  ///< Previously created scenario tree of problem
     ProblemData &m_data;  ///< Previously created data of problem
-    size_t m_numStates;
-    size_t m_numInputs;
+    size_t m_numStates = 0;
+    size_t m_numInputs = 0;
     /** Solver data */
     real_t m_tol = 0;
     size_t m_maxIters = 0;
     size_t m_countIterations = 0;
     /** Primal data */
     size_t m_primSize = 0;
-    DTensor<real_t> m_d_prim;
-    DTensor<real_t> m_d_primMod;
-    DTensor<real_t> m_d_primPrev;
+    DTensor<real_t> *m_d_prim = nullptr;
+    DTensor<real_t> *m_d_primMod = nullptr;
+    DTensor<real_t> *m_d_primPrev = nullptr;
     /** Dual data */
     size_t m_dualSize = 0;
-    DTensor<real_t> m_d_dual;
-    DTensor<real_t> m_d_dualMod;
-    DTensor<real_t> m_d_dualPrev;
+    DTensor<real_t> *m_d_dual = nullptr;
+    DTensor<real_t> *m_d_dualMod = nullptr;
+    DTensor<real_t> *m_d_dualPrev = nullptr;
     /** Error data */
-    DTensor<real_t> m_d_cacheError;
+    DTensor<real_t> *m_d_cacheError = nullptr;
     /** Dynamics projection data */
-    DTensor<real_t> m_d_P;
-    DTensor<real_t> m_d_q;
-    DTensor<real_t> m_d_K;
-    DTensor<real_t> m_d_d;
-    DTensor<real_t> m_d_choleskyLo;
-    DTensor<real_t> m_d_dynamicsSum;  ///< A+BK
+    DTensor<real_t> *m_d_P = nullptr;
+    DTensor<real_t> *m_d_q = nullptr;
+    DTensor<real_t> *m_d_K = nullptr;
+    DTensor<real_t> *m_d_d = nullptr;
+    DTensor<real_t> *m_d_choleskyLo = nullptr;
+    DTensor<real_t> *m_d_dynamicsSum = nullptr;  ///< A+BK
     /** Kernel projection data */
-    DTensor<real_t> m_d_kernelConstraintMat;
-    DTensor<real_t> m_d_nullSpaceMat;
+    DTensor<real_t> *m_d_kernelConstraintMat = nullptr;
+    DTensor<real_t> *m_d_nullSpaceMat = nullptr;
 
     /** Methods */
     void offline_projection_setup();
@@ -62,7 +60,7 @@ public:
      * Constructor
      */
     Cache(ScenarioTree &tree, ProblemData &data, real_t tol, size_t maxIters) :
-            m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters) {
+        m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters) {
         m_numStates = m_data.numStates();
         m_numInputs = m_data.numInputs();
         m_primSize = m_tree.numNodes() * m_numStates  ///< States of all nodes
@@ -72,13 +70,13 @@ public:
                      + m_tree.numNodes();  ///< S for all child nodes
 
         /** Allocate memory on device */
-        m_d_prim(m_primSize);
-        m_d_primMod(m_primSize);
-        m_d_primPrev(m_primSize);
-        m_d_dual(m_dualSize);
-        m_d_dualMod(m_dualSize);
-        m_d_dualPrev(m_dualSize);
-        m_d_cacheError(m_maxIters);
+        m_d_prim = new DTensor<real_t>(m_primSize);
+        m_d_primMod = new DTensor<real_t>(m_primSize);
+        m_d_primPrev = new DTensor<real_t>(m_primSize);
+        m_d_dual = new DTensor<real_t>(m_dualSize);
+        m_d_dualMod = new DTensor<real_t>(m_dualSize);
+        m_d_dualPrev = new DTensor<real_t>(m_dualSize);
+        m_d_cacheError = new DTensor<real_t>(m_maxIters, 1, 1, true);
 
         /** Transfer array data to device */
 //        m_d_tol.upload(vecTol);
@@ -89,7 +87,21 @@ public:
     /**
      * Destructor
      */
-    ~Cache() {}
+    ~Cache() {
+        DESTROY_PTR(m_d_prim)
+        DESTROY_PTR(m_d_primMod)
+        DESTROY_PTR(m_d_primPrev)
+        DESTROY_PTR(m_d_dual)
+        DESTROY_PTR(m_d_dualMod)
+        DESTROY_PTR(m_d_dualPrev)
+        DESTROY_PTR(m_d_cacheError)
+        DESTROY_PTR(m_d_P)
+        DESTROY_PTR(m_d_q)
+        DESTROY_PTR(m_d_K)
+        DESTROY_PTR(m_d_d)
+        DESTROY_PTR(m_d_choleskyLo)
+        DESTROY_PTR(m_d_dynamicsSum)
+    }
 
     /**
      * Getters
@@ -122,10 +134,11 @@ public:
 void Cache::initialiseState(std::vector<real_t> initState) {
     if (initState.size() != m_numStates) {
         std::cerr << "Error initialising state: problem setup for " << m_numStates
-                  << " but given " << initState.size() << " states" << std::endl;
+                  << " but given " << initState.size() << " states" << "\n";
         throw std::invalid_argument("Incorrect dimension of initial state");
     }
-    m_d_prim.upload(initState);
+    DTensor<real_t> slicePrim(*m_d_prim, 0, 0, m_numStates - 1);
+    slicePrim.upload(initState);
 }
 
 
@@ -147,16 +160,16 @@ void Cache::offline_projection_setup() {
 //    gpuCholeskySetup(m_numInputs, d_workspace);
 
     /** allocate device memory for dynamics projection data*/
-    m_d_P(m_numStates * m_numStates * m_tree.numNodes());
-    m_d_q(m_numStates * m_tree.numNodes());
-    m_d_K(m_numInputs * m_numStates * m_tree.numNonleafNodes());
-    m_d_d(m_numInputs * m_tree.numNonleafNodes());
-    m_d_choleskyLo(m_numInputs * m_numInputs * m_tree.numNonleafNodes());
-    m_d_dynamicsSum(m_numStates * m_numStates * m_tree.numNodes());
+    m_d_P = new DTensor<real_t>(m_numStates * m_numStates * m_tree.numNodes());
+    m_d_q = new DTensor<real_t>(m_numStates * m_tree.numNodes());
+    m_d_K = new DTensor<real_t>(m_numInputs * m_numStates * m_tree.numNonleafNodes());
+    m_d_d = new DTensor<real_t>(m_numInputs * m_tree.numNonleafNodes());
+    m_d_choleskyLo = new DTensor<real_t>(m_numInputs * m_numInputs * m_tree.numNonleafNodes());
+    m_d_dynamicsSum = new DTensor<real_t>(m_numStates * m_numStates * m_tree.numNodes());
 
     /** set all leaf P matrices to identity */
     for (size_t i = m_tree.numNonleafNodes(); i < m_tree.numNodes(); i++) {
-        d_setMatToId<<<m_numStates, THREADS_PER_BLOCK>>>(m_d_P.raw(), m_numStates, i);
+        d_setMatToId<<<m_numStates, THREADS_PER_BLOCK>>>(m_d_P->raw(), m_numStates, i);
     }
 
 //    for (size_t stage = m_tree.numStages() - 2; true; stage--) {  ///< we don't need `stage >= 0` because size_t
@@ -269,7 +282,7 @@ void Cache::vanillaCp() {
         /** update n */
         /** compute error */
         /** check error */
-        if (m_d_cacheError(i) <= m_tol) {
+        if ((*m_d_cacheError)(i) <= m_tol) {
             m_countIterations = i;
             break;
         }
@@ -278,29 +291,10 @@ void Cache::vanillaCp() {
 
 
 void Cache::print() {
-    std::cout << "Tolerance:      " << m_tol << std::endl;
-    std::cout << "Max iterations: " << m_maxIters << std::endl;
-    std::cout << "Num iterations: " << m_countIterations << std::endl;
-    size_t len;
-    std::vector<size_t> hostDataSize;
-    std::vector<real_t> hostDataReal;
-
-    hostDataReal.resize(m_primSize);
-    m_d_prim.download(hostDataReal);
-    std::cout << "Primal (from device): ";
-    for (size_t i = 0; i < m_primSize; i++) {
-        std::cout << hostDataReal[i] << " ";
-    }
-    std::cout << std::endl;
-
-    len = m_tree.numNodes() * m_numStates * m_numStates;
-    hostDataReal.resize(len);
-    m_d_P.download(hostDataReal);
-    std::cout << "P (from device): ";
-    for (size_t i = 0; i < len; i++) {
-        std::cout << hostDataReal[i] << " ";
-    }
-    std::cout << std::endl;
+    std::cout << "Tolerance:      " << m_tol << "\n";
+    std::cout << "Num iterations: " << m_countIterations << " of " << m_maxIters << "\n";
+    printIf("Primal (from device): ", m_d_prim);
+    printIf("P (from device): ", m_d_P);
 }
 
 #endif

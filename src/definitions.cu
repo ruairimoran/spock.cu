@@ -22,13 +22,6 @@ __global__ void d_setMatToId(real_t *mat, size_t numRows, size_t node = 0) {
     }
 }
 
-__global__ void d_negate(real_t *data, size_t n, size_t node = 0) {
-    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n) {
-        data[i] = -data[i];
-    }
-}
-
 
 /*
  * Cache methods

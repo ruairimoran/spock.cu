@@ -22,15 +22,16 @@ protected:
     size_t m_dimension = 0;
 
     explicit CoherentRisk(size_t node, DTensor<size_t> &numCh) :
-            m_node(node),
-            m_d_numCh(numCh),
-            m_numCh(m_d_numCh(m_node)),
-            m_dimension(m_numCh * 2 + 1) {}
+        m_node(node),
+        m_d_numCh(numCh),
+        m_numCh(m_d_numCh(m_node)),
+        m_dimension(m_numCh * 2 + 1) {}
 
     bool dimension_check(DTensor<real_t> &d_vec) {
         if (d_vec.numRows() != m_dimension || d_vec.numCols() != 1 || d_vec.numMats() != 1) {
-            std::cerr << "DTensor is [" << d_vec.numRows() << " x " << d_vec.numCols() << " x " << d_vec.numMats() << "]"
-                      << " but risk has dimensions [" << m_dimension  << " x " << 1 << " x " << 1 << "]\n";
+            std::cerr << "DTensor is [" << d_vec.numRows() << " x " << d_vec.numCols() << " x " << d_vec.numMats()
+                      << "]"
+                      << " but risk has dimensions [" << m_dimension << " x " << 1 << " x " << 1 << "]\n";
             throw std::invalid_argument("DTensor and risk dimensions mismatch");
         }
         return true;
@@ -69,13 +70,13 @@ public:
                   DTensor<size_t> &d_numChildren,
                   DTensor<size_t> &d_childFrom,
                   DTensor<real_t> &d_condProbs) :
-            CoherentRisk(node, d_numChildren),
-            m_alpha(alpha),
-            m_d_chFrom(d_childFrom),
-            m_d_condProbs(d_condProbs),
-            m_nnoc(m_numCh * 2),
-            m_zero(1),
-            m_riskConeK() {
+        CoherentRisk(node, d_numChildren),
+        m_alpha(alpha),
+        m_d_chFrom(d_childFrom),
+        m_d_condProbs(d_condProbs),
+        m_nnoc(m_numCh * 2),
+        m_zero(1),
+        m_riskConeK() {
         m_riskConeK.addCone(m_nnoc);
         m_riskConeK.addCone(m_zero);
     }
@@ -89,7 +90,7 @@ public:
     void vecAddB(DTensor<real_t> &d_vec) {
         dimension_check(d_vec);
         d_avarVecAddB<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(
-                d_vec.raw(), m_node, m_d_numCh.raw(), m_d_chFrom.raw(), m_d_condProbs.raw());
+            d_vec.raw(), m_node, m_d_numCh.raw(), m_d_chFrom.raw(), m_d_condProbs.raw());
     }
 
 };

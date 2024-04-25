@@ -14,8 +14,8 @@ protected:
     size_t m_n = 64;
     real_t m_tol = 1e-4;
     size_t m_maxIters = 20;
-    DTensor<real_t> m_d_data = DTensor<real_t>(m_n);;
-    std::vector<real_t> m_hostData = std::vector<real_t>(m_n);;
+    DTensor<real_t> m_d_data = DTensor<real_t>(m_n);
+    std::vector<real_t> m_hostData = std::vector<real_t>(m_n);
     std::vector<real_t> m_hostTest = std::vector<real_t>(m_n);
     CacheTest() {
         std::ifstream tree_data("../../tests/default_tree_data.json");

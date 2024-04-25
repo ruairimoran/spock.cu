@@ -3,7 +3,7 @@
 
 class thisOne {
 private:
-    DTensor<real_t> mats;
+    DTensor<real_t> *d_mat = nullptr;
 
 public:
     thisOne() {
@@ -11,19 +11,28 @@ public:
         std::vector<real_t> mat{1, 1, 1,
                                 1, 1, 1,
                                 1, 1, 1};
-        mats(DTensor<real_t>{mat, n});
-        std::cout << mats << "\n";
+        d_mat = new DTensor<real_t>(mat, n*n);
     }
 
     ~thisOne() {}
 
+    template<typename T>
+    void printIf(DTensor<T> *data, std::string description) const {
+        if (data) {
+            std::cout << description << *data;
+        } else {
+            std::cout << description << "HAS NO DATA TO PRINT.";
+        }
+    }
+
     void print() {
-        std::cout << mats << "\n";
+        printIf(d_mat, "here it is: ");
     }
 };
 
 int main() {
     thisOne here;
+    here.print();
 
     return 0;
 }

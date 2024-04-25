@@ -27,16 +27,16 @@ private:
     size_t m_numNodes = 0;  ///< Total number of nodes (incl. root)
     size_t m_numNonleafNodes = 0;  ///< Total number of nonleaf nodes (incl. root)
     size_t m_numStages = 0;  ///< Total number of stages (incl. root)
-    DTensor<size_t> m_d_stages;  ///< Ptr to stage of node at index
-    DTensor<size_t> m_d_ancestors;  ///< Ptr to ancestor of node at index
-    DTensor<real_t> m_d_probabilities;  ///< Ptr to probability of visiting node at index
-    DTensor<real_t> m_d_conditionalProbabilities;  ///< Ptr to conditional probability of visiting node at index
-    DTensor<size_t> m_d_events;  ///< Ptr to event occurred that led to node at index
-    DTensor<size_t> m_d_childFrom;  ///< Ptr to first child of node at index
-    DTensor<size_t> m_d_childTo;  ///< Ptr to last child of node at index
-    DTensor<size_t> m_d_numChildren;  ///< Ptr to number of children of node at index
-    DTensor<size_t> m_d_nodeFrom;  ///< Ptr to first node of stage at index
-    DTensor<size_t> m_d_nodeTo;  ///< Ptr to last node of stage at index
+    DTensor<size_t> *m_d_stages = nullptr;  ///< Ptr to stage of node at index
+    DTensor<size_t> *m_d_ancestors = nullptr;  ///< Ptr to ancestor of node at index
+    DTensor<real_t> *m_d_probabilities = nullptr;  ///< Ptr to probability of visiting node at index
+    DTensor<real_t> *m_d_conditionalProbabilities = nullptr;  ///< Ptr to conditional probability of visiting node at index
+    DTensor<size_t> *m_d_events = nullptr;  ///< Ptr to event occurred that led to node at index
+    DTensor<size_t> *m_d_childFrom = nullptr;  ///< Ptr to first child of node at index
+    DTensor<size_t> *m_d_childTo = nullptr;  ///< Ptr to last child of node at index
+    DTensor<size_t> *m_d_numChildren = nullptr;  ///< Ptr to number of children of node at index
+    DTensor<size_t> *m_d_nodeFrom = nullptr;  ///< Ptr to first node of stage at index
+    DTensor<size_t> *m_d_nodeTo = nullptr;  ///< Ptr to last node of stage at index
 
 public:
     /**
@@ -70,16 +70,16 @@ public:
         std::vector<size_t> hostChildrenTo(m_numNonleafNodes);
 
         /** Allocate memory on device */
-        DTensor<size_t> d_stages(m_numNodes);
-        DTensor<size_t> d_ancestors(m_numNodes);
-        DTensor<real_t> d_probabilities(m_numNodes);
-        DTensor<real_t> d_conditionalProbabilities(m_numNodes);
-        DTensor<size_t> d_events(m_numNodes);
-        DTensor<size_t> d_childFrom(m_numNonleafNodes);
-        DTensor<size_t> d_childTo(m_numNonleafNodes);
-        DTensor<size_t> d_numChildren(m_numNonleafNodes);
-        DTensor<size_t> d_nodeFrom(m_numStages);
-        DTensor<size_t> d_nodeTo(m_numStages);
+        m_d_stages = new DTensor<size_t>(m_numNodes);
+        m_d_ancestors = new DTensor<size_t>(m_numNodes);
+        m_d_probabilities = new DTensor<real_t>(m_numNodes);
+        m_d_conditionalProbabilities = new DTensor<real_t>(m_numNodes);
+        m_d_events = new DTensor<size_t>(m_numNodes);
+        m_d_childFrom = new DTensor<size_t>(m_numNonleafNodes);
+        m_d_childTo = new DTensor<size_t>(m_numNonleafNodes);
+        m_d_numChildren = new DTensor<size_t>(m_numNonleafNodes);
+        m_d_nodeFrom = new DTensor<size_t>(m_numStages);
+        m_d_nodeTo = new DTensor<size_t>(m_numStages);
 
         /** Store array data from JSON in host memory */
         for (rapidjson::SizeType i = 0; i < m_numNodes; i++) {
@@ -95,38 +95,37 @@ public:
         ///< Note that anc[0] and events[0] will be max(size_t) on device because they are -1 on host
 
         /** Transfer JSON array data to device */
-        d_stages.upload(hostStages);
-        d_ancestors.upload(hostAncestors);
-        d_probabilities.upload(hostProbabilities);
-        d_events.upload(hostEvents);
-        d_childFrom.upload(hostChildrenFrom);
-        d_childTo.upload(hostChildrenTo);
+        m_d_stages->upload(hostStages);
+        m_d_ancestors->upload(hostAncestors);
+        m_d_probabilities->upload(hostProbabilities);
+        m_d_events->upload(hostEvents);
+        m_d_childFrom->upload(hostChildrenFrom);
+        m_d_childTo->upload(hostChildrenTo);
 
         /** Populate remaining arrays on device */
         d_populateProbabilities<<<DIM2BLOCKS(m_numNodes), THREADS_PER_BLOCK>>>(
-                d_ancestors.raw(), d_probabilities.raw(), m_numNodes, d_conditionalProbabilities.raw());
+            m_d_ancestors->raw(), m_d_probabilities->raw(), m_numNodes, m_d_conditionalProbabilities->raw());
         d_populateChildren<<<DIM2BLOCKS(m_numNonleafNodes), THREADS_PER_BLOCK>>>(
-                d_childFrom.raw(), d_childTo.raw(), m_numNonleafNodes, d_numChildren.raw());
+            m_d_childFrom->raw(), m_d_childTo->raw(), m_numNonleafNodes, m_d_numChildren->raw());
         d_populateStages<<<DIM2BLOCKS(m_numStages), THREADS_PER_BLOCK>>>(
-                d_stages.raw(), m_numStages, m_numNodes, d_nodeFrom.raw(), d_nodeTo.raw());
-
-        /** Assign tensors to class attribute */
-        m_d_stages = d_stages;
-        m_d_ancestors = d_ancestors;
-        m_d_probabilities = d_probabilities;
-        m_d_conditionalProbabilities = d_conditionalProbabilities;
-        m_d_events = d_events;
-        m_d_childFrom = d_childFrom;
-        m_d_childTo = d_childTo;
-        m_d_numChildren = d_numChildren;
-        m_d_nodeFrom = d_nodeFrom;
-        m_d_nodeTo = d_nodeTo;
+            m_d_stages->raw(), m_numStages, m_numNodes, m_d_nodeFrom->raw(), m_d_nodeTo->raw());
     }
 
     /**
      * Destructor
      */
-    ~ScenarioTree() {}
+    ~ScenarioTree() {
+        DESTROY_PTR(m_d_stages)
+        DESTROY_PTR(m_d_ancestors)
+        DESTROY_PTR(m_d_probabilities)
+        DESTROY_PTR(m_d_conditionalProbabilities)
+        DESTROY_PTR(m_d_events)
+        DESTROY_PTR(m_d_childFrom)
+        DESTROY_PTR(m_d_childTo)
+        DESTROY_PTR(m_d_numChildren)
+        DESTROY_PTR(m_d_nodeFrom)
+        DESTROY_PTR(m_d_nodeTo)
+    }
 
     /**
      * Getters
@@ -145,25 +144,25 @@ public:
 
     size_t numStages() { return m_numStages; }
 
-    DTensor<size_t> &stages() { return m_d_stages; }
+    DTensor<size_t> &stages() { return *m_d_stages; }
 
-    DTensor<size_t> &ancestors() { return m_d_ancestors; }
+    DTensor<size_t> &ancestors() { return *m_d_ancestors; }
 
-    DTensor<real_t> &probabilities() { return m_d_probabilities; }
+    DTensor<real_t> &probabilities() { return *m_d_probabilities; }
 
-    DTensor<real_t> &conditionalProbabilities() { return m_d_conditionalProbabilities; }
+    DTensor<real_t> &conditionalProbabilities() { return *m_d_conditionalProbabilities; }
 
-    DTensor<size_t> &events() { return m_d_events; }
+    DTensor<size_t> &events() { return *m_d_events; }
 
-    DTensor<size_t> &childFrom() { return m_d_childFrom; }
+    DTensor<size_t> &childFrom() { return *m_d_childFrom; }
 
-    DTensor<size_t> &childTo() { return m_d_childTo; }
+    DTensor<size_t> &childTo() { return *m_d_childTo; }
 
-    DTensor<size_t> &numChildren() { return m_d_numChildren; }
+    DTensor<size_t> &numChildren() { return *m_d_numChildren; }
 
-    DTensor<size_t> &nodeFrom() { return m_d_nodeFrom; }
+    DTensor<size_t> &nodeFrom() { return *m_d_nodeFrom; }
 
-    DTensor<size_t> &nodeTo() { return m_d_nodeTo; }
+    DTensor<size_t> &nodeTo() { return *m_d_nodeTo; }
 
     /**
      * Debugging
@@ -173,15 +172,15 @@ public:
         std::cout << "Number of nonleaf nodes: " << m_numNonleafNodes << "\n";
         std::cout << "Number of nodes: " << m_numNodes << "\n";
         std::cout << "Number of stages: " << m_numStages << "\n";
-        std::cout << "Stages (from device): " << m_d_stages << "\n";
-        std::cout << "Ancestors (from device): " << m_d_ancestors << "\n";
-        std::cout << "Probabilities (from device): " << m_d_probabilities << "\n";
-        std::cout << "Conditional probabilities (from device): " << m_d_conditionalProbabilities << "\n";
-        std::cout << "Events (from device): " << m_d_events << "\n";
-        std::cout << "Children::from (from device): " << m_d_childFrom << "\n";
-        std::cout << "Children::to (from device): " << m_d_childTo << "\n";
-        std::cout << "Stage::from (from device): " << m_d_nodeFrom << "\n";
-        std::cout << "Stage::to (from device): " << m_d_nodeTo << "\n";
+        printIf("Stages (from device): ", m_d_stages);
+        printIf("Ancestors (from device): ", m_d_ancestors);
+        printIf("Probabilities (from device): ", m_d_probabilities);
+        printIf("Conditional probabilities (from device): ", m_d_conditionalProbabilities);
+        printIf("Events (from device): ", m_d_events);
+        printIf("Children::from (from device): ", m_d_childFrom);
+        printIf("Children::to (from device): ", m_d_childTo);
+        printIf("Stage::from (from device): ", m_d_nodeFrom);
+        printIf("Stage::to (from device): ", m_d_nodeTo);
     }
 };
 

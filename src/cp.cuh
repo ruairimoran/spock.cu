@@ -1,6 +1,6 @@
 #ifndef CP_CUH
 #define CP_CUH
-#include "../include/stdgpu.h"
+#include "../include/gpu.cuh"
 #include "cache.cuh"
 #include <chrono>
 

@@ -1,62 +1,38 @@
-#include "../include/stdgpu.h"
-#include "wrappers.cuh"
+#include "../include/gpu.cuh"
 
-template<typename T>
-void printVector(std::vector<T> A) {
-    for (size_t i = 0; i < A.size(); i++) {
-        std::cout << A[i] << "\t";
+
+class thisOne {
+private:
+    DTensor<real_t> *d_mat = nullptr;
+
+public:
+    thisOne() {
+        size_t n = 3;
+        std::vector<real_t> mat{1, 1, 1,
+                                1, 1, 1,
+                                1, 1, 1};
+        d_mat = new DTensor<real_t>(mat, n*n);
     }
-    std::cout << "\n\n";
-}
 
-template<typename T>
-void printMatrix(std::vector<T> A, size_t numRows, size_t numCols) {
-    for (size_t r = 0; r < numRows; r++) {
-        for (size_t c = 0; c < numCols; c++) {
-            std::cout << A[r * numCols + c] << "\t";
+    ~thisOne() {}
+
+    template<typename T>
+    void printIf(DTensor<T> *data, std::string description) const {
+        if (data) {
+            std::cout << description << *data;
+        } else {
+            std::cout << description << "HAS NO DATA TO PRINT.";
         }
-        std::cout << "\n";
     }
-    std::cout << "\n";
-}
+
+    void print() {
+        printIf(d_mat, "here it is: ");
+    }
+};
 
 int main() {
-    // Matrix A (rows x cols) with rows >= cols
-    size_t rows = 4;
-    size_t cols = 3;
-    std::vector<real_t> A = {1, 2, 3,
-                             1, 2, 3,
-                             1, 2, 3,
-                             1, 2, 3};
-    row2col(A, A, rows, cols);
-    DeviceVector<real_t> d_A(A);
-    DeviceVector<real_t> d_N;  // nullspace
-
-    Context context;
-    size_t NCols = 0;
-    gpuNullspace(context, rows, cols, d_A, d_N, NCols, true);
-    std::cout << "num nullspace cols: " << NCols << "\n";
-
-    // Check result
-    std::vector<real_t> A_(rows * cols);
-    d_A.download(A_);
-    col2row(A_, A_, rows, cols);
-    std::cout << "A:" << "\n";
-    printMatrix(A_, rows, cols);
-
-    std::vector<real_t> N_(cols * NCols);
-    d_N.download(N_);
-    col2row(N_, N_, cols, NCols);
-    std::cout << "N:" << "\n";
-    printMatrix(N_, cols, NCols);
-
-    size_t nAN = rows * NCols;
-    DeviceVector<real_t> d_AN(nAN);
-    gpuMatMatMul(context, rows, cols, NCols, d_A, d_N, d_AN);
-    std::vector<real_t> AN(nAN);
-    d_AN.download(AN);
-    std::cout << "A * nullspace (should be zeros):" << "\n";
-    printMatrix(AN, rows, NCols);
+    thisOne here;
+    here.print();
 
     return 0;
 }

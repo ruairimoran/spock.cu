@@ -4,7 +4,7 @@
  * $ cmake -S . -B ./build -Wno-dev && cmake --build ./build && ./build/spock
 */
 
-#include "include/stdgpu.h"
+#include "include/gpu.cuh"
 #include "src/tree.cuh"
 #include "src/problem.cuh"
 #include "src/cache.cuh"

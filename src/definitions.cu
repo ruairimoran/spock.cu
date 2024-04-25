@@ -1,10 +1,12 @@
+#include "../include/gpu.cuh"
+
+
 /**
  * Definitions for CUDA kernels 
 */
-#include "../include/stdgpu.h"
 
 
-/**
+/*
  * General
 */
 
@@ -20,20 +22,13 @@ __global__ void d_setMatToId(real_t *mat, size_t numRows, size_t node = 0) {
     }
 }
 
-__global__ void d_negate(real_t *data, size_t n, size_t node = 0) {
-    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n) {
-        data[i] = -data[i];
-    }
-}
 
-
-/** 
+/*
  * Cache methods
 */
 
 
-/**
+/*
  * Constraints methods
 */
 
@@ -46,7 +41,7 @@ __global__ void d_projectRectangle(size_t dimension, real_t *vec, real_t *lowerB
 }
 
 
-/**
+/*
  * Risk methods
 */
 
@@ -56,7 +51,7 @@ __global__ void d_avarVecAddB(real_t *vec, size_t node, size_t *numCh, size_t *c
 }
 
 
-/**
+/*
  * Cone methods
 */
 
@@ -77,12 +72,13 @@ __global__ void d_projectOnSoc(real_t *vec, size_t n, real_t nrm, real_t scaling
 }
 
 
-/**
+/*
  * ScenarioTree methods
 */
 
 /**
  * Computing conditional probability of each tree node
+ *
  * @param[in] anc device ptr to ancestor of node at index
  * @param[in] prob device ptr to probability of visiting node at index
  * @param[in] numNodes total number of nodes
@@ -99,6 +95,7 @@ __global__ void d_populateProbabilities(size_t *anc, real_t *prob, size_t numNod
 
 /**
  * Computing number of children of each tree node
+ *
  * @param[in] from device ptr to first child of node at index
  * @param[in] to device ptr to last child of node at index
  * @param[in] numNonleafNodes total number of nonleaf nodes
@@ -111,6 +108,7 @@ __global__ void d_populateChildren(size_t *from, size_t *to, size_t numNonleafNo
 
 /**
  * Populating stagesFrom and stagesTo
+ *
  * @param[in] stages device ptr to stage of node at index
  * @param[in] numStages total number of stages
  * @param[out] nodeFrom device ptr to first node of stage at index

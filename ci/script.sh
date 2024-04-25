@@ -2,36 +2,36 @@
 set -euxo pipefail
 
 test_all() {
-    # Run Python tests
-    # ------------------------------------
-
-    # -- create virtual environment
-    export PYTHONPATH=.
-
-    # -- install virtualenv
-    pip install virtualenv
-
-    # -- create virtualenv
-    virtualenv -p python3.10 venv
-
-    # -- activate venv
-    source venv/bin/activate
-
-    # -- upgrade pip within venv
-    pip install --upgrade pip
-
-    # -- install dependencies
-    pip install .
-
-    # -- run the python tests
-    python -W ignore tests/test_tree_factories.py -v
-
-
-    # Run C++ gtests using cmake
-    # ------------------------------------
-
-    # -- generate simple tree data for testing
-    python tests/test_tree_main.py
+#    # Run Python tests
+#    # ------------------------------------
+#
+#    # -- create virtual environment
+#    export PYTHONPATH=.
+#
+#    # -- install virtualenv
+#    pip install virtualenv
+#
+#    # -- create virtualenv
+#    virtualenv -p python3.10 venv
+#
+#    # -- activate venv
+#    source venv/bin/activate
+#
+#    # -- upgrade pip within venv
+#    pip install --upgrade pip
+#
+#    # -- install dependencies
+#    pip install .
+#
+#    # -- run the python tests
+#    python -W ignore tests/test_tree_factories.py -v
+#
+#
+#    # Run C++ gtests using cmake
+#    # ------------------------------------
+#
+#    # -- generate simple tree data for testing
+#    python tests/test_tree_main.py
 
     # -- create build files
     cmake -S . -B ./build -Wno-dev

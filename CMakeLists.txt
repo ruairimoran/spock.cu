@@ -6,29 +6,42 @@ project(SPOCK
     LANGUAGES CXX)
 # ----
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)  # required for calling cuda kernels from cuda kernels
-set(CMAKE_CUDA_COMPILER "/usr/local/cuda-12.3/bin/nvcc")    
+set(CMAKE_CUDA_COMPILER "/usr/local/cuda-12.3/bin/nvcc")  # or, wherever your cuda toolkit is stored
 set(CMAKE_CUDA_ARCHITECTURES 86)
+set(CMAKE_CUDA_STANDARD 20)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CUDA_FLAGS "-std=c++20")
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS}; -std=c++20)
 enable_language(CUDA)
 # ----
 add_library(spock_compiler_flags INTERFACE)
-target_compile_features(spock_compiler_flags 
-    INTERFACE 
-        cxx_std_20)
+target_compile_features(spock_compiler_flags INTERFACE cxx_std_20)
 set(CMAKE_CXX_EXTENSIONS OFF)
 # ----
-add_library(developer_flags INTERFACE)
+add_library(spock_developer_flags INTERFACE)
 set(cxx_flags -Wall)
-set(cuda_flags -arch=sm_60 -Xcompiler=-Wall -Xcudafe=--display_error_number)
-target_compile_options(developer_flags 
+set(cuda_flags -arch=sm_60 -std=c++20 -Xcompiler=-Wall -Xcudafe=--display_error_number)
+target_compile_options(spock_developer_flags
     INTERFACE
-        # flags for CXX builds
-        $<$<COMPILE_LANGUAGE:CXX>:${cxx_flags}>
-        # flags for CUDA builds
-        $<$<COMPILE_LANGUAGE:CUDA>:${cuda_flags}>
+    # flags for CXX builds
+    $<$<COMPILE_LANGUAGE:CXX>:${cxx_flags}>
+    # flags for CUDA builds
+    $<$<COMPILE_LANGUAGE:CUDA>:${cuda_flags}>
 )
-target_link_libraries(spock_compiler_flags 
-    INTERFACE 
-        $<BUILD_INTERFACE:developer_flags>)
+target_link_libraries(spock_compiler_flags INTERFACE $<BUILD_INTERFACE:spock_developer_flags>
+)
+# ----
+set(GPUTILS_BUILD_TESTING OFF)
+include(FetchContent)
+FetchContent_Declare(
+    gputils
+    URL https://github.com/GPUEngineering/GPUtils/archive/refs/tags/v0.1.0.zip  # specify release version
+)
+FetchContent_MakeAvailable(gputils)
+FetchContent_GetProperties(
+    gputils
+    SOURCE_DIR GPUTILS_SOURCE_DIR
+)
 # ----
 add_subdirectory(src)
 add_subdirectory(tests)  # comment out to not build tests
@@ -36,14 +49,40 @@ add_subdirectory(tests)  # comment out to not build tests
 add_executable(spock)
 target_sources(spock  # add files
     PRIVATE
-        main.cu
+    main.cu
 )
-target_link_libraries(spock 
+target_link_libraries(spock
     PRIVATE
-        spock_src)
-target_include_directories(spock 
+    spock_compiler_flags
+    spock_src
+    cublas
+    cusolver
+    cudadevrt
+)
+target_include_directories(spock
     PRIVATE
-        "${PROJECT_BINARY_DIR}"
-        "${PROJECT_SOURCE_DIR}/src"
+    "${GPUTILS_SOURCE_DIR}/include"  # includes GPUtils directory
+    "${PROJECT_SOURCE_DIR}/src"
+    "${PROJECT_BINARY_DIR}"
+)
+# ----
+add_executable(play)
+target_sources(play
+    PRIVATE
+    playground/play.cu
+)
+target_link_libraries(play
+    PRIVATE
+    spock_compiler_flags
+    spock_src
+    cublas
+    cusolver
+    cudadevrt
+)
+target_include_directories(play
+    PRIVATE
+    "${GPUTILS_SOURCE_DIR}/include"  # includes GPUtils directory
+    "${PROJECT_SOURCE_DIR}/src"
+    "${PROJECT_BINARY_DIR}"
 )
 # ----

@@ -11,14 +11,14 @@ protected:
     /** Prepare some host and device data */
     size_t m_node = 2;
     size_t m_n = 0;
-    DTensor<real_t> *m_d_data = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_data = nullptr;
     std::vector<real_t> m_hostData;
     std::vector<real_t> m_hostTest;
     RisksTest() {
         std::ifstream tree_data("../../tests/default_tree_data.json");
         m_tree = std::make_unique<ScenarioTree>(tree_data);
         m_n = m_tree->numChildren()(m_node) * 2 + 1;
-        m_d_data = new DTensor<real_t>(m_n);
+        m_d_data = std::make_unique<DTensor<real_t>>(m_n);
         m_hostData.resize(m_n);
         m_hostTest.resize(m_n);
         /** Positive and negative values in m_hostData */
@@ -27,9 +27,7 @@ protected:
         m_d_data->upload(m_hostData);
     }
 
-    virtual ~RisksTest() {
-        if (m_d_data) delete m_d_data;
-    }
+    virtual ~RisksTest() {}
 };
 
 

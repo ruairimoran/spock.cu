@@ -31,26 +31,26 @@ private:
     size_t m_countIterations = 0;
     /** Primal data */
     size_t m_primSize = 0;
-    DTensor<real_t> *m_d_prim = nullptr;
-    DTensor<real_t> *m_d_primMod = nullptr;
-    DTensor<real_t> *m_d_primPrev = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_prim = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_primMod = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_primPrev = nullptr;
     /** Dual data */
     size_t m_dualSize = 0;
-    DTensor<real_t> *m_d_dual = nullptr;
-    DTensor<real_t> *m_d_dualMod = nullptr;
-    DTensor<real_t> *m_d_dualPrev = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_dual = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_dualMod = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_dualPrev = nullptr;
     /** Error data */
-    DTensor<real_t> *m_d_cacheError = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_cacheError = nullptr;
     /** Dynamics projection data */
-    DTensor<real_t> *m_d_P = nullptr;
-    DTensor<real_t> *m_d_q = nullptr;
-    DTensor<real_t> *m_d_K = nullptr;
-    DTensor<real_t> *m_d_d = nullptr;
-    DTensor<real_t> *m_d_choleskyLo = nullptr;
-    DTensor<real_t> *m_d_dynamicsSum = nullptr;  ///< A+BK
+    std::unique_ptr<DTensor<real_t>> m_d_P = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_q = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_K = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_d = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_choleskyLo = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_dynamicsSum = nullptr;  ///< A+BK
     /** Kernel projection data */
-    DTensor<real_t> *m_d_kernelConstraintMat = nullptr;
-    DTensor<real_t> *m_d_nullSpaceMat = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_kernelConstraintMat = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_nullSpaceMat = nullptr;
 
     /** Methods */
     void offline_projection_setup();
@@ -70,13 +70,13 @@ public:
                      + m_tree.numNodes();  ///< S for all child nodes
 
         /** Allocate memory on device */
-        m_d_prim = new DTensor<real_t>(m_primSize);
-        m_d_primMod = new DTensor<real_t>(m_primSize);
-        m_d_primPrev = new DTensor<real_t>(m_primSize);
-        m_d_dual = new DTensor<real_t>(m_dualSize);
-        m_d_dualMod = new DTensor<real_t>(m_dualSize);
-        m_d_dualPrev = new DTensor<real_t>(m_dualSize);
-        m_d_cacheError = new DTensor<real_t>(m_maxIters, 1, 1, true);
+        m_d_prim = std::make_unique<DTensor<real_t>>(m_primSize);
+        m_d_primMod = std::make_unique<DTensor<real_t>>(m_primSize);
+        m_d_primPrev = std::make_unique<DTensor<real_t>>(m_primSize);
+        m_d_dual = std::make_unique<DTensor<real_t>>(m_dualSize);
+        m_d_dualMod = std::make_unique<DTensor<real_t>>(m_dualSize);
+        m_d_dualPrev = std::make_unique<DTensor<real_t>>(m_dualSize);
+        m_d_cacheError = std::make_unique<DTensor<real_t>>(m_maxIters, 1, 1, true);
 
         /** Transfer array data to device */
 //        m_d_tol.upload(vecTol);
@@ -87,21 +87,7 @@ public:
     /**
      * Destructor
      */
-    ~Cache() {
-        DESTROY_PTR(m_d_prim)
-        DESTROY_PTR(m_d_primMod)
-        DESTROY_PTR(m_d_primPrev)
-        DESTROY_PTR(m_d_dual)
-        DESTROY_PTR(m_d_dualMod)
-        DESTROY_PTR(m_d_dualPrev)
-        DESTROY_PTR(m_d_cacheError)
-        DESTROY_PTR(m_d_P)
-        DESTROY_PTR(m_d_q)
-        DESTROY_PTR(m_d_K)
-        DESTROY_PTR(m_d_d)
-        DESTROY_PTR(m_d_choleskyLo)
-        DESTROY_PTR(m_d_dynamicsSum)
-    }
+    ~Cache() {}
 
     /**
      * Getters
@@ -160,12 +146,12 @@ void Cache::offline_projection_setup() {
 //    gpuCholeskySetup(m_numInputs, d_workspace);
 
     /** allocate device memory for dynamics projection data*/
-    m_d_P = new DTensor<real_t>(m_numStates * m_numStates * m_tree.numNodes());
-    m_d_q = new DTensor<real_t>(m_numStates * m_tree.numNodes());
-    m_d_K = new DTensor<real_t>(m_numInputs * m_numStates * m_tree.numNonleafNodes());
-    m_d_d = new DTensor<real_t>(m_numInputs * m_tree.numNonleafNodes());
-    m_d_choleskyLo = new DTensor<real_t>(m_numInputs * m_numInputs * m_tree.numNonleafNodes());
-    m_d_dynamicsSum = new DTensor<real_t>(m_numStates * m_numStates * m_tree.numNodes());
+    m_d_P = std::make_unique<DTensor<real_t>>(m_numStates * m_numStates * m_tree.numNodes());
+    m_d_q = std::make_unique<DTensor<real_t>>(m_numStates * m_tree.numNodes());
+    m_d_K = std::make_unique<DTensor<real_t>>(m_numInputs * m_numStates * m_tree.numNonleafNodes());
+    m_d_d = std::make_unique<DTensor<real_t>>(m_numInputs * m_tree.numNonleafNodes());
+    m_d_choleskyLo = std::make_unique<DTensor<real_t>>(m_numInputs * m_numInputs * m_tree.numNonleafNodes());
+    m_d_dynamicsSum = std::make_unique<DTensor<real_t>>(m_numStates * m_numStates * m_tree.numNodes());
 
     /** set all leaf P matrices to identity */
     for (size_t i = m_tree.numNonleafNodes(); i < m_tree.numNodes(); i++) {

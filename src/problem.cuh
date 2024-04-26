@@ -32,16 +32,16 @@ private:
     ScenarioTree &m_tree;  ///< Previously created scenario tree of problem
     size_t m_numStates = 0;  ///< Total number system states
     size_t m_numInputs = 0;  ///< Total number control inputs
-    DTensor<real_t> *m_d_stateDynamics = nullptr;  ///< Ptr to
-    DTensor<real_t> *m_d_inputDynamics = nullptr;  ///< Ptr to
-    DTensor<real_t> *m_d_stateWeight = nullptr;  ///< Ptr to
-    DTensor<real_t> *m_d_inputWeight = nullptr;  ///< Ptr to
-    DTensor<real_t> *m_d_stateWeightLeaf = nullptr;  ///< Ptr to
-    DTensor<real_t> *m_d_stateConstraint = nullptr;  ///< Ptr to
+    std::unique_ptr<DTensor<real_t>> m_d_stateDynamics = nullptr;  ///< Ptr to
+    std::unique_ptr<DTensor<real_t>> m_d_inputDynamics = nullptr;  ///< Ptr to
+    std::unique_ptr<DTensor<real_t>> m_d_stateWeight = nullptr;  ///< Ptr to
+    std::unique_ptr<DTensor<real_t>> m_d_inputWeight = nullptr;  ///< Ptr to
+    std::unique_ptr<DTensor<real_t>> m_d_stateWeightLeaf = nullptr;  ///< Ptr to
+    std::unique_ptr<DTensor<real_t>> m_d_stateConstraint = nullptr;  ///< Ptr to
 //        std::vector<std::unique_ptr<ConvexCone>> m_stateConstraintCone;  ///< Ptr to
-    DTensor<real_t> *m_d_inputConstraint = nullptr;  ///< Ptr to
+    std::unique_ptr<DTensor<real_t>> m_d_inputConstraint = nullptr;  ///< Ptr to
 //        std::vector<std::unique_ptr<ConvexCone>> m_inputConstraintCone;  ///< Ptr to
-    DTensor<real_t> *m_d_stateConstraintLeaf = nullptr;  ///< Ptr to
+    std::unique_ptr<DTensor<real_t>> m_d_stateConstraintLeaf = nullptr;  ///< Ptr to
 //        std::vector<std::unique_ptr<ConvexCone>> m_stateConstraintLeafCone;  ///< Ptr to
     std::vector<std::unique_ptr<CoherentRisk>> m_risk;  ///< Ptr to
 
@@ -85,14 +85,14 @@ public:
         real_t jsonRiskAlpha;
 
         /** Allocate memory on device */
-        m_d_stateDynamics = new DTensor<real_t>(m_numStates, m_numStates, m_tree.numNodes(), true);
-        m_d_inputDynamics = new DTensor<real_t>(m_numStates, m_numInputs, m_tree.numNodes(), true);
-        m_d_stateWeight = new DTensor<real_t>(lenStateMat * m_tree.numNodes());
-        m_d_inputWeight = new DTensor<real_t>(lenInputWgtMat * m_tree.numNodes());
-        m_d_stateWeightLeaf = new DTensor<real_t>(lenStateMat * m_tree.numNodes());
-        m_d_stateConstraint = new DTensor<real_t>(lenDoubleState * m_tree.numNodes());
-        m_d_inputConstraint = new DTensor<real_t>(lenDoubleInput * m_tree.numNodes());
-        m_d_stateConstraintLeaf = new DTensor<real_t>(lenDoubleState * m_tree.numNodes());
+        m_d_stateDynamics = std::make_unique<DTensor<real_t>> (m_numStates, m_numStates, m_tree.numNodes(), true);
+        m_d_inputDynamics = std::make_unique<DTensor<real_t>> (m_numStates, m_numInputs, m_tree.numNodes(), true);
+        m_d_stateWeight = std::make_unique<DTensor<real_t>> (lenStateMat * m_tree.numNodes());
+        m_d_inputWeight = std::make_unique<DTensor<real_t>> (lenInputWgtMat * m_tree.numNodes());
+        m_d_stateWeightLeaf = std::make_unique<DTensor<real_t>> (lenStateMat * m_tree.numNodes());
+        m_d_stateConstraint = std::make_unique<DTensor<real_t>> (lenDoubleState * m_tree.numNodes());
+        m_d_inputConstraint = std::make_unique<DTensor<real_t>> (lenDoubleInput * m_tree.numNodes());
+        m_d_stateConstraintLeaf = std::make_unique<DTensor<real_t>> (lenDoubleState * m_tree.numNodes());
 
         /** Store array data from JSON in host memory */
         for (rapidjson::SizeType i = 0; i < lenStateMat; i++) {
@@ -205,16 +205,7 @@ public:
     /**
      * Destructor
      */
-    ~ProblemData() {
-        DESTROY_PTR(m_d_stateDynamics)
-        DESTROY_PTR(m_d_inputDynamics)
-        DESTROY_PTR(m_d_stateWeight)
-        DESTROY_PTR(m_d_inputWeight)
-        DESTROY_PTR(m_d_stateWeightLeaf)
-        DESTROY_PTR(m_d_stateConstraint)
-        DESTROY_PTR(m_d_inputConstraint)
-        DESTROY_PTR(m_d_stateConstraintLeaf)
-    }
+    ~ProblemData() {}
 
     /**
      * Getters

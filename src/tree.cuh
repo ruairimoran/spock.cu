@@ -27,16 +27,16 @@ private:
     size_t m_numNodes = 0;  ///< Total number of nodes (incl. root)
     size_t m_numNonleafNodes = 0;  ///< Total number of nonleaf nodes (incl. root)
     size_t m_numStages = 0;  ///< Total number of stages (incl. root)
-    DTensor<size_t> *m_d_stages = nullptr;  ///< Ptr to stage of node at index
-    DTensor<size_t> *m_d_ancestors = nullptr;  ///< Ptr to ancestor of node at index
-    DTensor<real_t> *m_d_probabilities = nullptr;  ///< Ptr to probability of visiting node at index
-    DTensor<real_t> *m_d_conditionalProbabilities = nullptr;  ///< Ptr to conditional probability of visiting node at index
-    DTensor<size_t> *m_d_events = nullptr;  ///< Ptr to event occurred that led to node at index
-    DTensor<size_t> *m_d_childFrom = nullptr;  ///< Ptr to first child of node at index
-    DTensor<size_t> *m_d_childTo = nullptr;  ///< Ptr to last child of node at index
-    DTensor<size_t> *m_d_numChildren = nullptr;  ///< Ptr to number of children of node at index
-    DTensor<size_t> *m_d_nodeFrom = nullptr;  ///< Ptr to first node of stage at index
-    DTensor<size_t> *m_d_nodeTo = nullptr;  ///< Ptr to last node of stage at index
+    std::unique_ptr<DTensor<size_t>> m_d_stages = nullptr;  ///< Ptr to stage of node at index
+    std::unique_ptr<DTensor<size_t>> m_d_ancestors = nullptr;  ///< Ptr to ancestor of node at index
+    std::unique_ptr<DTensor<real_t>> m_d_probabilities = nullptr;  ///< Ptr to probability of visiting node at index
+    std::unique_ptr<DTensor<real_t>> m_d_conditionalProbabilities = nullptr;  ///< Ptr to conditional probability of visiting node at index
+    std::unique_ptr<DTensor<size_t>> m_d_events = nullptr;  ///< Ptr to event occurred that led to node at index
+    std::unique_ptr<DTensor<size_t>> m_d_childFrom = nullptr;  ///< Ptr to first child of node at index
+    std::unique_ptr<DTensor<size_t>> m_d_childTo = nullptr;  ///< Ptr to last child of node at index
+    std::unique_ptr<DTensor<size_t>> m_d_numChildren = nullptr;  ///< Ptr to number of children of node at index
+    std::unique_ptr<DTensor<size_t>> m_d_nodeFrom = nullptr;  ///< Ptr to first node of stage at index
+    std::unique_ptr<DTensor<size_t>> m_d_nodeTo = nullptr;  ///< Ptr to last node of stage at index
 
 public:
     /**
@@ -70,16 +70,16 @@ public:
         std::vector<size_t> hostChildrenTo(m_numNonleafNodes);
 
         /** Allocate memory on device */
-        m_d_stages = new DTensor<size_t>(m_numNodes);
-        m_d_ancestors = new DTensor<size_t>(m_numNodes);
-        m_d_probabilities = new DTensor<real_t>(m_numNodes);
-        m_d_conditionalProbabilities = new DTensor<real_t>(m_numNodes);
-        m_d_events = new DTensor<size_t>(m_numNodes);
-        m_d_childFrom = new DTensor<size_t>(m_numNonleafNodes);
-        m_d_childTo = new DTensor<size_t>(m_numNonleafNodes);
-        m_d_numChildren = new DTensor<size_t>(m_numNonleafNodes);
-        m_d_nodeFrom = new DTensor<size_t>(m_numStages);
-        m_d_nodeTo = new DTensor<size_t>(m_numStages);
+        m_d_stages = std::make_unique<DTensor<size_t>>(m_numNodes);
+        m_d_ancestors = std::make_unique<DTensor<size_t>>(m_numNodes);
+        m_d_probabilities = std::make_unique<DTensor<real_t>>(m_numNodes);
+        m_d_conditionalProbabilities = std::make_unique<DTensor<real_t>>(m_numNodes);
+        m_d_events = std::make_unique<DTensor<size_t>>(m_numNodes);
+        m_d_childFrom = std::make_unique<DTensor<size_t>>(m_numNonleafNodes);
+        m_d_childTo = std::make_unique<DTensor<size_t>>(m_numNonleafNodes);
+        m_d_numChildren = std::make_unique<DTensor<size_t>>(m_numNonleafNodes);
+        m_d_nodeFrom = std::make_unique<DTensor<size_t>>(m_numStages);
+        m_d_nodeTo = std::make_unique<DTensor<size_t>>(m_numStages);
 
         /** Store array data from JSON in host memory */
         for (rapidjson::SizeType i = 0; i < m_numNodes; i++) {
@@ -114,18 +114,7 @@ public:
     /**
      * Destructor
      */
-    ~ScenarioTree() {
-        DESTROY_PTR(m_d_stages)
-        DESTROY_PTR(m_d_ancestors)
-        DESTROY_PTR(m_d_probabilities)
-        DESTROY_PTR(m_d_conditionalProbabilities)
-        DESTROY_PTR(m_d_events)
-        DESTROY_PTR(m_d_childFrom)
-        DESTROY_PTR(m_d_childTo)
-        DESTROY_PTR(m_d_numChildren)
-        DESTROY_PTR(m_d_nodeFrom)
-        DESTROY_PTR(m_d_nodeTo)
-    }
+    ~ScenarioTree() {}
 
     /**
      * Getters

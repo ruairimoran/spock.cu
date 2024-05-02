@@ -1,14 +1,13 @@
-import raocp.core.constraints as core_constraints
-import raocp.core.scenario_tree as core_tree
-from copy import deepcopy
+import treeFactory as tree
+import builderClasses as build
 
 
-class RAOCP:
+class Problem:
     """
-    Risk-averse optimal control problem creation and storage
+    Risk-averse optimal control problem storage
     """
 
-    def __init__(self, scenario_tree: core_tree.ScenarioTree):
+    def __init__(self, scenario_tree: tree.Tree):
         """
         :param scenario_tree: instance of ScenarioTree
         """
@@ -90,11 +89,24 @@ class RAOCP:
         # load "No Constraint" into constraints list
         for i in range(self.__num_nodes):
             if i < self.__num_nonleaf_nodes:
-                self.__list_of_nonleaf_constraints[i] = core_constraints.No()
+                self.__list_of_nonleaf_constraints[i] = build.No()
             else:
-                self.__list_of_leaf_constraints[i] = core_constraints.No()
+                self.__list_of_leaf_constraints[i] = build.No()
 
-    # Dynamics ---------------------------------------------------------------------------------------------------------
+
+class ProblemFactory:
+    """
+    Risk-averse optimal control problem builder
+    """
+    def __init__(self, scenario_tree: tree.Tree):
+        """
+        :param scenario_tree: instance of ScenarioTree
+        """
+        self.__tree = scenario_tree
+
+    # --------------------------------------------------------
+    # Dynamics
+    # --------------------------------------------------------
 
     def with_markovian_dynamics(self, ordered_list_of_dynamics):
         for i in range(len(ordered_list_of_dynamics)):
@@ -113,7 +125,9 @@ class RAOCP:
         else:
             raise TypeError("dynamics provided as Markovian, scenario tree provided is not Markovian")
 
-    # Costs ------------------------------------------------------------------------------------------------------------
+    # --------------------------------------------------------
+    # Costs
+    # --------------------------------------------------------
 
     def with_markovian_nonleaf_costs(self, ordered_list_of_costs):
         # check costs are nonleaf
@@ -124,7 +138,7 @@ class RAOCP:
         # check that scenario tree is Markovian
         if self.__tree.is_markovian:
             for i in range(1, self.__num_nodes):
-                self.__list_of_nonleaf_costs[i] = deepcopy(ordered_list_of_costs[self.__tree.value_at_node(i)])
+                self.__list_of_nonleaf_costs[i] = ordered_list_of_costs[self.__tree.value_at_node(i)]
 
             return self
         else:
@@ -135,7 +149,7 @@ class RAOCP:
         if not cost.node_type.is_nonleaf:
             raise Exception("Nonleaf cost provided is not nonleaf")
         for i in range(1, self.__num_nodes):
-            self.__list_of_nonleaf_costs[i] = deepcopy(cost)
+            self.__list_of_nonleaf_costs[i] = cost
 
         return self
 
@@ -144,11 +158,13 @@ class RAOCP:
         if not cost.node_type.is_leaf:
             raise Exception("Leaf cost provided is not leaf")
         for i in range(self.__num_nonleaf_nodes, self.__num_nodes):
-            self.__list_of_leaf_costs[i] = deepcopy(cost)
+            self.__list_of_leaf_costs[i] = cost
 
         return self
 
-    # Constraints ------------------------------------------------------------------------------------------------------
+    # --------------------------------------------------------
+    # Constraints
+    # --------------------------------------------------------
 
     def with_all_nonleaf_constraints(self, nonleaf_constraint):
         self._check_dynamics_before_constraints()
@@ -158,7 +174,7 @@ class RAOCP:
         nonleaf_constraint.state_size = self.__list_of_dynamics[-1].state_dynamics.shape[1]
         nonleaf_constraint.control_size = self.__list_of_dynamics[-1].control_dynamics.shape[1]
         for i in range(self.__tree.num_nonleaf_nodes):
-            self.__list_of_nonleaf_constraints[i] = deepcopy(nonleaf_constraint)
+            self.__list_of_nonleaf_constraints[i] = nonleaf_constraint
 
         return self
 
@@ -168,31 +184,36 @@ class RAOCP:
             raise Exception("Leaf constraint provided is not leaf")
         leaf_constraint.state_size = self.__list_of_dynamics[-1].state_dynamics.shape[1]
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
-            self.__list_of_leaf_constraints[i] = deepcopy(leaf_constraint)
+            self.__list_of_leaf_constraints[i] = leaf_constraint
 
         return self
 
-    # Risks ------------------------------------------------------------------------------------------------------------
+    # --------------------------------------------------------
+    # Risks
+    # --------------------------------------------------------
 
     def with_all_risks(self, risk):
         # check risk type
         if not risk.is_risk:
             raise Exception("Risk provided is not of risk type")
         for i in range(self.__tree.num_nonleaf_nodes):
-            risk_i = deepcopy(risk)
+            risk_i = risk
             risk_i.probs = self.__tree.conditional_probabilities_of_children(i)
             self.__list_of_risks[i] = risk_i
 
         return self
 
-    # Class ------------------------------------------------------------------------------------------------------------
+    # --------------------------------------------------------
+    # Generate
+    # --------------------------------------------------------
 
-    def __str__(self):
-        return f"RAOCP\n+ Nodes: {self.__tree.num_nodes}\n" \
-               f"+ {self.__list_of_nonleaf_costs[0]}\n" \
-               f"+ {self.__list_of_risks[0]}"
-
-    def __repr__(self):
-        return f"RAOCP with {self.__tree.num_nodes} nodes, " \
-               f"with root cost: {type(self.__list_of_nonleaf_costs[0]).__name__}, " \
-               f"with root risk: {type(self.__list_of_risks[0]).__name__}."
+    def generate_problem(self):
+        """
+        Generates a scenario tree from the given Markov chain
+        """
+        # check input data
+        ancestors, values, stages = self.__make_ancestors_values_stages()
+        probs = self.__make_probability_values(ancestors, values, stages)
+        tree = Tree(stages, ancestors, probs, values, is_markovian=True)
+        tree.generate_json(folder_name)
+        return problem

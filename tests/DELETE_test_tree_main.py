@@ -8,7 +8,7 @@ import numpy as np
 transition_mat = np.array([[0.5, 0.5], [0.5, 0.5]])
 initial_dist = np.array([0.8, 0.2])
 (horizon, stopping_stage) = (2, 2)
-tree = factories.ScenarioTreeFactoryMarkovChain(
+tree = factories.TreeFactoryMarkovChain(
     transition_prob=transition_mat, 
     initial_distribution=initial_dist, 
     horizon=horizon, 

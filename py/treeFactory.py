@@ -2,11 +2,10 @@ import os
 import numpy as np
 import turtle
 import datetime
-from pathlib import Path
 import jinja2 as j2
 
 
-class ScenarioTree:
+class Tree:
     """
     Scenario tree creation and visualisation
     """
@@ -38,7 +37,7 @@ class ScenarioTree:
     @property
     def is_markovian(self):
         return self.__is_markovian
-    
+
     @property
     def is_iid(self):
         return self.__is_iid
@@ -53,7 +52,7 @@ class ScenarioTree:
         :return: total number of events
         """
         return max(self.__w_idx) + 1
-    
+
     @property
     def num_nodes(self):
         """
@@ -138,7 +137,7 @@ class ScenarioTree:
     def __repr__(self):
         return f"Scenario tree with {self.num_nodes} nodes, {self.num_stages} stages " \
                f"and {len(self.nodes_of_stage(self.num_stages - 1))} scenarios"
-    
+
     @staticmethod
     def __check_probability_vector(p):
         if abs(sum(p) - 1) >= 1e-10:
@@ -152,7 +151,7 @@ class ScenarioTree:
         if t > n:
             raise ValueError("stopping time greater than number of stages")
         return True
-    
+
     def generate_json(self):
         # Get current date and time
         current_timestamp = datetime.datetime.utcnow()
@@ -181,12 +180,13 @@ class ScenarioTree:
                                  probabilities=self.__probability,
                                  events=self.__w_idx,
                                  children=self.__children)
-        # path = os.path.join(os.getcwd(), "json")
-        # os.makedirs(path, exist_ok=True)
-        output_path = "../json/treeData.json"
-        with open(output_path, "w") as fh:
-            fh.write(output)
-    
+        path = os.path.join(os.getcwd(), "json")
+        os.makedirs(path, exist_ok=True)
+        output_path = os.path.join(path, "treeData.json")
+        fh = open(output_path, "w")
+        fh.write(output)
+        fh.close()
+
     # Visualisation
 
     @staticmethod
@@ -196,7 +196,7 @@ class ScenarioTree:
     @staticmethod
     def __goto_circle_coord(trt, rad, arc):
         trt.penup()
-        trt.goto(ScenarioTree.__circle_coord(rad, arc))
+        trt.goto(Tree.__circle_coord(rad, arc))
         trt.pendown()
 
     @staticmethod
@@ -209,13 +209,13 @@ class ScenarioTree:
 
     def __draw_leaf_nodes_on_circle(self, trt, radius, dot_size=6):
         trt.pencolor('gray')
-        ScenarioTree.__draw_circle(trt, radius)
+        Tree.__draw_circle(trt, radius)
         leaf_nodes = self.nodes_of_stage(self.num_stages - 1)
         num_leaf_nodes = len(leaf_nodes)
         dv = 360 / num_leaf_nodes
         arcs = np.zeros(self.num_nodes)
         for i in range(num_leaf_nodes):
-            ScenarioTree.__goto_circle_coord(trt, radius, i * dv)
+            Tree.__goto_circle_coord(trt, radius, i * dv)
             trt.pencolor('black')
             trt.dot(dot_size)
             trt.pencolor('gray')
@@ -226,17 +226,17 @@ class ScenarioTree:
 
     def __draw_nonleaf_nodes_on_circle(self, trt, radius, larger_radius, stage, arcs, dot_size=6):
         trt.pencolor('gray')
-        ScenarioTree.__draw_circle(trt, radius)
+        Tree.__draw_circle(trt, radius)
         nodes = self.nodes_of_stage(stage)
         for n in nodes:
             mean_arc = np.mean(arcs[self.children_of(n)])
             arcs[n] = mean_arc
-            ScenarioTree.__goto_circle_coord(trt, radius, mean_arc)
+            Tree.__goto_circle_coord(trt, radius, mean_arc)
             trt.pencolor('black')
             trt.dot(dot_size)
             for nc in self.children_of(n):
                 current_pos = trt.pos()
-                trt.goto(ScenarioTree.__circle_coord(larger_radius, arcs[nc]))
+                trt.goto(Tree.__circle_coord(larger_radius, arcs[nc]))
                 trt.goto(current_pos)
             trt.pencolor('gray')
         return arcs
@@ -267,7 +267,7 @@ class ScenarioTree:
         wn.mainloop()
 
 
-class ScenarioTreeFactoryMarkovChain:
+class TreeFactoryMarkovChain:
     """
     Factory class to construct scenario trees from stopped Markov chains
     """
@@ -283,15 +283,15 @@ class ScenarioTreeFactoryMarkovChain:
         if stopping_stage is None:
             stopping_stage = horizon
         else:
-            ScenarioTree._ScenarioTree__check_stopping_stage(horizon, stopping_stage)
+            Tree._ScenarioTree__check_stopping_stage(horizon, stopping_stage)
         self.__transition_prob = transition_prob
         self.__initial_distribution = initial_distribution
         self.__num_stages = horizon
         self.__stopping_stage = stopping_stage
         # check correctness of `transition_prob` and `initial_distribution`
         for pi in transition_prob:
-            ScenarioTree._ScenarioTree__check_probability_vector(pi)
-        ScenarioTree._ScenarioTree__check_probability_vector(initial_distribution)
+            Tree._ScenarioTree__check_probability_vector(pi)
+        Tree._ScenarioTree__check_probability_vector(initial_distribution)
 
     def __cover(self, i):
         pi = self.__transition_prob[i, :]
@@ -357,7 +357,7 @@ class ScenarioTreeFactoryMarkovChain:
                 index = i
                 break
             probs_new = probs[ancestors[i]] * \
-                self.__transition_prob[values[ancestors[i]], values[i]]
+                        self.__transition_prob[values[ancestors[i]], values[i]]
             probs = np.concatenate((probs, [probs_new]))
             index = i
 
@@ -365,7 +365,7 @@ class ScenarioTreeFactoryMarkovChain:
             for j in range(index, num_nodes):
                 probs_new = probs[ancestors[j]]
                 probs = np.concatenate((probs, [probs_new]))
-        
+
         return probs
 
     def generate_tree(self):
@@ -375,6 +375,6 @@ class ScenarioTreeFactoryMarkovChain:
         # check input data
         ancestors, values, stages = self.__make_ancestors_values_stages()
         probs = self.__make_probability_values(ancestors, values, stages)
-        tree = ScenarioTree(stages, ancestors, probs, values, is_markovian=True)
+        tree = Tree(stages, ancestors, probs, values, is_markovian=True)
         tree.generate_json()
         return tree

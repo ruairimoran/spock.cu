@@ -8,22 +8,34 @@
 __global__ void d_projectRectangle(size_t dimension, real_t *vec, real_t *lowerBound, real_t *upperBound);
 
 
+template<typename T>
 class Constraint {
 
 protected:
+    size_t m_nodeIndex = 0;
     size_t m_dimension = 0;
-    DTensor<real_t> &m_d_vec;
 
-    explicit Constraint(size_t dim, DTensor<real_t> &d_vec) :
-        m_dimension(dim), m_d_vec(d_vec) {}
+    explicit Constraint(size_t node, size_t dim) : m_nodeIndex(node), m_dimension(dim) {}
+
+    bool dimensionCheck(DTensor<T> &d_vec) {
+        if (d_vec.numRows() != m_dimension || d_vec.numCols() != 1 || d_vec.numMats() != 1) {
+            std::cerr << "DTensor is [" << d_vec.numRows() << " x " << d_vec.numCols() << " x " << d_vec.numMats()
+                      << "], but constraint has dimensions [" << m_dimension << " x " << 1 << " x " << 1 << "]\n";
+            throw std::invalid_argument("DTensor and constraint dimensions mismatch");
+        }
+        return true;
+    }
 
 public:
     virtual ~Constraint() {}
 
-    virtual void project() = 0;
+    size_t node() { return m_nodeIndex; }
 
     size_t dimension() { return m_dimension; }
 
+    virtual void project(DTensor<T> &d_vec) = 0;
+
+    virtual void print() = 0;
 };
 
 
@@ -31,16 +43,10 @@ public:
  * No constraint
  * - used as placeholder
 */
-class NoConstraint : public Constraint {
+class NoConstraint : public Constraint<void> {
 
 public:
-    explicit NoConstraint(size_t dim, DTensor<real_t> &d_vec) :
-        Constraint(dim, d_vec) {}
-
-    void project() {
-        // Do nothing!
-    }
-
+    explicit NoConstraint(size_t node, size_t dim) : Constraint<void>(node, dim) {}
 };
 
 
@@ -48,29 +54,35 @@ public:
  * Rectangle constraint:
  * lb <= x <= ub
  *
- * @param d_vec DTensor under constraint
  * @param lb lower bound
  * @param ub upper bound
 */
-class Rectangle : public Constraint {
+template<typename T>
+class Rectangle : public Constraint<T> {
 
 private:
-    DTensor<real_t> &m_d_lowerBound;
-    DTensor<real_t> &m_d_upperBound;
+    std::unique_ptr<DTensor<T>> m_d_lowerBound;
+    std::unique_ptr<DTensor<T>> m_d_upperBound;
 
 public:
-    explicit Rectangle(size_t dim,
-                       DTensor<real_t> &d_vec,
-                       DTensor<real_t> &d_lb,
-                       DTensor<real_t> &d_ub) :
-        Constraint(dim, d_vec), m_d_lowerBound(d_lb), m_d_upperBound(d_ub) {}
-
-    void project() {
-        d_projectRectangle<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(m_dimension, m_d_vec.raw(),
-                                                                           m_d_lowerBound.raw(),
-                                                                           m_d_upperBound.raw());
+    explicit Rectangle(size_t node, size_t dim, std::vector<T> &lb, std::vector<T> &ub) : Constraint<T>(node, dim) {
+        m_d_lowerBound = std::make_unique<DTensor<T>>(lb, dim);
+        m_d_upperBound = std::make_unique<DTensor<T>>(ub, dim);
     }
 
+    void project(DTensor<T> &d_vec) {
+        Constraint<T>::dimensionCheck(d_vec);
+        d_projectRectangle<<<DIM2BLOCKS(Constraint<T>::m_dimension), THREADS_PER_BLOCK>>>(Constraint<T>::m_dimension,
+                                                                                          d_vec.raw(),
+                                                                                          m_d_lowerBound->raw(),
+                                                                                          m_d_upperBound->raw());
+    }
+
+    void print() {
+        std::cout << "Node: " << Constraint<T>::m_nodeIndex << ", Constraint: Rectangle,\n";
+        printIf("Lower bound: ", m_d_lowerBound);
+        printIf("Upper bound: ", m_d_upperBound);
+    }
 };
 
 

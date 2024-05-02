@@ -57,7 +57,7 @@
 
             20.0, 20.0, 20.0]
     },
-    "inputConstraintMode0": {
+    "inputConstraint": {
         "type": ["rectangle", "rectangle"],
         "lowerBound": [
             -100.0, -100.0,
@@ -68,7 +68,7 @@
 
             200.0, 200.0]
     },
-    "stateConstraintLeafMode0": {
+    "stateConstraintLeaf": {
         "type": ["rectangle", "rectangle"],
         "lowerBound": [
             -1.0, -1.0, -1.0,

@@ -11,6 +11,7 @@
 #include "src/cp.cuh"
 
 
+
 int main() {
     /** SCENARIO TREE */
     std::ifstream fileTree("tests/default_tree_data.json"); 

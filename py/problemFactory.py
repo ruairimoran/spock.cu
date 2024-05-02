@@ -1,5 +1,3 @@
-# TO BE DELETED *******************************************************************************************************
-
 import raocp.core.constraints as core_constraints
 import raocp.core.scenario_tree as core_tree
 from copy import deepcopy

@@ -1,6 +1,6 @@
 import sys
 sys.path.append(sys.path[0] + '/..')
-import py.tree_factories as factories
+import py.treeFactory as factories
 import unittest
 import numpy as np
 

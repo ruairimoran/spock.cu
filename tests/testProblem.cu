@@ -10,9 +10,9 @@ protected:
     std::unique_ptr<ProblemData> m_data;
 
     ProblemDataTest() {
-        std::ifstream tree_data("../../tests/default_tree_data.json");
+        std::ifstream tree_data("../../tests/testTreeData.json");
         m_tree = std::make_unique<ScenarioTree>(tree_data);
-        std::ifstream problem_data("../../tests/default_problem_data.json");
+        std::ifstream problem_data("../../tests/testProblemData.json");
         m_data = std::make_unique<ProblemData>(*m_tree, problem_data);
     };
 

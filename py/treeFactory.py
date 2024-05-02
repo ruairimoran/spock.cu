@@ -1,7 +1,8 @@
-from typing import Union, Any
+import os
 import numpy as np
 import turtle
 import datetime
+from pathlib import Path
 import jinja2 as j2
 
 
@@ -132,11 +133,11 @@ class ScenarioTree:
 
     def __str__(self):
         return f"Scenario Tree\n+ Nodes: {self.num_nodes}\n+ Stages: {self.num_stages}\n" \
-               f"+ Scenarios: {len(self.nodes_at_stage(self.num_stages - 1))}"
+               f"+ Scenarios: {len(self.nodes_of_stage(self.num_stages - 1))}"
 
     def __repr__(self):
         return f"Scenario tree with {self.num_nodes} nodes, {self.num_stages} stages " \
-               f"and {len(self.nodes_at_stage(self.num_stages - 1))} scenarios"
+               f"and {len(self.nodes_of_stage(self.num_stages - 1))} scenarios"
     
     @staticmethod
     def __check_probability_vector(p):
@@ -152,7 +153,7 @@ class ScenarioTree:
             raise ValueError("stopping time greater than number of stages")
         return True
     
-    def __generate_json(self, testing):
+    def generate_json(self):
         # Get current date and time
         current_timestamp = datetime.datetime.utcnow()
         # Setup jinja environment
@@ -167,7 +168,7 @@ class ScenarioTree:
                              comment_start_string="\#",
                              comment_end_string="#\\")
         # Generate "tree.json" from template "tree_template.json.jinja2"
-        template = env.get_template("tree_data.json.jinja2")
+        template = env.get_template("treeTemplate.json.jinja2")
         output = template.render(timestamp=current_timestamp,
                                  is_markovian=self.is_markovian,
                                  is_iid=self.is_iid,
@@ -180,7 +181,9 @@ class ScenarioTree:
                                  probabilities=self.__probability,
                                  events=self.__w_idx,
                                  children=self.__children)
-        output_path = "tests/default_tree_data.json" if testing else "py/tree_data.json"
+        # path = os.path.join(os.getcwd(), "json")
+        # os.makedirs(path, exist_ok=True)
+        output_path = "../json/treeData.json"
         with open(output_path, "w") as fh:
             fh.write(output)
     
@@ -207,7 +210,7 @@ class ScenarioTree:
     def __draw_leaf_nodes_on_circle(self, trt, radius, dot_size=6):
         trt.pencolor('gray')
         ScenarioTree.__draw_circle(trt, radius)
-        leaf_nodes = self.nodes_at_stage(self.num_stages - 1)
+        leaf_nodes = self.nodes_of_stage(self.num_stages - 1)
         num_leaf_nodes = len(leaf_nodes)
         dv = 360 / num_leaf_nodes
         arcs = np.zeros(self.num_nodes)
@@ -224,7 +227,7 @@ class ScenarioTree:
     def __draw_nonleaf_nodes_on_circle(self, trt, radius, larger_radius, stage, arcs, dot_size=6):
         trt.pencolor('gray')
         ScenarioTree.__draw_circle(trt, radius)
-        nodes = self.nodes_at_stage(stage)
+        nodes = self.nodes_of_stage(stage)
         for n in nodes:
             mean_arc = np.mean(arcs[self.children_of(n)])
             arcs[n] = mean_arc
@@ -311,11 +314,11 @@ class ScenarioTreeFactoryMarkovChain:
         stages[0] = 0
 
         cursor = 1
-        num_nodes_at_stage = num_nonzero_init_distr
+        num_nodes_of_stage = num_nonzero_init_distr
         for stage_idx in range(1, self.__stopping_stage):
             nodes_added_at_stage = 0
-            cursor_new = cursor + num_nodes_at_stage
-            for i in range(num_nodes_at_stage):
+            cursor_new = cursor + num_nodes_of_stage
+            for i in range(num_nodes_of_stage):
                 node_id = cursor + i
                 cover = self.__cover(values[node_id])
                 length_cover = len(cover)
@@ -324,17 +327,17 @@ class ScenarioTreeFactoryMarkovChain:
                 nodes_added_at_stage += length_cover
                 values = np.concatenate((values, cover))
 
-            num_nodes_at_stage = nodes_added_at_stage
+            num_nodes_of_stage = nodes_added_at_stage
             cursor = cursor_new
             ones = np.ones(nodes_added_at_stage, dtype=int)
             stages = np.concatenate((stages, (1 + stage_idx) * ones))
 
         for stage_idx in range(self.__stopping_stage, self.__num_stages):
-            ancestors = np.concatenate((ancestors, range(cursor, cursor + num_nodes_at_stage)))
-            cursor += num_nodes_at_stage
-            ones = np.ones((num_nodes_at_stage,), dtype=int)
+            ancestors = np.concatenate((ancestors, range(cursor, cursor + num_nodes_of_stage)))
+            cursor += num_nodes_of_stage
+            ones = np.ones((num_nodes_of_stage,), dtype=int)
             stages = np.concatenate((stages, (1 + stage_idx) * ones))
-            values = np.concatenate((values, values[-num_nodes_at_stage::]))
+            values = np.concatenate((values, values[-num_nodes_of_stage::]))
 
         return ancestors, values, stages
 
@@ -365,7 +368,7 @@ class ScenarioTreeFactoryMarkovChain:
         
         return probs
 
-    def generate_tree(self, testing=False):
+    def generate_tree(self):
         """
         Generates a scenario tree from the given Markov chain
         """
@@ -373,5 +376,5 @@ class ScenarioTreeFactoryMarkovChain:
         ancestors, values, stages = self.__make_ancestors_values_stages()
         probs = self.__make_probability_values(ancestors, values, stages)
         tree = ScenarioTree(stages, ancestors, probs, values, is_markovian=True)
-        tree._ScenarioTree__generate_json(testing)
+        tree.generate_json()
         return tree

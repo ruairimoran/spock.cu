@@ -1,4 +1,4 @@
-import py.tree_factories as factories
+import py.treeFactory as factories
 import numpy as np
 
 
@@ -10,9 +10,12 @@ v = np.array([0.6, 0.4])
 
 (horizon, stopping_stage) = (2, 2)
 tree = factories.ScenarioTreeFactoryMarkovChain(
-    transition_prob=p, initial_distribution=v, horizon=horizon, stopping_stage=stopping_stage
+    transition_prob=p,
+    initial_distribution=v,
+    horizon=horizon,
+    stopping_stage=stopping_stage
 ).generate_tree()
 
-# tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')
-# print(sum(tree.probability_of_node(tree.nodes_at_stage(2))))
-# print(tree)
+tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')
+print(sum(tree.probability_of_node(tree.nodes_of_stage(2))))
+print(tree)

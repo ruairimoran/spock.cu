@@ -15,7 +15,7 @@ protected:
     std::vector<real_t> m_hostData;
     std::vector<real_t> m_hostTest;
     RisksTest() {
-        std::ifstream tree_data("../../tests/default_tree_data.json");
+        std::ifstream tree_data("../../tests/testTreeData.json");
         m_tree = std::make_unique<ScenarioTree>(tree_data);
         m_n = m_tree->numChildren()(m_node) * 2 + 1;
         m_d_data = std::make_unique<DTensor<real_t>>(m_n);

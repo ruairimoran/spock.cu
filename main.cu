@@ -14,12 +14,12 @@
 
 int main() {
     /** SCENARIO TREE */
-    std::ifstream fileTree("tests/default_tree_data.json"); 
+    std::ifstream fileTree("tests/testTreeData.json");
     ScenarioTree tree(fileTree);
   	tree.print();
 
     /** PROBLEM DATA */
-    std::ifstream fileProblem("tests/default_problem_data.json"); 
+    std::ifstream fileProblem("tests/testProblemData.json");
     ProblemData problem(tree, fileProblem);
   	problem.print();
 

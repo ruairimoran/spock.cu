@@ -5,33 +5,31 @@
 #include "cones.cuh"
 
 
-__global__ void d_avarVecAddB(real_t *vec, size_t node, size_t *numCh, size_t *chFrom, real_t *probs);
+//__global__ void d_avarVecAddB(real_t *vec, size_t node, size_t *numCh, size_t *chFrom, real_t *probs);
 
 
 /**
  * Base class for a coherent risk
  * that can be described by the tuple
- * (E, F, K, b)
+ * (E, F, K, b) = (matrix, matrix, cone, vector)
  */
+template<typename T>
 class CoherentRisk {
 
 protected:
-    size_t m_node = 0;
-    DTensor<size_t> &m_d_numCh;
-    size_t m_numCh = 0;
-    size_t m_dimension = 0;
+    size_t m_nodeIndex = 0;
+    size_t m_dimension = 0;  ///< Number of children
+    std::unique_ptr<DTensor<T>> m_d_E = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_F = nullptr;
+    std::unique_ptr<Cartesian> m_K = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_b = nullptr;
 
-    explicit CoherentRisk(size_t node, DTensor<size_t> &numCh) :
-        m_node(node),
-        m_d_numCh(numCh),
-        m_numCh(m_d_numCh(m_node)),
-        m_dimension(m_numCh * 2 + 1) {}
+    explicit CoherentRisk(size_t node, size_t numChildren) : m_nodeIndex(node), m_dimension(numChildren) {}
 
-    bool dimension_check(DTensor<real_t> &d_vec) {
+    bool dimensionCheck(DTensor<T> &d_vec) {
         if (d_vec.numRows() != m_dimension || d_vec.numCols() != 1 || d_vec.numMats() != 1) {
             std::cerr << "DTensor is [" << d_vec.numRows() << " x " << d_vec.numCols() << " x " << d_vec.numMats()
-                      << "]"
-                      << " but risk has dimensions [" << m_dimension << " x " << 1 << " x " << 1 << "]\n";
+                      << "], but risk has dimensions [" << m_dimension << " x " << 1 << " x " << 1 << "]\n";
             throw std::invalid_argument("DTensor and risk dimensions mismatch");
         }
         return true;
@@ -40,57 +38,53 @@ protected:
 public:
     virtual ~CoherentRisk() {}
 
-    virtual void preE(DTensor<real_t> &d_vec) = 0;  ///< Pre multiply given device vector with E matrix
-    virtual void preF(DTensor<real_t> &d_vec) = 0;  ///< Pre multiply given device vector with F matrix
-    virtual ConvexCone &cone() = 0;
+    virtual Cartesian &cone() { return *m_K; }
 
-    virtual void vecAddB(DTensor<real_t> &d_vec) = 0;
-
+    virtual void print() = 0;
 };
 
 
 /**
  * Average Value at Risk (AVaR)
  * - parameters: alpha
- * - matrix F is not needed
+ * - matrix F is not needed (nullptr)
 */
-class AVaR : public CoherentRisk {
+template<typename T>
+class AVaR : public CoherentRisk<T> {
 
 protected:
-    real_t m_alpha = 0;
+    T m_alpha = 0;
     DTensor<size_t> &m_d_chFrom;
-    DTensor<real_t> &m_d_condProbs;
+    DTensor<size_t> &m_d_chTo;
+    DTensor<T> &m_d_condProbs;
     NonnegativeOrthantCone m_nnoc;
     ZeroCone m_zero;
-    Cartesian m_riskConeK;
 
 public:
-    explicit AVaR(size_t node,
-                  real_t alpha,
-                  DTensor<size_t> &d_numChildren,
-                  DTensor<size_t> &d_childFrom,
-                  DTensor<real_t> &d_condProbs) :
-        CoherentRisk(node, d_numChildren),
-        m_alpha(alpha),
-        m_d_chFrom(d_childFrom),
-        m_d_condProbs(d_condProbs),
-        m_nnoc(m_numCh * 2),
-        m_zero(1),
-        m_riskConeK() {
-        m_riskConeK.addCone(m_nnoc);
-        m_riskConeK.addCone(m_zero);
+    explicit AVaR(T alpha, size_t node, size_t numChildren, DTensor<size_t> &d_childFrom, DTensor<size_t> &d_childTo,
+                  DTensor<T> &d_condProbs) : CoherentRisk<T>(node, numChildren),
+                                             m_alpha(alpha),
+                                             m_d_chFrom(d_childFrom),
+                                             m_d_chTo(d_childTo),
+                                             m_d_condProbs(d_condProbs),
+                                             m_nnoc(numChildren * 2),
+                                             m_zero(1) {
+        CoherentRisk<T>::m_K = std::make_unique<Cartesian>();
+        CoherentRisk<T>::m_K->addCone(m_nnoc);
+        CoherentRisk<T>::m_K->addCone(m_zero);
     }
 
-    void preE(DTensor<real_t> &d_vec) { return; }
-
-    void preF(DTensor<real_t> &d_vec) { return; }
-
-    ConvexCone &cone() { return m_riskConeK; }
-
-    void vecAddB(DTensor<real_t> &d_vec) {
-        dimension_check(d_vec);
-        d_avarVecAddB<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(
-            d_vec.raw(), m_node, m_d_numCh.raw(), m_d_chFrom.raw(), m_d_condProbs.raw());
+    void print() {
+        std::cout << "Node: " << CoherentRisk<T>::m_nodeIndex << ", Risk: AVaR, \n";
+        printIfTensor("E: ", CoherentRisk<T>::m_d_E);
+        std::cout << "F: NOT NEEDED. \n";
+        std::cout << "K: ";
+        if (CoherentRisk<T>::m_K) {
+            CoherentRisk<T>::m_K->print();
+        } else {
+            std::cout << "NO CONE TO PRINT.\n";
+        }
+        printIfTensor("b: ", CoherentRisk<T>::m_d_b);
     }
 
 };

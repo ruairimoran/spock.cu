@@ -79,9 +79,9 @@ public:
     }
 
     void print() {
-        std::cout << "Node: " << Constraint<T>::m_nodeIndex << ", Constraint: Rectangle,\n";
-        printIf("Lower bound: ", m_d_lowerBound);
-        printIf("Upper bound: ", m_d_upperBound);
+        std::cout << "Node: " << Constraint<T>::m_nodeIndex << ", Constraint: Rectangle, \n";
+        printIfTensor("Lower bound: ", m_d_lowerBound);
+        printIfTensor("Upper bound: ", m_d_upperBound);
     }
 };
 

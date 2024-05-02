@@ -29,11 +29,11 @@ private:
     std::vector<std::unique_ptr<Constraint<real_t>>> m_stateConstraint;  ///< Ptr to
     std::vector<std::unique_ptr<Constraint<real_t>>> m_inputConstraint;  ///< Ptr to
     std::vector<std::unique_ptr<Constraint<real_t>>> m_stateConstraintLeaf;  ///< Ptr to
-//    std::vector<std::unique_ptr<CoherentRisk>> m_risk;  ///< Ptr to
+    std::vector<std::unique_ptr<CoherentRisk<real_t>>> m_risk;  ///< Ptr to
 
-    void parseMatrix(size_t node_idx, size_t event, size_t numElements, const rapidjson::Value &json,
-                     std::unique_ptr<DTensor<real_t>> &matrix) {
-        DTensor<real_t> sliceDevice(*matrix, 2, node_idx, node_idx);
+    static void parseMatrix(size_t nodeIdx, size_t event, size_t numElements, const rapidjson::Value &json,
+                            std::unique_ptr<DTensor<real_t>> &matrix) {
+        DTensor<real_t> sliceDevice(*matrix, 2, nodeIdx, nodeIdx);
         std::vector<real_t> sliceJsonData(numElements);
         size_t start = event * numElements;
         for (size_t i = 0; i < numElements; i++) {
@@ -42,7 +42,7 @@ private:
         sliceDevice.upload(sliceJsonData, rowMajor);
     }
 
-    static void parseConstraint(size_t node_idx, size_t event, size_t numElements, const rapidjson::Value &json,
+    static void parseConstraint(size_t nodeIdx, size_t event, size_t numElements, const rapidjson::Value &json,
                                 std::vector<std::unique_ptr<Constraint<real_t>>> &constraint) {
         if (json["type"][event].GetString() == std::string("rectangle")) {
             std::vector<real_t> lb(numElements);
@@ -52,7 +52,7 @@ private:
                 lb[i] = json["lowerBound"][i + start].GetDouble();
                 ub[i] = json["upperBound"][i + start].GetDouble();
             }
-            constraint[node_idx] = std::make_unique<Rectangle<real_t>>(node_idx, numElements, lb, ub);
+            constraint[nodeIdx] = std::make_unique<Rectangle<real_t>>(nodeIdx, numElements, lb, ub);
         } else {
             std::cerr << "Constraint type " << json["type"].GetString()
                       << " is not supported. Supported types include: rectangle" << "\n";
@@ -60,19 +60,20 @@ private:
         }
     }
 
-//    void parseRisk(size_t node, const rapidjson::Value &json, std::vector<std::unique_ptr<CoherentRisk>> &risk) {
-//        if (json["type"].GetString() == std::string("avar")) {
-//            risk[node] = std::make_unique<AVaR>(node,
-//                                                json["alpha"],
-//                                                m_tree.numChildren(),
-//                                                m_tree.childFrom(),
-//                                                m_tree.conditionalProbabilities());
-//        } else {
-//            std::cerr << "Risk type " << json["type"].GetString()
-//                      << " is not supported. Supported types include: avar" << "\n";
-//            throw std::invalid_argument("Risk type not supported");
-//        }
-//    }
+    void parseRisk(size_t nodeIdx, const rapidjson::Value &json) {
+        if (json["type"].GetString() == std::string("avar")) {
+            m_risk[nodeIdx] = std::make_unique<AVaR<real_t>>(json["alpha"].GetDouble(),
+                                                             nodeIdx,
+                                                             m_tree.numChildren()(nodeIdx),
+                                                             m_tree.childFrom(),
+                                                             m_tree.childTo(),
+                                                             m_tree.conditionalProbabilities());
+        } else {
+            std::cerr << "Risk type " << json["type"].GetString()
+                      << " is not supported. Supported types include: avar" << "\n";
+            throw std::invalid_argument("Risk type not supported");
+        }
+    }
 
 public:
     /**
@@ -108,6 +109,7 @@ public:
         m_stateConstraint = std::vector<std::unique_ptr<Constraint<real_t>>>(m_tree.numNodes());
         m_inputConstraint = std::vector<std::unique_ptr<Constraint<real_t>>>(m_tree.numNodes());
         m_stateConstraintLeaf = std::vector<std::unique_ptr<Constraint<real_t>>>(m_tree.numNodes());
+        m_risk = std::vector<std::unique_ptr<CoherentRisk<real_t>>>(m_tree.numNodes());
 
         /** Allocate memory on device */
         m_d_stateDynamics = std::make_unique<DTensor<real_t>>(m_numStates, m_numStates, m_tree.numNodes(), true);
@@ -132,9 +134,9 @@ public:
                 parseConstraint(i, event, m_numStates, doc["stateConstraintLeaf"], m_stateConstraintLeaf);
             }
         }
-//        for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
-//            parseRisk(i, doc["risk"], m_risk);
-//        }
+        for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
+            parseRisk(i, doc["risk"]);
+        }
     }
 
     /**
@@ -163,7 +165,7 @@ public:
 
     std::vector<std::unique_ptr<Constraint<real_t>>> &stateConstraintLeaf() { return m_stateConstraintLeaf; }
 
-//    std::vector<std::unique_ptr<CoherentRisk>> &risk() { return m_risk; }
+    std::vector<std::unique_ptr<CoherentRisk<real_t>>> &risk() { return m_risk; }
 
     /**
      * Debugging
@@ -171,11 +173,11 @@ public:
     void print() {
         std::cout << "Number of states: " << m_numStates << "\n";
         std::cout << "Number of inputs: " << m_numInputs << "\n";
-        printIf("State dynamics (from device): ", m_d_stateDynamics);
-        printIf("Input dynamics (from device): ", m_d_inputDynamics);
-        printIf("State weight (from device): ", m_d_stateWeight);
-        printIf("Input weight (from device): ", m_d_inputWeight);
-        printIf("Leaf state weight (from device): ", m_d_stateWeightLeaf);
+        printIfTensor("State dynamics (from device): ", m_d_stateDynamics);
+        printIfTensor("Input dynamics (from device): ", m_d_inputDynamics);
+        printIfTensor("State weight (from device): ", m_d_stateWeight);
+        printIfTensor("Input weight (from device): ", m_d_inputWeight);
+        printIfTensor("Terminal state weight (from device): ", m_d_stateWeightLeaf);
         for (size_t i = 1; i < m_tree.numNodes(); i++) {
             m_stateConstraint[i]->print();
         }
@@ -185,9 +187,9 @@ public:
         for (size_t i = 1; i < m_tree.numNodes(); i++) {
             m_stateConstraint[i]->print();
         }
-//        for (size_t i = 0; i < m_tree.numNodes(); i++) {
-//            m_risk[i].print();
-//        }
+        for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
+            m_risk[i]->print();
+        }
     }
 };
 

@@ -15,11 +15,11 @@
 
 /** Debugging */
 template<typename T>
-static void printIf(std::string description, std::unique_ptr<DTensor<T>> &data) {
+static void printIfTensor(std::string description, std::unique_ptr<DTensor<T>> &data) {
     if (data) {
         std::cout << description << *data;
     } else {
-        std::cout << description << "NOTHING TO PRINT.";
+        std::cout << description << "NOTHING TO PRINT.\n";
     }
 }
 

@@ -279,8 +279,8 @@ void Cache::vanillaCp() {
 void Cache::print() {
     std::cout << "Tolerance:      " << m_tol << "\n";
     std::cout << "Num iterations: " << m_countIterations << " of " << m_maxIters << "\n";
-    printIf("Primal (from device): ", m_d_prim);
-    printIf("P (from device): ", m_d_P);
+    printIfTensor("Primal (from device): ", m_d_prim);
+    printIfTensor("P (from device): ", m_d_P);
 }
 
 #endif

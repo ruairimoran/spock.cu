@@ -45,10 +45,10 @@ __global__ void d_projectRectangle(size_t dimension, real_t *vec, real_t *lowerB
  * Risk methods
 */
 
-__global__ void d_avarVecAddB(real_t *vec, size_t node, size_t *numCh, size_t *chFrom, real_t *probs) {
-    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < numCh[node]) vec[i] += probs[chFrom[node] + i];
-}
+//__global__ void d_avarVecAddB(real_t *vec, size_t node, size_t *numCh, size_t *chFrom, real_t *probs) {
+//    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+//    if (i < numCh[node]) vec[i] += probs[chFrom[node] + i];
+//}
 
 
 /*

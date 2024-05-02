@@ -161,15 +161,15 @@ public:
         std::cout << "Number of nonleaf nodes: " << m_numNonleafNodes << "\n";
         std::cout << "Number of nodes: " << m_numNodes << "\n";
         std::cout << "Number of stages: " << m_numStages << "\n";
-        printIf("Stages (from device): ", m_d_stages);
-        printIf("Ancestors (from device): ", m_d_ancestors);
-        printIf("Probabilities (from device): ", m_d_probabilities);
-        printIf("Conditional probabilities (from device): ", m_d_conditionalProbabilities);
-        printIf("Events (from device): ", m_d_events);
-        printIf("Children::from (from device): ", m_d_childFrom);
-        printIf("Children::to (from device): ", m_d_childTo);
-        printIf("Stage::from (from device): ", m_d_nodeFrom);
-        printIf("Stage::to (from device): ", m_d_nodeTo);
+        printIfTensor("Stages (from device): ", m_d_stages);
+        printIfTensor("Ancestors (from device): ", m_d_ancestors);
+        printIfTensor("Probabilities (from device): ", m_d_probabilities);
+        printIfTensor("Conditional probabilities (from device): ", m_d_conditionalProbabilities);
+        printIfTensor("Events (from device): ", m_d_events);
+        printIfTensor("Children::from (from device): ", m_d_childFrom);
+        printIfTensor("Children::to (from device): ", m_d_childTo);
+        printIfTensor("Stage::from (from device): ", m_d_nodeFrom);
+        printIfTensor("Stage::to (from device): ", m_d_nodeTo);
     }
 };
 

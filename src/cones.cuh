@@ -31,11 +31,13 @@ protected:
 public:
     virtual ~ConvexCone() {}
 
+    size_t dimension() { return m_dimension; }
+
+    virtual std::string name() = 0;
+
     virtual void project(DTensor<real_t> &d_vec) = 0;
 
     virtual void projectOnDual(DTensor<real_t> &d_vec) = 0;
-
-    size_t dimension() { return m_dimension; }
 
 };
 
@@ -56,6 +58,8 @@ public:
     void projectOnDual(DTensor<real_t> &d_vec) {
         project(d_vec);
     }
+
+    std::string name() { return "Null cone"; }
 
 };
 
@@ -80,6 +84,8 @@ public:
         d_setToZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), m_dimension);
     }
 
+    std::string name() { return "Universe cone"; }
+
 };
 
 
@@ -103,6 +109,8 @@ public:
         return;  // Do nothing!
     }
 
+    std::string name() { return "Zero cone"; }
+
 };
 
 
@@ -124,6 +132,8 @@ public:
     void projectOnDual(DTensor<real_t> &d_vec) {
         project(d_vec);
     }
+
+    std::string name() { return "Nonnegative Orthant cone"; }
 
 };
 
@@ -159,6 +169,8 @@ public:
     void projectOnDual(DTensor<real_t> &d_vec) {
         project(d_vec);
     }
+
+    std::string name() { return "Second Order cone"; }
 
 };
 
@@ -205,6 +217,14 @@ public:
         }
     }
 
+    std::string name() { return "Cartesian cone"; }
+
+    void print() {
+        std::cout << "Cartesian cone (" << m_dimension << ") of:\n";
+        for (ConvexCone *cone: m_cones) {
+            std::cout << "+ " << cone->name() << " (" << cone->dimension() << ")\n";
+        }
+    }
 };
 
 #endif

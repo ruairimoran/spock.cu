@@ -137,15 +137,15 @@ class Rectangle(Constraint):
     """
     A rectangle constraint
     """
-    def __init__(self, lowerBound, upperBound):
+    def __init__(self, lower_bound, upper_bound):
         """
-        :param lowerBound: vector of minimum values
-        :param upperBound: vector of maximum values
+        :param lower_bound: vector of minimum values
+        :param upper_bound: vector of maximum values
         """
         super().__init__()
-        self._check_constraints(lowerBound, upperBound)
-        self.__lb = lowerBound
-        self.__ub = upperBound
+        self._check_constraints(lower_bound, upper_bound)
+        self.__lb = lower_bound
+        self.__ub = upper_bound
 
     @property
     def is_active(self):

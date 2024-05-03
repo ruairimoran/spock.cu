@@ -1,6 +1,4 @@
-import py.treeFactory as treeFactory
-import py.problemFactory as problemFactory
-import py.problemFactory.build as build
+import py
 import numpy as np
 
 # --------------------------------------------------------
@@ -12,7 +10,7 @@ p = np.array([[0.5, 0.5], [0.5, 0.5]])
 v = np.array([0.6, 0.4])
 
 (horizon, stopping_stage) = (2, 2)
-tree = treeFactory.TreeFactoryMarkovChain(
+tree = py.treeFactory.TreeFactoryMarkovChain(
     transition_prob=p,
     initial_distribution=v,
     horizon=horizon,
@@ -54,21 +52,21 @@ T = 100 * np.eye(num_states)
 state_lim = 6
 state_lb = -state_lim * np.ones((num_states, 1))
 state_ub = state_lim * np.ones((num_states, 1))
-state_constraint = build.Rectangle(state_lb, state_ub)
+state_constraint = py.build.Rectangle(state_lb, state_ub)
 
 # Input constraint
 input_lim = 0.3
 input_lb = -input_lim * np.ones((num_inputs, 1))
 input_ub = input_lim * np.ones((num_inputs, 1))
-input_constraint = build.Rectangle(state_lb, state_ub)
+input_constraint = py.build.Rectangle(state_lb, state_ub)
 
 # Risk
 alpha = .95
-risk = build.AVaR(alpha)
+risk = py.build.AVaR(alpha)
 
 # Generate problem data
 problem = (
-    problemFactory.ProblemFactory(scenario_tree=tree)
+    py.problemFactory.ProblemFactory(scenario_tree=tree)
     .with_markovian_dynamics(As, Bs)
     .with_markovian_nonleaf_costs(Qs, Rs)
     .with_all_leaf_costs(T)

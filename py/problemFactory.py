@@ -1,5 +1,5 @@
-import treeFactory
-import build
+from . import treeFactory
+from . import build
 
 
 class Problem:
@@ -7,19 +7,21 @@ class Problem:
     Risk-averse optimal control problem storage
     """
 
-    def __init__(self, scenario_tree: tree.Tree):
+    def __init__(self, scenario_tree: treeFactory.Tree):
         """
         :param scenario_tree: instance of ScenarioTree
         """
         self.__tree = scenario_tree
         self.__num_nodes = self.__tree.num_nodes
         self.__num_nonleaf_nodes = self.__tree.num_nonleaf_nodes
-        self.__num_possibilities = len(self.__tree.children_of(0))
-        self.__list_of_dynamics = [None] * self.__num_nodes
-        self.__list_of_nonleaf_costs = [None] * self.__num_nodes
-        self.__list_of_leaf_costs = [None] * self.__num_nodes
-        self.__list_of_nonleaf_constraints = [None] * self.__num_nodes
-        self.__list_of_leaf_constraints = [None] * self.__num_nodes
+        self.__num_events = len(self.__tree.children_of_node(0))
+        self.__list_of_state_dynamics = [None] * self.__num_nodes
+        self.__list_of_input_dynamics = [None] * self.__num_nodes
+        self.__list_of_nonleaf_state_costs = [None] * self.__num_nodes
+        self.__list_of_nonleaf_input_costs = [None] * self.__num_nodes
+        self.__list_of_leaf_state_costs = [None] * self.__num_nodes
+        self.__list_of_state_constraints = [None] * self.__num_nodes
+        self.__list_of_input_constraints = [None] * self.__num_nonleaf_nodes
         self.__list_of_risks = [None] * self.__num_nonleaf_nodes
         self._load_constraints()
 
@@ -98,37 +100,47 @@ class ProblemFactory:
     """
     Risk-averse optimal control problem builder
     """
-    def __init__(self, scenario_tree: treeFactory.Tree):
+
+    def __init__(self, scenario_tree: treeFactory.Tree, state_dyn, input_dyn, state_cost, input_cost, terminal_cost,
+                 state_constraint, input_constraint, risk):
         """
         :param scenario_tree: instance of ScenarioTree
         """
         self.__tree = scenario_tree
+        self.__list_of_state_dynamics = state_dyn
+        self.__list_of_input_dynamics = input_dyn
+        self.__list_of_nonleaf_state_costs = state_cost
+        self.__list_of_nonleaf_input_costs = input_cost
+        self.__list_of_leaf_state_costs = terminal_cost
+        self.__list_of_state_constraints = state_constraint
+        self.__list_of_input_constraints = input_constraint
+        self.__list_of_risks = risk
 
     # --------------------------------------------------------
     # Dynamics
     # --------------------------------------------------------
-
-    def with_markovian_dynamics(self, ordered_list_of_dynamics):
-        for i in range(len(ordered_list_of_dynamics)):
+    def with_markovian_dynamics(self, state_dynamics, input_dynamics):
+        numEvents = len(state_dynamics)
+        # check equal number of dynamics given
+        if numEvents != len(input_dynamics):
+            raise ValueError("Different number of Markovian state and input dynamics given")
+        for i in range(1, numEvents):
             # check all state dynamics have same shape
-            if ordered_list_of_dynamics[i].state_dynamics.shape != ordered_list_of_dynamics[0].state_dynamics.shape:
+            if state_dynamics[i].shape != state_dynamics[0].shape:
                 raise ValueError("Markovian state dynamics matrices are different shapes")
-            # check if all control dynamics have same shape
-            if ordered_list_of_dynamics[i].control_dynamics.shape != ordered_list_of_dynamics[0].control_dynamics.shape:
-                raise ValueError("Markovian control dynamics matrices are different shapes")
-
+            # check all control dynamics have same shape
+            if input_dynamics[i].shape != input_dynamics[0].shape:
+                raise ValueError("Markovian input dynamics matrices are different shapes")
         # check that scenario tree provided is Markovian
-        if self.__tree.is_markovian:
-            for i in range(1, self.__num_nodes):
-                self.__list_of_dynamics[i] = ordered_list_of_dynamics[self.__tree.value_at_node(i)]
-            return self
-        else:
-            raise TypeError("dynamics provided as Markovian, scenario tree provided is not Markovian")
+        if not self.__tree.isMarkovian:
+            raise ValueError("Markovian dynamics provided but scenario tree is not Markovian")
+        for i in range(1, self.__tree.num_nodes):
+            self.__list_of_state_dynamics[i] = ordered_list_of_dynamics[self.__tree.value_at_node(i)]
+        return self
 
     # --------------------------------------------------------
     # Costs
     # --------------------------------------------------------
-
     def with_markovian_nonleaf_costs(self, ordered_list_of_costs):
         # check costs are nonleaf
         for costs in ordered_list_of_costs:
@@ -136,7 +148,7 @@ class ProblemFactory:
                 raise Exception("Markovian costs provided are not nonleaf")
 
         # check that scenario tree is Markovian
-        if self.__tree.is_markovian:
+        if self.__tree.isMarkovian:
             for i in range(1, self.__num_nodes):
                 self.__list_of_nonleaf_costs[i] = ordered_list_of_costs[self.__tree.value_at_node(i)]
 
@@ -165,7 +177,6 @@ class ProblemFactory:
     # --------------------------------------------------------
     # Constraints
     # --------------------------------------------------------
-
     def with_all_nonleaf_constraints(self, nonleaf_constraint):
         self._check_dynamics_before_constraints()
         # check constraints are nonleaf
@@ -191,7 +202,6 @@ class ProblemFactory:
     # --------------------------------------------------------
     # Risks
     # --------------------------------------------------------
-
     def with_all_risks(self, risk):
         # check risk type
         if not risk.is_risk:
@@ -206,11 +216,10 @@ class ProblemFactory:
     # --------------------------------------------------------
     # Generate
     # --------------------------------------------------------
-
     def generate_problem(self):
         """
         Generates problem data from the given build
         """
-        problem = Problem()
+        problem = Problem(self.__tree)
         problem.generate_json()
         return problem

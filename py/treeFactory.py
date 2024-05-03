@@ -35,7 +35,7 @@ class Tree:
             self.__children += children_of_i
 
     @property
-    def is_markovian(self):
+    def isMarkovian(self):
         return self.__is_markovian
 
     @property
@@ -138,20 +138,6 @@ class Tree:
         return f"Scenario tree with {self.num_nodes} nodes, {self.num_stages} stages " \
                f"and {len(self.nodes_of_stage(self.num_stages - 1))} scenarios"
 
-    @staticmethod
-    def __check_probability_vector(p):
-        if abs(sum(p) - 1) >= 1e-10:
-            raise ValueError("probability vector does not sum up to 1")
-        if any(pi <= -1e-16 for pi in p):
-            raise ValueError("probability vector contains negative entries")
-        return True
-
-    @staticmethod
-    def __check_stopping_stage(n, t):
-        if t > n:
-            raise ValueError("stopping time greater than number of stages")
-        return True
-
     def generate_json(self):
         # Get current date and time
         current_timestamp = datetime.datetime.utcnow()
@@ -169,7 +155,7 @@ class Tree:
         # Generate "tree.json" from template "tree_template.json.jinja2"
         template = env.get_template("treeTemplate.json.jinja2")
         output = template.render(timestamp=current_timestamp,
-                                 is_markovian=self.is_markovian,
+                                 is_markovian=self.isMarkovian,
                                  is_iid=self.is_iid,
                                  num_events=self.num_events,
                                  num_nonleaf_nodes=self.num_nonleaf_nodes,
@@ -283,15 +269,29 @@ class TreeFactoryMarkovChain:
         if stopping_stage is None:
             stopping_stage = horizon
         else:
-            Tree._ScenarioTree__check_stopping_stage(horizon, stopping_stage)
+            self.__check_stopping_stage(horizon, stopping_stage)
         self.__transition_prob = transition_prob
         self.__initial_distribution = initial_distribution
         self.__num_stages = horizon
         self.__stopping_stage = stopping_stage
         # check correctness of `transition_prob` and `initial_distribution`
         for pi in transition_prob:
-            Tree._ScenarioTree__check_probability_vector(pi)
-        Tree._ScenarioTree__check_probability_vector(initial_distribution)
+            self.__check_probability_vector(pi)
+        self.__check_probability_vector(initial_distribution)
+
+    @staticmethod
+    def __check_stopping_stage(n, t):
+        if t > n:
+            raise ValueError("stopping time greater than number of stages")
+        return True
+
+    @staticmethod
+    def __check_probability_vector(p):
+        if abs(sum(p) - 1) >= 1e-10:
+            raise ValueError("probability vector does not sum up to 1")
+        if any(pi <= -1e-16 for pi in p):
+            raise ValueError("probability vector contains negative entries")
+        return True
 
     def __cover(self, i):
         pi = self.__transition_prob[i, :]

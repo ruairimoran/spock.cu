@@ -66,12 +66,14 @@ risk = py.build.AVaR(alpha)
 
 # Generate problem data
 problem = (
-    py.problemFactory.ProblemFactory(scenario_tree=tree)
+    py.problemFactory.ProblemFactory(
+        scenario_tree=tree,
+        num_states=num_states,
+        num_inputs=num_inputs)
     .with_markovian_dynamics(As, Bs)
     .with_markovian_nonleaf_costs(Qs, Rs)
     .with_all_leaf_costs(T)
-    .with_all_state_constraints(state_constraint)
-    .with_all_input_constraints(input_constraint)
+    .with_all_constraints(state_constraint, input_constraint)
     .with_all_risks(risk)
     .generate_problem()
 )

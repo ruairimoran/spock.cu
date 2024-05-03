@@ -138,9 +138,7 @@ class Tree:
         return f"Scenario tree with {self.num_nodes} nodes, {self.num_stages} stages " \
                f"and {len(self.nodes_of_stage(self.num_stages - 1))} scenarios"
 
-    def generate_json(self):
-        # Get current date and time
-        current_timestamp = datetime.datetime.utcnow()
+    def generate_tree_json(self):
         # Setup jinja environment
         file_loader = j2.FileSystemLoader(searchpath=["py/"])
         env = j2.Environment(loader=file_loader,
@@ -152,10 +150,9 @@ class Tree:
                              variable_end_string="~\\",
                              comment_start_string="\#",
                              comment_end_string="#\\")
-        # Generate "tree.json" from template "tree_template.json.jinja2"
+        # Generate "treeData.json" from template "treeTemplate.json.jinja2"
         template = env.get_template("treeTemplate.json.jinja2")
-        output = template.render(timestamp=current_timestamp,
-                                 is_markovian=self.isMarkovian,
+        output = template.render(is_markovian=self.isMarkovian,
                                  is_iid=self.is_iid,
                                  num_events=self.num_events,
                                  num_nonleaf_nodes=self.num_nonleaf_nodes,
@@ -168,8 +165,8 @@ class Tree:
                                  children=self.__children)
         path = os.path.join(os.getcwd(), "json")
         os.makedirs(path, exist_ok=True)
-        output_path = os.path.join(path, "treeData.json")
-        fh = open(output_path, "w")
+        output_file = os.path.join(path, "treeData.json")
+        fh = open(output_file, "w")
         fh.write(output)
         fh.close()
 
@@ -376,5 +373,5 @@ class TreeFactoryMarkovChain:
         ancestors, values, stages = self.__make_ancestors_values_stages()
         probs = self.__make_probability_values(ancestors, values, stages)
         tree = Tree(stages, ancestors, probs, values, is_markovian=True)
-        tree.generate_json()
+        tree.generate_tree_json()
         return tree

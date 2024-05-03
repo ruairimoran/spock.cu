@@ -1,4 +1,6 @@
-import py.treeFactory as factories
+import py.treeFactory as treeFactory
+import py.problemFactory as problemFactory
+import py.problemFactory.build as build
 import numpy as np
 
 # --------------------------------------------------------
@@ -10,7 +12,7 @@ p = np.array([[0.5, 0.5], [0.5, 0.5]])
 v = np.array([0.6, 0.4])
 
 (horizon, stopping_stage) = (2, 2)
-tree = factories.TreeFactoryMarkovChain(
+tree = treeFactory.TreeFactoryMarkovChain(
     transition_prob=p,
     initial_distribution=v,
     horizon=horizon,
@@ -25,42 +27,53 @@ print(tree)
 # Generate problem data
 # --------------------------------------------------------
 
-(num_states, num_inputs) = 3, 2
-factor = 0.1
+# Sizes
+num_states = 3
+num_inputs = 2
 
+# State dynamics
 A = np.array([[1, 2, 3], [3, 1, 2], [2, 3, 1]])
-B = np.array([[3, 0], [1, 0], [0, 2]])
 As = [1.5 * A, A, -1.5 * A]
+
+# Input dynamics
+B = np.array([[3, 0], [1, 0], [0, 2]])
 Bs = [-1.5 * B, B, 1.5 * B]
 
+# State cost
 Q = np.eye(num_states)
-R = np.eye(num_inputs)
 Qs = [2 * Q, 2 * Q, 2 * Q]
+
+# Input cost
+R = np.eye(num_inputs)
 Rs = [1 * R, 1 * R, 1 * R]
-T = np.eye(num_states)
 
-nonleaf_size = num_states + num_inputs
-leaf_size = num_states
-x_lim = 6
-u_lim = 0.3
-nl_min = np.vstack((-x_lim * np.ones((num_states, 1)),
-                    -u_lim * np.ones((num_inputs, 1))))
-nl_max = np.vstack((x_lim * np.ones((num_states, 1)),
-                    u_lim * np.ones((num_inputs, 1))))
-l_min = -x_lim * np.ones((leaf_size, 1))
-l_max = x_lim * np.ones((leaf_size, 1))
-nl_rect = rectangle.Rectangle(nl, nl_min, nl_max)
-l_rect = rectangle.Rectangle(l, l_min, l_max)
+# Terminal state cost
+T = 100 * np.eye(num_states)
 
+# State constraint
+state_lim = 6
+state_lb = -state_lim * np.ones((num_states, 1))
+state_ub = state_lim * np.ones((num_states, 1))
+state_constraint = build.Rectangle(state_lb, state_ub)
+
+# Input constraint
+input_lim = 0.3
+input_lb = -input_lim * np.ones((num_inputs, 1))
+input_ub = input_lim * np.ones((num_inputs, 1))
+input_constraint = build.Rectangle(state_lb, state_ub)
+
+# Risk
 alpha = .95
-risk_1 = risks.AVaR(0.1)
-risk_5 = risks.AVaR(0.5)
-risk_9 = risks.AVaR(0.9)
+risk = build.AVaR(alpha)
 
-problem_1 = r.core.RAOCP(scenario_tree=tree) \
-    .with_markovian_dynamics(mark_dynamics) \
-    .with_markovian_nonleaf_costs(mark_nl_costs) \
-    .with_all_leaf_costs(leaf_cost) \
-    .with_all_risks(risk_1) \
-    .with_all_nonleaf_constraints(nl_rect) \
-    .with_all_leaf_constraints(l_rect)
+# Generate problem data
+problem = (
+    problemFactory.ProblemFactory(scenario_tree=tree)
+    .with_markovian_dynamics(As, Bs)
+    .with_markovian_nonleaf_costs(Qs, Rs)
+    .with_all_leaf_costs(T)
+    .with_all_state_constraints(state_constraint)
+    .with_all_input_constraints(input_constraint)
+    .with_all_risks(risk)
+    .generate_problem()
+)

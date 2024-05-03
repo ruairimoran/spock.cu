@@ -1,5 +1,5 @@
-import treeFactory as tree
-import builderClasses as build
+import treeFactory
+import build
 
 
 class Problem:
@@ -98,7 +98,7 @@ class ProblemFactory:
     """
     Risk-averse optimal control problem builder
     """
-    def __init__(self, scenario_tree: tree.Tree):
+    def __init__(self, scenario_tree: treeFactory.Tree):
         """
         :param scenario_tree: instance of ScenarioTree
         """
@@ -209,11 +209,8 @@ class ProblemFactory:
 
     def generate_problem(self):
         """
-        Generates a scenario tree from the given Markov chain
+        Generates problem data from the given build
         """
-        # check input data
-        ancestors, values, stages = self.__make_ancestors_values_stages()
-        probs = self.__make_probability_values(ancestors, values, stages)
-        tree = Tree(stages, ancestors, probs, values, is_markovian=True)
-        tree.generate_json(folder_name)
+        problem = Problem()
+        problem.generate_json()
         return problem

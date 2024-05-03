@@ -1,16 +1,18 @@
 import numpy as np
 
 
-# --------------------------------------------------------
+# =====================================================================================================================
 # Constraints
-# --------------------------------------------------------
+# =====================================================================================================================
 
+# --------------------------------------------------------
+# Base
+# --------------------------------------------------------
 class Constraint:
     """
     Base class for constraints
     """
-    def __init__(self, node_type):
-        self.__node_type = node_type
+    def __init__(self):
         self.__state_size = None
         self.__control_size = None
         self.__state_matrix = None
@@ -25,10 +27,6 @@ class Constraint:
     @property
     def is_active(self):
         raise Exception("Base constraint accessed - actual constraint must not be setup")
-
-    @property
-    def node_type(self):
-        return self.__node_type
 
     @property
     def state_size(self):
@@ -64,42 +62,43 @@ class Constraint:
     @state_size.setter
     def state_size(self, size):
         self.__state_size = size
-        if self.__node_type.is_nonleaf and self.__control_size is not None:
-            self._set_matrices()
-            self._get_transpose()
-        elif self.__node_type.is_nonleaf and self.__control_size is None:
-            pass
-        elif self.__node_type.is_leaf:
-            self.__control_size = 0
-            self._set_matrices()
-            self._get_transpose()
-        else:
-            raise Exception("Node type missing")
+        # if self.__node_type.is_nonleaf and self.__control_size is not None:
+        #     self._set_matrices()
+        #     self._get_transpose()
+        # elif self.__node_type.is_nonleaf and self.__control_size is None:
+        #     pass
+        # elif self.__node_type.is_leaf:
+        #     self.__control_size = 0
+        #     self._set_matrices()
+        #     self._get_transpose()
+        # else:
+        #     raise Exception("Node type missing")
 
     @control_size.setter
     def control_size(self, size):
         self.__control_size = size
-        if self.__node_type.is_nonleaf and self.__state_size is not None:
-            self._set_matrices()
-            self._get_transpose()
-        elif self.__node_type.is_nonleaf and self.__state_size is None:
-            pass
-        elif self.__node_type.is_leaf:
-            raise Exception("Attempt to set control size on leaf node")
-        else:
-            raise Exception("Node type missing")
+        # if self.__node_type.is_nonleaf and self.__state_size is not None:
+        #     self._set_matrices()
+        #     self._get_transpose()
+        # elif self.__node_type.is_nonleaf and self.__state_size is None:
+        #     pass
+        # elif self.__node_type.is_leaf:
+        #     raise Exception("Attempt to set control size on leaf node")
+        # else:
+        #     raise Exception("Node type missing")
 
     def _set_matrices(self):
         pass
 
     def _get_transpose(self):
-        if self.__node_type.is_nonleaf:
-            self.__state_matrix_transposed = np.transpose(self.state_matrix)
-            self.__control_matrix_transposed = np.transpose(self.control_matrix)
-        elif self.__node_type.is_leaf:
-            self.__state_matrix_transposed = np.transpose(self.state_matrix)
-        else:
-            raise Exception("Node type missing")
+        pass
+        # if self.__node_type.is_nonleaf:
+        #     self.__state_matrix_transposed = np.transpose(self.state_matrix)
+        #     self.__control_matrix_transposed = np.transpose(self.control_matrix)
+        # elif self.__node_type.is_leaf:
+        #     self.__state_matrix_transposed = np.transpose(self.state_matrix)
+        # else:
+        #     raise Exception("Node type missing")
 
     @state_matrix.setter
     def state_matrix(self, matrix):
@@ -107,14 +106,18 @@ class Constraint:
 
     @control_matrix.setter
     def control_matrix(self, matrix):
-        if self.__node_type.is_nonleaf:
-            self.__control_matrix = matrix
-        elif self.__node_type.is_leaf:
-            raise Exception("Attempt to set control constraint matrix of leaf node")
-        else:
-            raise Exception("Node type missing")
+        pass
+        # if self.__node_type.is_nonleaf:
+        #     self.__control_matrix = matrix
+        # elif self.__node_type.is_leaf:
+        #     raise Exception("Attempt to set control constraint matrix of leaf node")
+        # else:
+        #     raise Exception("Node type missing")
 
 
+# --------------------------------------------------------
+# None
+# --------------------------------------------------------
 class No(Constraint):
     """
     For no constraints
@@ -127,20 +130,22 @@ class No(Constraint):
         return False
 
 
+# --------------------------------------------------------
+# Rectangle
+# --------------------------------------------------------
 class Rectangle(Constraint):
     """
     A rectangle constraint
     """
-    def __init__(self, node_type, _min, _max):
+    def __init__(self, lowerBound, upperBound):
         """
-        :param node_type: nonleaf or leaf
-        :param _min: vector of minimum values
-        :param _max: vector of maximum values
+        :param lowerBound: vector of minimum values
+        :param upperBound: vector of maximum values
         """
-        super().__init__(node_type)
-        self._check_constraints(_min, _max)
-        self.__min = _min
-        self.__max = _max
+        super().__init__()
+        self._check_constraints(lowerBound, upperBound)
+        self.__lb = lowerBound
+        self.__ub = upperBound
 
     @property
     def is_active(self):
@@ -148,28 +153,28 @@ class Rectangle(Constraint):
 
     def _set_matrices(self):
         self.state_matrix = np.vstack((np.eye(self.state_size), np.zeros((self.control_size, self.state_size))))
-        if self._Constraint__node_type.is_nonleaf:
-            self.control_matrix = np.vstack((np.zeros((self.state_size, self.control_size)), np.eye(self.control_size)))
+        # if self._Constraint__node_type.is_nonleaf:
+        #     self.control_matrix = np.vstack((np.zeros((self.state_size, self.control_size)), np.eye(self.control_size)))
 
     def project(self, vector):
         self._check_input(vector)
         constrained_vector = np.zeros(vector.shape)
         for i in range(vector.size):
-            constrained_vector[i] = self._constrain(vector[i], self.__min[i], self.__max[i])
+            constrained_vector[i] = self._constrain(vector[i], self.__lb[i], self.__ub[i])
 
         return constrained_vector
 
     @staticmethod
-    def _check_constraints(_min, _max):
-        if _min.size != _max.size:
+    def _check_constraints(lb, ub):
+        if lb.size != ub.size:
             raise Exception("Rectangle constraint - min and max vectors sizes are not equal")
-        for i in range(_min.size):
-            if _min[i] is None and _max[i] is None:
+        for i in range(lb.size):
+            if lb[i] is None and ub[i] is None:
                 raise Exception("Rectangle constraint - both min and max constraints cannot be None")
-            if _min[i] is None or _max[i] is None:
+            if lb[i] is None or ub[i] is None:
                 pass
             else:
-                if _min[i] > _max[i]:
+                if lb[i] > ub[i]:
                     raise Exception("Rectangle constraint - min greater than max")
 
     @staticmethod
@@ -188,10 +193,13 @@ class Rectangle(Constraint):
             raise Exception("Rectangle constraint - input vector does not equal expected size")
 
 
-# --------------------------------------------------------
+# =====================================================================================================================
 # Risks
-# --------------------------------------------------------
+# =====================================================================================================================
 
+# --------------------------------------------------------
+# Base
+# --------------------------------------------------------
 class CoherentRisk:
     """
     Base class for coherent risks.
@@ -217,10 +225,6 @@ class CoherentRisk:
         raise Exception("Base constraint accessed - actual constraint must not be setup")
 
     @property
-    def node_type(self):
-        return self.__node_type
-
-    @property
     def state_size(self):
         return self.__state_size
 
@@ -254,42 +258,43 @@ class CoherentRisk:
     @state_size.setter
     def state_size(self, size):
         self.__state_size = size
-        if self.__node_type.is_nonleaf and self.__control_size is not None:
-            self._set_matrices()
-            self._get_transpose()
-        elif self.__node_type.is_nonleaf and self.__control_size is None:
-            pass
-        elif self.__node_type.is_leaf:
-            self.__control_size = 0
-            self._set_matrices()
-            self._get_transpose()
-        else:
-            raise Exception("Node type missing")
+        # if self.__node_type.is_nonleaf and self.__control_size is not None:
+        #     self._set_matrices()
+        #     self._get_transpose()
+        # elif self.__node_type.is_nonleaf and self.__control_size is None:
+        #     pass
+        # elif self.__node_type.is_leaf:
+        #     self.__control_size = 0
+        #     self._set_matrices()
+        #     self._get_transpose()
+        # else:
+        #     raise Exception("Node type missing")
 
     @control_size.setter
     def control_size(self, size):
         self.__control_size = size
-        if self.__node_type.is_nonleaf and self.__state_size is not None:
-            self._set_matrices()
-            self._get_transpose()
-        elif self.__node_type.is_nonleaf and self.__state_size is None:
-            pass
-        elif self.__node_type.is_leaf:
-            raise Exception("Attempt to set control size on leaf node")
-        else:
-            raise Exception("Node type missing")
+        # if self.__node_type.is_nonleaf and self.__state_size is not None:
+        #     self._set_matrices()
+        #     self._get_transpose()
+        # elif self.__node_type.is_nonleaf and self.__state_size is None:
+        #     pass
+        # elif self.__node_type.is_leaf:
+        #     raise Exception("Attempt to set control size on leaf node")
+        # else:
+        #     raise Exception("Node type missing")
 
     def _set_matrices(self):
         pass
 
     def _get_transpose(self):
-        if self.__node_type.is_nonleaf:
-            self.__state_matrix_transposed = np.transpose(self.state_matrix)
-            self.__control_matrix_transposed = np.transpose(self.control_matrix)
-        elif self.__node_type.is_leaf:
-            self.__state_matrix_transposed = np.transpose(self.state_matrix)
-        else:
-            raise Exception("Node type missing")
+        pass
+        # if self.__node_type.is_nonleaf:
+        #     self.__state_matrix_transposed = np.transpose(self.state_matrix)
+        #     self.__control_matrix_transposed = np.transpose(self.control_matrix)
+        # elif self.__node_type.is_leaf:
+        #     self.__state_matrix_transposed = np.transpose(self.state_matrix)
+        # else:
+        #     raise Exception("Node type missing")
 
     @state_matrix.setter
     def state_matrix(self, matrix):
@@ -297,13 +302,18 @@ class CoherentRisk:
 
     @control_matrix.setter
     def control_matrix(self, matrix):
-        if self.__node_type.is_nonleaf:
-            self.__control_matrix = matrix
-        elif self.__node_type.is_leaf:
-            raise Exception("Attempt to set control constraint matrix of leaf node")
-        else:
-            raise Exception("Node type missing")
+        pass
+        # if self.__node_type.is_nonleaf:
+        #     self.__control_matrix = matrix
+        # elif self.__node_type.is_leaf:
+        #     raise Exception("Attempt to set control constraint matrix of leaf node")
+        # else:
+        #     raise Exception("Node type missing")
 
+
+# --------------------------------------------------------
+# Average Value at Risk
+# --------------------------------------------------------
 class AVaR(CoherentRisk):
     """
     Risk item: Average Value at Risk class

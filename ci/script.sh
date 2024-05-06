@@ -25,6 +25,7 @@ test_python() {
 
     # -- run the python tests
     python -W ignore tests/testTreeFactory.py -v
+    python -W ignore tests/testProblemFactory.py -v
 }
 
 # ------------------------------------

@@ -32,9 +32,10 @@ protected:
 
 
 TEST_F(RisksTest, AvarConeProject) {
+    size_t node = 2;
     AVaR myRisk(0.98,
-                2,
-                m_tree->numChildren(),
+                node,
+                m_tree->numChildren()(node),
                 m_tree->childFrom(),
                 m_tree->childTo(),
                 m_tree->conditionalProbabilities());

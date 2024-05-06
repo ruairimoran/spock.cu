@@ -32,10 +32,11 @@ protected:
 
 
 TEST_F(RisksTest, AvarConeProject) {
-    AVaR myRisk(2,
-                0.98,
+    AVaR myRisk(0.98,
+                2,
                 m_tree->numChildren(),
                 m_tree->childFrom(),
+                m_tree->childTo(),
                 m_tree->conditionalProbabilities());
     myRisk.cone().project(*m_d_data);
     m_d_data->download(m_hostTest);

@@ -220,10 +220,11 @@ public:
     std::string name() { return "Cartesian cone"; }
 
     void print() {
-        std::cout << "Cartesian cone (" << m_dimension << ") of:\n";
+        std::cout << "Cartesian cone (" << m_dimension << ") of: ";
         for (ConvexCone *cone: m_cones) {
-            std::cout << "+ " << cone->name() << " (" << cone->dimension() << ")\n";
+            std::cout << "+ " << cone->name() << " (" << cone->dimension() << ") ";
         }
+        std::cout << "\n";
     }
 };
 

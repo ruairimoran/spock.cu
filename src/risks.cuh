@@ -76,15 +76,12 @@ public:
 
     void print() {
         std::cout << "Node: " << CoherentRisk<T>::m_nodeIndex << ", Risk: AVaR, \n";
-        printIfTensor("E: ", CoherentRisk<T>::m_d_E);
-        std::cout << "F: NOT NEEDED. \n";
         std::cout << "K: ";
         if (CoherentRisk<T>::m_K) {
             CoherentRisk<T>::m_K->print();
         } else {
             std::cout << "NO CONE TO PRINT.\n";
         }
-        printIfTensor("b: ", CoherentRisk<T>::m_d_b);
     }
 
 };

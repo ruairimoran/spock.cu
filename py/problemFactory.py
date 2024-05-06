@@ -101,7 +101,13 @@ class Problem:
                                  terminal_cost=self.__list_of_leaf_state_costs,
                                  state_constraint=self.__list_of_state_constraints,
                                  input_constraint=self.__list_of_input_constraints,
-                                 risk=self.__list_of_risks)
+                                 risk=self.__list_of_risks,
+                                 P=self.__P,
+                                 K=self.__K,
+                                 low_chol=self.__cholesky_lower,
+                                 dyn=self.__sum_of_dynamics,
+                                 null_dim=self.__max_nullspace_dim,
+                                 null=self.__nullspace_matrix)
         path = os.path.join(os.getcwd(), self.__tree.folder)
         os.makedirs(path, exist_ok=True)
         output_file = os.path.join(path, "problemData.json")
@@ -113,7 +119,7 @@ class Problem:
     # Cache
     # --------------------------------------------------------
 
-    def run_offline_cache(self):
+    def generate_offline_cache(self):
         self.__offline_projection_dynamics()
         self.__offline_projection_kernel()
 
@@ -153,33 +159,6 @@ class Problem:
         col_pad = self.__max_nullspace_dim - nullspace.shape[1]
         padded_nullspace = np.pad(nullspace, [(0, row_pad), (0, col_pad)], mode="constant", constant_values=0.)
         return padded_nullspace
-
-    def generate_cache_json(self):
-        # Setup jinja environment
-        file_loader = j2.FileSystemLoader(searchpath=["py/"])
-        env = j2.Environment(loader=file_loader,
-                             trim_blocks=True,
-                             lstrip_blocks=True,
-                             block_start_string="\% ",
-                             block_end_string="%\\",
-                             variable_start_string="\~",
-                             variable_end_string="~\\",
-                             comment_start_string="\#",
-                             comment_end_string="#\\")
-        # Generate "cacheData.json" from template "cacheTemplate.json.jinja2"
-        template = env.get_template("cacheTemplate.json.jinja2")
-        output = template.render(P=self.__P,
-                                 K=self.__K,
-                                 low_chol=self.__cholesky_lower,
-                                 dyn=self.__sum_of_dynamics,
-                                 ker=self.__kernel_constraint_matrix,
-                                 null=self.__nullspace_matrix)
-        path = os.path.join(os.getcwd(), self.__tree.folder)
-        os.makedirs(path, exist_ok=True)
-        output_file = os.path.join(path, "cacheData.json")
-        fh = open(output_file, "w")
-        fh.write(output)
-        fh.close()
 
 
 class ProblemFactory:
@@ -302,7 +281,6 @@ class ProblemFactory:
                           self.__list_of_state_constraints,
                           self.__list_of_input_constraints,
                           self.__list_of_risks)
+        problem.generate_offline_cache()
         problem.generate_problem_json()
-        problem.run_offline_cache()
-        problem.generate_cache_json()
         return problem

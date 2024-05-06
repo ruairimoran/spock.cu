@@ -168,6 +168,18 @@ public:
 
     DTensor<real_t> &inputWeight() { return *m_d_inputWeight; }
 
+    DTensor<real_t> &stateWeightLeaf() { return *m_d_stateWeightLeaf; }
+
+    DTensor<real_t> &choleskyLower() { return *m_d_lowerCholesky; }
+
+    DTensor<real_t> &K() { return *m_d_K; }
+
+    DTensor<real_t> &dynamicsSum() { return *m_d_dynamicsSum; }
+
+    DTensor<real_t> &P() { return *m_d_P; }
+
+    DTensor<real_t> &nullspace() { return *m_d_nullspace; }
+
     std::vector<std::unique_ptr<Constraint<real_t>>> &stateConstraint() { return m_stateConstraint; }
 
     std::vector<std::unique_ptr<Constraint<real_t>>> &inputConstraint() { return m_inputConstraint; }

@@ -12,10 +12,10 @@ test_python() {
     pip install virtualenv
 
     # -- create virtualenv
-    virtualenv -p python3.10 venv
+    virtualenv -p python3.10 venv@3.10
 
     # -- activate venv
-    source venv/bin/activate
+    source venv@3.10/bin/activate
 
     # -- upgrade pip within venv
     pip install --upgrade pip
@@ -24,7 +24,7 @@ test_python() {
     pip install .
 
     # -- run the python tests
-    python -W ignore tests/test_tree_factories.py -v
+    python -W ignore tests/testTreeFactory.py -v
 }
 
 # ------------------------------------

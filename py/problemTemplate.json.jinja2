@@ -42,7 +42,7 @@
 \# STATE CONSTRAINTS #\
 "stateConstraints": {
 \% for i in range(state_constraint|length) %\
-"\~i~\": { "type": \% if state_constraint[i].is_no %\
+"\~i~\": {"type": \% if state_constraint[i].is_no %\
 "no"\% elif state_constraint[i].is_rectangle %\
 "rectangle", "lb": \~state_constraint[i].lower_bound.flatten().tolist()~\, "ub": \~state_constraint[i].upper_bound.flatten().tolist()~\\% endif %\}\% if not loop.last %\,\% endif %\
 
@@ -50,7 +50,7 @@
 \# INPUT CONSTRAINTS #\
 "inputConstraints": {
 \% for i in range(input_constraint|length) %\
-"\~i~\": { "type": \% if input_constraint[i].is_no %\
+"\~i~\": {"type": \% if input_constraint[i].is_no %\
 "no"\% elif input_constraint[i].is_rectangle %\
 "rectangle", "lb": \~input_constraint[i].lower_bound.flatten().tolist()~\, "ub": \~input_constraint[i].upper_bound.flatten().tolist()~\\% endif %\}\% if not loop.last %\,\% endif %\
 
@@ -58,7 +58,7 @@
 \# RISKS #\
 "risks": {
 \% for i in range(risk|length) %\
-"\~i~\": { "type": \% if risk[i].is_avar %\
+"\~i~\": {"type": \% if risk[i].is_avar %\
 "avar", "alpha": \~risk[i].alpha~\, "e": \~risk[i].e.flatten().tolist()~\, "f": \~risk[i].f.flatten().tolist()~\, "k": \~risk[i].k~\, "b": \~risk[i].b.flatten().tolist()~\\% elif risk[i].is_evar %\
 "evar"\% endif %\}\% if not loop.last %\,\% endif %\
 

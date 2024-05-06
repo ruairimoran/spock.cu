@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import turtle
-import datetime
 import jinja2 as j2
 
 
@@ -19,6 +18,7 @@ class Tree:
 
         Note: avoid using this constructor directly; use a factory instead
         """
+        self.__folder = "json"
         self.__is_markovian = is_markovian
         self.__is_iid = is_iid
         self.__stages = stages
@@ -35,7 +35,11 @@ class Tree:
             self.__children += children_of_i
 
     @property
-    def isMarkovian(self):
+    def folder(self):
+        return self.__folder
+
+    @property
+    def is_markovian(self):
         return self.__is_markovian
 
     @property
@@ -152,7 +156,7 @@ class Tree:
                              comment_end_string="#\\")
         # Generate "treeData.json" from template "treeTemplate.json.jinja2"
         template = env.get_template("treeTemplate.json.jinja2")
-        output = template.render(is_markovian=self.isMarkovian,
+        output = template.render(is_markovian=self.is_markovian,
                                  is_iid=self.is_iid,
                                  num_events=self.num_events,
                                  num_nonleaf_nodes=self.num_nonleaf_nodes,
@@ -163,7 +167,7 @@ class Tree:
                                  probabilities=self.__probability,
                                  events=self.__w_idx,
                                  children=self.__children)
-        path = os.path.join(os.getcwd(), "json")
+        path = os.path.join(os.getcwd(), self.__folder)
         os.makedirs(path, exist_ok=True)
         output_file = os.path.join(path, "treeData.json")
         fh = open(output_file, "w")
@@ -212,12 +216,12 @@ class Tree:
         Tree.__draw_circle(trt, radius)
         nodes = self.nodes_of_stage(stage)
         for n in nodes:
-            mean_arc = np.mean(arcs[self.children_of(n)])
+            mean_arc = np.mean(arcs[self.children_of_node(n)])
             arcs[n] = mean_arc
             Tree.__goto_circle_coord(trt, radius, mean_arc)
             trt.pencolor('black')
             trt.dot(dot_size)
-            for nc in self.children_of(n):
+            for nc in self.children_of_node(n):
                 current_pos = trt.pos()
                 trt.goto(Tree.__circle_coord(larger_radius, arcs[nc]))
                 trt.goto(current_pos)

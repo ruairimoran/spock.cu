@@ -1,13 +1,14 @@
 import py
 import numpy as np
 
+
 # --------------------------------------------------------
 # Generate scenario tree
 # --------------------------------------------------------
 
-p = np.array([[0.5, 0.5], [0.5, 0.5]])
+p = np.array([[0.3, 0.2, 0.5], [0.5, 0.5, 0.0], [0.1, 0.2, 0.7]])
 
-v = np.array([0.6, 0.4])
+v = np.array([0.5, 0.4, 0.1])
 
 (horizon, stopping_stage) = (2, 2)
 tree = py.treeFactory.TreeFactoryMarkovChain(
@@ -17,8 +18,7 @@ tree = py.treeFactory.TreeFactoryMarkovChain(
     stopping_stage=stopping_stage
 ).generate_tree()
 
-# tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')
-print(sum(tree.probability_of_node(tree.nodes_of_stage(2))))
+# tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')  # requires python-tk@3.x installation
 print(tree)
 
 # --------------------------------------------------------

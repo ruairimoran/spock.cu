@@ -34,6 +34,8 @@ private:
     std::unique_ptr<DTensor<real_t>> m_d_K = nullptr;
     std::unique_ptr<DTensor<real_t>> m_d_dynamicsSum = nullptr;
     std::unique_ptr<DTensor<real_t>> m_d_P = nullptr;
+    std::vector<std::unique_ptr<CholeskyBatchFactoriser<real_t>>>m_choleskyBatch;
+    std::vector<std::unique_ptr<DTensor<real_t>>>m_choleskyStage;
     /* Kernel projection */
     size_t m_nullDim = 0;  ///< Total number system states
     std::unique_ptr<DTensor<real_t>> m_d_nullspace = nullptr;
@@ -103,6 +105,8 @@ public:
         m_nullDim = doc["nullspaceDimension"].GetInt();
 
         /** Allocate memory on host */
+        m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<real_t>>>(m_tree.numStages() - 1);
+        m_choleskyStage = std::vector<std::unique_ptr<DTensor<real_t>>>(m_tree.numStages() - 1);
         m_stateConstraint = std::vector<std::unique_ptr<Constraint<real_t>>>(m_tree.numNodes());
         m_inputConstraint = std::vector<std::unique_ptr<Constraint<real_t>>>(m_tree.numNodes());
         m_risk = std::vector<std::unique_ptr<CoherentRisk<real_t>>>(m_tree.numNodes());
@@ -146,6 +150,12 @@ public:
             nodeString = std::to_string(i).c_str();
             parseMatrix(i, doc["leafStateCosts"][nodeString], m_d_stateWeightLeaf);
         }
+        for (size_t stage=0; stage<m_tree.numStages()-1; stage++) {
+            size_t nodeFr = (*m_tree.nodeFromHost())[stage];
+            size_t nodeTo = (*m_tree.nodeToHost())[stage];
+            m_choleskyStage[stage] = std::make_unique<DTensor<real_t>>(*m_d_lowerCholesky, 2, nodeFr, nodeTo);
+            m_choleskyBatch[stage] = std::make_unique<CholeskyBatchFactoriser<real_t>>(*m_choleskyStage[stage], true);
+        }
     }
 
     /**
@@ -170,8 +180,6 @@ public:
 
     DTensor<real_t> &stateWeightLeaf() { return *m_d_stateWeightLeaf; }
 
-    DTensor<real_t> &choleskyLower() { return *m_d_lowerCholesky; }
-
     DTensor<real_t> &K() { return *m_d_K; }
 
     DTensor<real_t> &dynamicsSum() { return *m_d_dynamicsSum; }
@@ -179,6 +187,8 @@ public:
     DTensor<real_t> &P() { return *m_d_P; }
 
     DTensor<real_t> &nullspace() { return *m_d_nullspace; }
+
+    std::vector<std::unique_ptr<CholeskyBatchFactoriser<real_t>>> &choleskyBatch() { return m_choleskyBatch; }
 
     std::vector<std::unique_ptr<Constraint<real_t>>> &stateConstraint() { return m_stateConstraint; }
 

@@ -25,7 +25,12 @@ private:
     size_t m_maxIters = 0;
     size_t m_countIterations = 0;
     size_t m_matAxis = 2;
-    size_t m_primSize;
+    size_t m_primSize = 0;
+    size_t m_sizeX = 0;  ///< States of all nodes
+    size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
+    size_t m_sizeY = 0;  ///< Y for all nonleaf nodes
+    size_t m_sizeT = 0;  ///< T for all child nodes
+    size_t m_sizeS = 0;  ///< S for all child nodes
     std::unique_ptr<DTensor<real_t>> m_d_prim = nullptr;
     std::unique_ptr<DTensor<real_t>> m_d_primPrev = nullptr;
     std::unique_ptr<DTensor<real_t>> m_d_x = nullptr;
@@ -40,15 +45,12 @@ private:
     /* Other */
     std::unique_ptr<DTensor<real_t>> m_d_q = nullptr;
     std::unique_ptr<DTensor<real_t>> m_d_d = nullptr;
-    /* Host data */
-    std::unique_ptr<std::vector<size_t>> m_childFrom = nullptr;  ///< Ptr to first node of stage at index
-    std::unique_ptr<std::vector<size_t>> m_childTo = nullptr;  ///< Ptr to last node of stage at index
-    std::unique_ptr<std::vector<size_t>> m_nodeFrom = nullptr;  ///< Ptr to first node of stage at index
-    std::unique_ptr<std::vector<size_t>> m_nodeTo = nullptr;  ///< Ptr to last node of stage at index
 
     /**
      * Private methods
      */
+    void breakPrimal();
+    void rebuildPrimal();
     void projectOnDynamics();
     void projectOnKernel();
 
@@ -59,13 +61,12 @@ public:
     Cache(ScenarioTree &tree, ProblemData &data, real_t tol, size_t maxIters) :
         m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters) {
         /* Sizes */
-        size_t sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
-        size_t sizeU = m_tree.numNonleafNodes() * m_data.numInputs();  ///< Inputs of all nonleaf nodes
-        size_t sizeY = m_tree.numNonleafNodes() * m_tree.numEvents();  ///< Y for all nonleaf nodes
-        size_t sizeT = m_tree.numNodes();  ///< T for all child nodes
-        size_t sizeS = m_tree.numNodes();  ///< S for all child nodes
-        m_primSize = sizeX + sizeU + sizeY + sizeT + sizeS;
-
+        m_sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
+        m_sizeU = m_tree.numNonleafNodes() * m_data.numInputs();  ///< Inputs of all nonleaf nodes
+        m_sizeY = m_tree.numNonleafNodes() * m_tree.numEvents();  ///< Y for all nonleaf nodes
+        m_sizeT = m_tree.numNodes();  ///< T for all child nodes
+        m_sizeS = m_tree.numNodes();  ///< S for all child nodes
+        m_primSize = m_sizeX + m_sizeU + m_sizeY + m_sizeT + m_sizeS;
         /* Allocate memory on device */
         m_d_prim = std::make_unique<DTensor<real_t>>(m_primSize, true);
         m_d_primPrev = std::make_unique<DTensor<real_t>>(m_primSize, true);
@@ -74,29 +75,8 @@ public:
         m_d_cacheError = std::make_unique<DTensor<real_t>>(m_maxIters, true);
         m_d_q = std::make_unique<DTensor<real_t>>(m_data.numStates(), 1, m_tree.numNodes(), true);
         m_d_d = std::make_unique<DTensor<real_t>>(m_data.numInputs(), 1, m_tree.numNonleafNodes(), true);
-
         /* Slice primal */
-        size_t rowAxis = 0;
-        size_t start = 0;
-        m_d_x = std::make_unique<DTensor<real_t>>(*m_d_prim, rowAxis, start, sizeX - 1);
-        start += sizeX;
-        m_d_u = std::make_unique<DTensor<real_t>>(*m_d_prim, rowAxis, start, start + sizeU - 1);
-        start += sizeU;
-        m_d_y = std::make_unique<DTensor<real_t>>(*m_d_prim, rowAxis, start, start + sizeY - 1);
-        start += sizeY;
-        m_d_t = std::make_unique<DTensor<real_t>>(*m_d_prim, rowAxis, start, start + sizeT - 1);
-        start += sizeT;
-        m_d_s = std::make_unique<DTensor<real_t>>(*m_d_prim, rowAxis, start, start + sizeS - 1);
-
-        /* Host data */
-        m_childFrom = std::make_unique<std::vector<size_t>>(m_tree.childFrom().numEl());
-        m_tree.childFrom().download(*m_childFrom);
-        m_childTo = std::make_unique<std::vector<size_t>>(m_tree.childTo().numEl());
-        m_tree.childTo().download(*m_childTo);
-        m_nodeFrom = std::make_unique<std::vector<size_t>>(m_tree.nodeFrom().numEl());
-        m_tree.nodeFrom().download(*m_nodeFrom);
-        m_nodeTo = std::make_unique<std::vector<size_t>>(m_tree.nodeTo().numEl());
-        m_tree.nodeTo().download(*m_nodeTo);
+        breakPrimal();
     }
 
     ~Cache() {}
@@ -115,21 +95,65 @@ public:
     void print();
 };
 
+void Cache::breakPrimal() {
+    size_t rowAxis = 0;
+    size_t start = 0;
+    DTensor<real_t> sliceX(*m_d_prim, rowAxis, start, m_sizeX - 1);
+    m_d_x = std::make_unique<DTensor<real_t>>(m_data.numStates(), 1, m_tree.numNodes());
+    sliceX.deviceCopyTo(*m_d_x);
+    start += m_sizeX;
+    DTensor<real_t> sliceU(*m_d_prim, rowAxis, start, start + m_sizeU - 1);
+    m_d_u = std::make_unique<DTensor<real_t>>(m_data.numInputs(), 1, m_tree.numNonleafNodes());
+    sliceU.deviceCopyTo(*m_d_u);
+    start += m_sizeU;
+    DTensor<real_t> sliceY(*m_d_prim, rowAxis, start, start + m_sizeY - 1);
+    m_d_y = std::make_unique<DTensor<real_t>>(m_tree.numEvents(), 1, m_tree.numNonleafNodes());
+    sliceY.deviceCopyTo(*m_d_y);
+    start += m_sizeY;
+    DTensor<real_t> sliceT(*m_d_prim, rowAxis, start, start + m_sizeT - 1);
+    m_d_t = std::make_unique<DTensor<real_t>>(1, 1, m_tree.numNodes());
+    sliceT.deviceCopyTo(*m_d_t);
+    start += m_sizeT;
+    DTensor<real_t> sliceS(*m_d_prim, rowAxis, start, start + m_sizeS - 1);
+    m_d_s = std::make_unique<DTensor<real_t>>(1, 1, m_tree.numNodes());
+    sliceS.deviceCopyTo(*m_d_s);
+}
+
+void Cache::rebuildPrimal() {
+    size_t rowAxis = 0;
+    size_t start = 0;
+    DTensor<real_t> sliceX(*m_d_prim, rowAxis, start, m_sizeX - 1);
+    m_d_x->deviceCopyTo(sliceX);
+    start += m_sizeX;
+    DTensor<real_t> sliceU(*m_d_prim, rowAxis, start, start + m_sizeU - 1);
+    m_d_u->deviceCopyTo(sliceU);
+    start += m_sizeU;
+    DTensor<real_t> sliceY(*m_d_prim, rowAxis, start, start + m_sizeY - 1);
+    m_d_y->deviceCopyTo(sliceY);
+    start += m_sizeY;
+    DTensor<real_t> sliceT(*m_d_prim, rowAxis, start, start + m_sizeT - 1);
+    m_d_t->deviceCopyTo(sliceT);
+    start += m_sizeT;
+    DTensor<real_t> sliceS(*m_d_prim, rowAxis, start, start + m_sizeS - 1);
+    m_d_s->deviceCopyTo(sliceS);
+}
+
 void Cache::projectOnDynamics() {
     *m_d_x *= -1.;
     m_d_x->deviceCopyTo(*m_d_q);
-    for (size_t stage=m_tree.numStages()-1; stage>0; stage--) {
-        size_t chNodeFr = (*m_nodeFrom)[stage];
-        size_t chNodeTo = (*m_nodeTo)[stage];
+    for (size_t stagePlusOne=m_tree.numStages()-1; stagePlusOne>0; stagePlusOne--) {
+        size_t stage = stagePlusOne - 1;
+        size_t chNodeFr = (*m_tree.nodeFromHost())[stagePlusOne];
+        size_t chNodeTo = (*m_tree.nodeToHost())[stagePlusOne];
         DTensor<real_t> B(m_data.inputDynamics(), m_matAxis, chNodeFr, chNodeTo);
         DTensor<real_t> Btr = B.tr();
         DTensor<real_t> q(*m_d_q, m_matAxis, chNodeFr, chNodeTo);
         DTensor<real_t> Bq = Btr * *m_d_q;
-        size_t nodeFr = (*m_nodeFrom)[stage-1];
-        size_t nodeTo = (*m_nodeTo)[stage-1];
+        size_t nodeFr = (*m_tree.nodeFromHost())[stage];
+        size_t nodeTo = (*m_tree.nodeToHost())[stage];
         for (size_t node=nodeFr; node<=nodeTo; node++) {
             DTensor<real_t> dAtParent(*m_d_d, m_matAxis, node, node);
-            for (size_t child=(*m_childFrom)[node]; child<=(*m_childTo)[node]; child++) {
+            for (size_t child=(*m_tree.childFromHost())[node]; child<=(*m_tree.childToHost())[node]; child++) {
                 DTensor<real_t> BqAtChild(Bq, m_matAxis, child, child);
                 dAtParent += BqAtChild;
             }
@@ -138,7 +162,8 @@ void Cache::projectOnDynamics() {
         DTensor<real_t> uAtStage(*m_d_u, m_matAxis, nodeFr, nodeTo);
         dAtStage *= -1.;
         dAtStage += uAtStage;
-        std::cout << "d at stage " << stage - 1 << dAtStage;
+        m_data.choleskyBatch()[stage]->solve(dAtStage);
+        std::cout << "d at stage " << stage << "\n" << dAtStage;
     }
 }
 
@@ -179,6 +204,7 @@ void Cache::cpIter() {
     /** update n_bar */
     /** update z */
     /** update n */
+    rebuildPrimal();
 }
 
 void Cache::print() {

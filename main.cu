@@ -16,12 +16,12 @@ int main() {
     /** SCENARIO TREE */
     std::ifstream fileTree("tests/testTreeData.json");
     ScenarioTree tree(fileTree);
-  	tree.print();
+//  	tree.print();
 
     /** PROBLEM DATA */
     std::ifstream fileProblem("tests/testProblemData.json");
     ProblemData problem(tree, fileProblem);
-  	problem.print();
+//  	problem.print();
 
     /** CACHE */
     real_t tol = 1e-4;

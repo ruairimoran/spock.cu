@@ -16,8 +16,8 @@ size_t timeCp(Cache& cache, std::vector<real_t> initialState) {
     /* ------------------------------------ */
     std::cout << "timer started" << "\n";
     const auto tick = std::chrono::high_resolution_clock::now();
-    cache.vanillaCp(initialState, &numbers);  // For debugging only!
-//    cache.vanillaCp(initialState);  ///< run vanilla cp algorithm
+//    cache.vanillaCp(initialState, &numbers);  // For debugging only!
+    cache.vanillaCp(initialState);  ///< run vanilla cp algorithm
     const auto tock = std::chrono::high_resolution_clock::now();
     auto durationMilli = std::chrono::duration<double, std::milli>(tock - tick).count();
     std::cout << "timer stopped:  " << durationMilli << " ms" << "\n";

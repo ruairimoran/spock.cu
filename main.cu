@@ -11,16 +11,17 @@
 #include "src/cp.cuh"
 
 
+
 int main() {
     /** SCENARIO TREE */
-    std::ifstream fileTree("tests/default_tree_data.json"); 
+    std::ifstream fileTree("tests/testTreeData.json");
     ScenarioTree tree(fileTree);
-  	tree.print();
+//  	tree.print();
 
     /** PROBLEM DATA */
-    std::ifstream fileProblem("tests/default_problem_data.json"); 
+    std::ifstream fileProblem("tests/testProblemData.json");
     ProblemData problem(tree, fileProblem);
-  	problem.print();
+//  	problem.print();
 
     /** CACHE */
     real_t tol = 1e-4;
@@ -30,7 +31,7 @@ int main() {
 
     /** VANILLA CP */
     std::vector<real_t> initState = {.1, -.2, .3};
-    size_t exit_status = runCp(cache, initState);
+    size_t exit_status = timeCp(cache, initState);
     std::cout << "cp exit status: " << exit_status << std::endl;
     cache.print();
 

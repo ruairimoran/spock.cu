@@ -1,11 +1,10 @@
-from typing import Union, Any
+import os
 import numpy as np
 import turtle
-import datetime
 import jinja2 as j2
 
 
-class ScenarioTree:
+class Tree:
     """
     Scenario tree creation and visualisation
     """
@@ -19,6 +18,7 @@ class ScenarioTree:
 
         Note: avoid using this constructor directly; use a factory instead
         """
+        self.__folder = "json"
         self.__is_markovian = is_markovian
         self.__is_iid = is_iid
         self.__stages = stages
@@ -35,9 +35,13 @@ class ScenarioTree:
             self.__children += children_of_i
 
     @property
+    def folder(self):
+        return self.__folder
+
+    @property
     def is_markovian(self):
         return self.__is_markovian
-    
+
     @property
     def is_iid(self):
         return self.__is_iid
@@ -52,7 +56,7 @@ class ScenarioTree:
         :return: total number of events
         """
         return max(self.__w_idx) + 1
-    
+
     @property
     def num_nodes(self):
         """
@@ -132,29 +136,13 @@ class ScenarioTree:
 
     def __str__(self):
         return f"Scenario Tree\n+ Nodes: {self.num_nodes}\n+ Stages: {self.num_stages}\n" \
-               f"+ Scenarios: {len(self.nodes_at_stage(self.num_stages - 1))}"
+               f"+ Scenarios: {len(self.nodes_of_stage(self.num_stages - 1))}"
 
     def __repr__(self):
         return f"Scenario tree with {self.num_nodes} nodes, {self.num_stages} stages " \
-               f"and {len(self.nodes_at_stage(self.num_stages - 1))} scenarios"
-    
-    @staticmethod
-    def __check_probability_vector(p):
-        if abs(sum(p) - 1) >= 1e-10:
-            raise ValueError("probability vector does not sum up to 1")
-        if any(pi <= -1e-16 for pi in p):
-            raise ValueError("probability vector contains negative entries")
-        return True
+               f"and {len(self.nodes_of_stage(self.num_stages - 1))} scenarios"
 
-    @staticmethod
-    def __check_stopping_stage(n, t):
-        if t > n:
-            raise ValueError("stopping time greater than number of stages")
-        return True
-    
-    def __generate_json(self, testing):
-        # Get current date and time
-        current_timestamp = datetime.datetime.utcnow()
+    def generate_tree_json(self):
         # Setup jinja environment
         file_loader = j2.FileSystemLoader(searchpath=["py/"])
         env = j2.Environment(loader=file_loader,
@@ -166,10 +154,9 @@ class ScenarioTree:
                              variable_end_string="~\\",
                              comment_start_string="\#",
                              comment_end_string="#\\")
-        # Generate "tree.json" from template "tree_template.json.jinja2"
-        template = env.get_template("tree_data.json.jinja2")
-        output = template.render(timestamp=current_timestamp,
-                                 is_markovian=self.is_markovian,
+        # Generate "treeData.json" from template "treeTemplate.json.jinja2"
+        template = env.get_template("treeTemplate.json.jinja2")
+        output = template.render(is_markovian=self.is_markovian,
                                  is_iid=self.is_iid,
                                  num_events=self.num_events,
                                  num_nonleaf_nodes=self.num_nonleaf_nodes,
@@ -180,10 +167,13 @@ class ScenarioTree:
                                  probabilities=self.__probability,
                                  events=self.__w_idx,
                                  children=self.__children)
-        output_path = "tests/default_tree_data.json" if testing else "py/tree_data.json"
-        with open(output_path, "w") as fh:
-            fh.write(output)
-    
+        path = os.path.join(os.getcwd(), self.__folder)
+        os.makedirs(path, exist_ok=True)
+        output_file = os.path.join(path, "treeData.json")
+        fh = open(output_file, "w")
+        fh.write(output)
+        fh.close()
+
     # Visualisation
 
     @staticmethod
@@ -193,7 +183,7 @@ class ScenarioTree:
     @staticmethod
     def __goto_circle_coord(trt, rad, arc):
         trt.penup()
-        trt.goto(ScenarioTree.__circle_coord(rad, arc))
+        trt.goto(Tree.__circle_coord(rad, arc))
         trt.pendown()
 
     @staticmethod
@@ -206,13 +196,13 @@ class ScenarioTree:
 
     def __draw_leaf_nodes_on_circle(self, trt, radius, dot_size=6):
         trt.pencolor('gray')
-        ScenarioTree.__draw_circle(trt, radius)
-        leaf_nodes = self.nodes_at_stage(self.num_stages - 1)
+        Tree.__draw_circle(trt, radius)
+        leaf_nodes = self.nodes_of_stage(self.num_stages - 1)
         num_leaf_nodes = len(leaf_nodes)
         dv = 360 / num_leaf_nodes
         arcs = np.zeros(self.num_nodes)
         for i in range(num_leaf_nodes):
-            ScenarioTree.__goto_circle_coord(trt, radius, i * dv)
+            Tree.__goto_circle_coord(trt, radius, i * dv)
             trt.pencolor('black')
             trt.dot(dot_size)
             trt.pencolor('gray')
@@ -223,17 +213,17 @@ class ScenarioTree:
 
     def __draw_nonleaf_nodes_on_circle(self, trt, radius, larger_radius, stage, arcs, dot_size=6):
         trt.pencolor('gray')
-        ScenarioTree.__draw_circle(trt, radius)
-        nodes = self.nodes_at_stage(stage)
+        Tree.__draw_circle(trt, radius)
+        nodes = self.nodes_of_stage(stage)
         for n in nodes:
-            mean_arc = np.mean(arcs[self.children_of(n)])
+            mean_arc = np.mean(arcs[self.children_of_node(n)])
             arcs[n] = mean_arc
-            ScenarioTree.__goto_circle_coord(trt, radius, mean_arc)
+            Tree.__goto_circle_coord(trt, radius, mean_arc)
             trt.pencolor('black')
             trt.dot(dot_size)
-            for nc in self.children_of(n):
+            for nc in self.children_of_node(n):
                 current_pos = trt.pos()
-                trt.goto(ScenarioTree.__circle_coord(larger_radius, arcs[nc]))
+                trt.goto(Tree.__circle_coord(larger_radius, arcs[nc]))
                 trt.goto(current_pos)
             trt.pencolor('gray')
         return arcs
@@ -264,7 +254,7 @@ class ScenarioTree:
         wn.mainloop()
 
 
-class ScenarioTreeFactoryMarkovChain:
+class TreeFactoryMarkovChain:
     """
     Factory class to construct scenario trees from stopped Markov chains
     """
@@ -280,15 +270,29 @@ class ScenarioTreeFactoryMarkovChain:
         if stopping_stage is None:
             stopping_stage = horizon
         else:
-            ScenarioTree._ScenarioTree__check_stopping_stage(horizon, stopping_stage)
+            self.__check_stopping_stage(horizon, stopping_stage)
         self.__transition_prob = transition_prob
         self.__initial_distribution = initial_distribution
         self.__num_stages = horizon
         self.__stopping_stage = stopping_stage
         # check correctness of `transition_prob` and `initial_distribution`
         for pi in transition_prob:
-            ScenarioTree._ScenarioTree__check_probability_vector(pi)
-        ScenarioTree._ScenarioTree__check_probability_vector(initial_distribution)
+            self.__check_probability_vector(pi)
+        self.__check_probability_vector(initial_distribution)
+
+    @staticmethod
+    def __check_stopping_stage(n, t):
+        if t > n:
+            raise ValueError("stopping time greater than number of stages")
+        return True
+
+    @staticmethod
+    def __check_probability_vector(p):
+        if abs(sum(p) - 1) >= 1e-10:
+            raise ValueError("probability vector does not sum up to 1")
+        if any(pi <= -1e-16 for pi in p):
+            raise ValueError("probability vector contains negative entries")
+        return True
 
     def __cover(self, i):
         pi = self.__transition_prob[i, :]
@@ -311,11 +315,11 @@ class ScenarioTreeFactoryMarkovChain:
         stages[0] = 0
 
         cursor = 1
-        num_nodes_at_stage = num_nonzero_init_distr
+        num_nodes_of_stage = num_nonzero_init_distr
         for stage_idx in range(1, self.__stopping_stage):
             nodes_added_at_stage = 0
-            cursor_new = cursor + num_nodes_at_stage
-            for i in range(num_nodes_at_stage):
+            cursor_new = cursor + num_nodes_of_stage
+            for i in range(num_nodes_of_stage):
                 node_id = cursor + i
                 cover = self.__cover(values[node_id])
                 length_cover = len(cover)
@@ -324,17 +328,17 @@ class ScenarioTreeFactoryMarkovChain:
                 nodes_added_at_stage += length_cover
                 values = np.concatenate((values, cover))
 
-            num_nodes_at_stage = nodes_added_at_stage
+            num_nodes_of_stage = nodes_added_at_stage
             cursor = cursor_new
             ones = np.ones(nodes_added_at_stage, dtype=int)
             stages = np.concatenate((stages, (1 + stage_idx) * ones))
 
         for stage_idx in range(self.__stopping_stage, self.__num_stages):
-            ancestors = np.concatenate((ancestors, range(cursor, cursor + num_nodes_at_stage)))
-            cursor += num_nodes_at_stage
-            ones = np.ones((num_nodes_at_stage,), dtype=int)
+            ancestors = np.concatenate((ancestors, range(cursor, cursor + num_nodes_of_stage)))
+            cursor += num_nodes_of_stage
+            ones = np.ones((num_nodes_of_stage,), dtype=int)
             stages = np.concatenate((stages, (1 + stage_idx) * ones))
-            values = np.concatenate((values, values[-num_nodes_at_stage::]))
+            values = np.concatenate((values, values[-num_nodes_of_stage::]))
 
         return ancestors, values, stages
 
@@ -354,7 +358,7 @@ class ScenarioTreeFactoryMarkovChain:
                 index = i
                 break
             probs_new = probs[ancestors[i]] * \
-                self.__transition_prob[values[ancestors[i]], values[i]]
+                        self.__transition_prob[values[ancestors[i]], values[i]]
             probs = np.concatenate((probs, [probs_new]))
             index = i
 
@@ -362,16 +366,16 @@ class ScenarioTreeFactoryMarkovChain:
             for j in range(index, num_nodes):
                 probs_new = probs[ancestors[j]]
                 probs = np.concatenate((probs, [probs_new]))
-        
+
         return probs
 
-    def generate_tree(self, testing=False):
+    def generate_tree(self):
         """
         Generates a scenario tree from the given Markov chain
         """
         # check input data
         ancestors, values, stages = self.__make_ancestors_values_stages()
         probs = self.__make_probability_values(ancestors, values, stages)
-        tree = ScenarioTree(stages, ancestors, probs, values, is_markovian=True)
-        tree._ScenarioTree__generate_json(testing)
+        tree = Tree(stages, ancestors, probs, values, is_markovian=True)
+        tree.generate_tree_json()
         return tree

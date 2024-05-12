@@ -15,7 +15,7 @@ protected:
     std::vector<size_t> m_hostDataIntNumStages;
 
     MarkovTreeTest() {
-        std::ifstream tree_data("../../tests/default_tree_data.json");
+        std::ifstream tree_data("../../tests/testTreeData.json");
         m_mockTree = std::make_unique<ScenarioTree>(tree_data);
         m_numNonleafNodes = m_mockTree->numNonleafNodes();
         m_numNodes = m_mockTree->numNodes();

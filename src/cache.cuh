@@ -10,8 +10,6 @@
 
 __host__ __device__ size_t getIdxMat(size_t node, size_t row, size_t col, size_t rows, size_t cols = 0);
 
-__global__ void d_setMatToId(real_t *mat, size_t numRows, size_t node = 0);
-
 
 /**
  * Cache of methods for proximal algorithms
@@ -21,39 +19,40 @@ __global__ void d_setMatToId(real_t *mat, size_t numRows, size_t node = 0);
 class Cache {
 
 private:
-    ScenarioTree &m_tree;  ///< Previously created scenario tree of problem
-    ProblemData &m_data;  ///< Previously created data of problem
-    size_t m_numStates = 0;
-    size_t m_numInputs = 0;
-    /** Solver data */
+    ScenarioTree &m_tree;  ///< Previously created scenario tree
+    ProblemData &m_data;  ///< Previously created problem
     real_t m_tol = 0;
     size_t m_maxIters = 0;
     size_t m_countIterations = 0;
-    /** Primal data */
+    size_t m_matAxis = 2;
     size_t m_primSize = 0;
-    DTensor<real_t> *m_d_prim = nullptr;
-    DTensor<real_t> *m_d_primMod = nullptr;
-    DTensor<real_t> *m_d_primPrev = nullptr;
-    /** Dual data */
+    size_t m_sizeX = 0;  ///< States of all nodes
+    size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
+    size_t m_sizeY = 0;  ///< Y for all nonleaf nodes
+    size_t m_sizeT = 0;  ///< T for all child nodes
+    size_t m_sizeS = 0;  ///< S for all child nodes
+    std::unique_ptr<DTensor<real_t>> m_d_prim = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_primPrev = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_x = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_u = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_y = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_t = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_s = nullptr;
     size_t m_dualSize = 0;
-    DTensor<real_t> *m_d_dual = nullptr;
-    DTensor<real_t> *m_d_dualMod = nullptr;
-    DTensor<real_t> *m_d_dualPrev = nullptr;
-    /** Error data */
-    DTensor<real_t> *m_d_cacheError = nullptr;
-    /** Dynamics projection data */
-    DTensor<real_t> *m_d_P = nullptr;
-    DTensor<real_t> *m_d_q = nullptr;
-    DTensor<real_t> *m_d_K = nullptr;
-    DTensor<real_t> *m_d_d = nullptr;
-    DTensor<real_t> *m_d_choleskyLo = nullptr;
-    DTensor<real_t> *m_d_dynamicsSum = nullptr;  ///< A+BK
-    /** Kernel projection data */
-    DTensor<real_t> *m_d_kernelConstraintMat = nullptr;
-    DTensor<real_t> *m_d_nullSpaceMat = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_dual = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_dualPrev = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_cacheError = nullptr;
+    /* Other */
+    std::unique_ptr<DTensor<real_t>> m_d_q = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_d = nullptr;
 
-    /** Methods */
-    void offline_projection_setup();
+    /**
+     * Private methods
+     */
+    void breakPrimal();
+    void rebuildPrimal();
+    void projectOnDynamics();
+    void projectOnKernel();
 
 public:
     /**
@@ -61,68 +60,34 @@ public:
      */
     Cache(ScenarioTree &tree, ProblemData &data, real_t tol, size_t maxIters) :
         m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters) {
-        m_numStates = m_data.numStates();
-        m_numInputs = m_data.numInputs();
-        m_primSize = m_tree.numNodes() * m_numStates  ///< States of all nodes
-                     + m_tree.numNonleafNodes() * m_numInputs  ///< Inputs of all nonleaf nodes
-                     + m_tree.numNonleafNodes() * m_tree.numEvents()  ///< Y for all nonleaf nodes
-                     + m_tree.numNodes()  ///< T for all child nodes
-                     + m_tree.numNodes();  ///< S for all child nodes
-
-        /** Allocate memory on device */
-        m_d_prim = new DTensor<real_t>(m_primSize);
-        m_d_primMod = new DTensor<real_t>(m_primSize);
-        m_d_primPrev = new DTensor<real_t>(m_primSize);
-        m_d_dual = new DTensor<real_t>(m_dualSize);
-        m_d_dualMod = new DTensor<real_t>(m_dualSize);
-        m_d_dualPrev = new DTensor<real_t>(m_dualSize);
-        m_d_cacheError = new DTensor<real_t>(m_maxIters, 1, 1, true);
-
-        /** Transfer array data to device */
-//        m_d_tol.upload(vecTol);
-
-        offline_projection_setup();
+        /* Sizes */
+        m_sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
+        m_sizeU = m_tree.numNonleafNodes() * m_data.numInputs();  ///< Inputs of all nonleaf nodes
+        m_sizeY = m_tree.numNonleafNodes() * m_tree.numEvents();  ///< Y for all nonleaf nodes
+        m_sizeT = m_tree.numNodes();  ///< T for all child nodes
+        m_sizeS = m_tree.numNodes();  ///< S for all child nodes
+        m_primSize = m_sizeX + m_sizeU + m_sizeY + m_sizeT + m_sizeS;
+        /* Allocate memory on device */
+        m_d_prim = std::make_unique<DTensor<real_t>>(m_primSize, true);
+        m_d_primPrev = std::make_unique<DTensor<real_t>>(m_primSize, true);
+        m_d_dual = std::make_unique<DTensor<real_t>>(m_dualSize, true);
+        m_d_dualPrev = std::make_unique<DTensor<real_t>>(m_dualSize, true);
+        m_d_cacheError = std::make_unique<DTensor<real_t>>(m_maxIters, true);
+        m_d_q = std::make_unique<DTensor<real_t>>(m_data.numStates(), 1, m_tree.numNodes(), true);
+        m_d_d = std::make_unique<DTensor<real_t>>(m_data.numInputs(), 1, m_tree.numNonleafNodes(), true);
+        /* Slice primal */
+        breakPrimal();
     }
 
-    /**
-     * Destructor
-     */
-    ~Cache() {
-        DESTROY_PTR(m_d_prim)
-        DESTROY_PTR(m_d_primMod)
-        DESTROY_PTR(m_d_primPrev)
-        DESTROY_PTR(m_d_dual)
-        DESTROY_PTR(m_d_dualMod)
-        DESTROY_PTR(m_d_dualPrev)
-        DESTROY_PTR(m_d_cacheError)
-        DESTROY_PTR(m_d_P)
-        DESTROY_PTR(m_d_q)
-        DESTROY_PTR(m_d_K)
-        DESTROY_PTR(m_d_d)
-        DESTROY_PTR(m_d_choleskyLo)
-        DESTROY_PTR(m_d_dynamicsSum)
-    }
+    ~Cache() {}
+
+    size_t solutionSize() { return m_primSize; }
 
     /**
-     * Getters
+     * Public methods
      */
-    real_t tol() { return m_tol; }
-
-    size_t maxIters() { return m_maxIters; }
-
-    /**
-     * Setters
-     */
-    void initialiseState(std::vector<real_t> initState);
-
-    /**
-     * Methods
-     */
-
-    /**
-     * Algorithms
-     */
-    void vanillaCp();
+    void cpIter();
+    void vanillaCp(std::vector<real_t> initState, std::vector<real_t> *previousSolution=nullptr);
 
     /**
      * Debugging
@@ -130,156 +95,96 @@ public:
     void print();
 };
 
+void Cache::breakPrimal() {
+    size_t rowAxis = 0;
+    size_t start = 0;
+    DTensor<real_t> sliceX(*m_d_prim, rowAxis, start, m_sizeX - 1);
+    m_d_x = std::make_unique<DTensor<real_t>>(m_data.numStates(), 1, m_tree.numNodes());
+    sliceX.deviceCopyTo(*m_d_x);
+    start += m_sizeX;
+    DTensor<real_t> sliceU(*m_d_prim, rowAxis, start, start + m_sizeU - 1);
+    m_d_u = std::make_unique<DTensor<real_t>>(m_data.numInputs(), 1, m_tree.numNonleafNodes());
+    sliceU.deviceCopyTo(*m_d_u);
+    start += m_sizeU;
+    DTensor<real_t> sliceY(*m_d_prim, rowAxis, start, start + m_sizeY - 1);
+    m_d_y = std::make_unique<DTensor<real_t>>(m_tree.numEvents(), 1, m_tree.numNonleafNodes());
+    sliceY.deviceCopyTo(*m_d_y);
+    start += m_sizeY;
+    DTensor<real_t> sliceT(*m_d_prim, rowAxis, start, start + m_sizeT - 1);
+    m_d_t = std::make_unique<DTensor<real_t>>(1, 1, m_tree.numNodes());
+    sliceT.deviceCopyTo(*m_d_t);
+    start += m_sizeT;
+    DTensor<real_t> sliceS(*m_d_prim, rowAxis, start, start + m_sizeS - 1);
+    m_d_s = std::make_unique<DTensor<real_t>>(1, 1, m_tree.numNodes());
+    sliceS.deviceCopyTo(*m_d_s);
+}
 
-void Cache::initialiseState(std::vector<real_t> initState) {
-    if (initState.size() != m_numStates) {
-        std::cerr << "Error initialising state: problem setup for " << m_numStates
+void Cache::rebuildPrimal() {
+    size_t rowAxis = 0;
+    size_t start = 0;
+    DTensor<real_t> sliceX(*m_d_prim, rowAxis, start, m_sizeX - 1);
+    m_d_x->deviceCopyTo(sliceX);
+    start += m_sizeX;
+    DTensor<real_t> sliceU(*m_d_prim, rowAxis, start, start + m_sizeU - 1);
+    m_d_u->deviceCopyTo(sliceU);
+    start += m_sizeU;
+    DTensor<real_t> sliceY(*m_d_prim, rowAxis, start, start + m_sizeY - 1);
+    m_d_y->deviceCopyTo(sliceY);
+    start += m_sizeY;
+    DTensor<real_t> sliceT(*m_d_prim, rowAxis, start, start + m_sizeT - 1);
+    m_d_t->deviceCopyTo(sliceT);
+    start += m_sizeT;
+    DTensor<real_t> sliceS(*m_d_prim, rowAxis, start, start + m_sizeS - 1);
+    m_d_s->deviceCopyTo(sliceS);
+}
+
+void Cache::projectOnDynamics() {
+    *m_d_x *= -1.;
+    m_d_x->deviceCopyTo(*m_d_q);
+    for (size_t stagePlusOne=m_tree.numStages()-1; stagePlusOne>0; stagePlusOne--) {
+        size_t stage = stagePlusOne - 1;
+        size_t chNodeFr = (*m_tree.nodeFromHost())[stagePlusOne];
+        size_t chNodeTo = (*m_tree.nodeToHost())[stagePlusOne];
+        DTensor<real_t> B(m_data.inputDynamics(), m_matAxis, chNodeFr, chNodeTo);
+        DTensor<real_t> Btr = B.tr();
+        DTensor<real_t> q(*m_d_q, m_matAxis, chNodeFr, chNodeTo);
+        DTensor<real_t> Bq = Btr * *m_d_q;
+        size_t nodeFr = (*m_tree.nodeFromHost())[stage];
+        size_t nodeTo = (*m_tree.nodeToHost())[stage];
+        for (size_t node=nodeFr; node<=nodeTo; node++) {
+            DTensor<real_t> dAtParent(*m_d_d, m_matAxis, node, node);
+            for (size_t child=(*m_tree.childFromHost())[node]; child<=(*m_tree.childToHost())[node]; child++) {
+                DTensor<real_t> BqAtChild(Bq, m_matAxis, child, child);
+                dAtParent += BqAtChild;
+            }
+        }
+        DTensor<real_t> dAtStage(*m_d_d, m_matAxis, nodeFr, nodeTo);
+        DTensor<real_t> uAtStage(*m_d_u, m_matAxis, nodeFr, nodeTo);
+        dAtStage *= -1.;
+        dAtStage += uAtStage;
+        m_data.choleskyBatch()[stage]->solve(dAtStage);
+        std::cout << "d at stage " << stage << "\n" << dAtStage;
+    }
+}
+
+void Cache::projectOnKernel() {
+
+}
+
+void Cache::vanillaCp(std::vector<real_t> initState, std::vector<real_t> *previousSolution) {
+    /* Set initial state */
+    if (initState.size() != m_data.numStates()) {
+        std::cerr << "Error initialising state: problem setup for " << m_data.numStates()
                   << " but given " << initState.size() << " states" << "\n";
         throw std::invalid_argument("Incorrect dimension of initial state");
     }
-    DTensor<real_t> slicePrim(*m_d_prim, 0, 0, m_numStates - 1);
+    DTensor<real_t> slicePrim(*m_d_prim, 0, 0, m_data.numStates() - 1);
     slicePrim.upload(initState);
-}
-
-
-void Cache::offline_projection_setup() {
-    /**
-     * Offline: projection on dynamics
-     */
-
-    /** create identity matrices */
-    DTensor<real_t> d_idInput(m_numInputs * m_numInputs);
-    d_setMatToId<<<m_numInputs, THREADS_PER_BLOCK>>>(d_idInput.raw(), m_numInputs);
-
-    DTensor<real_t> d_idState(m_numStates * m_numStates);
-    d_setMatToId<<<m_numStates, THREADS_PER_BLOCK>>>(d_idState.raw(), m_numStates);
-
-    /** setup Cholesky workspace */
-    DTensor<real_t> d_workspace;
-    DTensor<int> d_info(1);
-//    gpuCholeskySetup(m_numInputs, d_workspace);
-
-    /** allocate device memory for dynamics projection data*/
-    m_d_P = new DTensor<real_t>(m_numStates * m_numStates * m_tree.numNodes());
-    m_d_q = new DTensor<real_t>(m_numStates * m_tree.numNodes());
-    m_d_K = new DTensor<real_t>(m_numInputs * m_numStates * m_tree.numNonleafNodes());
-    m_d_d = new DTensor<real_t>(m_numInputs * m_tree.numNonleafNodes());
-    m_d_choleskyLo = new DTensor<real_t>(m_numInputs * m_numInputs * m_tree.numNonleafNodes());
-    m_d_dynamicsSum = new DTensor<real_t>(m_numStates * m_numStates * m_tree.numNodes());
-
-    /** set all leaf P matrices to identity */
-    for (size_t i = m_tree.numNonleafNodes(); i < m_tree.numNodes(); i++) {
-        d_setMatToId<<<m_numStates, THREADS_PER_BLOCK>>>(m_d_P->raw(), m_numStates, i);
-    }
-
-//    for (size_t stage = m_tree.numStages() - 2; true; stage--) {  ///< we don't need `stage >= 0` because size_t
-//        size_t nodeFrom = m_tree.nodeFrom().fetchElementFromDevice(stage);
-//        size_t nodeTo = m_tree.nodeTo().fetchElementFromDevice(stage);
-//
-//        for (size_t node = nodeFrom; node <= nodeTo; node++) {
-//            size_t chFrom = m_tree.childFrom().fetchElementFromDevice(node);
-//            size_t chTo = m_tree.childTo().fetchElementFromDevice(node);
-//
-//            /** compute each K and Cholesky decomposition of R */
-//            DTensor<real_t> d_forR(m_context, std::vector(m_numInputs * m_numInputs, 0.0));
-//            DTensor<real_t> d_forK(m_context, std::vector(m_numInputs * m_numStates, 0.0));
-//
-//            for (size_t child = chFrom; child <= chTo; child++) {
-//                DTensor<real_t> d_matA(m_data.stateDynamics(),
-//                                            getIdxMat(child, 0, 0, m_numStates),
-//                                            getIdxMat(child, m_numStates, m_numStates, m_numStates));
-//                DTensor<real_t> d_matB(m_data.inputDynamics(),
-//                                            getIdxMat(child, 0, 0, m_numStates, m_numInputs),
-//                                            getIdxMat(child, m_numStates, m_numInputs, m_numStates, m_numInputs));
-//                DTensor<real_t> d_matP(m_d_P,
-//                                            getIdxMat(child, 0, 0, m_numStates),
-//                                            getIdxMat(child, m_numStates, m_numStates, m_numStates));
-//
-//                DTensor<real_t> d_matBP(m_context, m_numInputs * m_numStates);
-//                gpuMatMatMul(m_context, m_numInputs, m_numStates, m_numStates, d_matB, d_matP, d_matBP, true);
-//
-//                DTensor<real_t> d_matBPB(m_context, m_numInputs * m_numInputs);
-//                gpuMatMatMul(m_context, m_numInputs, m_numStates, m_numInputs, d_matBP, d_matB, d_matBPB);
-//
-//                DTensor<real_t> d_matBPA(m_context, m_numInputs * m_numStates);
-//                gpuMatMatMul(m_context, m_numInputs, m_numStates, m_numStates, d_matBP, d_matA, d_matBPA);
-//                gpuMatAdd(m_context, m_numInputs, m_numInputs, d_matBPB, d_forR, d_forR);
-//                gpuMatAdd(m_context, m_numInputs, m_numStates, d_matBPA, d_forK, d_forK);
-//            }
-//
-//            gpuMatAdd(m_context, m_numInputs, m_numInputs, d_idInput, d_forR, d_forR);
-//            gpuCholeskyFactor(m_context, m_numInputs, d_workspace, d_forR, true);
-//
-//            DTensor<real_t> d_matL(m_d_choleskyLo,
-//                                        getIdxMat(node, 0, 0, m_numInputs),
-//                                        getIdxMat(node, m_numInputs, m_numInputs, m_numInputs));
-//            d_forR.deviceCopyTo(d_matL);
-//            d_negate<<<m_numInputs * m_numStates, THREADS_PER_BLOCK>>>(d_forK.raw(), m_numInputs * m_numStates);
-//
-//            DTensor<real_t> d_matKt(m_context, m_numInputs * m_numStates);
-//            gpuCholeskySolve(m_context, m_numInputs, m_numStates, d_matL, d_matKt, d_forK, true);
-//
-//            DTensor<real_t> d_matK(m_d_K,
-//                                        getIdxMat(node, 0, 0, m_numInputs, m_numStates),
-//                                        getIdxMat(node, m_numInputs, m_numStates, m_numInputs, m_numStates));
-////            gpuMatT(m_context, m_numInputs, m_numStates, d_matKt, d_matK);
-//
-//            /** compute each P */
-//            DTensor<real_t> d_forP(m_context, std::vector(m_numStates * m_numStates, 0.0));
-//            for (size_t child = chFrom; child <= chTo; child++) {
-//                DTensor<real_t> d_matA(m_data.stateDynamics(),
-//                                            getIdxMat(child, 0, 0, m_numStates),
-//                                            getIdxMat(child, m_numStates, m_numStates, m_numStates));
-//                DTensor<real_t> d_matB(m_data.inputDynamics(),
-//                                            getIdxMat(child, 0, 0, m_numStates, m_numInputs),
-//                                            getIdxMat(child, m_numStates, m_numInputs, m_numStates, m_numInputs));
-//                DTensor<real_t> d_matP(m_d_P,
-//                                            getIdxMat(child, 0, 0, m_numStates),
-//                                            getIdxMat(child, m_numStates, m_numStates, m_numStates));
-//                DTensor<real_t> d_matBK(m_context, m_numStates * m_numStates);
-//                gpuMatMatMul(m_context, m_numStates, m_numInputs, m_numStates, d_matB, d_matK, d_matBK);
-//
-//                DTensor<real_t> d_matD(m_d_dynamicsSum,
-//                                            getIdxMat(child, 0, 0, m_numStates, m_numStates),
-//                                            getIdxMat(child, m_numStates, m_numStates, m_numStates, m_numStates));
-//                gpuMatAdd(m_context, m_numStates, m_numStates, d_matA, d_matBK, d_matD);
-//
-//                DTensor<real_t> d_matDPD(m_context, m_numStates * m_numStates);
-//                gpuMatMatMul(m_context, m_numStates, m_numStates, m_numStates, d_matD, d_matP, d_matDPD, true);
-//                gpuMatMatMul(m_context, m_numStates, m_numStates, m_numStates, d_matDPD, d_matD, d_matDPD);
-//                gpuMatAdd(m_context, m_numStates, m_numStates, d_matDPD, d_forP, d_forP);
-//            }
-//
-//            DTensor<real_t> d_matP(m_d_P,
-//                                        getIdxMat(node, 0, 0, m_numStates),
-//                                        getIdxMat(node, m_numStates, m_numStates, m_numStates));
-//            DTensor<real_t> d_matKK(m_context, m_numStates * m_numStates);
-//            gpuMatMatMul(m_context, m_numStates, m_numInputs, m_numStates, d_matK, d_matK, d_matKK, true);
-//            gpuMatAdd(m_context, m_numStates, m_numStates, d_matKK, d_forP, d_forP);
-//            gpuMatAdd(m_context, m_numStates, m_numStates, d_idState, d_forP, d_matP);
-//        }
-//        if (stage == 0) break;
-//    }
-//
-//    /** Offline: projection on kernel */
-//    m_d_kernelConstraintMat(_ * m_tree.numNonleafNodes());
-//    m_d_nullSpaceMat(_ * m_tree.numNonleafNodes());
-//    for i in range(self.__num_nonleaf_nodes):
-//        eye = np.eye(len(self.__raocp.tree.children_of(i)))
-//        zeros = np.zeros((self.__raocp.risk_at_node(i).matrix_f.shape[1], eye.shape[0]))
-//        row1 = np.hstack((self.__raocp.risk_at_node(i).matrix_e.T, -eye, -eye))
-//        row2 = np.hstack((self.__raocp.risk_at_node(i).matrix_f.T, zeros, zeros))
-//        self.__kernel_constraint_matrix[i] = np.vstack((row1, row2))
-//        self.__null_space_matrix[i] = scipy.linalg.null_space(self.__kernel_constraint_matrix[i])
-}
-
-
-void Cache::vanillaCp() {
+    /* Load previous solution if given */
+    if (previousSolution) m_d_prim->upload(*previousSolution);
+    /* Run CP algo */
     for (size_t i = 0; i < m_maxIters; i++) {
-        /** update z_bar */
-        /** update n_bar */
-        /** update z */
-        /** update n */
+        cpIter();
         /** compute error */
         /** check error */
         if ((*m_d_cacheError)(i) <= m_tol) {
@@ -289,12 +194,24 @@ void Cache::vanillaCp() {
     }
 }
 
+/**
+ * Compute one (1) iteration of vanilla CP algorithm, nothing more.
+ */
+void Cache::cpIter() {
+    projectOnDynamics();
+    projectOnKernel();
+    /** update z_bar */
+    /** update n_bar */
+    /** update z */
+    /** update n */
+    rebuildPrimal();
+}
 
 void Cache::print() {
-    std::cout << "Tolerance:      " << m_tol << "\n";
+    std::cout << "Tolerance: " << m_tol << "\n";
     std::cout << "Num iterations: " << m_countIterations << " of " << m_maxIters << "\n";
-    printIf("Primal (from device): ", m_d_prim);
-    printIf("P (from device): ", m_d_P);
+    std::cout << "Primal (from device): " << m_d_prim->tr();
 }
+
 
 #endif

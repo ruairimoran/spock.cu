@@ -13,15 +13,13 @@
 #define real_t double
 #define REAL_PRECISION 1e-12
 
-#define DESTROY_PTR(ptr) if (ptr) delete ptr;
-
 /** Debugging */
 template<typename T>
-static void printIf(std::string description, DTensor<T> *data) {
+static void printIfTensor(std::string description, std::unique_ptr<DTensor<T>> &data) {
     if (data) {
         std::cout << description << *data;
     } else {
-        std::cout << description << "NOTHING TO PRINT.";
+        std::cout << description << "NOTHING TO PRINT.\n";
     }
 }
 

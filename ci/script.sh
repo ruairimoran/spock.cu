@@ -1,38 +1,37 @@
 #!/bin/bash
 set -euxo pipefail
 
-test_all() {
-#    # Run Python tests
-#    # ------------------------------------
-#
-#    # -- create virtual environment
-#    export PYTHONPATH=.
-#
-#    # -- install virtualenv
-#    pip install virtualenv
-#
-#    # -- create virtualenv
-#    virtualenv -p python3.10 venv
-#
-#    # -- activate venv
-#    source venv/bin/activate
-#
-#    # -- upgrade pip within venv
-#    pip install --upgrade pip
-#
-#    # -- install dependencies
-#    pip install .
-#
-#    # -- run the python tests
-#    python -W ignore tests/test_tree_factories.py -v
-#
-#
-#    # Run C++ gtests using cmake
-#    # ------------------------------------
-#
-#    # -- generate simple tree data for testing
-#    python tests/test_tree_main.py
+# ------------------------------------
+# Run Python tests
+# ------------------------------------
+test_python() {
+    # -- create virtual environment
+    export PYTHONPATH=.
 
+    # -- install virtualenv
+    pip install virtualenv
+
+    # -- create virtualenv
+    virtualenv -p python3.10 venv@3.10
+
+    # -- activate venv
+    source venv@3.10/bin/activate
+
+    # -- upgrade pip within venv
+    pip install --upgrade pip
+
+    # -- install dependencies
+    pip install .
+
+    # -- run the python tests
+    python -W ignore tests/testTreeFactory.py -v
+    python -W ignore tests/testProblemFactory.py -v
+}
+
+# ------------------------------------
+# Run C++ tests
+# ------------------------------------
+test_cpp() {
     # -- create build files
     cmake -S . -B ./build -Wno-dev
 
@@ -47,9 +46,9 @@ test_all() {
     /usr/local/cuda-12.3/bin/compute-sanitizer --tool memcheck --leak-check=full ./spock_tests
 }
 
-
 main() {
-    test_all
+    test_python
+    test_cpp
 }
 
 main

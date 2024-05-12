@@ -1,7 +1,9 @@
 # Custom
-tree_data.json
+treeData.json
+problemData.json
+cacheData.json
 .vscode
-venv
+venv*
 __pycache__
 build
 *.egg-info
@@ -13,6 +15,7 @@ CMakeFiles
 CMakeCache.txt
 Makefile
 cmake_install.cmake
+*.eps
 
 # Prerequisites
 *.d

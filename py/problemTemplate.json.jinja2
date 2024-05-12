@@ -1,0 +1,104 @@
+{
+\# TEMPLATE FILE FOR PROBLEM DATA #\
+\# NUMBER OF STATES #\
+"numStates": \~num_states~\,
+\# NUMBER OF INPUTS #\
+"numInputs": \~num_inputs~\,
+\# STATE DYNAMICS #\
+"stateDynamics": {
+\% for i in range(state_dyn|length) %\
+"\~i~\":\% if state_dyn[i] is none %\[]\% else %\\~state_dyn[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# INPUT DYNAMICS #\
+"inputDynamics": {
+\% for i in range(input_dyn|length) %\
+"\~i~\":\% if input_dyn[i] is none %\[]\% else %\\~input_dyn[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# NONLEAF STATE COSTS #\
+"nonleafStateCosts": {
+\% for i in range(state_cost|length) %\
+"\~i~\":\% if state_cost[i] is none %\[]\% else %\\~state_cost[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# NONLEAF INPUT COSTS #\
+"nonleafInputCosts": {
+\% for i in range(input_cost|length) %\
+"\~i~\":\% if input_cost[i] is none %\[]\% else %\\~input_cost[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# LEAF STATE COSTS #\
+"leafStateCosts": {
+\% for i in range(terminal_cost|length) %\
+"\~i~\":\% if terminal_cost[i] is none %\[]\% else %\\~terminal_cost[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# STATE CONSTRAINTS #\
+"stateConstraints": {
+\% for i in range(state_constraint|length) %\
+"\~i~\": {"type": \% if state_constraint[i].is_no %\
+"no"\% elif state_constraint[i].is_rectangle %\
+"rectangle", "lb": \~state_constraint[i].lower_bound.flatten().tolist()~\, "ub": \~state_constraint[i].upper_bound.flatten().tolist()~\\% endif %\}\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# INPUT CONSTRAINTS #\
+"inputConstraints": {
+\% for i in range(input_constraint|length) %\
+"\~i~\": {"type": \% if input_constraint[i].is_no %\
+"no"\% elif input_constraint[i].is_rectangle %\
+"rectangle", "lb": \~input_constraint[i].lower_bound.flatten().tolist()~\, "ub": \~input_constraint[i].upper_bound.flatten().tolist()~\\% endif %\}\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# RISKS #\
+"risks": {
+\% for i in range(risk|length) %\
+"\~i~\": {"type": \% if risk[i].is_avar %\
+"avar", "alpha": \~risk[i].alpha~\, "e": \~risk[i].e.flatten().tolist()~\, "f": \~risk[i].f.flatten().tolist()~\, "k": \~risk[i].k~\, "b": \~risk[i].b.flatten().tolist()~\\% elif risk[i].is_evar %\
+"evar"\% endif %\}\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# TEMPLATE FILE FOR CACHE DATA #\
+\# P #\
+"P": {
+\% for i in range(P|length) %\
+"\~i~\":\% if P[i] is none %\[]\% else %\\~P[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# K #\
+"K": {
+\% for i in range(K|length) %\
+"\~i~\":\% if K[i] is none %\[]\% else %\\~K[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# LOWER CHOLESKY #\
+"lowerCholesky": {
+\% for i in range(low_chol|length) %\
+"\~i~\":\% if low_chol[i] is none %\[]\% else %\\~low_chol[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# SUM OF DYNAMICS #\
+"A+BK": {
+\% for i in range(dyn|length) %\
+"\~i~\":\% if dyn[i] is none %\[]\% else %\\~dyn[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# NULLSPACE ROWS #\
+"nullspaceDimension": \~null_dim~\,
+\# NULLSPACE MATRIX #\
+"nullspace": {
+\% for i in range(null|length) %\
+"\~i~\":\% if null[i] is none %\[]\% else %\\~null[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\}
+}

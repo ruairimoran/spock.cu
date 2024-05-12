@@ -15,14 +15,14 @@ class ConvexCone {
 
 protected:
     size_t m_dimension = 0;
-    size_t m_axis = 0;  // 0=rows, 1=cols, 2=mats
+    size_t m_axis = 0;  // Do not change! 0=rows, 1=cols, 2=mats
 
     explicit ConvexCone(size_t dim) : m_dimension(dim) {}
 
-    bool dimension_check(DTensor<real_t> &d_vec) {
+    bool dimensionCheck(DTensor<real_t> &d_vec) {
         if (d_vec.numRows() != m_dimension || d_vec.numCols() != 1 || d_vec.numMats() != 1) {
-            std::cerr << "DTensor is [" << d_vec.numRows() << " x " << d_vec.numCols() << " x " << d_vec.numMats() << "]"
-                      << " but cone has dimensions [" << m_dimension  << " x " << 1 << " x " << 1 << "]\n";
+            std::cerr << "DTensor is [" << d_vec.numRows() << " x " << d_vec.numCols() << " x " << d_vec.numMats()
+                      << "], but cone has dimensions [" << m_dimension << " x " << 1 << " x " << 1 << "]\n";
             throw std::invalid_argument("DTensor and cone dimensions mismatch");
         }
         return true;
@@ -31,11 +31,13 @@ protected:
 public:
     virtual ~ConvexCone() {}
 
+    size_t dimension() { return m_dimension; }
+
+    virtual std::string name() = 0;
+
     virtual void project(DTensor<real_t> &d_vec) = 0;
 
     virtual void projectOnDual(DTensor<real_t> &d_vec) = 0;
-
-    size_t dimension() { return m_dimension; }
 
 };
 
@@ -57,6 +59,8 @@ public:
         project(d_vec);
     }
 
+    std::string name() { return "Null cone"; }
+
 };
 
 
@@ -71,14 +75,16 @@ public:
     explicit UniverseCone(size_t dim) : ConvexCone(dim) {}
 
     void project(DTensor<real_t> &d_vec) {
-        dimension_check(d_vec);
+        dimensionCheck(d_vec);
         return;  // Do nothing!
     }
 
     void projectOnDual(DTensor<real_t> &d_vec) {
-        dimension_check(d_vec);
+        dimensionCheck(d_vec);
         d_setToZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), m_dimension);
     }
+
+    std::string name() { return "Universe cone"; }
 
 };
 
@@ -94,14 +100,16 @@ public:
     explicit ZeroCone(size_t dim) : ConvexCone(dim) {}
 
     void project(DTensor<real_t> &d_vec) {
-        dimension_check(d_vec);
+        dimensionCheck(d_vec);
         d_setToZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), m_dimension);
     }
 
     void projectOnDual(DTensor<real_t> &d_vec) {
-        dimension_check(d_vec);
+        dimensionCheck(d_vec);
         return;  // Do nothing!
     }
+
+    std::string name() { return "Zero cone"; }
 
 };
 
@@ -117,13 +125,15 @@ public:
     explicit NonnegativeOrthantCone(size_t dim) : ConvexCone(dim) {}
 
     void project(DTensor<real_t> &d_vec) {
-        dimension_check(d_vec);
+        dimensionCheck(d_vec);
         d_maxWithZero<<<DIM2BLOCKS(m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), m_dimension);
     }
 
     void projectOnDual(DTensor<real_t> &d_vec) {
         project(d_vec);
     }
+
+    std::string name() { return "Nonnegative Orthant cone"; }
 
 };
 
@@ -141,7 +151,7 @@ public:
     explicit SecondOrderCone(size_t dim) : ConvexCone(dim) {}
 
     void project(DTensor<real_t> &d_vec) {
-        dimension_check(d_vec);
+        dimensionCheck(d_vec);
         /** Determine the 2-norm of the first (n - 1) elements of d_vec */
         DTensor<real_t> vecFirstPart(d_vec, m_axis, 0, m_dimension - 2);
         real_t nrm = vecFirstPart.normF();
@@ -159,6 +169,8 @@ public:
     void projectOnDual(DTensor<real_t> &d_vec) {
         project(d_vec);
     }
+
+    std::string name() { return "Second Order cone"; }
 
 };
 
@@ -182,7 +194,7 @@ public:
     }
 
     void project(DTensor<real_t> &d_vec) {
-        dimension_check(d_vec);
+        dimensionCheck(d_vec);
         size_t start = 0;
         for (ConvexCone *set: m_cones) {
             size_t coneDim = set->dimension();
@@ -194,7 +206,7 @@ public:
     }
 
     void projectOnDual(DTensor<real_t> &d_vec) {
-        dimension_check(d_vec);
+        dimensionCheck(d_vec);
         size_t start = 0;
         for (ConvexCone *set: m_cones) {
             size_t coneDim = set->dimension();
@@ -205,6 +217,15 @@ public:
         }
     }
 
+    std::string name() { return "Cartesian cone"; }
+
+    void print() {
+        std::cout << "Cartesian cone (" << m_dimension << ") of: ";
+        for (ConvexCone *cone: m_cones) {
+            std::cout << "+ " << cone->name() << " (" << cone->dimension() << ") ";
+        }
+        std::cout << "\n";
+    }
 };
 
 #endif

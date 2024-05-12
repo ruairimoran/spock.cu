@@ -1,11 +1,21 @@
 # Custom
+treeData.json
+problemData.json
+cacheData.json
 .vscode
-venv
+venv*
 __pycache__
 build
 *.egg-info
 .DS_Store
 .idea
+cmake-build-debug
+cmake-build-debug-remote
+CMakeFiles
+CMakeCache.txt
+Makefile
+cmake_install.cmake
+*.eps
 
 # Prerequisites
 *.d

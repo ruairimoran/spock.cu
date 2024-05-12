@@ -1,6 +1,7 @@
 {
 "isMarkovian": true,
 "isIid": false,
+"numEvents": 2,
 "numNonleafNodes": 3,
 "numNodes": 7,
 "numStages": 3,

@@ -17,7 +17,7 @@ protected:
     RisksTest() {
         std::ifstream tree_data("../../tests/testTreeData.json");
         m_tree = std::make_unique<ScenarioTree>(tree_data);
-        m_n = m_tree->numChildren()(m_node) * 2 + 1;
+        m_n = m_tree->numChildren()[m_node] * 2 + 1;
         m_d_data = std::make_unique<DTensor<real_t>>(m_n);
         m_hostData.resize(m_n);
         m_hostTest.resize(m_n);
@@ -35,10 +35,10 @@ TEST_F(RisksTest, AvarConeProject) {
     size_t node = 2;
     AVaR myRisk(0.98,
                 node,
-                m_tree->numChildren()(node),
-                m_tree->childFrom(),
-                m_tree->childTo(),
-                m_tree->conditionalProbabilities());
+                m_tree->numChildren()[node],
+                m_tree->d_childFrom(),
+                m_tree->d_childTo(),
+                m_tree->d_conditionalProbabilities());
     myRisk.cone().project(*m_d_data);
     m_d_data->download(m_hostTest);
     EXPECT_TRUE((m_hostTest != m_hostData));

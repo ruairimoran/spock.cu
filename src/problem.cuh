@@ -72,10 +72,10 @@ private:
         if (value["type"].GetString() == std::string("avar")) {
             m_risk[nodeIdx] = std::make_unique<AVaR<real_t>>(value["alpha"].GetDouble(),
                                                              nodeIdx,
-                                                             m_tree.numChildren()(nodeIdx),
-                                                             m_tree.childFrom(),
-                                                             m_tree.childTo(),
-                                                             m_tree.conditionalProbabilities());
+                                                             m_tree.numChildren()[nodeIdx],
+                                                             m_tree.d_childFrom(),
+                                                             m_tree.d_childTo(),
+                                                             m_tree.d_conditionalProbabilities());
         } else {
             std::cerr << "Risk type " << value["type"].GetString()
                       << " is not supported. Supported types include: avar" << "\n";
@@ -151,8 +151,8 @@ public:
             parseMatrix(i, doc["leafStateCosts"][nodeString], m_d_stateWeightLeaf);
         }
         for (size_t stage=0; stage<m_tree.numStages()-1; stage++) {
-            size_t nodeFr = (*m_tree.nodeFromHost())[stage];
-            size_t nodeTo = (*m_tree.nodeToHost())[stage];
+            size_t nodeFr = m_tree.nodeFrom()[stage];
+            size_t nodeTo = m_tree.nodeTo()[stage];
             m_choleskyStage[stage] = std::make_unique<DTensor<real_t>>(*m_d_lowerCholesky, 2, nodeFr, nodeTo);
             m_choleskyBatch[stage] = std::make_unique<CholeskyBatchFactoriser<real_t>>(*m_choleskyStage[stage], true);
         }

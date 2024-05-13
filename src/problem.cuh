@@ -38,7 +38,7 @@ private:
     std::vector<std::unique_ptr<DTensor<real_t>>>m_choleskyStage;
     /* Kernel projection */
     size_t m_nullDim = 0;  ///< Total number system states
-    std::unique_ptr<DTensor<real_t>> m_d_nullspace = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_nullspaceProj = nullptr;
 
     static void parseMatrix(size_t nodeIdx, const rapidjson::Value &value, std::unique_ptr<DTensor<real_t>> &matrix) {
         size_t numElements = value.Capacity();
@@ -121,7 +121,7 @@ public:
         m_d_K = std::make_unique<DTensor<real_t>>(m_numInputs, m_numStates, m_tree.numNonleafNodes(), true);
         m_d_dynamicsSum = std::make_unique<DTensor<real_t>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_P = std::make_unique<DTensor<real_t>>(m_numStates, m_numStates, m_tree.numNodes(), true);
-        m_d_nullspace = std::make_unique<DTensor<real_t>>(m_nullDim, m_nullDim, m_tree.numNonleafNodes(), true);
+        m_d_nullspaceProj = std::make_unique<DTensor<real_t>>(m_nullDim, m_nullDim, m_tree.numNonleafNodes(), true);
 
         /** Upload to device */
         const char *nodeString = nullptr;
@@ -144,7 +144,7 @@ public:
             parseRisk(i, doc["risks"][nodeString]);
             parseMatrix(i, doc["lowerCholesky"][nodeString], m_d_lowerCholesky);
             parseMatrix(i, doc["K"][nodeString], m_d_K);
-            parseMatrix(i, doc["nullspace"][nodeString], m_d_nullspace);
+            parseMatrix(i, doc["NNtr"][nodeString], m_d_nullspaceProj);
         }
         for (size_t i = m_tree.numNonleafNodes(); i < m_tree.numNodes(); i++) {
             nodeString = std::to_string(i).c_str();
@@ -186,7 +186,7 @@ public:
 
     DTensor<real_t> &P() { return *m_d_P; }
 
-    DTensor<real_t> &nullspace() { return *m_d_nullspace; }
+    DTensor<real_t> &nullspaceProj() { return *m_d_nullspaceProj; }
 
     std::vector<std::unique_ptr<CholeskyBatchFactoriser<real_t>>> &choleskyBatch() { return m_choleskyBatch; }
 
@@ -222,7 +222,7 @@ public:
         printIfTensor("K (from device): ", m_d_K);
         printIfTensor("A + BK (from device): ", m_d_dynamicsSum);
         printIfTensor("P (from device): ", m_d_P);
-        printIfTensor("Nullspace (from device): ", m_d_nullspace);
+        printIfTensor("Nullspace projection matrix (from device): ", m_d_nullspaceProj);
     }
 };
 

@@ -92,10 +92,10 @@
 \% if not loop.last %\,\% endif %\
 
 \% endfor %\},
-\# NULLSPACE ROWS #\
+\# NULLSPACE PROJECTION ROWS #\
 "nullspaceDimension": \~null_dim~\,
-\# NULLSPACE MATRIX #\
-"nullspace": {
+\# NULLSPACE PROJECTION MATRIX #\
+"NNtr": {
 \% for i in range(null|length) %\
 "\~i~\":\% if null[i] is none %\[]\% else %\\~null[i].flatten().tolist()~\\% endif %\
 \% if not loop.last %\,\% endif %\

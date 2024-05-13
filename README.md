@@ -1,3 +1,3 @@
-# raocp-parallel
+# SPOCK
 
 Risk-averse optimal control problem solver

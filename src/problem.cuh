@@ -34,8 +34,8 @@ private:
     std::unique_ptr<DTensor<real_t>> m_d_K = nullptr;
     std::unique_ptr<DTensor<real_t>> m_d_dynamicsSum = nullptr;
     std::unique_ptr<DTensor<real_t>> m_d_P = nullptr;
-    std::vector<std::unique_ptr<CholeskyBatchFactoriser<real_t>>>m_choleskyBatch;
-    std::vector<std::unique_ptr<DTensor<real_t>>>m_choleskyStage;
+    std::vector<std::unique_ptr<CholeskyBatchFactoriser<real_t>>> m_choleskyBatch;
+    std::vector<std::unique_ptr<DTensor<real_t>>> m_choleskyStage;
     /* Kernel projection */
     size_t m_nullDim = 0;  ///< Total number system states
     std::unique_ptr<DTensor<real_t>> m_d_nullspaceProj = nullptr;
@@ -70,12 +70,10 @@ private:
 
     void parseRisk(size_t nodeIdx, const rapidjson::Value &value) {
         if (value["type"].GetString() == std::string("avar")) {
-            m_risk[nodeIdx] = std::make_unique<AVaR<real_t>>(value["alpha"].GetDouble(),
-                                                             nodeIdx,
+            parseMatrix(nodeIdx, value["NNtr"], m_d_nullspaceProj);
+            m_risk[nodeIdx] = std::make_unique<AVaR<real_t>>(nodeIdx,
                                                              m_tree.numChildren()(nodeIdx),
-                                                             m_tree.childFrom(),
-                                                             m_tree.childTo(),
-                                                             m_tree.conditionalProbabilities());
+                                                             *m_d_nullspaceProj);
         } else {
             std::cerr << "Risk type " << value["type"].GetString()
                       << " is not supported. Supported types include: avar" << "\n";
@@ -141,16 +139,15 @@ public:
         for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
             nodeString = std::to_string(i).c_str();
             parseConstraint(i, doc["inputConstraints"][nodeString], m_inputConstraint);
-            parseRisk(i, doc["risks"][nodeString]);
             parseMatrix(i, doc["lowerCholesky"][nodeString], m_d_lowerCholesky);
             parseMatrix(i, doc["K"][nodeString], m_d_K);
-            parseMatrix(i, doc["NNtr"][nodeString], m_d_nullspaceProj);
+            parseRisk(i, doc["risks"][nodeString]);
         }
         for (size_t i = m_tree.numNonleafNodes(); i < m_tree.numNodes(); i++) {
             nodeString = std::to_string(i).c_str();
             parseMatrix(i, doc["leafStateCosts"][nodeString], m_d_stateWeightLeaf);
         }
-        for (size_t stage=0; stage<m_tree.numStages()-1; stage++) {
+        for (size_t stage = 0; stage < m_tree.numStages() - 1; stage++) {
             size_t nodeFr = (*m_tree.nodeFromHost())[stage];
             size_t nodeTo = (*m_tree.nodeToHost())[stage];
             m_choleskyStage[stage] = std::make_unique<DTensor<real_t>>(*m_d_lowerCholesky, 2, nodeFr, nodeTo);

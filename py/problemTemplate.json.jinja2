@@ -59,11 +59,12 @@
 "risks": {
 \% for i in range(risk|length) %\
 "\~i~\": {"type": \% if risk[i].is_avar %\
-"avar", "alpha": \~risk[i].alpha~\, "e": \~risk[i].e.flatten().tolist()~\, "f": \~risk[i].f.flatten().tolist()~\, "k": \~risk[i].k~\, "b": \~risk[i].b.flatten().tolist()~\\% elif risk[i].is_evar %\
+"avar", "alpha": \~risk[i].alpha~\, "NNtr": \~null[i].flatten().tolist()~\\% elif risk[i].is_evar %\
 "evar"\% endif %\}\% if not loop.last %\,\% endif %\
 
 \% endfor %\},
-\# TEMPLATE FILE FOR CACHE DATA #\
+\# NULLSPACE PROJECTION ROWS #\
+"nullspaceDimension": \~null_dim~\,
 \# P #\
 "P": {
 \% for i in range(P|length) %\
@@ -89,15 +90,6 @@
 "A+BK": {
 \% for i in range(dyn|length) %\
 "\~i~\":\% if dyn[i] is none %\[]\% else %\\~dyn[i].flatten().tolist()~\\% endif %\
-\% if not loop.last %\,\% endif %\
-
-\% endfor %\},
-\# NULLSPACE ROWS #\
-"nullspaceDimension": \~null_dim~\,
-\# NULLSPACE MATRIX #\
-"nullspace": {
-\% for i in range(null|length) %\
-"\~i~\":\% if null[i] is none %\[]\% else %\\~null[i].flatten().tolist()~\\% endif %\
 \% if not loop.last %\,\% endif %\
 
 \% endfor %\}

@@ -50,7 +50,7 @@ class Problem:
         self.__sum_of_dynamics = [np.zeros((0, 0))] * self.__tree.num_nodes  # A+BK
         # Kernel projection
         self.__kernel_constraint_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
-        self.__nullspace_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
+        self.__nullspace_projection_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
         self.__max_nullspace_dim = self.__tree.num_events * 4 + 1
 
     # GETTERS
@@ -107,7 +107,7 @@ class Problem:
                                  low_chol=self.__cholesky_lower,
                                  dyn=self.__sum_of_dynamics,
                                  null_dim=self.__max_nullspace_dim,
-                                 null=self.__nullspace_matrix)
+                                 null=self.__nullspace_projection_matrix)
         path = os.path.join(os.getcwd(), self.__tree.folder)
         os.makedirs(path, exist_ok=True)
         output_file = os.path.join(path, "problemData.json")
@@ -152,7 +152,9 @@ class Problem:
             row1 = np.hstack((self.__list_of_risks[i].e.T, -eye, -eye))
             row2 = np.hstack((self.__list_of_risks[i].f.T, zeros, zeros))
             self.__kernel_constraint_matrix[i] = np.vstack((row1, row2))
-            self.__nullspace_matrix[i] = self.__pad(sp.linalg.null_space(self.__kernel_constraint_matrix[i]))
+            n = sp.linalg.null_space(self.__kernel_constraint_matrix[i])
+            projection_matrix = n @ n.T
+            self.__nullspace_projection_matrix[i] = self.__pad(projection_matrix)
 
     def __pad(self, nullspace):
         row_pad = self.__max_nullspace_dim - nullspace.shape[0]

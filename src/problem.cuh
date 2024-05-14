@@ -34,11 +34,11 @@ private:
     std::unique_ptr<DTensor<real_t>> m_d_K = nullptr;
     std::unique_ptr<DTensor<real_t>> m_d_dynamicsSum = nullptr;
     std::unique_ptr<DTensor<real_t>> m_d_P = nullptr;
-    std::vector<std::unique_ptr<CholeskyBatchFactoriser<real_t>>>m_choleskyBatch;
-    std::vector<std::unique_ptr<DTensor<real_t>>>m_choleskyStage;
+    std::vector<std::unique_ptr<CholeskyBatchFactoriser<real_t>>> m_choleskyBatch;
+    std::vector<std::unique_ptr<DTensor<real_t>>> m_choleskyStage;
     /* Kernel projection */
     size_t m_nullDim = 0;  ///< Total number system states
-    std::unique_ptr<DTensor<real_t>> m_d_nullspace = nullptr;
+    std::unique_ptr<DTensor<real_t>> m_d_nullspaceProj = nullptr;
 
     static void parseMatrix(size_t nodeIdx, const rapidjson::Value &value, std::unique_ptr<DTensor<real_t>> &matrix) {
         size_t numElements = value.Capacity();
@@ -70,12 +70,10 @@ private:
 
     void parseRisk(size_t nodeIdx, const rapidjson::Value &value) {
         if (value["type"].GetString() == std::string("avar")) {
-            m_risk[nodeIdx] = std::make_unique<AVaR<real_t>>(value["alpha"].GetDouble(),
-                                                             nodeIdx,
+            parseMatrix(nodeIdx, value["NNtr"], m_d_nullspaceProj);
+            m_risk[nodeIdx] = std::make_unique<AVaR<real_t>>(nodeIdx,
                                                              m_tree.numChildren()[nodeIdx],
-                                                             m_tree.d_childFrom(),
-                                                             m_tree.d_childTo(),
-                                                             m_tree.d_conditionalProbabilities());
+                                                             *m_d_nullspaceProj);
         } else {
             std::cerr << "Risk type " << value["type"].GetString()
                       << " is not supported. Supported types include: avar" << "\n";
@@ -121,7 +119,7 @@ public:
         m_d_K = std::make_unique<DTensor<real_t>>(m_numInputs, m_numStates, m_tree.numNonleafNodes(), true);
         m_d_dynamicsSum = std::make_unique<DTensor<real_t>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_P = std::make_unique<DTensor<real_t>>(m_numStates, m_numStates, m_tree.numNodes(), true);
-        m_d_nullspace = std::make_unique<DTensor<real_t>>(m_nullDim, m_nullDim, m_tree.numNonleafNodes(), true);
+        m_d_nullspaceProj = std::make_unique<DTensor<real_t>>(m_nullDim, m_nullDim, m_tree.numNonleafNodes(), true);
 
         /** Upload to device */
         const char *nodeString = nullptr;
@@ -141,10 +139,9 @@ public:
         for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
             nodeString = std::to_string(i).c_str();
             parseConstraint(i, doc["inputConstraints"][nodeString], m_inputConstraint);
-            parseRisk(i, doc["risks"][nodeString]);
             parseMatrix(i, doc["lowerCholesky"][nodeString], m_d_lowerCholesky);
             parseMatrix(i, doc["K"][nodeString], m_d_K);
-            parseMatrix(i, doc["nullspace"][nodeString], m_d_nullspace);
+            parseRisk(i, doc["risks"][nodeString]);
         }
         for (size_t i = m_tree.numNonleafNodes(); i < m_tree.numNodes(); i++) {
             nodeString = std::to_string(i).c_str();
@@ -186,7 +183,7 @@ public:
 
     DTensor<real_t> &P() { return *m_d_P; }
 
-    DTensor<real_t> &nullspace() { return *m_d_nullspace; }
+    DTensor<real_t> &nullspaceProj() { return *m_d_nullspaceProj; }
 
     std::vector<std::unique_ptr<CholeskyBatchFactoriser<real_t>>> &choleskyBatch() { return m_choleskyBatch; }
 
@@ -222,7 +219,7 @@ public:
         printIfTensor("K (from device): ", m_d_K);
         printIfTensor("A + BK (from device): ", m_d_dynamicsSum);
         printIfTensor("P (from device): ", m_d_P);
-        printIfTensor("Nullspace (from device): ", m_d_nullspace);
+        printIfTensor("Nullspace projection matrix (from device): ", m_d_nullspaceProj);
     }
 };
 

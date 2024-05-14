@@ -72,7 +72,7 @@ private:
         if (value["type"].GetString() == std::string("avar")) {
             parseMatrix(nodeIdx, value["NNtr"], m_d_nullspaceProj);
             m_risk[nodeIdx] = std::make_unique<AVaR<real_t>>(nodeIdx,
-                                                             m_tree.numChildren()(nodeIdx),
+                                                             m_tree.numChildren()[nodeIdx],
                                                              *m_d_nullspaceProj);
         } else {
             std::cerr << "Risk type " << value["type"].GetString()
@@ -147,9 +147,9 @@ public:
             nodeString = std::to_string(i).c_str();
             parseMatrix(i, doc["leafStateCosts"][nodeString], m_d_stateWeightLeaf);
         }
-        for (size_t stage = 0; stage < m_tree.numStages() - 1; stage++) {
-            size_t nodeFr = (*m_tree.nodeFromHost())[stage];
-            size_t nodeTo = (*m_tree.nodeToHost())[stage];
+        for (size_t stage=0; stage<m_tree.numStages()-1; stage++) {
+            size_t nodeFr = m_tree.nodeFrom()[stage];
+            size_t nodeTo = m_tree.nodeTo()[stage];
             m_choleskyStage[stage] = std::make_unique<DTensor<real_t>>(*m_d_lowerCholesky, 2, nodeFr, nodeTo);
             m_choleskyBatch[stage] = std::make_unique<CholeskyBatchFactoriser<real_t>>(*m_choleskyStage[stage], true);
         }

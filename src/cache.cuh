@@ -143,17 +143,17 @@ void Cache::projectOnDynamics() {
     m_d_x->deviceCopyTo(*m_d_q);
     for (size_t stagePlusOne=m_tree.numStages()-1; stagePlusOne>0; stagePlusOne--) {
         size_t stage = stagePlusOne - 1;
-        size_t chNodeFr = (*m_tree.nodeFromHost())[stagePlusOne];
-        size_t chNodeTo = (*m_tree.nodeToHost())[stagePlusOne];
+        size_t chNodeFr = m_tree.nodeFrom()[stagePlusOne];
+        size_t chNodeTo = m_tree.nodeTo()[stagePlusOne];
         DTensor<real_t> B(m_data.inputDynamics(), m_matAxis, chNodeFr, chNodeTo);
         DTensor<real_t> Btr = B.tr();
         DTensor<real_t> q(*m_d_q, m_matAxis, chNodeFr, chNodeTo);
         DTensor<real_t> Bq = Btr * *m_d_q;
-        size_t nodeFr = (*m_tree.nodeFromHost())[stage];
-        size_t nodeTo = (*m_tree.nodeToHost())[stage];
+        size_t nodeFr = m_tree.nodeFrom()[stage];
+        size_t nodeTo = m_tree.nodeTo()[stage];
         for (size_t node=nodeFr; node<=nodeTo; node++) {
             DTensor<real_t> dAtParent(*m_d_d, m_matAxis, node, node);
-            for (size_t child=(*m_tree.childFromHost())[node]; child<=(*m_tree.childToHost())[node]; child++) {
+            for (size_t child=m_tree.childFrom()[node]; child<=m_tree.childTo()[node]; child++) {
                 DTensor<real_t> BqAtChild(Bq, m_matAxis, child, child);
                 dAtParent += BqAtChild;
             }

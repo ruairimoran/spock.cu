@@ -24,15 +24,35 @@ class Tree:
         self.__stages = stages
         self.__ancestors = ancestors
         self.__probability = probability
+        self.__conditional_probability = None  # this will be updated later (the user doesn't need to provide it)
         self.__w_idx = w_values
-        self.__children = None  # this will be updated later (the user doesn't need to provide it)
-        self.__update_children()
+        self.__children = None  # ^
+        self.__num_children = None  # ^
+        self.__nodes_of_stage = None  # ^
+        self.__update()
 
-    def __update_children(self):
+    def __update(self):
+        # Update children
         self.__children = []
         for i in range(self.num_nonleaf_nodes):
             children_of_i = np.where(self.__ancestors == i)
             self.__children += children_of_i
+        # Update conditional probabilities
+        cond_prob = [-1]
+        for i in range(1, self.num_nodes):
+            anc = self.ancestor_of_node(i)
+            prob_anc = self.__probability[anc]
+            prob_ch = self.__probability[i]
+            cond_prob += [prob_ch / prob_anc]
+        self.__conditional_probability = np.asarray(cond_prob)
+        # Update number children
+        self.__num_children = []
+        for i in range(self.num_nonleaf_nodes):
+            self.__num_children += self.children_of_node(i).shape
+        # Update stage from
+        self.__nodes_of_stage = []
+        for i in range(self.num_stages):
+            self.__nodes_of_stage += [self.nodes_of_stage(i)]
 
     @property
     def folder(self):
@@ -129,10 +149,8 @@ class Tree:
         :param node_idx: node index
         :return: array of conditional probabilities of the children of a given node
         """
-        prob_node_idx = self.probability_of_node(node_idx)
-        children = self.children_of_node(node_idx)
-        prob_children = self.__probability[children]
-        return prob_children / prob_node_idx
+        children = self.__children[node_idx]
+        return self.__conditional_probability[children]
 
     def __str__(self):
         return f"Scenario Tree\n+ Nodes: {self.num_nodes}\n+ Stages: {self.num_stages}\n" \
@@ -156,9 +174,7 @@ class Tree:
                              comment_end_string="#\\")
         # Generate "treeData.json" from template "treeTemplate.json.jinja2"
         template = env.get_template("treeTemplate.json.jinja2")
-        output = template.render(is_markovian=self.is_markovian,
-                                 is_iid=self.is_iid,
-                                 num_events=self.num_events,
+        output = template.render(num_events=self.num_events,
                                  num_nonleaf_nodes=self.num_nonleaf_nodes,
                                  num_nodes=self.num_nodes,
                                  num_stages=self.num_stages,
@@ -166,7 +182,11 @@ class Tree:
                                  ancestors=self.__ancestors,
                                  probabilities=self.__probability,
                                  events=self.__w_idx,
-                                 children=self.__children)
+                                 children=self.__children,
+                                 cond_prob=self.__conditional_probability,
+                                 num_children=self.__num_children,
+                                 nodes_of_stage=self.__nodes_of_stage
+                                 )
         path = os.path.join(os.getcwd(), self.__folder)
         os.makedirs(path, exist_ok=True)
         output_file = os.path.join(path, "treeData.json")

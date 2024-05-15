@@ -6,14 +6,14 @@
 class ProblemDataTest : public testing::Test {
 
 protected:
-    std::unique_ptr<ScenarioTree> m_tree;
-    std::unique_ptr<ProblemData> m_data;
+    std::unique_ptr<ScenarioTree<DEFAULT_FPX>> m_tree;
+    std::unique_ptr<ProblemData<DEFAULT_FPX>> m_data;
 
     ProblemDataTest() {
         std::ifstream tree_data("../../tests/testTreeData.json");
-        m_tree = std::make_unique<ScenarioTree>(tree_data);
+        m_tree = std::make_unique<ScenarioTree<DEFAULT_FPX>>(tree_data);
         std::ifstream problem_data("../../tests/testProblemData.json");
-        m_data = std::make_unique<ProblemData>(*m_tree, problem_data);
+        m_data = std::make_unique<ProblemData<DEFAULT_FPX>>(*m_tree, problem_data);
     };
 
     virtual ~ProblemDataTest() {}

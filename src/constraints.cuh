@@ -5,7 +5,8 @@
 #include "cones.cuh"
 
 
-__global__ void d_projectRectangle(size_t dimension, real_t *vec, real_t *lowerBound, real_t *upperBound);
+TEMPLATE_WITH_TYPE_T
+__global__ void d_projectRectangle(size_t dimension, T *vec, T *lowerBound, T *upperBound);
 
 
 template<typename T>
@@ -71,15 +72,15 @@ public:
     }
 
     void project(DTensor<T> &d_vec) {
-        Constraint<T>::dimensionCheck(d_vec);
-        d_projectRectangle<<<DIM2BLOCKS(Constraint<T>::m_dimension), THREADS_PER_BLOCK>>>(Constraint<T>::m_dimension,
+        this->dimensionCheck(d_vec);
+        d_projectRectangle<<<DIM2BLOCKS(this->m_dimension), THREADS_PER_BLOCK>>>(this->m_dimension,
                                                                                           d_vec.raw(),
                                                                                           m_d_lowerBound->raw(),
                                                                                           m_d_upperBound->raw());
     }
 
     void print() {
-        std::cout << "Node: " << Constraint<T>::m_nodeIndex << ", Constraint: Rectangle, \n";
+        std::cout << "Node: " << this->m_nodeIndex << ", Constraint: Rectangle, \n";
         printIfTensor("Lower bound: ", m_d_lowerBound);
         printIfTensor("Upper bound: ", m_d_upperBound);
     }

@@ -9,9 +9,10 @@
 /**
  * Vanilla Chambolle-Pock (cp) algorithm with a parallelised cache
  */
-size_t timeCp(Cache& cache, std::vector<real_t> initialState) {
+TEMPLATE_WITH_TYPE_T
+size_t timeCp(Cache<T>& cache, std::vector<T> initialState) {
     /* For debugging only ----------------- */
-    std::vector<real_t> numbers(cache.solutionSize());
+    std::vector<T> numbers(cache.solutionSize());
     std::iota (std::begin(numbers), std::end(numbers), 0);
     /* ------------------------------------ */
     std::cout << "timer started" << "\n";

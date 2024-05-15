@@ -6,19 +6,19 @@
 class RisksTest : public testing::Test {
 
 protected:
-    std::unique_ptr<ScenarioTree> m_tree;
+    std::unique_ptr<ScenarioTree<DEFAULT_FPX>> m_tree;
 
     /** Prepare some host and device data */
     size_t m_node = 2;
     size_t m_n = 0;
-    std::unique_ptr<DTensor<real_t>> m_d_data = nullptr;
-    std::vector<real_t> m_hostData;
-    std::vector<real_t> m_hostTest;
+    std::unique_ptr<DTensor<DEFAULT_FPX>> m_d_data = nullptr;
+    std::vector<DEFAULT_FPX> m_hostData;
+    std::vector<DEFAULT_FPX> m_hostTest;
     RisksTest() {
         std::ifstream tree_data("../../tests/testTreeData.json");
-        m_tree = std::make_unique<ScenarioTree>(tree_data);
+        m_tree = std::make_unique<ScenarioTree<DEFAULT_FPX>>(tree_data);
         m_n = m_tree->numChildren()[m_node] * 2 + 1;
-        m_d_data = std::make_unique<DTensor<real_t>>(m_n);
+        m_d_data = std::make_unique<DTensor<DEFAULT_FPX>>(m_n);
         m_hostData.resize(m_n);
         m_hostTest.resize(m_n);
         /** Positive and negative values in m_hostData */

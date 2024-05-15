@@ -9,16 +9,16 @@ class ConesTest : public testing::Test {
         /** Prepare some host and device data */
         size_t m_n = 64;
         size_t m_numConeTypes = 4;
-        DTensor<real_t> m_d_data = DTensor<real_t>(m_n);
-        DTensor<real_t> m_d_dataCart = DTensor<real_t>(m_n * m_numConeTypes);
-        std::vector<real_t> m_hostData = std::vector<real_t>(m_n);
-        std::vector<real_t> m_hostTest = std::vector<real_t>(m_n);
-        std::vector<real_t> m_hostZero = std::vector<real_t>(m_n);
-        std::vector<real_t> m_hostSocA = std::vector<real_t>(m_n);
-        std::vector<real_t> m_hostSocB = std::vector<real_t>(m_n);
-        std::vector<real_t> m_hostSocC = std::vector<real_t>(m_n);
-        std::vector<real_t> m_hostCart = std::vector<real_t>(m_n * m_numConeTypes);
-        std::vector<real_t> m_testCart;
+        DTensor<DEFAULT_FPX> m_d_data = DTensor<DEFAULT_FPX>(m_n);
+        DTensor<DEFAULT_FPX> m_d_dataCart = DTensor<DEFAULT_FPX>(m_n * m_numConeTypes);
+        std::vector<DEFAULT_FPX> m_hostData = std::vector<DEFAULT_FPX>(m_n);
+        std::vector<DEFAULT_FPX> m_hostTest = std::vector<DEFAULT_FPX>(m_n);
+        std::vector<DEFAULT_FPX> m_hostZero = std::vector<DEFAULT_FPX>(m_n);
+        std::vector<DEFAULT_FPX> m_hostSocA = std::vector<DEFAULT_FPX>(m_n);
+        std::vector<DEFAULT_FPX> m_hostSocB = std::vector<DEFAULT_FPX>(m_n);
+        std::vector<DEFAULT_FPX> m_hostSocC = std::vector<DEFAULT_FPX>(m_n);
+        std::vector<DEFAULT_FPX> m_hostCart = std::vector<DEFAULT_FPX>(m_n * m_numConeTypes);
+        std::vector<DEFAULT_FPX> m_testCart;
         ConesTest() {
             /** Positive and negative values in m_hostData */
             for (size_t i=0; i<m_n; i=i+2) { m_hostData[i] = -2. * (i + 1.); }
@@ -47,19 +47,18 @@ class ConesTest : public testing::Test {
         virtual ~ConesTest() {}
 };
 
-
-void testNnocProjection(std::vector<real_t> testVec) {
+TEMPLATE_WITH_TYPE_T
+void testNnocProjection(std::vector<T> testVec) {
     for (size_t i=0; i<testVec.size(); i++) { EXPECT_TRUE(testVec[i] >= 0.); }
 }
 
-
-void testSocElse(std::vector<real_t> testVec) {
-    real_t last = testVec[testVec.size() - 1];
+TEMPLATE_WITH_TYPE_T
+void testSocElse(std::vector<T> testVec) {
+    T last = testVec[testVec.size() - 1];
     testVec.pop_back();
-    real_t nrm = std::sqrt(std::inner_product(testVec.begin(), testVec.end(), testVec.begin(), 0.));
+    T nrm = std::sqrt(std::inner_product(testVec.begin(), testVec.end(), testVec.begin(), 0.));
     EXPECT_TRUE(nrm <= last);
 }
-
 
 TEST_F(ConesTest, UniverseCone) {
     UniverseCone myCone(m_n);
@@ -157,22 +156,22 @@ TEST_F(ConesTest, CartesianCone) {
     m_d_dataCart.download(m_hostCart);
     /** Test Universe cone */
     size_t index = 0;
-    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
+    m_testCart = std::vector<DEFAULT_FPX>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
     EXPECT_TRUE((m_testCart == m_hostData));
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
     /** Test Zero cone */
     index += m_n;
-    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
+    m_testCart = std::vector<DEFAULT_FPX>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
     EXPECT_TRUE((m_testCart == m_hostZero));
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
     /** Test NnOC cone */
     index += m_n;
-    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
+    m_testCart = std::vector<DEFAULT_FPX>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
     testNnocProjection(m_testCart);
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
     /** Test SOC cone */
     index += m_n;
-    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
+    m_testCart = std::vector<DEFAULT_FPX>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
     testSocElse(m_testCart);
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
 }
@@ -193,22 +192,22 @@ TEST_F(ConesTest, CartesianDual) {
     m_d_dataCart.download(m_hostCart);
     /** Test Universe dual */
     size_t index = 0;
-    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
+    m_testCart = std::vector<DEFAULT_FPX>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
     EXPECT_TRUE((m_testCart == m_hostZero));
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
     /** Test Zero dual */
     index += m_n;
-    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
+    m_testCart = std::vector<DEFAULT_FPX>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
     EXPECT_TRUE((m_testCart == m_hostData));
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
     /** Test NnOC dual */
     index += m_n;
-    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
+    m_testCart = std::vector<DEFAULT_FPX>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
     testNnocProjection(m_testCart);
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
     /** Test SOC dual */
     index += m_n;
-    m_testCart = std::vector<real_t>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
+    m_testCart = std::vector<DEFAULT_FPX>(m_hostCart.begin() + index, m_hostCart.begin() + index + m_n);
     testSocElse(m_testCart);
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
 }

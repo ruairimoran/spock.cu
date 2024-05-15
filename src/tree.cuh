@@ -11,6 +11,7 @@
  *
  * Note: `d_` indicates a device pointer
  */
+TEMPLATE_WITH_TYPE_T
 class ScenarioTree {
 
 private:
@@ -27,8 +28,8 @@ private:
     /* Device data */
     std::unique_ptr<DTensor<size_t>> m_d_stages = nullptr;  ///< Ptr to stage of node at index
     std::unique_ptr<DTensor<size_t>> m_d_ancestors = nullptr;  ///< Ptr to ancestor of node at index
-    std::unique_ptr<DTensor<real_t>> m_d_probabilities = nullptr;  ///< Ptr to probability of visiting node at index
-    std::unique_ptr<DTensor<real_t>> m_d_conditionalProbabilities = nullptr;  ///< Ptr to conditional probability of visiting node at index
+    std::unique_ptr<DTensor<T>> m_d_probabilities = nullptr;  ///< Ptr to probability of visiting node at index
+    std::unique_ptr<DTensor<T>> m_d_conditionalProbabilities = nullptr;  ///< Ptr to conditional probability of visiting node at index
     std::unique_ptr<DTensor<size_t>> m_d_events = nullptr;  ///< Ptr to event occurred that led to node at index
     std::unique_ptr<DTensor<size_t>> m_d_childFrom = nullptr;  ///< Ptr to first child of node at index
     std::unique_ptr<DTensor<size_t>> m_d_childTo = nullptr;  ///< Ptr to last child of node at index
@@ -60,8 +61,8 @@ public:
         /* Allocate memory on host for JSON data */
         std::vector<size_t> hostStages(m_numNodes);
         std::vector<size_t> hostAncestors(m_numNodes);
-        std::vector<real_t> hostProbabilities(m_numNodes);
-        std::vector<real_t> hostConditionalProbabilities(m_numNodes);
+        std::vector<T> hostProbabilities(m_numNodes);
+        std::vector<T> hostConditionalProbabilities(m_numNodes);
         std::vector<size_t> hostEvents(m_numNodes);
         m_childFrom = std::vector<size_t>(m_numNonleafNodes);
         m_childTo = std::vector<size_t>(m_numNonleafNodes);
@@ -72,8 +73,8 @@ public:
         /* Allocate memory on device */
         m_d_stages = std::make_unique<DTensor<size_t>>(m_numNodes);
         m_d_ancestors = std::make_unique<DTensor<size_t>>(m_numNodes);
-        m_d_probabilities = std::make_unique<DTensor<real_t>>(m_numNodes);
-        m_d_conditionalProbabilities = std::make_unique<DTensor<real_t>>(m_numNodes);
+        m_d_probabilities = std::make_unique<DTensor<T>>(m_numNodes);
+        m_d_conditionalProbabilities = std::make_unique<DTensor<T>>(m_numNodes);
         m_d_events = std::make_unique<DTensor<size_t>>(m_numNodes);
         m_d_childFrom = std::make_unique<DTensor<size_t>>(m_numNonleafNodes);
         m_d_childTo = std::make_unique<DTensor<size_t>>(m_numNonleafNodes);
@@ -145,9 +146,9 @@ public:
 
     DTensor<size_t> &d_ancestors() { return *m_d_ancestors; }
 
-    DTensor<real_t> &d_probabilities() { return *m_d_probabilities; }
+    DTensor<T> &d_probabilities() { return *m_d_probabilities; }
 
-    DTensor<real_t> &d_conditionalProbabilities() { return *m_d_conditionalProbabilities; }
+    DTensor<T> &d_conditionalProbabilities() { return *m_d_conditionalProbabilities; }
 
     DTensor<size_t> &d_events() { return *m_d_events; }
 

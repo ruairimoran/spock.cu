@@ -5,18 +5,18 @@
 class MarkovTreeTest : public testing::Test {
 
 protected:
-    std::unique_ptr<ScenarioTree> m_mockTree;
+    std::unique_ptr<ScenarioTree<DEFAULT_FPX>> m_mockTree;
     size_t m_numNonleafNodes;
     size_t m_numNodes;
     size_t m_numStages;
     std::vector<size_t> m_intNumNonleafNodes;
     std::vector<size_t> m_intNumNodes;
-    std::vector<real_t> m_realNumNodes;
+    std::vector<DEFAULT_FPX> m_realNumNodes;
     std::vector<size_t> m_intNumStages;
 
     MarkovTreeTest() {
         std::ifstream tree_data("../../tests/testTreeData.json");
-        m_mockTree = std::make_unique<ScenarioTree>(tree_data);
+        m_mockTree = std::make_unique<ScenarioTree<DEFAULT_FPX>>(tree_data);
         m_numNonleafNodes = m_mockTree->numNonleafNodes();
         m_numNodes = m_mockTree->numNodes();
         m_numStages = m_mockTree->numStages();

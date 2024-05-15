@@ -15,52 +15,53 @@
  * - use column-major storage
  * - `d_` indicates a device pointer
  */
+TEMPLATE_WITH_TYPE_T
 class ProblemData {
 
 private:
-    ScenarioTree &m_tree;  ///< Previously created scenario tree of problem
+    ScenarioTree<T> &m_tree;  ///< Previously created scenario tree of problem
     size_t m_numStates = 0;  ///< Total number system states
     size_t m_numInputs = 0;  ///< Total number control inputs
-    std::unique_ptr<DTensor<real_t>> m_d_stateDynamics = nullptr;  ///< Ptr to
-    std::unique_ptr<DTensor<real_t>> m_d_inputDynamics = nullptr;  ///< Ptr to
-    std::unique_ptr<DTensor<real_t>> m_d_stateWeight = nullptr;  ///< Ptr to
-    std::unique_ptr<DTensor<real_t>> m_d_inputWeight = nullptr;  ///< Ptr to
-    std::unique_ptr<DTensor<real_t>> m_d_stateWeightLeaf = nullptr;  ///< Ptr to
-    std::vector<std::unique_ptr<Constraint<real_t>>> m_stateConstraint;  ///< Ptr to
-    std::vector<std::unique_ptr<Constraint<real_t>>> m_inputConstraint;  ///< Ptr to
-    std::vector<std::unique_ptr<CoherentRisk<real_t>>> m_risk;  ///< Ptr to
+    std::unique_ptr<DTensor<T>> m_d_stateDynamics = nullptr;  ///< Ptr to
+    std::unique_ptr<DTensor<T>> m_d_inputDynamics = nullptr;  ///< Ptr to
+    std::unique_ptr<DTensor<T>> m_d_stateWeight = nullptr;  ///< Ptr to
+    std::unique_ptr<DTensor<T>> m_d_inputWeight = nullptr;  ///< Ptr to
+    std::unique_ptr<DTensor<T>> m_d_stateWeightLeaf = nullptr;  ///< Ptr to
+    std::vector<std::unique_ptr<Constraint<T>>> m_stateConstraint;  ///< Ptr to
+    std::vector<std::unique_ptr<Constraint<T>>> m_inputConstraint;  ///< Ptr to
+    std::vector<std::unique_ptr<CoherentRisk<T>>> m_risk;  ///< Ptr to
     /* Dynamics projection */
-    std::unique_ptr<DTensor<real_t>> m_d_lowerCholesky = nullptr;
-    std::unique_ptr<DTensor<real_t>> m_d_K = nullptr;
-    std::unique_ptr<DTensor<real_t>> m_d_dynamicsSum = nullptr;
-    std::unique_ptr<DTensor<real_t>> m_d_P = nullptr;
-    std::vector<std::unique_ptr<CholeskyBatchFactoriser<real_t>>> m_choleskyBatch;
-    std::vector<std::unique_ptr<DTensor<real_t>>> m_choleskyStage;
+    std::unique_ptr<DTensor<T>> m_d_lowerCholesky = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_K = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_dynamicsSum = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_P = nullptr;
+    std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>> m_choleskyBatch;
+    std::vector<std::unique_ptr<DTensor<T>>> m_choleskyStage;
     /* Kernel projection */
     size_t m_nullDim = 0;  ///< Total number system states
-    std::unique_ptr<DTensor<real_t>> m_d_nullspaceProj = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_nullspaceProj = nullptr;
 
-    static void parseMatrix(size_t nodeIdx, const rapidjson::Value &value, std::unique_ptr<DTensor<real_t>> &matrix) {
+    static void parseMatrix(size_t nodeIdx, const rapidjson::Value &value, std::unique_ptr<DTensor<T>> &matrix) {
         size_t numElements = value.Capacity();
-        std::vector<real_t> matrixData(numElements);
+        std::vector<T> matrixData(numElements);
         for (rapidjson::SizeType i = 0; i < numElements; i++) {
             matrixData[i] = value[i].GetDouble();
         }
-        DTensor<real_t> sliceDevice(*matrix, 2, nodeIdx, nodeIdx);
+        DTensor<T> sliceDevice(*matrix, 2, nodeIdx, nodeIdx);
         sliceDevice.upload(matrixData, rowMajor);
     }
 
     static void parseConstraint(size_t nodeIdx, const rapidjson::Value &value,
-                                std::vector<std::unique_ptr<Constraint<real_t>>> &constraint) {
+                                std::vector<std::unique_ptr<Constraint<T>>> &constraint) {
         if (value["type"].GetString() == std::string("rectangle")) {
             size_t numElements = value["lb"].Capacity();
-            std::vector<real_t> lb(numElements);
-            std::vector<real_t> ub(numElements);
+            std::vector<T> lb(numElements);
+            std::vector<T> ub(numElements);
             for (rapidjson::SizeType i = 0; i < numElements; i++) {
                 lb[i] = value["lb"][i].GetDouble();
                 ub[i] = value["ub"][i].GetDouble();
             }
-            constraint[nodeIdx] = std::make_unique<Rectangle<real_t>>(nodeIdx, numElements, lb, ub);
+            constraint[nodeIdx] = std::make_unique<Rectangle<T>>(nodeIdx, numElements, lb, ub);
         } else {
             std::cerr << "Constraint type " << value["type"].GetString()
                       << " is not supported. Supported types include: rectangle" << "\n";
@@ -71,7 +72,7 @@ private:
     void parseRisk(size_t nodeIdx, const rapidjson::Value &value) {
         if (value["type"].GetString() == std::string("avar")) {
             parseMatrix(nodeIdx, value["NNtr"], m_d_nullspaceProj);
-            m_risk[nodeIdx] = std::make_unique<AVaR<real_t>>(nodeIdx,
+            m_risk[nodeIdx] = std::make_unique<AVaR<T>>(nodeIdx,
                                                              m_tree.numChildren()[nodeIdx],
                                                              *m_d_nullspaceProj);
         } else {
@@ -85,7 +86,7 @@ public:
     /**
      * Constructor from JSON file stream
      */
-    ProblemData(ScenarioTree &tree, std::ifstream &file) :
+    ProblemData(ScenarioTree<T> &tree, std::ifstream &file) :
         m_tree(tree) {
         std::string json((std::istreambuf_iterator<char>(file)),
                          std::istreambuf_iterator<char>());
@@ -103,23 +104,23 @@ public:
         m_nullDim = doc["nullspaceDimension"].GetInt();
 
         /** Allocate memory on host */
-        m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<real_t>>>(m_tree.numStages() - 1);
-        m_choleskyStage = std::vector<std::unique_ptr<DTensor<real_t>>>(m_tree.numStages() - 1);
-        m_stateConstraint = std::vector<std::unique_ptr<Constraint<real_t>>>(m_tree.numNodes());
-        m_inputConstraint = std::vector<std::unique_ptr<Constraint<real_t>>>(m_tree.numNodes());
-        m_risk = std::vector<std::unique_ptr<CoherentRisk<real_t>>>(m_tree.numNodes());
+        m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>>(m_tree.numStages() - 1);
+        m_choleskyStage = std::vector<std::unique_ptr<DTensor<T>>>(m_tree.numStages() - 1);
+        m_stateConstraint = std::vector<std::unique_ptr<Constraint<T>>>(m_tree.numNodes());
+        m_inputConstraint = std::vector<std::unique_ptr<Constraint<T>>>(m_tree.numNodes());
+        m_risk = std::vector<std::unique_ptr<CoherentRisk<T>>>(m_tree.numNodes());
 
         /** Allocate memory on device */
-        m_d_stateDynamics = std::make_unique<DTensor<real_t>>(m_numStates, m_numStates, m_tree.numNodes(), true);
-        m_d_inputDynamics = std::make_unique<DTensor<real_t>>(m_numStates, m_numInputs, m_tree.numNodes(), true);
-        m_d_stateWeight = std::make_unique<DTensor<real_t>>(m_numStates, m_numStates, m_tree.numNodes(), true);
-        m_d_inputWeight = std::make_unique<DTensor<real_t>>(m_numInputs, m_numInputs, m_tree.numNodes(), true);
-        m_d_stateWeightLeaf = std::make_unique<DTensor<real_t>>(m_numStates, m_numStates, m_tree.numNodes(), true);
-        m_d_lowerCholesky = std::make_unique<DTensor<real_t>>(m_numInputs, m_numInputs, m_tree.numNonleafNodes(), true);
-        m_d_K = std::make_unique<DTensor<real_t>>(m_numInputs, m_numStates, m_tree.numNonleafNodes(), true);
-        m_d_dynamicsSum = std::make_unique<DTensor<real_t>>(m_numStates, m_numStates, m_tree.numNodes(), true);
-        m_d_P = std::make_unique<DTensor<real_t>>(m_numStates, m_numStates, m_tree.numNodes(), true);
-        m_d_nullspaceProj = std::make_unique<DTensor<real_t>>(m_nullDim, m_nullDim, m_tree.numNonleafNodes(), true);
+        m_d_stateDynamics = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
+        m_d_inputDynamics = std::make_unique<DTensor<T>>(m_numStates, m_numInputs, m_tree.numNodes(), true);
+        m_d_stateWeight = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
+        m_d_inputWeight = std::make_unique<DTensor<T>>(m_numInputs, m_numInputs, m_tree.numNodes(), true);
+        m_d_stateWeightLeaf = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
+        m_d_lowerCholesky = std::make_unique<DTensor<T>>(m_numInputs, m_numInputs, m_tree.numNonleafNodes(), true);
+        m_d_K = std::make_unique<DTensor<T>>(m_numInputs, m_numStates, m_tree.numNonleafNodes(), true);
+        m_d_dynamicsSum = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
+        m_d_P = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
+        m_d_nullspaceProj = std::make_unique<DTensor<T>>(m_nullDim, m_nullDim, m_tree.numNonleafNodes(), true);
 
         /** Upload to device */
         const char *nodeString = nullptr;
@@ -150,8 +151,8 @@ public:
         for (size_t stage=0; stage<m_tree.numStages()-1; stage++) {
             size_t nodeFr = m_tree.nodeFrom()[stage];
             size_t nodeTo = m_tree.nodeTo()[stage];
-            m_choleskyStage[stage] = std::make_unique<DTensor<real_t>>(*m_d_lowerCholesky, 2, nodeFr, nodeTo);
-            m_choleskyBatch[stage] = std::make_unique<CholeskyBatchFactoriser<real_t>>(*m_choleskyStage[stage], true);
+            m_choleskyStage[stage] = std::make_unique<DTensor<T>>(*m_d_lowerCholesky, 2, nodeFr, nodeTo);
+            m_choleskyBatch[stage] = std::make_unique<CholeskyBatchFactoriser<T>>(*m_choleskyStage[stage], true);
         }
     }
 
@@ -167,31 +168,31 @@ public:
 
     size_t numInputs() { return m_numInputs; }
 
-    DTensor<real_t> &stateDynamics() { return *m_d_stateDynamics; }
+    DTensor<T> &stateDynamics() { return *m_d_stateDynamics; }
 
-    DTensor<real_t> &inputDynamics() { return *m_d_inputDynamics; }
+    DTensor<T> &inputDynamics() { return *m_d_inputDynamics; }
 
-    DTensor<real_t> &stateWeight() { return *m_d_stateWeight; }
+    DTensor<T> &stateWeight() { return *m_d_stateWeight; }
 
-    DTensor<real_t> &inputWeight() { return *m_d_inputWeight; }
+    DTensor<T> &inputWeight() { return *m_d_inputWeight; }
 
-    DTensor<real_t> &stateWeightLeaf() { return *m_d_stateWeightLeaf; }
+    DTensor<T> &stateWeightLeaf() { return *m_d_stateWeightLeaf; }
 
-    DTensor<real_t> &K() { return *m_d_K; }
+    DTensor<T> &K() { return *m_d_K; }
 
-    DTensor<real_t> &dynamicsSum() { return *m_d_dynamicsSum; }
+    DTensor<T> &dynamicsSum() { return *m_d_dynamicsSum; }
 
-    DTensor<real_t> &P() { return *m_d_P; }
+    DTensor<T> &P() { return *m_d_P; }
 
-    DTensor<real_t> &nullspaceProj() { return *m_d_nullspaceProj; }
+    DTensor<T> &nullspaceProj() { return *m_d_nullspaceProj; }
 
-    std::vector<std::unique_ptr<CholeskyBatchFactoriser<real_t>>> &choleskyBatch() { return m_choleskyBatch; }
+    std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>> &choleskyBatch() { return m_choleskyBatch; }
 
-    std::vector<std::unique_ptr<Constraint<real_t>>> &stateConstraint() { return m_stateConstraint; }
+    std::vector<std::unique_ptr<Constraint<T>>> &stateConstraint() { return m_stateConstraint; }
 
-    std::vector<std::unique_ptr<Constraint<real_t>>> &inputConstraint() { return m_inputConstraint; }
+    std::vector<std::unique_ptr<Constraint<T>>> &inputConstraint() { return m_inputConstraint; }
 
-    std::vector<std::unique_ptr<CoherentRisk<real_t>>> &risk() { return m_risk; }
+    std::vector<std::unique_ptr<CoherentRisk<T>>> &risk() { return m_risk; }
 
     /**
      * Debugging

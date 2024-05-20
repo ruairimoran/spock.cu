@@ -96,7 +96,8 @@ __global__ void k_projectionMultiSoc_s1(T *data,
      * be block-wise (and not device-wide), we will use shared memory.
      * # for this reason we won't do any map-reduce-type summation
      */
-    extern __shared__ T sharedMem[];
+    extern __shared__ __align__(sizeof(T)) unsigned char mem[];
+    T *sharedMem = reinterpret_cast<T *>(mem);
     if (idSoc < numCones && tid < coneDimension - 1)
         sharedMem[tid] = squaredElements_ws[idSoc * (coneDimension - 1) + tid];
     __syncthreads();

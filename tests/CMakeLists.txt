@@ -16,6 +16,7 @@ target_sources(spock_tests  # add files
     testCones.cu
     testRisks.cu
     testProblem.cu
+    testProjections.cu
     testCache.cu
 )
 target_link_libraries(spock_tests

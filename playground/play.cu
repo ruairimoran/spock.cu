@@ -105,7 +105,7 @@ void projectSocBatched(DTensor<real_t> &x) {
     DTensor<int> i3(numSOCs, 1, 1, true);
 
     /* I've set the number of threads per block to 2 just for testing
-     * purposes; this should be 256. We should also use DIM2BLOCKS(dimSOC) */
+     * purposes; this should be 256. We should also use DIM2BLOCKS(m_dimSOC) */
     constexpr size_t threadsPerBlock = 2;
     size_t blocksDimX = (dimSOC / threadsPerBlock + (dimSOC % threadsPerBlock != 0));
     dim3 gridDims(blocksDimX, numSOCs);

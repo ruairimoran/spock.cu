@@ -6,7 +6,7 @@
 
 
 TEMPLATE_WITH_TYPE_T
-__global__ void d_projectRectangle(size_t dimension, T *vec, T *lowerBound, T *upperBound);
+__global__ void k_projectRectangle(size_t, T *, T *, T *);
 
 
 template<typename T>
@@ -73,10 +73,10 @@ public:
 
     void project(DTensor<T> &d_vec) {
         this->dimensionCheck(d_vec);
-        d_projectRectangle<<<DIM2BLOCKS(this->m_dimension), THREADS_PER_BLOCK>>>(this->m_dimension,
-                                                                                          d_vec.raw(),
-                                                                                          m_d_lowerBound->raw(),
-                                                                                          m_d_upperBound->raw());
+        k_projectRectangle<<<DIM2BLOCKS(this->m_dimension), THREADS_PER_BLOCK>>>(this->m_dimension,
+                                                                                 d_vec.raw(),
+                                                                                 m_d_lowerBound->raw(),
+                                                                                 m_d_upperBound->raw());
     }
 
     void print() {

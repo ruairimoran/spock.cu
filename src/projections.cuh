@@ -4,6 +4,16 @@
 #include "../include/gpu.cuh"
 
 
+TEMPLATE_WITH_TYPE_T
+__global__ void k_projectionMultiSoc_s1(T *, size_t, size_t, T *, T *, T *, int *, int *, T *);
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_projectionMultiSoc_s2_i2(T *, size_t, size_t, int *);
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_projectionMultiSoc_s2_i3(T *, size_t, size_t, T *, int *, int *, T *);
+
+
 /**
  * Base projection
 */
@@ -42,16 +52,16 @@ class SocProjection : public Projection<T> {
 public:
     explicit SocProjection(size_t node, size_t dim) : Projection<T>(node, dim) {}
 
-    void project(DTensor<real_t> &d_vecs) {
-        size_t dimSOC = x.numRows();
-        size_t numSOCs = x.numCols();
+    void project(DTensor<T> &d_vecs) {
+        size_t dimSOC = d_vecs.numRows();
+        size_t numSOCs = d_vecs.numCols();
 
         /* Allocate workspace memory
          * (there will become class attributes later) */
-        DTensor<real_t> t_ws(numSOCs);
-        DTensor<real_t> squaredStuff_ws(numSOCs * (dimSOC - 1));
-        DTensor<real_t> norms(numSOCs, 1, 1, true);
-        DTensor<real_t> scalingParams(numSOCs, 1, 1, true);
+        DTensor<T> t_ws(numSOCs);
+        DTensor<T> squaredStuff_ws(numSOCs * (dimSOC - 1));
+        DTensor<T> norms(numSOCs, 1, 1, true);
+        DTensor<T> scalingParams(numSOCs, 1, 1, true);
         DTensor<int> i2(numSOCs, 1, 1, true);
         DTensor<int> i3(numSOCs, 1, 1, true);
 
@@ -69,14 +79,15 @@ public:
                   << numSOCs
                   << ")\n";
 
-        k_projectionMultiSoc_s1<<<gridDims, threadsPerBlock >>>(x.raw(), numSOCs, dimSOC, t_ws.raw(),
+        k_projectionMultiSoc_s1<<<gridDims, threadsPerBlock >>>(d_vecs.raw(), numSOCs, dimSOC, t_ws.raw(),
                                                                 squaredStuff_ws.raw(), norms.raw(), i2.raw(), i3.raw(),
                                                                 scalingParams.raw());
-        k_projectionMultiSoc_s2_i2<<<gridDims, threadsPerBlock >>>(x.raw(), numSOCs, dimSOC, i2.raw());
-        k_projectionMultiSoc_s2_i3<<<gridDims, threadsPerBlock >>>(x.raw(), numSOCs, dimSOC, norms.raw(), i2.raw(),
+        k_projectionMultiSoc_s2_i2<<<gridDims, threadsPerBlock >>>(d_vecs.raw(), numSOCs, dimSOC, i2.raw());
+        k_projectionMultiSoc_s2_i3<<<gridDims, threadsPerBlock >>>(d_vecs.raw(), numSOCs, dimSOC, norms.raw(), i2.raw(),
                                                                    i3.raw(), scalingParams.raw());
         gpuErrChk(cudaPeekAtLastError());
     }
 };
 
-#endif PROJECTIONS_CUH
+
+#endif

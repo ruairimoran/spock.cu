@@ -91,10 +91,10 @@ __global__ void k_projectionMultiSoc_s1(T *data,
     __syncthreads(); /* sync threads in each block */
 
     /* Since each block corresponds to a different SOC and the dimension of
-     * each SOC is not going to be too large in general#, the addition will
+     * each SOC is not going to be too large in general, the addition will
      * be performed by using atomicAdd. In order for the synchronisation to
      * be block-wise (and not device-wide), we will use shared memory.
-     * # for this reason we won't do any map-reduce-type summation
+     * For this reason we won't do any map-reduce-type summation.
      */
     extern __shared__ __align__(sizeof(T)) unsigned char mem[];
     T *sharedMem = reinterpret_cast<T *>(mem);
@@ -118,9 +118,10 @@ __global__ void k_projectionMultiSoc_s1(T *data,
     if (idSoc < numCones && tid == 0) {
         T nrm_j = norms[idSoc];
         T t_j = t_ws[idSoc];
-        i2[idSoc] = nrm_j <= -t_j;
-        i3[idSoc] = nrm_j > t_j && nrm_j > -t_j;  // should this not be < >
-        scaling[idSoc] = (nrm_j + t_j) / (2 * nrm_j);
+        int i1 = nrm_j <= t_j;
+        i2[idSoc] = nrm_j <= -t_j && !i1;
+        i3[idSoc] = !i1 && !i2[idSoc];
+        scaling[idSoc] = (nrm_j + t_j) / (2. * nrm_j + (1 - i3[idSoc]));
     }
 }
 

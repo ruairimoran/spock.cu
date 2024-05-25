@@ -20,11 +20,11 @@ class ConesTest : public testing::Test {
         std::vector<DEFAULT_FPX> m_hostCart = std::vector<DEFAULT_FPX>(m_n * m_numConeTypes);
         std::vector<DEFAULT_FPX> m_testCart;
         ConesTest() {
-            /** Positive and negative values in m_hostData */
+            /** Positive and negative values in m_data */
             for (size_t i=0; i<m_n; i=i+2) { m_hostData[i] = -2. * (i + 1.); }
             for (size_t i=1; i<m_n; i=i+2) { m_hostData[i] = 2. * (i + 1.); }
             m_d_data.upload(m_hostData);  ///< Main vector for projection testing
-            /** Zeroes in m_hostZero */
+            /** Zeroes in m_zero */
             for (size_t i=0; i<m_n; i++) { m_hostZero[i] = 0.; }
             /** For testing `if` projection of SOC */
             for (size_t i=0; i<m_n-1; i++) { m_hostSocA[i] = 0.; }
@@ -141,7 +141,7 @@ TEST_F(ConesTest, SecondOrderConeDual) {
 }
 
 TEST_F(ConesTest, CartesianCone) {
-    // for (size_t i=0; i<m_n*m_numConeTypes; i++) { std::cerr << m_hostCart[i] << " "; }  ///< For debugging
+    // for (size_t i=0; i<m_n*m_numConeTypes; i++) { std::cerr << m_dataCart[i] << " "; }  ///< For debugging
     m_d_dataCart.upload(m_hostCart);
     UniverseCone myUniv(m_n);
     ZeroCone myZero(m_n);
@@ -177,7 +177,7 @@ TEST_F(ConesTest, CartesianCone) {
 }
 
 TEST_F(ConesTest, CartesianDual) {
-    // for (size_t i=0; i<m_n*m_numConeTypes; i++) { std::cerr << m_hostCart[i] << " "; }  ///< For debugging
+    // for (size_t i=0; i<m_n*m_numConeTypes; i++) { std::cerr << m_dataCart[i] << " "; }  ///< For debugging
     m_d_dataCart.upload(m_hostCart);
     UniverseCone myUniv(m_n);
     ZeroCone myZero(m_n);

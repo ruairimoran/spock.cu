@@ -21,7 +21,7 @@ protected:
         m_d_data = std::make_unique<DTensor<DEFAULT_FPX>>(m_n);
         m_hostData.resize(m_n);
         m_hostTest.resize(m_n);
-        /** Positive and negative values in m_hostData */
+        /** Positive and negative values in m_data */
         for (size_t i=0; i<m_n; i=i+2) { m_hostData[i] = -2. * (i + 1.); }
         for (size_t i=1; i<m_n; i=i+2) { m_hostData[i] = 2. * (i + 1.); }
         m_d_data->upload(m_hostData);

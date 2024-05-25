@@ -160,7 +160,7 @@ public:
 
     void project(DTensor<T> &d_vec) {
         this->dimensionCheck(d_vec);
-        /** Determine the 2-norm of the first (n - 1) elements of d_vec */
+        /* Determine the 2-norm of the first (n - 1) elements of d_vec */
         DTensor<T> vecFirstPart(d_vec, this->m_axis, 0, this->m_dimension - 2);
         T nrm = vecFirstPart.normF();
         float vecLastElement = d_vec(this->m_dimension - 1);

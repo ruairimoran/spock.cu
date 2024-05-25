@@ -24,7 +24,7 @@ protected:
         m_data = std::make_unique<ProblemData<DEFAULT_FPX>>(*m_tree, problem_data);
         m_cache = std::make_unique<Cache<DEFAULT_FPX>>(*m_tree, *m_data, m_tol, m_maxIters);
 
-        /** Positive and negative values in m_hostData */
+        /** Positive and negative values in m_data */
         for (size_t i=0; i<m_n; i=i+2) { m_hostData[i] = -2. * (i + 1.); }
         for (size_t i=1; i<m_n; i=i+2) { m_hostData[i] = 2. * (i + 1.); }
         m_d_data.upload(m_hostData);

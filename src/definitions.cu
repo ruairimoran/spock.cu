@@ -70,23 +70,25 @@ template __global__ void k_projectOnSoc(float *, size_t, float, float);
 template __global__ void k_projectOnSoc(double *, size_t, double, double);
 
 TEMPLATE_WITH_TYPE_T
-__global__ void k_projectionMultiSoc_s1(T *data,
-                                        size_t numCones,
-                                        size_t coneDimension,
-                                        T *t_ws,
-                                        T *squaredElements_ws,
-                                        T *norms,
-                                        int *i2,
-                                        int *i3,
-                                        T *scaling) {
+__global__ void k_projectionMultiSocStep1(T *data,
+                                          size_t numCones,
+                                          size_t coneDimension,
+                                          T *lastElementOfCones,
+                                          T *squaredElements,
+                                          T *norms,
+                                          int *i2,
+                                          int *i3,
+                                          T *scaling) {
     /* Copy data to workspace */
-    const unsigned int tid = threadIdx.x + blockIdx.x * blockDim.x;
-    const unsigned int idSoc = blockIdx.y;
-    const unsigned int s = idSoc * coneDimension + tid;
-    if (idSoc < numCones) t_ws[idSoc] = data[coneDimension * (idSoc + 1) - 1];
-    if (idSoc < numCones && tid < coneDimension - 1) {
-        T temp = data[s];
-        squaredElements_ws[s - idSoc] = temp * temp;
+    const unsigned int thread = threadIdx.x + blockIdx.x * blockDim.x;
+    const unsigned int cone = blockIdx.y;
+    const unsigned int allButLastElement = cone * coneDimension + thread;
+    if (cone < numCones) {
+        lastElementOfCones[cone] = data[coneDimension * (cone + 1) - 1];
+    }
+    if (cone < numCones && thread < coneDimension - 1) {
+        T temp = data[allButLastElement];
+        squaredElements[allButLastElement - cone] = temp * temp;
     }
     __syncthreads(); /* sync threads in each block */
 
@@ -96,80 +98,80 @@ __global__ void k_projectionMultiSoc_s1(T *data,
      * be block-wise (and not device-wide), we will use shared memory.
      * For this reason we won't do any map-reduce-type summation.
      */
-    extern __shared__ __align__(sizeof(T)) unsigned char mem[];
+    extern __shared__ unsigned char mem[];
     T *sharedMem = reinterpret_cast<T *>(mem);
-    if (idSoc < numCones && tid < coneDimension - 1)
-        sharedMem[tid] = squaredElements_ws[idSoc * (coneDimension - 1) + tid];
+    if (cone < numCones && thread < coneDimension - 1) {
+        sharedMem[thread] = squaredElements[cone * (coneDimension - 1) + thread];
+    }
     __syncthreads();
 
     /* and now do the addition atomically */
-    if (idSoc < numCones && tid < coneDimension - 1) {
-        atomicAdd(&norms[idSoc], sharedMem[tid]);
+    if (cone < numCones && thread < coneDimension - 1) {
+        atomicAdd(&norms[cone], sharedMem[thread]);
     }
     __syncthreads();
 
     /* Final touch: apply the square root to determine the Euclidean norms */
-    if (idSoc < numCones && tid == 0) {
-        norms[idSoc] = sqrt(norms[idSoc]);
+    if (cone < numCones && thread == 0) {
+        norms[cone] = sqrt(norms[cone]);
     }
     __syncthreads();
 
     /* populate sets i2 and i3 and compute scaling parameters */
-    if (idSoc < numCones && tid == 0) {
-        T nrm_j = norms[idSoc];
-        T t_j = t_ws[idSoc];
+    if (cone < numCones && thread == 0) {
+        T nrm_j = norms[cone];
+        T t_j = lastElementOfCones[cone];
         int i1 = nrm_j <= t_j;
-        i2[idSoc] = nrm_j <= -t_j && !i1;
-        i3[idSoc] = !i1 && !i2[idSoc];
-        scaling[idSoc] = (nrm_j + t_j) / (2. * nrm_j + (1 - i3[idSoc]));
+        i2[cone] = nrm_j <= -t_j && !i1;
+        i3[cone] = !i1 && !i2[cone];
+        scaling[cone] = (nrm_j + t_j) / (2. * nrm_j + (1 - i3[cone]));
     }
 }
 
 template __global__ void
-k_projectionMultiSoc_s1(float *, size_t, size_t, float *, float *, float *, int *, int *, float *);
+k_projectionMultiSocStep1(float *, size_t, size_t, float *, float *, float *, int *, int *, float *);
 
 template __global__ void
-k_projectionMultiSoc_s1(double *, size_t, size_t, double *, double *, double *, int *, int *, double *);
+k_projectionMultiSocStep1(double *, size_t, size_t, double *, double *, double *, int *, int *, double *);
 
 TEMPLATE_WITH_TYPE_T
-__global__ void k_projectionMultiSoc_s2_i2(T *data,
-                                           size_t numCones,
-                                           size_t coneDimension,
-                                           int *i2) {
-    const unsigned int tid = threadIdx.x + blockIdx.x * blockDim.x;
-    const unsigned int idSoc = blockIdx.y;
-    const unsigned int s = idSoc * coneDimension + tid;
-    if (idSoc < numCones && tid < coneDimension) data[s] *= 1 - i2[idSoc];
+__global__ void k_projectionMultiSocStep2(T *data,
+                                          size_t numCones,
+                                          size_t coneDimension,
+                                          int *i2) {
+    const unsigned int thread = threadIdx.x + blockIdx.x * blockDim.x;
+    const unsigned int cone = blockIdx.y;
+    const unsigned int allButLastElement = cone * coneDimension + thread;
+    if (cone < numCones && thread < coneDimension) data[allButLastElement] *= 1 - i2[cone];
 }
 
-template __global__ void k_projectionMultiSoc_s2_i2(float *, size_t, size_t, int *);
+template __global__ void k_projectionMultiSocStep2(float *, size_t, size_t, int *);
 
-template __global__ void k_projectionMultiSoc_s2_i2(double *, size_t, size_t, int *);
+template __global__ void k_projectionMultiSocStep2(double *, size_t, size_t, int *);
 
 TEMPLATE_WITH_TYPE_T
-__global__ void k_projectionMultiSoc_s2_i3(T *data,
-                                           size_t numCones,
-                                           size_t coneDimension,
-                                           T *norms,
-                                           int *i2,
-                                           int *i3,
-                                           T *scaling) {
-    const unsigned int tid = threadIdx.x + blockIdx.x * blockDim.x;
-    const unsigned int idSoc = blockIdx.y;
-    const unsigned int s = idSoc * coneDimension + tid;
-
-    if (idSoc < numCones && tid < coneDimension - 1) {
-        T multiplier = i3[idSoc] * scaling[idSoc] + 1 - i3[idSoc];
-        data[s] *= multiplier;
+__global__ void k_projectionMultiSocStep3(T *data,
+                                          size_t numCones,
+                                          size_t coneDimension,
+                                          T *norms,
+                                          int *i2,
+                                          int *i3,
+                                          T *scaling) {
+    const unsigned int thread = threadIdx.x + blockIdx.x * blockDim.x;
+    const unsigned int cone = blockIdx.y;
+    const unsigned int allButLastElement = cone * coneDimension + thread;
+    if (cone < numCones && thread < coneDimension - 1) {
+        T multiplier = i3[cone] * scaling[cone] + 1 - i3[cone];
+        data[allButLastElement] *= multiplier;
     }
-    if (idSoc < numCones && tid == coneDimension - 1) {
-        int c_i2 = i2[idSoc];
-        int c_i3 = i3[idSoc];
+    if (cone < numCones && thread == coneDimension - 1) {
+        int c_i2 = i2[cone];
+        int c_i3 = i3[cone];
         int c_i1 = (1 - c_i2) * (1 - c_i3);
-        data[s] = c_i1 * data[s] + (1 - c_i1) * (1 - c_i2) * (c_i3 * (scaling[idSoc] * norms[idSoc] - 1) + 1);
+        data[allButLastElement] = c_i1 * data[allButLastElement] + (1 - c_i1) * (1 - c_i2) * (c_i3 * (scaling[cone] * norms[cone] - 1) + 1);
     }
 }
 
-template __global__ void k_projectionMultiSoc_s2_i3(float *, size_t, size_t, float *, int *, int *, float *);
+template __global__ void k_projectionMultiSocStep3(float *, size_t, size_t, float *, int *, int *, float *);
 
-template __global__ void k_projectionMultiSoc_s2_i3(double *, size_t, size_t, double *, int *, int *, double *);
+template __global__ void k_projectionMultiSocStep3(double *, size_t, size_t, double *, int *, int *, double *);

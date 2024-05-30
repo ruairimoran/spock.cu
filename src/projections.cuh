@@ -73,11 +73,11 @@ public:
         m_scalingParams = std::make_unique<DTensor<T>>(this->m_numCols, 1, 1, true);
         m_i2 = std::make_unique<DTensor<int>>(this->m_numCols, 1, 1, true);
         m_i3 = std::make_unique<DTensor<int>>(this->m_numCols, 1, 1, true);
-        m_threadsPerBlock = THREADS_PER_BLOCK;
+        m_threadsPerBlock = THREADS_PER_BLOCK_;
         size_t blocksDimX = DIM2BLOCKS_(this->m_numRows, m_threadsPerBlock);
         m_gridDims.x = blocksDimX;
         m_gridDims.y = this->m_numCols;
-        m_sharedMemBytes = sizeof(T) * this->m_numRows - 1;
+        m_sharedMemBytes = sizeof(T) * THREADS_PER_BLOCK_;
     }
 
     void project(DTensor<T> &d_tensor) {

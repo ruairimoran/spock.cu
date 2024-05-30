@@ -9,13 +9,16 @@
 #include <source_location>
 #include "rapidjson/document.h"
 #include "rapidjson/error/en.h"
+#include "rapidjson/filewritestream.h"
+#include "rapidjson/writer.h"
+#include "rapidjson/stringbuffer.h"
 
 
 /**
  * Define defaults
  */
 #define DEFAULT_FPX double
-#define THREADS_PER_BLOCK 512
+#define THREADS_PER_BLOCK_ 512
 #define DIM2BLOCKS(n) ((n) / THREADS_PER_BLOCK + ((n) % THREADS_PER_BLOCK != 0))
 #define DIM2BLOCKS_(n, t) ((n) / t + ((n) % t != 0))
 #if (__cplusplus >= 201703L)  ///< if c++17 or above

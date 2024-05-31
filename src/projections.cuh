@@ -17,8 +17,8 @@ __global__ void k_projectionMultiSocStep3(T *, size_t, size_t, T *, int *, int *
 /**
  * Base projection for parallel implementations of projections
 */
-template<typename T>
-class Projection {
+TEMPLATE_WITH_TYPE_T
+class Projectable {
 
 protected:
     size_t m_numRows = 0;
@@ -26,7 +26,7 @@ protected:
     size_t m_numMats = 0;
 
 
-    explicit Projection(DTensor<T> &d_tensor) :
+    explicit Projectable(DTensor<T> &d_tensor) :
         m_numRows(d_tensor.numRows()), m_numCols(d_tensor.numCols()), m_numMats(d_tensor.numMats()) {}
 
     bool dimensionCheck(DTensor<T> &d_tensor) {
@@ -41,7 +41,7 @@ protected:
     }
 
 public:
-    virtual ~Projection() {}
+    virtual ~Projectable() {}
 
     virtual void project(DTensor<T> &d_tensor) = 0;
 };
@@ -50,8 +50,8 @@ public:
 /**
  * Projection onto second order cones
 */
-template<typename T>
-class SocProjection : public Projection<T> {
+TEMPLATE_WITH_TYPE_T
+class SocProjection : public Projectable<T> {
 private:
     std::unique_ptr<DTensor<T>> m_lastElementOfSocs = nullptr;
     std::unique_ptr<DTensor<T>> m_squaredElements = nullptr;
@@ -65,7 +65,7 @@ private:
     size_t m_sharedMemBytes = 0;
 
 public:
-    explicit SocProjection(DTensor<T> &d_tensor) : Projection<T>(d_tensor) {
+    explicit SocProjection(DTensor<T> &d_tensor) : Projectable<T>(d_tensor) {
         m_zeros = std::make_unique<DTensor<T>>(this->m_numCols, 1, 1, true);
         m_lastElementOfSocs = std::make_unique<DTensor<T>>(this->m_numCols);
         m_squaredElements = std::make_unique<DTensor<T>>(this->m_numCols * (this->m_numRows - 1));
@@ -77,14 +77,16 @@ public:
         size_t blocksDimX = DIM2BLOCKS_(this->m_numRows, m_threadsPerBlock);
         m_gridDims.x = blocksDimX;
         m_gridDims.y = this->m_numCols;
-        m_sharedMemBytes = sizeof(T) * THREADS_PER_BLOCK_;
+        size_t sharedMemMultiplier = (this->m_numRows > THREADS_PER_BLOCK_) ? THREADS_PER_BLOCK_ : this->m_numRows;
+        m_sharedMemBytes =  sizeof(T) * sharedMemMultiplier;
     }
 
     void project(DTensor<T> &d_tensor) {
         this->dimensionCheck(d_tensor);
         m_zeros->deviceCopyTo(*m_norms);
         k_projectionMultiSocStep1<<<m_gridDims, m_threadsPerBlock, m_sharedMemBytes>>>(d_tensor.raw(), this->m_numCols,
-                                                                                       this->m_numRows, m_lastElementOfSocs->raw(),
+                                                                                       this->m_numRows,
+                                                                                       m_lastElementOfSocs->raw(),
                                                                                        m_squaredElements->raw(),
                                                                                        m_norms->raw(), m_i2->raw(),
                                                                                        m_i3->raw(),

@@ -92,12 +92,12 @@ T testSerial(size_t runs, size_t numCones, size_t coneDim, bool print = false) {
 
 template<typename T>
 void printTimes(size_t runs, size_t maxNumCones, size_t maxConeDim, std::vector<T> &times) {
-    size_t num = (maxConeDim - 2) * (maxNumCones - 2);
-    times.resize(num);
-    for (size_t cone = 2; cone < maxNumCones; cone++) {
+    times.resize(maxNumCones * maxConeDim);
+    for (size_t cone = 1; cone < maxNumCones; cone++) {
         for (size_t dim = 2; dim < maxConeDim; dim++) {
-            times[(cone - 2) * (dim - 2)] = testParallel<T>(runs, cone, dim);
+            times[cone * maxConeDim + dim] = testParallel<T>(runs, cone, dim);
         }
+        std::cout << cone << "\n";
     }
 }
 
@@ -106,7 +106,7 @@ template<typename T>
 void addArrayToJson(rapidjson::Document &doc, rapidjson::GenericStringRef<char> name, std::vector<T> &vec) {
     rapidjson::Value array(rapidjson::kArrayType);
     for (size_t i = 0; i < vec.size(); i++) {
-        array.PushBack(vec[i], doc.GetAllocator());
+        array.PushBack(vec[vec.size() - i], doc.GetAllocator());
     }
     doc.AddMember(name, array, doc.GetAllocator());
 }
@@ -114,15 +114,16 @@ void addArrayToJson(rapidjson::Document &doc, rapidjson::GenericStringRef<char> 
 
 int main() {
     size_t runs = 10;
-    size_t coneDim = 10;
-    size_t numCones = 5;
-    std::vector<double> times(1);
+    size_t coneDim = 100;
+    size_t numCones = 100;
+    std::vector<double> times;
     printTimes(runs, numCones, coneDim, times);
 
     char text[65536];
     rapidjson::MemoryPoolAllocator<> allocator(text, sizeof(text));
     rapidjson::Document doc(&allocator, 256);
     doc.SetObject();
+    doc.AddMember("runs", runs, doc.GetAllocator());
     doc.AddMember("coneDim", coneDim, doc.GetAllocator());
     doc.AddMember("numCones", numCones, doc.GetAllocator());
     rapidjson::GenericStringRef<char> timesName = "times";
@@ -136,7 +137,6 @@ int main() {
 
     std::ofstream of("/home/biggirl/Documents/remote_host/raocp-parallel/playground/times.json");
     of << json;
-    std::cout << json;
     if (!of.good()) throw std::runtime_error("Can't write the JSON string to the file!");
 
     return 0;

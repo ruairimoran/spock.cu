@@ -119,7 +119,6 @@ TEST_F(ProjectionsTest, CartesianCone) {
                                          2.988612787525831,
                                          0., 0., 0., 0., 0.,
                                          9., -10., 11., -12., 100.};
-    multiSocProj.project(d_socs);
     EXPECT_EQ(test, expected);
 }
 
@@ -142,4 +141,36 @@ TEST_F(ProjectionsTest, Serial) {
     for (size_t i = 0; i < numCones; i++) { EXPECT_EQ(split[i], expected[i]); }
 }
 
-
+TEST_F(ProjectionsTest, CartesianWithMultipleBlocksPerCone) {
+    /**
+     * This test ensures that the shared memory for batched SOC projections works as intended.
+     * The cone's dimensions are greater than the block size,
+     * so each cone requires two blocks of threads.
+     * If only the threads in one block can access the shared memory,
+     * then the test will fail (the projection will set the cones to zeros = i2 projection).
+     * If threads in both blocks have access to the shared memory,
+     * the projection will not set the cones to zeros (= i3 projection).
+    */
+    size_t extra = 50;
+    size_t coneDim = THREADS_PER_BLOCK_ + (extra * 2);
+    size_t numCones = 2;
+    DTensor<DEFAULT_FPX> d_socs(coneDim, numCones);
+    SocProjection multiSocProj(d_socs);
+    DTensor<DEFAULT_FPX> d_cone1(d_socs, 1, 0, 0);
+    DTensor<DEFAULT_FPX> d_cone2(d_socs, 1, 1, 1);
+    std::vector<DEFAULT_FPX> cone1(coneDim, 1.);
+    std::vector<DEFAULT_FPX> cone2(coneDim, 1.);
+    DEFAULT_FPX lastElement = -sqrt(THREADS_PER_BLOCK_ + extra);
+    cone1[coneDim - 1] = lastElement;
+    cone2[coneDim - 1] = lastElement;
+    d_cone1.upload(cone1);
+    d_cone2.upload(cone2);
+    multiSocProj.project(d_socs);
+    std::vector<DEFAULT_FPX> test1(coneDim);
+    std::vector<DEFAULT_FPX> test2(coneDim);
+    d_cone1.download(test1);
+    d_cone2.download(test2);
+    std::vector<DEFAULT_FPX> notExpected(coneDim, 0.);
+    EXPECT_NE(test1, notExpected);
+    EXPECT_NE(test2, notExpected);
+}

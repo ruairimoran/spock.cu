@@ -152,7 +152,7 @@ TEST_F(ProjectionsTest, CartesianWithMultipleBlocksPerCone) {
      * the projection will not set the cones to zeros (= i3 projection).
     */
     size_t extra = 50;
-    size_t coneDim = THREADS_PER_BLOCK_ + (extra * 2);
+    size_t coneDim = TPB + (extra * 2);
     size_t numCones = 2;
     DTensor<DEFAULT_FPX> d_socs(coneDim, numCones);
     SocProjection multiSocProj(d_socs);
@@ -160,7 +160,7 @@ TEST_F(ProjectionsTest, CartesianWithMultipleBlocksPerCone) {
     DTensor<DEFAULT_FPX> d_cone2(d_socs, 1, 1, 1);
     std::vector<DEFAULT_FPX> cone1(coneDim, 1.);
     std::vector<DEFAULT_FPX> cone2(coneDim, 1.);
-    DEFAULT_FPX lastElement = -sqrt(THREADS_PER_BLOCK_ + extra);
+    DEFAULT_FPX lastElement = -sqrt(TPB + extra);
     cone1[coneDim - 1] = lastElement;
     cone2[coneDim - 1] = lastElement;
     d_cone1.upload(cone1);

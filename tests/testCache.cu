@@ -17,6 +17,7 @@ protected:
     DTensor<DEFAULT_FPX> m_d_data = DTensor<DEFAULT_FPX>(m_n);
     std::vector<DEFAULT_FPX> m_hostData = std::vector<DEFAULT_FPX>(m_n);
     std::vector<DEFAULT_FPX> m_hostTest = std::vector<DEFAULT_FPX>(m_n);
+
     CacheTest() {
         std::ifstream tree_data("../../tests/testTreeData.json");
         m_tree = std::make_unique<ScenarioTree<DEFAULT_FPX>>(tree_data);
@@ -25,8 +26,8 @@ protected:
         m_cache = std::make_unique<Cache<DEFAULT_FPX>>(*m_tree, *m_data, m_tol, m_maxIters);
 
         /** Positive and negative values in m_data */
-        for (size_t i=0; i<m_n; i=i+2) { m_hostData[i] = -2. * (i + 1.); }
-        for (size_t i=1; i<m_n; i=i+2) { m_hostData[i] = 2. * (i + 1.); }
+        for (size_t i = 0; i < m_n; i = i + 2) { m_hostData[i] = -2. * (i + 1.); }
+        for (size_t i = 1; i < m_n; i = i + 2) { m_hostData[i] = 2. * (i + 1.); }
         m_d_data.upload(m_hostData);
     };
 

@@ -29,8 +29,9 @@ TEMPLATE_WITH_TYPE_T
 __global__ void k_projectRectangle(size_t dimension, T *vec, T *lowerBound, T *upperBound) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < dimension) {
-        if (vec[i] < lowerBound[i]) vec[i] = lowerBound[i];
-        if (vec[i] > upperBound[i]) vec[i] = upperBound[i];
+        int lower = (vec[i] < lowerBound[i]);
+        int upper = (vec[i] > upperBound[i]);
+        vec[i] = vec[i] * (1 - lower) * (1 - upper) + lower * lowerBound[i] + upper * upperBound[i];
     }
 }
 
@@ -168,7 +169,8 @@ __global__ void k_projectionMultiSocStep3(T *data,
         int c_i2 = i2[cone];
         int c_i3 = i3[cone];
         int c_i1 = (1 - c_i2) * (1 - c_i3);
-        data[allButLastElement] = c_i1 * data[allButLastElement] + (1 - c_i1) * (1 - c_i2) * (c_i3 * (scaling[cone] * norms[cone] - 1) + 1);
+        data[allButLastElement] =
+            c_i1 * data[allButLastElement] + (1 - c_i1) * (1 - c_i2) * (c_i3 * (scaling[cone] * norms[cone] - 1) + 1);
     }
 }
 

@@ -86,7 +86,7 @@ public:
 
     void projectOnDual(DTensor<T> &d_vec) {
         this->dimensionCheck(d_vec);
-        k_setToZero<<<DIM2BLOCKS(this->m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), this->m_dimension);
+        k_setToZero<<<numBlocks(this->m_dimension, TPB), TPB>>>(d_vec.raw(), this->m_dimension);
     }
 
     std::string name() { return "Universe cone"; }
@@ -107,7 +107,7 @@ public:
 
     void project(DTensor<T> &d_vec) {
         this->dimensionCheck(d_vec);
-        k_setToZero<<<DIM2BLOCKS(this->m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), this->m_dimension);
+        k_setToZero<<<numBlocks(this->m_dimension, TPB), TPB>>>(d_vec.raw(), this->m_dimension);
     }
 
     void projectOnDual(DTensor<T> &d_vec) {
@@ -133,7 +133,7 @@ public:
 
     void project(DTensor<T> &d_vec) {
         this->dimensionCheck(d_vec);
-        k_maxWithZero<<<DIM2BLOCKS(this->m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), this->m_dimension);
+        k_maxWithZero<<<numBlocks(this->m_dimension, TPB), TPB>>>(d_vec.raw(), this->m_dimension);
     }
 
     void projectOnDual(DTensor<T> &d_vec) {
@@ -167,10 +167,10 @@ public:
         if (nrm <= vecLastElement) {
             return;  // Do nothing!
         } else if (nrm <= -vecLastElement) {
-            k_setToZero<<<DIM2BLOCKS(this->m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), this->m_dimension);
+            k_setToZero<<<numBlocks(this->m_dimension, TPB), TPB>>>(d_vec.raw(), this->m_dimension);
         } else {
             T scaling = (nrm + vecLastElement) / (2. * nrm);
-            k_projectOnSoc<<<DIM2BLOCKS(this->m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), this->m_dimension, nrm, scaling);
+            k_projectOnSoc<<<numBlocks(this->m_dimension, TPB), TPB>>>(d_vec.raw(), this->m_dimension, nrm, scaling);
         }
     }
 

@@ -73,10 +73,8 @@ public:
 
     void project(DTensor<T> &d_vec) {
         this->dimensionCheck(d_vec);
-        k_projectRectangle<<<DIM2BLOCKS(this->m_dimension), THREADS_PER_BLOCK>>>(this->m_dimension,
-                                                                                 d_vec.raw(),
-                                                                                 m_d_lowerBound->raw(),
-                                                                                 m_d_upperBound->raw());
+        k_projectRectangle<<<numBlocks(this->m_dimension, TPB), TPB>>>(this->m_dimension, d_vec.raw(),
+                                                                       m_d_lowerBound->raw(), m_d_upperBound->raw());
     }
 
     void print() {

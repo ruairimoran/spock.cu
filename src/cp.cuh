@@ -13,7 +13,7 @@ TEMPLATE_WITH_TYPE_T
 size_t timeCp(Cache<T>& cache, std::vector<T> initialState) {
     /* For debugging only ----------------- */
     std::vector<T> numbers(cache.solutionSize());
-    std::iota (std::begin(numbers), std::end(numbers), 0);
+    std::iota(std::begin(numbers), std::end(numbers), 0);
     /* ------------------------------------ */
     std::cout << "timer started" << "\n";
     const auto tick = std::chrono::high_resolution_clock::now();

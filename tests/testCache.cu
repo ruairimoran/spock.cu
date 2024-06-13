@@ -35,6 +35,8 @@ protected:
 };
 
 
-TEST_F(CacheTest, Uno) {
-    EXPECT_EQ(1, true);
+TEST_F(CacheTest, DynamicsProjectionOnline) {
+    std::vector<DEFAULT_FPX> initialState = {3., 5., 4.};
+    m_cache->initialiseState(initialState);
+    m_cache->projectOnDynamics();
 }

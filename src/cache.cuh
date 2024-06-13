@@ -52,8 +52,6 @@ private:
      */
     void breakPrimal();
     void rebuildPrimal();
-    void projectOnDynamics();
-    void projectOnKernel();
 
 public:
     /**
@@ -87,8 +85,11 @@ public:
     /**
      * Public methods
      */
+    void initialiseState(std::vector<T> &initState);
+    void projectOnDynamics();
+    void projectOnKernel();
     void cpIter();
-    void vanillaCp(std::vector<T> initState, std::vector<T> *previousSolution=nullptr);
+    void vanillaCp(std::vector<T> &initState, std::vector<T> *previousSolution=nullptr);
 
     /**
      * Debugging
@@ -142,13 +143,29 @@ void Cache<T>::rebuildPrimal() {
 }
 
 template<typename T>
+void Cache<T>::initialiseState(std::vector<T> &initState) {
+    /* Set initial state */
+    if (initState.size() != m_data.numStates()) {
+        std::cerr << "Error initialising state: problem setup for " << m_data.numStates()
+                  << " but given " << initState.size() << " states" << "\n";
+        throw std::invalid_argument("Incorrect dimension of initial state");
+    }
+    DTensor<T> slicePrim(*m_d_prim, 0, 0, m_data.numStates() - 1);
+    slicePrim.upload(initState);
+}
+
+template<typename T>
 void Cache<T>::projectOnDynamics() {
-    *m_d_x *= -1.;
-    m_d_x->deviceCopyTo(*m_d_q);
-    for (size_t stagePlusOne=m_tree.numStages()-1; stagePlusOne>0; stagePlusOne--) {
+    DTensor<T> statesAtLastStage(*m_d_x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes());
+    statesAtLastStage *= -1.;
+    DTensor<T> q0(*m_d_q, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes());
+    statesAtLastStage.deviceCopyTo(q0);
+    size_t horizon = m_tree.numStages()-1;
+    for (size_t stagePlusOne=horizon; stagePlusOne>0; stagePlusOne--) {
         size_t stage = stagePlusOne - 1;
         size_t chNodeFr = m_tree.nodeFrom()[stagePlusOne];
         size_t chNodeTo = m_tree.nodeTo()[stagePlusOne];
+        /* Solve for next d */
         DTensor<T> B(m_data.inputDynamics(), m_matAxis, chNodeFr, chNodeTo);
         DTensor<T> Btr = B.tr();
         DTensor<T> q(*m_d_q, m_matAxis, chNodeFr, chNodeTo);
@@ -168,6 +185,14 @@ void Cache<T>::projectOnDynamics() {
         dAtStage += uAtStage;
         m_data.choleskyBatch()[stage]->solve(dAtStage);
         std::cout << "d at stage " << stage << "\n" << dAtStage;
+        /* Solve for next q */
+        DTensor<T> K(m_data.K(), m_matAxis, chNodeFr, chNodeTo);
+        DTensor<T> Ktr = K.tr();
+        DTensor<T> inputsAtStage(*m_d_u, m_matAxis, nodeFr, nodeTo);
+        DTensor<T> dMinusInputs = dAtStage - inputsAtStage;
+        DTensor<T> Kdu = Ktr * dMinusInputs;
+        DTensor<T> statesAtStage(*m_d_x, m_matAxis, nodeFr, nodeTo);
+        Kdu -= statesAtStage;
     }
 }
 
@@ -177,15 +202,8 @@ void Cache<T>::projectOnKernel() {
 }
 
 template<typename T>
-void Cache<T>::vanillaCp(std::vector<T> initState, std::vector<T> *previousSolution) {
-    /* Set initial state */
-    if (initState.size() != m_data.numStates()) {
-        std::cerr << "Error initialising state: problem setup for " << m_data.numStates()
-                  << " but given " << initState.size() << " states" << "\n";
-        throw std::invalid_argument("Incorrect dimension of initial state");
-    }
-    DTensor<T> slicePrim(*m_d_prim, 0, 0, m_data.numStates() - 1);
-    slicePrim.upload(initState);
+void Cache<T>::vanillaCp(std::vector<T> &initState, std::vector<T> *previousSolution) {
+    initialiseState(initState);
     /* Load previous solution if given */
     if (previousSolution) m_d_prim->upload(*previousSolution);
     /* Run CP algo */

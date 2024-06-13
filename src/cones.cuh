@@ -4,13 +4,13 @@
 #include "../include/gpu.cuh"
 
 TEMPLATE_WITH_TYPE_T
-__global__ void d_maxWithZero(T *vec, size_t n);
+__global__ void k_maxWithZero(T *vec, size_t n);
 
 TEMPLATE_WITH_TYPE_T
-__global__ void d_setToZero(T *vec, size_t n);
+__global__ void k_setToZero(T *vec, size_t n);
 
 TEMPLATE_WITH_TYPE_T
-__global__ void d_projectOnSoc(T *vec, size_t n, T nrm, T scaling);
+__global__ void k_projectOnSoc(T *vec, size_t n, T nrm, T scaling);
 
 
 TEMPLATE_WITH_TYPE_T
@@ -86,7 +86,7 @@ public:
 
     void projectOnDual(DTensor<T> &d_vec) {
         this->dimensionCheck(d_vec);
-        d_setToZero<<<DIM2BLOCKS(this->m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), this->m_dimension);
+        k_setToZero<<<numBlocks(this->m_dimension, TPB), TPB>>>(d_vec.raw(), this->m_dimension);
     }
 
     std::string name() { return "Universe cone"; }
@@ -107,7 +107,7 @@ public:
 
     void project(DTensor<T> &d_vec) {
         this->dimensionCheck(d_vec);
-        d_setToZero<<<DIM2BLOCKS(this->m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), this->m_dimension);
+        k_setToZero<<<numBlocks(this->m_dimension, TPB), TPB>>>(d_vec.raw(), this->m_dimension);
     }
 
     void projectOnDual(DTensor<T> &d_vec) {
@@ -133,7 +133,7 @@ public:
 
     void project(DTensor<T> &d_vec) {
         this->dimensionCheck(d_vec);
-        d_maxWithZero<<<DIM2BLOCKS(this->m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), this->m_dimension);
+        k_maxWithZero<<<numBlocks(this->m_dimension, TPB), TPB>>>(d_vec.raw(), this->m_dimension);
     }
 
     void projectOnDual(DTensor<T> &d_vec) {
@@ -160,17 +160,17 @@ public:
 
     void project(DTensor<T> &d_vec) {
         this->dimensionCheck(d_vec);
-        /** Determine the 2-norm of the first (n - 1) elements of d_vec */
+        /* Determine the 2-norm of the first (n - 1) elements of d_vec */
         DTensor<T> vecFirstPart(d_vec, this->m_axis, 0, this->m_dimension - 2);
         T nrm = vecFirstPart.normF();
         float vecLastElement = d_vec(this->m_dimension - 1);
         if (nrm <= vecLastElement) {
             return;  // Do nothing!
         } else if (nrm <= -vecLastElement) {
-            d_setToZero<<<DIM2BLOCKS(this->m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), this->m_dimension);
+            k_setToZero<<<numBlocks(this->m_dimension, TPB), TPB>>>(d_vec.raw(), this->m_dimension);
         } else {
             T scaling = (nrm + vecLastElement) / (2. * nrm);
-            d_projectOnSoc<<<DIM2BLOCKS(this->m_dimension), THREADS_PER_BLOCK>>>(d_vec.raw(), this->m_dimension, nrm, scaling);
+            k_projectOnSoc<<<numBlocks(this->m_dimension, TPB), TPB>>>(d_vec.raw(), this->m_dimension, nrm, scaling);
         }
     }
 

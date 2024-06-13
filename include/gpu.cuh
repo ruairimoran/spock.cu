@@ -9,24 +9,15 @@
 #include <source_location>
 #include "rapidjson/document.h"
 #include "rapidjson/error/en.h"
+#include "rapidjson/filewritestream.h"
+#include "rapidjson/writer.h"
+#include "rapidjson/stringbuffer.h"
 
 
 /**
  * Define defaults
  */
-#define DEFAULT_FPX double
-#define THREADS_PER_BLOCK 512
-#define DIM2BLOCKS(n) ((n) / THREADS_PER_BLOCK + ((n) % THREADS_PER_BLOCK != 0))
-#if (__cplusplus >= 201703L)  ///< if c++17 or above
-#define TEMPLATE_WITH_TYPE_T template<typename T = DEFAULT_FPX>
-#else
-#define TEMPLATE_WITH_TYPE_T template<typename T>
-#endif
-#if (__cplusplus >= 202002L)  ///< if c++20 or above
-#define TEMPLATE_CONSTRAINT_REQUIRES_FPX requires std::floating_point<T>
-#else
-#define TEMPLATE_CONSTRAINT_REQUIRES_FPX
-#endif
+#define TPB 512
 
 /**
  * Debugging

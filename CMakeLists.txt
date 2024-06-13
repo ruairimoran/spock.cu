@@ -20,7 +20,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # ----
 add_library(spock_developer_flags INTERFACE)
 set(cxx_flags -Wall)
-set(cuda_flags -arch=sm_60 -std=c++20 -Xcompiler=-Wall -Xcudafe=--display_error_number)
+set(cuda_flags -arch=sm_60 -std=c++20 -Xcompiler=-Wall -Xcudafe=--display_error_number -g)
 target_compile_options(spock_developer_flags
     INTERFACE
     # flags for CXX builds
@@ -35,7 +35,7 @@ set(GPUTILS_BUILD_TESTING OFF)
 include(FetchContent)
 FetchContent_Declare(
     gputils
-    URL https://github.com/GPUEngineering/GPUtils/archive/refs/tags/v0.1.0.zip  # specify release version
+    URL https://github.com/GPUEngineering/GPUtils/archive/refs/heads/main.zip  # specify release version
 )
 FetchContent_MakeAvailable(gputils)
 FetchContent_GetProperties(

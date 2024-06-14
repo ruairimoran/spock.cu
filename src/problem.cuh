@@ -33,8 +33,9 @@ private:
     /* Dynamics projection */
     std::unique_ptr<DTensor<T>> m_d_lowerCholesky = nullptr;
     std::unique_ptr<DTensor<T>> m_d_K = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_dynamicsSum = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_dynamicsSumTr = nullptr;
     std::unique_ptr<DTensor<T>> m_d_P = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_APB = nullptr;
     std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>> m_choleskyBatch;
     std::vector<std::unique_ptr<DTensor<T>>> m_choleskyStage;
     /* Kernel projection */
@@ -118,8 +119,9 @@ public:
         m_d_stateWeightLeaf = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_lowerCholesky = std::make_unique<DTensor<T>>(m_numInputs, m_numInputs, m_tree.numNonleafNodes(), true);
         m_d_K = std::make_unique<DTensor<T>>(m_numInputs, m_numStates, m_tree.numNonleafNodes(), true);
-        m_d_dynamicsSum = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
+        m_d_dynamicsSumTr = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_P = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
+        m_d_APB = std::make_unique<DTensor<T>>(m_numStates, m_numInputs, m_tree.numNodes(), true);
         m_d_nullspaceProj = std::make_unique<DTensor<T>>(m_nullDim, m_nullDim, m_tree.numNonleafNodes(), true);
 
         /** Upload to device */
@@ -135,7 +137,8 @@ public:
             parseMatrix(i, doc["nonleafStateCosts"][nodeString], m_d_stateWeight);
             parseMatrix(i, doc["nonleafInputCosts"][nodeString], m_d_inputWeight);
             parseConstraint(i, doc["stateConstraints"][nodeString], m_stateConstraint);
-            parseMatrix(i, doc["A+BK"][nodeString], m_d_dynamicsSum);
+            parseMatrix(i, doc["(A+B@K)t"][nodeString], m_d_dynamicsSumTr);
+            parseMatrix(i, doc["At@P@B"][nodeString], m_d_APB);
         }
         for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
             nodeString = std::to_string(i).c_str();
@@ -180,9 +183,11 @@ public:
 
     DTensor<T> &K() { return *m_d_K; }
 
-    DTensor<T> &dynamicsSum() { return *m_d_dynamicsSum; }
+    DTensor<T> &dynamicsSumTr() { return *m_d_dynamicsSumTr; }
 
     DTensor<T> &P() { return *m_d_P; }
+
+    DTensor<T> &APB() { return *m_d_APB; }
 
     DTensor<T> &nullspaceProj() { return *m_d_nullspaceProj; }
 
@@ -218,7 +223,7 @@ public:
         }
         printIfTensor("Lower Cholesky (from device): ", m_d_lowerCholesky);
         printIfTensor("K (from device): ", m_d_K);
-        printIfTensor("A + BK (from device): ", m_d_dynamicsSum);
+        printIfTensor("A + BK (from device): ", m_d_dynamicsSumTr);
         printIfTensor("P (from device): ", m_d_P);
         printIfTensor("Nullspace projection matrix (from device): ", m_d_nullspaceProj);
     }

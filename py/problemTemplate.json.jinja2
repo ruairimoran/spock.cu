@@ -86,10 +86,17 @@
 \% if not loop.last %\,\% endif %\
 
 \% endfor %\},
-\# SUM OF DYNAMICS #\
-"A+BK": {
-\% for i in range(dyn|length) %\
-"\~i~\":\% if dyn[i] is none %\[]\% else %\\~dyn[i].flatten().tolist()~\\% endif %\
+\# SUM OF DYNAMICS TRANSPOSED #\
+"(A+B@K)t": {
+\% for i in range(dyn_tr|length) %\
+"\~i~\":\% if dyn_tr[i] is none %\[]\% else %\\~dyn_tr[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# At @ P @ B #\
+"At@P@B": {
+\% for i in range(APB|length) %\
+"\~i~\":\% if APB[i] is none %\[]\% else %\\~APB[i].flatten().tolist()~\\% endif %\
 \% if not loop.last %\,\% endif %\
 
 \% endfor %\}

@@ -47,7 +47,8 @@ class Problem:
         self.__d = [np.zeros((self.__num_states, 1))] * self.__tree.num_nonleaf_nodes
         self.__lower = True  # Do not change!
         self.__cholesky_lower = [None] * self.__tree.num_nonleaf_nodes
-        self.__sum_of_dynamics = [np.zeros((0, 0))] * self.__tree.num_nodes  # A+BK
+        self.__sum_of_dynamics_tr = [np.zeros((0, 0))] * self.__tree.num_nodes  # A+B@K
+        self.__At_P_B = [np.zeros((0, 0))] * self.__tree.num_nodes  # At@P@B
         # Kernel projection
         self.__kernel_constraint_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
         self.__nullspace_projection_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
@@ -105,7 +106,8 @@ class Problem:
                                  P=self.__P,
                                  K=self.__K,
                                  low_chol=self.__cholesky_lower,
-                                 dyn=self.__sum_of_dynamics,
+                                 dyn_tr=self.__sum_of_dynamics_tr,
+                                 APB=self.__At_P_B,
                                  null_dim=self.__max_nullspace_dim,
                                  null=self.__nullspace_projection_matrix)
         path = os.path.join(os.getcwd(), self.__tree.folder)
@@ -140,9 +142,10 @@ class Problem:
             self.__K[i] = sp.linalg.cho_solve((self.__cholesky_lower[i], self.__lower), -sum_for_k)
             sum_for_p = 0
             for j in children_of_i:
-                self.__sum_of_dynamics[j] = self.__list_of_state_dynamics[j] \
-                                            + self.__list_of_input_dynamics[j] @ self.__K[i]
-                sum_for_p = sum_for_p + self.__sum_of_dynamics[j].T @ self.__P[j] @ self.__sum_of_dynamics[j]
+                sum_of_dynamics = self.__list_of_state_dynamics[j] + self.__list_of_input_dynamics[j] @ self.__K[i]
+                self.__sum_of_dynamics_tr[j] = sum_of_dynamics.T
+                sum_for_p = sum_for_p + self.__sum_of_dynamics_tr[j] @ self.__P[j] @ sum_of_dynamics
+                self.__At_P_B[j] = self.__sum_of_dynamics_tr[j] @ self.__P[j] @ self.__list_of_input_dynamics[j]
             self.__P[i] = np.eye(self.__num_states) + self.__K[i].T @ self.__K[i] + sum_for_p
 
     def __offline_projection_kernel(self):

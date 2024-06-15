@@ -55,8 +55,6 @@ TEST_F(CacheTest, InitialiseState) {
 }
 
 TEST_F(CacheTest, DynamicsProjectionOnline) {
-    std::filesystem::path cwd = std::filesystem::current_path();
-    std::cout << cwd;
     std::ifstream problem_data(m_problemFileLoc);
     std::string json((std::istreambuf_iterator<char>(problem_data)),
                      std::istreambuf_iterator<char>());
@@ -66,20 +64,26 @@ TEST_F(CacheTest, DynamicsProjectionOnline) {
         std::cerr << "Error parsing problem data JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
         throw std::invalid_argument("Cannot parse problem data JSON file for testing DP");
     }
-    std::vector<DEFAULT_FPX> cvxStates(m_data->numStates() * m_tree->numNodes());
-    std::vector<DEFAULT_FPX> cvxInputs(m_data->numInputs() * m_tree->numNonleafNodes());
+    size_t statesSize = m_data->numStates() * m_tree->numNodes();
+    size_t inputsSize = m_data->numInputs() * m_tree->numNonleafNodes();
+    std::vector<DEFAULT_FPX> cvxStates(statesSize);
+    std::vector<DEFAULT_FPX> cvxInputs(inputsSize);
     const char *nodeString = nullptr;
-    for (size_t i = 1; i < m_tree->numNodes(); i++) {
+    for (size_t i = 0; i < m_tree->numNodes(); i++) {
         nodeString = std::to_string(i).c_str();
         parse(i, doc["dpStates"][nodeString], cvxStates);
         if (i < m_tree->numNonleafNodes()) parse(i, doc["dpInputs"][nodeString], cvxInputs);
     }
     std::vector<DEFAULT_FPX> initialState(m_data->numStates());
-    parse(0, doc["dpStates"][nodeString], initialState);
+    parse(0, doc["dpStates"]["0"], initialState);
     m_cache->initialiseState(initialState);
     m_cache->projectOnDynamics();
-    size_t xuSize = m_tree->numNodes() * m_data->numStates() + m_tree->numNonleafNodes() * m_data->numInputs();
-    DTensor<DEFAULT_FPX> xu(m_cache->solution(), 0, 0, xuSize - 1);
-    std::vector<DEFAULT_FPX> sol(xuSize);
-    xu.download(sol);
+    /* Compare spockStates */
+    std::vector<DEFAULT_FPX> spockStates(statesSize);
+    m_cache->states().download(spockStates);
+    EXPECT_EQ(spockStates, cvxStates);
+    /* Compare inputs */
+    std::vector<DEFAULT_FPX> spockInputs(inputsSize);
+    m_cache->inputs().download(spockInputs);
+    EXPECT_EQ(spockInputs, cvxInputs);
 }

@@ -101,6 +101,10 @@ public:
 
     DTensor<T> &solution() { return *m_d_prim; }
 
+    DTensor<T> &states() { return *m_d_x; }
+
+    DTensor<T> &inputs() { return *m_d_u; }
+
     /**
      * Debugging
      */
@@ -219,7 +223,7 @@ void Cache<T>::projectOnDynamics() {
         }
     }
     /* State has been initialised, now compute control actions */
-    for (size_t stage = 0; stage < m_tree.numStages(); stage++) {
+    for (size_t stage = 0; stage < m_tree.numStages() - 1; stage++) {
         size_t nodeFr = m_tree.nodeFrom()[stage];
         size_t nodeTo = m_tree.nodeTo()[stage];
         /* Compute control actions */

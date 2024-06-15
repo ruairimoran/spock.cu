@@ -194,6 +194,7 @@ void Cache<T>::projectOnDynamics() {
         dAtStage *= -1.;
         dAtStage += uAtStage;
         m_data.choleskyBatch()[stage]->solve(dAtStage);
+        std::cout << "d @ stage " << stage << ": " << dAtStage;
         /* Solve for next q */
         DTensor<T> K(m_data.K(), m_matAxis, nodeFr, nodeTo);
         DTensor<T> Ktr = K.tr();
@@ -214,6 +215,7 @@ void Cache<T>::projectOnDynamics() {
                 DTensor<T> Aq = AAtChild * qAtChild;
                 qAtParent += APBd + Aq;
             }
+            std::cout << "q @ node " << node << ": " << qAtParent;
         }
     }
     /* State has been initialised, now compute control actions */
@@ -226,6 +228,8 @@ void Cache<T>::projectOnDynamics() {
         DTensor<T> KAtStage(m_data.K(), m_matAxis, nodeFr, nodeTo);
         DTensor<T> dAtStage(*m_d_d, m_matAxis, nodeFr, nodeTo);
         uAtStage = KAtStage * xAtStage;
+        uAtStage += dAtStage;
+        std::cout << "u @ stage " << stage << ": " << uAtStage;
         /* Compute next states */
         for (size_t node = nodeFr; node <= nodeTo; node++) {
             DTensor<T> xAtParent(*m_d_x, m_matAxis, node, node);
@@ -237,6 +241,7 @@ void Cache<T>::projectOnDynamics() {
                 DTensor<T> Ax = AAtChild * xAtParent;
                 DTensor<T> Bu = BAtChild * uAtParent;
                 xAtChild = Ax + Bu;
+                std::cout << "x @ node " << node << ": " << xAtChild;
             }
         }
     }

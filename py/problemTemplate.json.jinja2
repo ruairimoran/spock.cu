@@ -99,5 +99,19 @@
 "\~i~\":\% if APB[i] is none %\[]\% else %\\~APB[i].flatten().tolist()~\\% endif %\
 \% if not loop.last %\,\% endif %\
 
+\% endfor %\},
+\# DP TEST STATES #\
+"dpStates": {
+\% for i in range(dpTestStates|length) %\
+"\~i~\":\% if dpTestStates[i] is none %\[]\% else %\\~dpTestStates[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# DP TEST INPUTS #\
+"dpInputs": {
+\% for i in range(dpTestInputs|length) %\
+"\~i~\":\% if dpTestInputs[i] is none %\[]\% else %\\~dpTestInputs[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
 \% endfor %\}
 }

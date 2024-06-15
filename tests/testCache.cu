@@ -1,11 +1,15 @@
 #include <gtest/gtest.h>
 #include "../src/cache.cuh"
 #include <fstream>
+#include <filesystem>
+#include <iostream>
 
 
 class CacheTest : public testing::Test {
 
 protected:
+    std::string m_treeFileLoc = "../../tests/testTreeData.json";
+    std::string m_problemFileLoc = "../../tests/testProblemData.json";
     std::unique_ptr<ScenarioTree<DEFAULT_FPX>> m_tree;
     std::unique_ptr<ProblemData<DEFAULT_FPX>> m_data;
     std::unique_ptr<Cache<DEFAULT_FPX>> m_cache;
@@ -19,9 +23,9 @@ protected:
     std::vector<DEFAULT_FPX> m_hostTest = std::vector<DEFAULT_FPX>(m_n);
 
     CacheTest() {
-        std::ifstream tree_data("../../tests/testTreeData.json");
+        std::ifstream tree_data(m_treeFileLoc);
+        std::ifstream problem_data(m_problemFileLoc);
         m_tree = std::make_unique<ScenarioTree<DEFAULT_FPX>>(tree_data);
-        std::ifstream problem_data("../../tests/testProblemData.json");
         m_data = std::make_unique<ProblemData<DEFAULT_FPX>>(*m_tree, problem_data);
         m_cache = std::make_unique<Cache<DEFAULT_FPX>>(*m_tree, *m_data, m_tol, m_maxIters);
 
@@ -34,6 +38,14 @@ protected:
     virtual ~CacheTest() {}
 };
 
+template<typename T>
+static void parse(size_t nodeIdx, const rapidjson::Value &value, std::vector<T> &vec) {
+    size_t numElements = value.Capacity();
+    for (rapidjson::SizeType i = 0; i < numElements; i++) {
+        vec[nodeIdx * numElements + i] = value[i].GetDouble();
+    }
+}
+
 TEST_F(CacheTest, InitialiseState) {
     std::vector<DEFAULT_FPX> initialState = {3., 5., 4.};
     m_cache->initialiseState(initialState);
@@ -43,59 +55,31 @@ TEST_F(CacheTest, InitialiseState) {
 }
 
 TEST_F(CacheTest, DynamicsProjectionOnline) {
-    std::vector<DEFAULT_FPX> initialState = {3., 5., 4.};
+    std::filesystem::path cwd = std::filesystem::current_path();
+    std::cout << cwd;
+    std::ifstream problem_data(m_problemFileLoc);
+    std::string json((std::istreambuf_iterator<char>(problem_data)),
+                     std::istreambuf_iterator<char>());
+    rapidjson::Document doc;
+    doc.Parse(json.c_str());
+    if (doc.HasParseError()) {
+        std::cerr << "Error parsing problem data JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
+        throw std::invalid_argument("Cannot parse problem data JSON file for testing DP");
+    }
+    std::vector<DEFAULT_FPX> cvxStates(m_data->numStates() * m_tree->numNodes());
+    std::vector<DEFAULT_FPX> cvxInputs(m_data->numInputs() * m_tree->numNonleafNodes());
+    const char *nodeString = nullptr;
+    for (size_t i = 1; i < m_tree->numNodes(); i++) {
+        nodeString = std::to_string(i).c_str();
+        parse(i, doc["dpStates"][nodeString], cvxStates);
+        if (i < m_tree->numNonleafNodes()) parse(i, doc["dpInputs"][nodeString], cvxInputs);
+    }
+    std::vector<DEFAULT_FPX> initialState(m_data->numStates());
+    parse(0, doc["dpStates"][nodeString], initialState);
     m_cache->initialiseState(initialState);
     m_cache->projectOnDynamics();
     size_t xuSize = m_tree->numNodes() * m_data->numStates() + m_tree->numNonleafNodes() * m_data->numInputs();
     DTensor<DEFAULT_FPX> xu(m_cache->solution(), 0, 0, xuSize - 1);
     std::vector<DEFAULT_FPX> sol(xuSize);
     xu.download(sol);
-
-//    prim = mock_cache.get_primal();  // template
-//    for i in range(seg_p[1], seg_p[3]):
-//    prim[i] = np.random.randn(prim[i].size).reshape(-1, 1)
-//
-//    /* Solve with dp */
-//    mock_cache.cache_initial_state(prim[seg_p[1]])
-//    mock_cache.set_primal(prim)
-//    mock_cache.project_on_dynamics()
-//    dp_result = mock_cache.get_primal()
-//    x_dp = np.asarray(dp_result[seg_p[1]: seg_p[2]])[:, :, 0]
-//    u_dp = np.asarray(dp_result[seg_p[2]: seg_p[3]])[:, :, 0]
-//    /* ensure x0 stayed the same */
-//    self.assertTrue(np.allclose(prim[seg_p[1]].T, x_dp[0]))
-//
-//    /* Solve with cvxpy */
-//    for i in range(seg_p[1], seg_p[3]):
-//    prim[i] = prim[i].reshape(-1,)
-//
-//    x_bar = np.asarray(prim[seg_p[1]: seg_p[2]])
-//    u_bar = np.asarray(prim[seg_p[2]: seg_p[3]])
-//    N = self.__tree_from_markov.num_nodes
-//    n = self.__tree_from_markov.num_nonleaf_nodes
-//    x = cp.Variable(x_bar.shape)
-//    u = cp.Variable(u_bar.shape)
-//    /* Sum problem objectives and concatenate constraints */
-//    cost = 0
-//    constraints = [x[0] == x_bar[0]]
-//    /* Nonleaf nodes */
-//    for node in range(n):
-//    cost += cp.sum_squares(x[node] - x_bar[node]) + cp.sum_squares(u[node] - u_bar[node])
-//    for ch in self.__tree_from_markov.children_of(node):
-//    constraints += [x[ch] ==
-//                    self.__raocp_from_markov.state_dynamics_at_node(ch) @ x[node] +
-//                                                                          self.__raocp_from_markov.control_dynamics_at_node(ch) @ u[node]]
-//
-//    /* Leaf nodes */
-//    for node in range(n, N):
-//    cost += cp.sum_squares(x[node] - x_bar[node])
-//
-//    problem = cp.Problem(cp.Minimize(cost), constraints)
-//    problem.solve()
-//    /* Ensure x0 stayed the same */
-//    self.assertTrue(np.allclose(prim[seg_p[1]], x.value[0]))
-//
-//    /* Check solutions are similar */
-//    self.assertTrue(np.allclose(x.value, x_dp))
-//    self.assertTrue(np.allclose(u.value, u_dp))
 }

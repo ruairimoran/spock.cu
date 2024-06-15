@@ -27,15 +27,15 @@ private:
     size_t m_countIterations = 0;
     size_t m_matAxis = 2;
     size_t m_primSize = 0;
-    size_t m_sizeX = 0;  ///< States of all nodes
     size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
+    size_t m_sizeX = 0;  ///< States of all nodes
     size_t m_sizeY = 0;  ///< Y for all nonleaf nodes
     size_t m_sizeT = 0;  ///< T for all child nodes
     size_t m_sizeS = 0;  ///< S for all child nodes
     std::unique_ptr<DTensor<T>> m_d_prim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_primPrev = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_x = nullptr;
     std::unique_ptr<DTensor<T>> m_d_u = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_x = nullptr;
     std::unique_ptr<DTensor<T>> m_d_y = nullptr;
     std::unique_ptr<DTensor<T>> m_d_t = nullptr;
     std::unique_ptr<DTensor<T>> m_d_s = nullptr;
@@ -50,9 +50,7 @@ private:
     /**
      * Private methods
      */
-    void breakPrimal();
-
-    void rebuildPrimal();
+    void reshapePrimal();
 
 public:
     /**
@@ -61,12 +59,12 @@ public:
     Cache(ScenarioTree<T> &tree, ProblemData<T> &data, T tol, size_t maxIters) :
         m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters) {
         /* Sizes */
-        m_sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
         m_sizeU = m_tree.numNonleafNodes() * m_data.numInputs();  ///< Inputs of all nonleaf nodes
+        m_sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
         m_sizeY = m_tree.numNonleafNodes() * m_tree.numEvents();  ///< Y for all nonleaf nodes
         m_sizeT = m_tree.numNodes();  ///< T for all child nodes
         m_sizeS = m_tree.numNodes();  ///< S for all child nodes
-        m_primSize = m_sizeX + m_sizeU + m_sizeY + m_sizeT + m_sizeS;
+        m_primSize = m_sizeU + m_sizeX + m_sizeY + m_sizeT + m_sizeS;
         /* Allocate memory on device */
         m_d_prim = std::make_unique<DTensor<T>>(m_primSize, true);
         m_d_primPrev = std::make_unique<DTensor<T>>(m_primSize, true);
@@ -76,7 +74,7 @@ public:
         m_d_q = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
         m_d_d = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNonleafNodes(), true);
         /* Slice primal */
-        breakPrimal();
+        reshapePrimal();
     }
 
     ~Cache() {}
@@ -112,48 +110,23 @@ public:
 };
 
 template<typename T>
-void Cache<T>::breakPrimal() {
+void Cache<T>::reshapePrimal() {
     size_t rowAxis = 0;
     size_t start = 0;
-    DTensor<T> sliceX(*m_d_prim, rowAxis, start, m_sizeX - 1);
-    m_d_x = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes());
-    sliceX.deviceCopyTo(*m_d_x);
-    start += m_sizeX;
-    DTensor<T> sliceU(*m_d_prim, rowAxis, start, start + m_sizeU - 1);
-    m_d_u = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNonleafNodes());
-    sliceU.deviceCopyTo(*m_d_u);
+    m_d_u = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeU - 1);
+    m_d_u->reshape(m_data.numInputs(), 1, m_tree.numNonleafNodes());
     start += m_sizeU;
-    DTensor<T> sliceY(*m_d_prim, rowAxis, start, start + m_sizeY - 1);
-    m_d_y = std::make_unique<DTensor<T>>(m_tree.numEvents(), 1, m_tree.numNonleafNodes());
-    sliceY.deviceCopyTo(*m_d_y);
-    start += m_sizeY;
-    DTensor<T> sliceT(*m_d_prim, rowAxis, start, start + m_sizeT - 1);
-    m_d_t = std::make_unique<DTensor<T>>(1, 1, m_tree.numNodes());
-    sliceT.deviceCopyTo(*m_d_t);
-    start += m_sizeT;
-    DTensor<T> sliceS(*m_d_prim, rowAxis, start, start + m_sizeS - 1);
-    m_d_s = std::make_unique<DTensor<T>>(1, 1, m_tree.numNodes());
-    sliceS.deviceCopyTo(*m_d_s);
-}
-
-template<typename T>
-void Cache<T>::rebuildPrimal() {
-    size_t rowAxis = 0;
-    size_t start = 0;
-    DTensor<T> sliceX(*m_d_prim, rowAxis, start, m_sizeX - 1);
-    m_d_x->deviceCopyTo(sliceX);
+    m_d_x = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeX - 1);
+    m_d_x->reshape(m_data.numStates(), 1, m_tree.numNodes());
     start += m_sizeX;
-    DTensor<T> sliceU(*m_d_prim, rowAxis, start, start + m_sizeU - 1);
-    m_d_u->deviceCopyTo(sliceU);
-    start += m_sizeU;
-    DTensor<T> sliceY(*m_d_prim, rowAxis, start, start + m_sizeY - 1);
-    m_d_y->deviceCopyTo(sliceY);
+    m_d_y = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeY - 1);
+    m_d_y->reshape(m_tree.numEvents(), 1, m_tree.numNonleafNodes());
     start += m_sizeY;
-    DTensor<T> sliceT(*m_d_prim, rowAxis, start, start + m_sizeT - 1);
-    m_d_t->deviceCopyTo(sliceT);
+    m_d_t = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeT - 1);
+    m_d_t->reshape(1, 1, m_tree.numNodes());
     start += m_sizeT;
-    DTensor<T> sliceS(*m_d_prim, rowAxis, start, start + m_sizeS - 1);
-    m_d_s->deviceCopyTo(sliceS);
+    m_d_s = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeS - 1);
+    m_d_s->reshape(1, 1, m_tree.numNodes());
 }
 
 template<typename T>
@@ -284,7 +257,6 @@ void Cache<T>::cpIter() {
     /** update n_bar */
     /** update z */
     /** update n */
-    rebuildPrimal();
 }
 
 template<typename T>

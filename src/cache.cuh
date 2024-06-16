@@ -99,9 +99,9 @@ public:
 
     DTensor<T> &solution() { return *m_d_prim; }
 
-    DTensor<T> &states() { return *m_d_x; }
-
     DTensor<T> &inputs() { return *m_d_u; }
+
+    DTensor<T> &states() { return *m_d_x; }
 
     /**
      * Debugging
@@ -137,8 +137,8 @@ void Cache<T>::initialiseState(std::vector<T> &initState) {
                   << " but given " << initState.size() << " states" << "\n";
         throw std::invalid_argument("Incorrect dimension of initial state");
     }
-    DTensor<T> slicePrim(*m_d_prim, 0, 0, m_data.numStates() - 1);
-    slicePrim.upload(initState);
+    DTensor<T> firstState(*m_d_x, m_matAxis, 0, 0);
+    firstState.upload(initState);
 }
 
 template<typename T>
@@ -171,7 +171,7 @@ void Cache<T>::projectOnDynamics() {
         dAtStage *= -1.;
         dAtStage += uAtStage;
         m_data.choleskyBatch()[stage]->solve(dAtStage);
-        std::cout << "d @ stage " << stage << ": " << dAtStage;
+//        std::cout << "d @ stage " << stage << ": " << dAtStage;
         /* Solve for next q */
         DTensor<T> K(m_data.K(), m_matAxis, nodeFr, nodeTo);
         DTensor<T> Ktr = K.tr();
@@ -192,7 +192,7 @@ void Cache<T>::projectOnDynamics() {
                 DTensor<T> Aq = AAtChild * qAtChild;
                 qAtParent += APBd + Aq;
             }
-            std::cout << "q @ node " << node << ": " << qAtParent;
+//            std::cout << "q @ node " << node << ": " << qAtParent;
         }
     }
     /* State has been initialised, now compute control actions */
@@ -200,12 +200,16 @@ void Cache<T>::projectOnDynamics() {
         size_t nodeFr = m_tree.nodeFrom()[stage];
         size_t nodeTo = m_tree.nodeTo()[stage];
         /* Compute control actions */
-        DTensor<T> xAtStage(*m_d_x, m_matAxis, nodeFr, nodeTo);
-        DTensor<T> uAtStage(*m_d_u, m_matAxis, nodeFr, nodeTo);
         DTensor<T> KAtStage(m_data.K(), m_matAxis, nodeFr, nodeTo);
+        std::cout << "K @ stage " << stage << ": " << KAtStage;
+        DTensor<T> xAtStage(*m_d_x, m_matAxis, nodeFr, nodeTo);
+        std::cout << "x @ stage " << stage << ": " << xAtStage;
         DTensor<T> dAtStage(*m_d_d, m_matAxis, nodeFr, nodeTo);
-        uAtStage = KAtStage * xAtStage;
-        uAtStage += dAtStage;
+        std::cout << "d @ stage " << stage << ": " << dAtStage;
+        DTensor<T> uAtStage(*m_d_u, m_matAxis, nodeFr, nodeTo);
+        DTensor<T> KxdAtStage = KAtStage * xAtStage;
+        KxdAtStage += dAtStage;
+        KxdAtStage.deviceCopyTo(uAtStage);
         std::cout << "u @ stage " << stage << ": " << uAtStage;
         /* Compute next states */
         for (size_t node = nodeFr; node <= nodeTo; node++) {
@@ -217,7 +221,8 @@ void Cache<T>::projectOnDynamics() {
                 DTensor<T> BAtChild(m_data.inputDynamics(), m_matAxis, child, child);
                 DTensor<T> Ax = AAtChild * xAtParent;
                 DTensor<T> Bu = BAtChild * uAtParent;
-                xAtChild = Ax + Bu;
+                DTensor<T> AxPlusBu = Ax + Bu;
+                AxPlusBu.deviceCopyTo(xAtChild);
                 std::cout << "x @ node " << node << ": " << xAtChild;
             }
         }

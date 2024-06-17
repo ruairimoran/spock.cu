@@ -35,7 +35,7 @@ setup(name=NAME,
           exclude=["tests"]),
       include_package_data=True,
       install_requires=[
-          'numpy', 'scipy', 'matplotlib', 'jinja2', 'PythonTurtle', 'cvxpy'
+          'numpy', 'scipy', 'matplotlib', 'jinja2', 'PythonTurtle'
       ],
       classifiers=[
           'Programming Languages :: Python, C++, CUDA'

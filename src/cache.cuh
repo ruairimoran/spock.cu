@@ -152,8 +152,6 @@ void Cache<T>::projectOnDynamics() {
     statesAtLastStage *= -1.;
     DTensor<T> q0(*m_d_q, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
     statesAtLastStage.deviceCopyTo(q0);
-    std::cout << "-x @ last stage: " << statesAtLastStage;
-    std::cout << "q @ last stage: " << q0;
     /* Solve for next d */
     size_t horizon = m_tree.numStages() - 1;
     for (size_t t = 1; t < m_tree.numStages(); t++) {
@@ -164,66 +162,56 @@ void Cache<T>::projectOnDynamics() {
         size_t chNodeFr = m_tree.nodeFrom()[chStage];
         size_t chNodeTo = m_tree.nodeTo()[chStage];
         DTensor<T> BAtChStage(m_data.inputDynamics(), m_matAxis, chNodeFr, chNodeTo);
-        std::cout << "B @ stage " << chStage << ": " << BAtChStage;
         DTensor<T> Btr = BAtChStage.tr();  // this can be done offline
         DTensor<T> qAtChStage(*m_d_q, m_matAxis, chNodeFr, chNodeTo);
-        std::cout << "q @ stage " << chStage << ": " << qAtChStage;
-        DTensor<T> Bq = Btr * *m_d_q;
-        std::cout << "Bq @ stage " << chStage << ": " << Bq; // here
+        DTensor<T> Bq = Btr * qAtChStage;
         for (size_t node = nodeFr; node <= nodeTo; node++) {
-            DTensor<T> dAtAncNode(*m_d_d, m_matAxis, node, node);
+            DTensor<T> dAtNode(*m_d_d, m_matAxis, node, node);
             for (size_t ch = m_tree.childFrom()[node]; ch <= m_tree.childTo()[node]; ch++) {
-                DTensor<T> BqAtChildNode(Bq, m_matAxis, ch, ch);
-                dAtAncNode += BqAtChildNode;
+                DTensor<T> BqAtChNode(Bq, m_matAxis, ch - chNodeFr, ch - chNodeFr);
+                dAtNode += BqAtChNode;
             }
-            std::cout << "d1 @ node " << node << ": " << dAtAncNode;
         }
         DTensor<T> dAtStage(*m_d_d, m_matAxis, nodeFr, nodeTo);
         DTensor<T> uAtStage(*m_d_u, m_matAxis, nodeFr, nodeTo);
         dAtStage *= -1.;
         dAtStage += uAtStage;
-        std::cout << "d2 @ stage " << stage << ": " << dAtStage;
         m_data.choleskyBatch()[stage]->solve(dAtStage);
-        std::cout << "d3 @ stage " << stage << ": " << dAtStage;
         /* Solve for next q */
+        DTensor<T> du = dAtStage - uAtStage;
         DTensor<T> K(m_data.K(), m_matAxis, nodeFr, nodeTo);
         DTensor<T> Ktr = K.tr();
-        DTensor<T> inputsAtStage(*m_d_u, m_matAxis, nodeFr, nodeTo);
-        DTensor<T> dMinusInputs = dAtStage - inputsAtStage;
-        DTensor<T> Kdu = Ktr * dMinusInputs;
-        DTensor<T> statesAtStage(*m_d_x, m_matAxis, nodeFr, nodeTo);
-        Kdu -= statesAtStage;
+        DTensor<T> Kdu = Ktr * du;
+        DTensor<T> xAtStage(*m_d_x, m_matAxis, nodeFr, nodeTo);
+        DTensor<T> Kdux = Kdu - xAtStage;
         for (size_t node = nodeFr; node <= nodeTo; node++) {
-            DTensor<T> dAtParent(*m_d_d, m_matAxis, node, node);
-            DTensor<T> qAtParent(*m_d_q, m_matAxis, node, node);
-            qAtParent = Kdu;
-            for (size_t child = m_tree.childFrom()[node]; child <= m_tree.childTo()[node]; child++) {
-                DTensor<T> APBAtChild(m_data.APB(), m_matAxis, child, child);
-                DTensor<T> AAtChild(m_data.dynamicsSumTr(), m_matAxis, child, child);
-                DTensor<T> qAtChild(*m_d_q, m_matAxis, child, child);
-                DTensor<T> APBd = APBAtChild * dAtParent;
-                DTensor<T> Aq = AAtChild * qAtChild;
-                qAtParent += APBd + Aq;
+            DTensor<T> qAtNode(*m_d_q, m_matAxis, node, node);
+            DTensor<T> KduxAtNode(Kdux, m_matAxis, node - nodeFr, node - nodeFr);
+            KduxAtNode.deviceCopyTo(qAtNode);
+            DTensor<T> dAtNode(*m_d_d, m_matAxis, node, node);
+            for (size_t ch = m_tree.childFrom()[node]; ch <= m_tree.childTo()[node]; ch++) {
+                DTensor<T> APBAtChNode(m_data.APB(), m_matAxis, ch, ch);
+                DTensor<T> AAtChNode(m_data.dynamicsSumTr(), m_matAxis, ch, ch);
+                DTensor<T> qAtChNode(*m_d_q, m_matAxis, ch, ch);
+                DTensor<T> APBd = APBAtChNode * dAtNode;
+                DTensor<T> Aq = AAtChNode * qAtChNode;
+                DTensor<T> APBdAq = APBd + Aq;
+                qAtNode += APBdAq;
             }
-//            std::cout << "q @ node " << node << ": " << qAtParent;
         }
     }
     /* State has been initialised, now compute control actions */
     for (size_t stage = 0; stage < m_tree.numStages() - 1; stage++) {
         size_t nodeFr = m_tree.nodeFrom()[stage];
         size_t nodeTo = m_tree.nodeTo()[stage];
-        /* Compute control actions */
+        /* Compute next control action */
         DTensor<T> KAtStage(m_data.K(), m_matAxis, nodeFr, nodeTo);
-//        std::cout << "K @ stage " << stage << ": " << KAtStage;
         DTensor<T> xAtStage(*m_d_x, m_matAxis, nodeFr, nodeTo);
-//        std::cout << "x @ stage " << stage << ": " << xAtStage;
         DTensor<T> dAtStage(*m_d_d, m_matAxis, nodeFr, nodeTo);
-        std::cout << "read d @ stage " << stage << ": " << dAtStage;
         DTensor<T> uAtStage(*m_d_u, m_matAxis, nodeFr, nodeTo);
         DTensor<T> KxdAtStage = KAtStage * xAtStage;
         KxdAtStage += dAtStage;
         KxdAtStage.deviceCopyTo(uAtStage);
-//        std::cout << "u @ stage " << stage << ": " << uAtStage;
         /* Compute next states */
         for (size_t node = nodeFr; node <= nodeTo; node++) {
             DTensor<T> xAtParent(*m_d_x, m_matAxis, node, node);
@@ -236,7 +224,6 @@ void Cache<T>::projectOnDynamics() {
                 DTensor<T> Bu = BAtChild * uAtParent;
                 DTensor<T> AxPlusBu = Ax + Bu;
                 AxPlusBu.deviceCopyTo(xAtChild);
-//                std::cout << "x @ node " << node << ": " << xAtChild;
             }
         }
     }

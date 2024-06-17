@@ -113,5 +113,19 @@
 "\~i~\":\% if dpTestInputs[i] is none %\[]\% else %\\~dpTestInputs[i].flatten().tolist()~\\% endif %\
 \% if not loop.last %\,\% endif %\
 
+\% endfor %\},
+\# DP PROJECTED STATES #\
+"dpProjectedStates": {
+\% for i in range(dpProjectedStates|length) %\
+"\~i~\":\% if dpProjectedStates[i] is none %\[]\% else %\\~dpProjectedStates[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# DP PROJECTED INPUTS #\
+"dpProjectedInputs": {
+\% for i in range(dpProjectedInputs|length) %\
+"\~i~\":\% if dpProjectedInputs[i] is none %\[]\% else %\\~dpProjectedInputs[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
 \% endfor %\}
 }

@@ -53,6 +53,8 @@ class Problem:
         self.__dp_test_init_state = None
         self.__dp_test_states = None
         self.__dp_test_inputs = None
+        self.__dp_projected_states = None
+        self.__dp_projected_inputs = None
         # Kernel projection
         self.__kernel_constraint_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
         self.__nullspace_projection_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
@@ -114,6 +116,8 @@ class Problem:
                                  APB=self.__At_P_B,
                                  dpTestStates=self.__dp_test_states,
                                  dpTestInputs=self.__dp_test_inputs,
+                                 dpProjectedStates=self.__dp_projected_states,
+                                 dpProjectedInputs=self.__dp_projected_inputs,
                                  null_dim=self.__max_nullspace_dim,
                                  null=self.__nullspace_projection_matrix)
         path = os.path.join(os.getcwd(), self.__tree.folder)
@@ -196,8 +200,10 @@ class Problem:
 
         problem = cvx.Problem(cvx.Minimize(cost), constraints)
         problem.solve()
-        self.__dp_test_states = x.value.T
-        self.__dp_test_inputs = u.value.T
+        self.__dp_test_states = x_bar.T
+        self.__dp_test_inputs = u_bar.T
+        self.__dp_projected_states = x.value.T
+        self.__dp_projected_inputs = u.value.T
 
 
 class ProblemFactory:

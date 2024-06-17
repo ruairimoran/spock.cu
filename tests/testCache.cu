@@ -66,17 +66,23 @@ TEST_F(CacheTest, DynamicsProjectionOnline) {
     }
     size_t statesSize = m_data->numStates() * m_tree->numNodes();
     size_t inputsSize = m_data->numInputs() * m_tree->numNonleafNodes();
+    std::vector<DEFAULT_FPX> originalStates(statesSize);
+    std::vector<DEFAULT_FPX> originalInputs(inputsSize);
     std::vector<DEFAULT_FPX> cvxStates(statesSize);
     std::vector<DEFAULT_FPX> cvxInputs(inputsSize);
     const char *nodeString = nullptr;
     for (size_t i = 0; i < m_tree->numNodes(); i++) {
         nodeString = std::to_string(i).c_str();
-        parse(i, doc["dpStates"][nodeString], cvxStates);
-        if (i < m_tree->numNonleafNodes()) parse(i, doc["dpInputs"][nodeString], cvxInputs);
+        parse(i, doc["dpStates"][nodeString], originalStates);
+        parse(i, doc["dpProjectedStates"][nodeString], cvxStates);
+        if (i < m_tree->numNonleafNodes()) {
+            parse(i, doc["dpInputs"][nodeString], originalInputs);
+            parse(i, doc["dpProjectedInputs"][nodeString], cvxInputs);
+        }
     }
     std::vector<DEFAULT_FPX> initialState(m_data->numStates());
-    parse(0, doc["dpStates"]["0"], initialState);
-    m_cache->initialiseState(initialState);
+    m_cache->states().upload(originalStates);
+    m_cache->inputs().upload(originalInputs);
     m_cache->projectOnDynamics();
     /* Compare spockStates */
     std::vector<DEFAULT_FPX> spockStates(statesSize);

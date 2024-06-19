@@ -234,7 +234,7 @@ void Cache<T>::projectOnDynamics() {
         }
         /* Add to `q_Sum` remaining child `APBdAq_ChStage` of each node (zeros added if child does not exist) */
         for (size_t chOfEachNode = 1; chOfEachNode < maxCh; chOfEachNode++) {
-            DTensor<T> q_Add(m_data.numStates(), 1, stageTo - stageFr + 1, true);  // preferably create memory offline
+            DTensor<T> q_Add(m_data.numStates(), 1, stageTo - stageFr + 1, true);  // *** preferably create memory offline ***
             for (size_t node = stageFr; node <= stageTo; node++) {
                 size_t ch = m_tree.childFrom()[node] + chOfEachNode;
                 if (ch <= m_tree.childTo()[node]) {  // If more children exist, copy in their `Bq_ChStage`
@@ -262,6 +262,9 @@ void Cache<T>::projectOnDynamics() {
     for (size_t stage = 0; stage < m_tree.numStages() - 1; stage++) {
         size_t stageFr = m_tree.stageFrom()[stage];
         size_t stageTo = m_tree.stageTo()[stage];
+        size_t chStage = stage + 1;  // Stage of children of current stage
+        size_t chStageFr = m_tree.stageFrom()[chStage];  // First node of child stage
+        size_t chStageTo = m_tree.stageTo()[chStage];  // Last node of child stage
         /*
          * Compute next control action
          */
@@ -275,19 +278,34 @@ void Cache<T>::projectOnDynamics() {
         /*
          * Compute child states
          */
+        size_t numNodesChStage = chStageTo - chStageFr + 1;
+        DTensor<T> AB_ChStage(m_data.numStates(), m_data.numStates() + m_data.numInputs(), numNodesChStage);  // *** preferably create memory offline ***
+        DTensor<T> xu_ChStage(m_data.numStates() + m_data.numInputs(), 1, numNodesChStage);  // *** preferably create memory offline ***
+        /* Fill `AB` and `xu` */
         for (size_t node = stageFr; node <= stageTo; node++) {
-            DTensor<T> xAtParent(*m_d_x, m_matAxis, node, node);
-            DTensor<T> uAtParent(*m_d_u, m_matAxis, node, node);
-            for (size_t child = m_tree.childFrom()[node]; child <= m_tree.childTo()[node]; child++) {
-                DTensor<T> xAtChild(*m_d_x, m_matAxis, child, child);
-                DTensor<T> AAtChild(m_data.stateDynamics(), m_matAxis, child, child);
-                DTensor<T> BAtChild(m_data.inputDynamics(), m_matAxis, child, child);
-                DTensor<T> Ax = AAtChild * xAtParent;
-                DTensor<T> Bu = BAtChild * uAtParent;
-                DTensor<T> AxPlusBu = Ax + Bu;
-                AxPlusBu.deviceCopyTo(xAtChild);
+            DTensor<T> x(*m_d_x, m_matAxis, node, node);
+            DTensor<T> u(*m_d_u, m_matAxis, node, node);
+            for (size_t ch = m_tree.childFrom()[node]; ch <= m_tree.childTo()[node]; ch++) {
+                size_t relativeCh = ch - chStageFr;
+                /* `AB` */
+                DTensor<T> A(m_data.stateDynamics(), m_matAxis, ch, ch);
+                DTensor<T> B(m_data.inputDynamics(), m_matAxis, ch, ch);
+                DTensor<T> AB_ChNode(AB_ChStage, m_matAxis, relativeCh, relativeCh);
+                DTensor<T> AB_sliceA(AB_ChNode, 1, 0, m_data.numStates() - 1);
+                DTensor<T> AB_sliceB(AB_ChNode, 1, m_data.numStates(), m_data.numStates() + m_data.numInputs() - 1);
+                A.deviceCopyTo(AB_sliceA);
+                B.deviceCopyTo(AB_sliceB);
+                /* `xu` */
+                DTensor<T> xu_ChNode(xu_ChStage, m_matAxis, relativeCh, relativeCh);
+                DTensor<T> xu_sliceX(AB_ChNode, 1, 0, m_data.numStates() - 1);
+                DTensor<T> xu_sliceU(AB_ChNode, 1, m_data.numStates(), m_data.numStates() + m_data.numInputs() - 1);
+                x.deviceCopyTo(xu_sliceX);
+                u.deviceCopyTo(xu_sliceU);
             }
         }
+        DTensor<T> x_ChStage(*m_d_x, m_matAxis, chStageFr, chStageTo);
+        DTensor<T> ABxu = AB_ChStage * xu_ChStage;
+        ABxu.deviceCopyTo(x_ChStage);
     }
 }
 

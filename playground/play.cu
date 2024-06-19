@@ -11,13 +11,8 @@ int main() {
     DTensor<T> B(b, 3, 3, 1);
     DTensor<T> sliceC(C, 2, 0, 0);
 
-    /* Fails */
-    sliceC = A * B;
-    std::cout << sliceC;
-
     /* Succeeds */
-    DTensor<T> AB = A * B;
-    AB.deviceCopyTo(sliceC);
+    sliceC.addAB(A, B);
     std::cout << sliceC;
 
     return 0;

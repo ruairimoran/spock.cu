@@ -144,11 +144,6 @@ void Cache<T>::initialiseState(std::vector<T> &initState) {
 
 template<typename T>
 void Cache<T>::projectOnDynamics() {
-//    /*
-//     * Reset d and q to zeros. *** Can this be removed ? ***
-//     */
-//    k_setToZero<<<numBlocks(m_d_d->numEl()), TPB>>>(m_d_d->raw(), m_d_d->numEl());
-//    k_setToZero<<<numBlocks(m_d_q->numEl()), TPB>>>(m_d_q->raw(), m_d_q->numEl());
     /*
      * Set first q
      */

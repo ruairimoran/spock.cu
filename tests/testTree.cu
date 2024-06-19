@@ -77,11 +77,11 @@ TEST_F(MarkovTreeTest, GetNumChildren) {
 }
 
 TEST_F(MarkovTreeTest, GetStageFrom) {
-    m_mockTree->d_nodeFrom().download(m_intNumStages);
+    m_mockTree->d_stageFrom().download(m_intNumStages);
     EXPECT_EQ(m_intNumStages[2], 3);
 }
 
 TEST_F(MarkovTreeTest, GetStageTo) {
-    m_mockTree->d_nodeTo().download(m_intNumStages);
+    m_mockTree->d_stageTo().download(m_intNumStages);
     EXPECT_EQ(m_intNumStages[2], 6);
 }

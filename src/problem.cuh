@@ -152,8 +152,8 @@ public:
             parseMatrix(i, doc["leafStateCosts"][nodeString], m_d_stateWeightLeaf);
         }
         for (size_t stage = 0; stage < m_tree.numStages() - 1; stage++) {
-            size_t nodeFr = m_tree.nodeFrom()[stage];
-            size_t nodeTo = m_tree.nodeTo()[stage];
+            size_t nodeFr = m_tree.stageFrom()[stage];
+            size_t nodeTo = m_tree.stageTo()[stage];
             m_choleskyStage[stage] = std::make_unique<DTensor<T>>(*m_d_lowerCholesky, 2, nodeFr, nodeTo);
             m_choleskyBatch[stage] = std::make_unique<CholeskyBatchFactoriser<T>>(*m_choleskyStage[stage], true);
         }

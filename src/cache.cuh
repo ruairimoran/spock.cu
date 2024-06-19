@@ -279,12 +279,12 @@ void Cache<T>::projectOnDynamics() {
          * Compute child states
          */
         size_t numNodesChStage = chStageTo - chStageFr + 1;
-        DTensor<T> AB_ChStage(m_data.numStates(), m_data.numStates() + m_data.numInputs(), numNodesChStage);  // *** preferably create memory offline ***
-        DTensor<T> xu_ChStage(m_data.numStates() + m_data.numInputs(), 1, numNodesChStage);  // *** preferably create memory offline ***
+        DTensor<T> AB_ChStage(m_data.numStates(), m_data.numStates() + m_data.numInputs(), numNodesChStage, true);  // *** preferably create memory offline ***
+        DTensor<T> xu_ChStage(m_data.numStates() + m_data.numInputs(), 1, numNodesChStage, true);  // *** preferably create memory offline ***
         /* Fill `AB` and `xu` */
         for (size_t node = stageFr; node <= stageTo; node++) {
-            DTensor<T> x(*m_d_x, m_matAxis, node, node);
-            DTensor<T> u(*m_d_u, m_matAxis, node, node);
+            DTensor<T> x_Node(*m_d_x, m_matAxis, node, node);
+            DTensor<T> u_Node(*m_d_u, m_matAxis, node, node);
             for (size_t ch = m_tree.childFrom()[node]; ch <= m_tree.childTo()[node]; ch++) {
                 size_t relativeCh = ch - chStageFr;
                 /* `AB` */
@@ -297,10 +297,10 @@ void Cache<T>::projectOnDynamics() {
                 B.deviceCopyTo(AB_sliceB);
                 /* `xu` */
                 DTensor<T> xu_ChNode(xu_ChStage, m_matAxis, relativeCh, relativeCh);
-                DTensor<T> xu_sliceX(AB_ChNode, 1, 0, m_data.numStates() - 1);
-                DTensor<T> xu_sliceU(AB_ChNode, 1, m_data.numStates(), m_data.numStates() + m_data.numInputs() - 1);
-                x.deviceCopyTo(xu_sliceX);
-                u.deviceCopyTo(xu_sliceU);
+                DTensor<T> xu_sliceX(xu_ChNode, 0, 0, m_data.numStates() - 1);
+                DTensor<T> xu_sliceU(xu_ChNode, 0, m_data.numStates(), m_data.numStates() + m_data.numInputs() - 1);
+                x_Node.deviceCopyTo(xu_sliceX);
+                u_Node.deviceCopyTo(xu_sliceU);
             }
         }
         DTensor<T> x_ChStage(*m_d_x, m_matAxis, chStageFr, chStageTo);

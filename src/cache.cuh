@@ -200,7 +200,7 @@ void Cache<T>::projectOnDynamics() {
             }
         }
     }
-    /* State has been initialised, now compute control actions */
+    /* Initial state does not change, now compute control actions */
     for (size_t stage = 0; stage < m_tree.numStages() - 1; stage++) {
         size_t nodeFr = m_tree.nodeFrom()[stage];
         size_t nodeTo = m_tree.nodeTo()[stage];
@@ -212,7 +212,7 @@ void Cache<T>::projectOnDynamics() {
         DTensor<T> KxdAtStage = KAtStage * xAtStage;
         KxdAtStage += dAtStage;
         KxdAtStage.deviceCopyTo(uAtStage);
-        /* Compute next states */
+        /* Compute child states */
         for (size_t node = nodeFr; node <= nodeTo; node++) {
             DTensor<T> xAtParent(*m_d_x, m_matAxis, node, node);
             DTensor<T> uAtParent(*m_d_u, m_matAxis, node, node);

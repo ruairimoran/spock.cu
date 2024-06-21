@@ -167,9 +167,8 @@ void Cache<T>::projectOnDynamics() {
         size_t chStageFr = m_tree.stageFrom()[chStage];  // First node of child stage
         size_t chStageTo = m_tree.stageTo()[chStage];  // Last node of child stage
         size_t maxCh = m_tree.childMax()[stage];  // Max number of children of any node at current stage
-        /* Compute `Bq_ChStage` at every child of current stage */
-        DTensor<T> B_ChStage(m_data.inputDynamics(), m_matAxis, chStageFr, chStageTo);
-        DTensor<T> Btr_ChStage = B_ChStage.tr();  // *** this can be done offline ***
+        /* Compute `Bq` at every child of current stage */
+        DTensor<T> Btr_ChStage(m_data.inputDynamicsTr(), m_matAxis, chStageFr, chStageTo);
         DTensor<T> q_ChStage(*m_d_q, m_matAxis, chStageFr, chStageTo);
         DTensor<T> Bq_ChStage(*m_d_inputSizeWorkspace, m_matAxis, chStageFr, chStageTo);
         Bq_ChStage.addAB(Btr_ChStage, q_ChStage);
@@ -242,8 +241,7 @@ void Cache<T>::projectOnDynamics() {
         DTensor<T> du_Stage(*m_d_inputSizeWorkspace, m_matAxis, stageFr, stageTo);
         d_Stage.deviceCopyTo(du_Stage);
         du_Stage -= u_Stage;
-        DTensor<T> K_Stage(m_data.K(), m_matAxis, stageFr, stageTo);
-        DTensor<T> Ktr_Stage = K_Stage.tr();  // *** this can be done offline ***
+        DTensor<T> Ktr_Stage(m_data.KTr(), m_matAxis, stageFr, stageTo);
         q_Stage.addAB(Ktr_Stage, du_Stage, 1., 1.);
         DTensor<T> x_Stage(*m_d_x, m_matAxis, stageFr, stageTo);
         q_Stage -= x_Stage;
@@ -260,34 +258,23 @@ void Cache<T>::projectOnDynamics() {
         /*
          * Compute next control action
          */
+        DTensor<T> uAtStage(*m_d_u, m_matAxis, stageFr, stageTo);
         DTensor<T> KAtStage(m_data.K(), m_matAxis, stageFr, stageTo);
         DTensor<T> xAtStage(*m_d_x, m_matAxis, stageFr, stageTo);
         DTensor<T> dAtStage(*m_d_d, m_matAxis, stageFr, stageTo);
-        DTensor<T> uAtStage(*m_d_u, m_matAxis, stageFr, stageTo);
-        DTensor<T> KxdAtStage = KAtStage * xAtStage;
-        KxdAtStage += dAtStage;
-        KxdAtStage.deviceCopyTo(uAtStage);
+        uAtStage.addAB(KAtStage, xAtStage);
+        uAtStage += dAtStage;
         /*
          * Compute child states
          */
         size_t numNodesChStage = chStageTo - chStageFr + 1;
-        DTensor<T> AB_ChStage(m_data.numStates(), m_data.numStates() + m_data.numInputs(), numNodesChStage, true);  // *** preferably create memory offline ***
         DTensor<T> xu_ChStage(m_data.numStates() + m_data.numInputs(), 1, numNodesChStage, true);  // *** preferably create memory offline ***
-        /* Fill `AB` and `xu` */
+        /* Fill `xu` */
         for (size_t node = stageFr; node <= stageTo; node++) {
             DTensor<T> x_Node(*m_d_x, m_matAxis, node, node);
             DTensor<T> u_Node(*m_d_u, m_matAxis, node, node);
             for (size_t ch = m_tree.childFrom()[node]; ch <= m_tree.childTo()[node]; ch++) {
                 size_t relativeCh = ch - chStageFr;
-                /* `AB` */
-                DTensor<T> A(m_data.stateDynamics(), m_matAxis, ch, ch);
-                DTensor<T> B(m_data.inputDynamics(), m_matAxis, ch, ch);
-                DTensor<T> AB_ChNode(AB_ChStage, m_matAxis, relativeCh, relativeCh);
-                DTensor<T> AB_sliceA(AB_ChNode, 1, 0, m_data.numStates() - 1);
-                DTensor<T> AB_sliceB(AB_ChNode, 1, m_data.numStates(), m_data.numStates() + m_data.numInputs() - 1);
-                A.deviceCopyTo(AB_sliceA);
-                B.deviceCopyTo(AB_sliceB);
-                /* `xu` */
                 DTensor<T> xu_ChNode(xu_ChStage, m_matAxis, relativeCh, relativeCh);
                 DTensor<T> xu_sliceX(xu_ChNode, 0, 0, m_data.numStates() - 1);
                 DTensor<T> xu_sliceU(xu_ChNode, 0, m_data.numStates(), m_data.numStates() + m_data.numInputs() - 1);
@@ -296,8 +283,8 @@ void Cache<T>::projectOnDynamics() {
             }
         }
         DTensor<T> x_ChStage(*m_d_x, m_matAxis, chStageFr, chStageTo);
-        DTensor<T> ABxu = AB_ChStage * xu_ChStage;
-        ABxu.deviceCopyTo(x_ChStage);
+        DTensor<T> AB_ChStage(m_data.stateInputDynamics(), m_matAxis, chStageFr, chStageTo);
+        x_ChStage.addAB(AB_ChStage, xu_ChStage);
     }
 }
 

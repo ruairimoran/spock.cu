@@ -35,6 +35,7 @@ class Problem:
         self.__num_inputs = num_inputs
         self.__list_of_state_dynamics = state_dyn
         self.__list_of_input_dynamics = input_dyn
+        self.__list_of_state_input_dynamics = [None] + [np.hstack((A, B)) for A, B in zip(state_dyn[1:], input_dyn[1:])]
         self.__list_of_nonleaf_state_costs = state_cost
         self.__list_of_nonleaf_input_costs = input_cost
         self.__list_of_leaf_state_costs = terminal_cost
@@ -103,6 +104,7 @@ class Problem:
                                  num_inputs=self.__num_inputs,
                                  state_dyn=self.__list_of_state_dynamics,
                                  input_dyn=self.__list_of_input_dynamics,
+                                 AB_dyn=self.__list_of_state_input_dynamics,
                                  state_cost=self.__list_of_nonleaf_state_costs,
                                  input_cost=self.__list_of_nonleaf_input_costs,
                                  terminal_cost=self.__list_of_leaf_state_costs,

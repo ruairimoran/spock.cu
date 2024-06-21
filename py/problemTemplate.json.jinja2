@@ -18,6 +18,13 @@
 \% if not loop.last %\,\% endif %\
 
 \% endfor %\},
+\# STATE AND INPUT DYNAMICS CONCATENATED #\
+"AB": {
+\% for i in range(AB_dyn|length) %\
+"\~i~\":\% if AB_dyn[i] is none %\[]\% else %\\~AB_dyn[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
 \# NONLEAF STATE COSTS #\
 "nonleafStateCosts": {
 \% for i in range(state_cost|length) %\

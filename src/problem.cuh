@@ -24,6 +24,8 @@ private:
     size_t m_numInputs = 0;  ///< Total number control inputs
     std::unique_ptr<DTensor<T>> m_d_stateDynamics = nullptr;  ///< Ptr to
     std::unique_ptr<DTensor<T>> m_d_inputDynamics = nullptr;  ///< Ptr to
+    std::unique_ptr<DTensor<T>> m_d_inputDynamicsTr = nullptr;  ///< Ptr to
+    std::unique_ptr<DTensor<T>> m_d_stateInputDynamics = nullptr;  ///< Ptr to
     std::unique_ptr<DTensor<T>> m_d_stateWeight = nullptr;  ///< Ptr to
     std::unique_ptr<DTensor<T>> m_d_inputWeight = nullptr;  ///< Ptr to
     std::unique_ptr<DTensor<T>> m_d_stateWeightLeaf = nullptr;  ///< Ptr to
@@ -33,6 +35,7 @@ private:
     /* Dynamics projection */
     std::unique_ptr<DTensor<T>> m_d_lowerCholesky = nullptr;
     std::unique_ptr<DTensor<T>> m_d_K = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_KTr = nullptr;
     std::unique_ptr<DTensor<T>> m_d_dynamicsSumTr = nullptr;
     std::unique_ptr<DTensor<T>> m_d_P = nullptr;
     std::unique_ptr<DTensor<T>> m_d_APB = nullptr;
@@ -114,11 +117,14 @@ public:
         /** Allocate memory on device */
         m_d_stateDynamics = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_inputDynamics = std::make_unique<DTensor<T>>(m_numStates, m_numInputs, m_tree.numNodes(), true);
+        m_d_inputDynamicsTr = std::make_unique<DTensor<T>>(m_numInputs, m_numStates, m_tree.numNodes(), true);
+        m_d_stateInputDynamics = std::make_unique<DTensor<T>>(m_numStates, m_numStates + m_numInputs, m_tree.numNodes(), true);
         m_d_stateWeight = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_inputWeight = std::make_unique<DTensor<T>>(m_numInputs, m_numInputs, m_tree.numNodes(), true);
         m_d_stateWeightLeaf = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_lowerCholesky = std::make_unique<DTensor<T>>(m_numInputs, m_numInputs, m_tree.numNonleafNodes(), true);
         m_d_K = std::make_unique<DTensor<T>>(m_numInputs, m_numStates, m_tree.numNonleafNodes(), true);
+        m_d_KTr = std::make_unique<DTensor<T>>(m_numStates, m_numInputs, m_tree.numNonleafNodes(), true);
         m_d_dynamicsSumTr = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_P = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_APB = std::make_unique<DTensor<T>>(m_numStates, m_numInputs, m_tree.numNodes(), true);
@@ -134,6 +140,7 @@ public:
             nodeString = std::to_string(i).c_str();
             parseMatrix(i, doc["stateDynamics"][nodeString], m_d_stateDynamics);
             parseMatrix(i, doc["inputDynamics"][nodeString], m_d_inputDynamics);
+            parseMatrix(i, doc["AB"][nodeString], m_d_stateInputDynamics);
             parseMatrix(i, doc["nonleafStateCosts"][nodeString], m_d_stateWeight);
             parseMatrix(i, doc["nonleafInputCosts"][nodeString], m_d_inputWeight);
             parseConstraint(i, doc["stateConstraints"][nodeString], m_stateConstraint);
@@ -157,6 +164,12 @@ public:
             m_choleskyStage[stage] = std::make_unique<DTensor<T>>(*m_d_lowerCholesky, 2, nodeFr, nodeTo);
             m_choleskyBatch[stage] = std::make_unique<CholeskyBatchFactoriser<T>>(*m_choleskyStage[stage], true);
         }
+
+        /* Update remaining fields */
+        DTensor<T> BTr = m_d_inputDynamics->tr();
+        BTr.deviceCopyTo(*m_d_inputDynamicsTr);
+        DTensor<T> KTr = m_d_K->tr();
+        KTr.deviceCopyTo(*m_d_KTr);
     }
 
     /**
@@ -175,6 +188,10 @@ public:
 
     DTensor<T> &inputDynamics() { return *m_d_inputDynamics; }
 
+    DTensor<T> &inputDynamicsTr() { return *m_d_inputDynamicsTr; }
+
+    DTensor<T> &stateInputDynamics() { return *m_d_stateInputDynamics; }
+
     DTensor<T> &stateWeight() { return *m_d_stateWeight; }
 
     DTensor<T> &inputWeight() { return *m_d_inputWeight; }
@@ -182,6 +199,8 @@ public:
     DTensor<T> &stateWeightLeaf() { return *m_d_stateWeightLeaf; }
 
     DTensor<T> &K() { return *m_d_K; }
+
+    DTensor<T> &KTr() { return *m_d_KTr; }
 
     DTensor<T> &dynamicsSumTr() { return *m_d_dynamicsSumTr; }
 

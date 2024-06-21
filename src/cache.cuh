@@ -49,6 +49,7 @@ private:
     std::unique_ptr<DTensor<T>> m_d_d = nullptr;
     std::unique_ptr<DTensor<T>> m_d_stateSizeWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_inputSizeWorkspace = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_stateInputSizeWorkspace = nullptr;
 
     /**
      * Private methods
@@ -78,6 +79,7 @@ public:
         m_d_d = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNonleafNodes(), true);
         m_d_stateSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
         m_d_inputSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNodes(), true);
+        m_d_stateInputSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numStates() + m_data.numInputs(), 1, m_tree.numNodes(), true);
         /* Slice primal */
         reshapePrimal();
     }
@@ -267,15 +269,12 @@ void Cache<T>::projectOnDynamics() {
         /*
          * Compute child states
          */
-        size_t numNodesChStage = chStageTo - chStageFr + 1;
-        DTensor<T> xu_ChStage(m_data.numStates() + m_data.numInputs(), 1, numNodesChStage, true);  // *** preferably create memory offline ***
         /* Fill `xu` */
         for (size_t node = stageFr; node <= stageTo; node++) {
             DTensor<T> x_Node(*m_d_x, m_matAxis, node, node);
             DTensor<T> u_Node(*m_d_u, m_matAxis, node, node);
             for (size_t ch = m_tree.childFrom()[node]; ch <= m_tree.childTo()[node]; ch++) {
-                size_t relativeCh = ch - chStageFr;
-                DTensor<T> xu_ChNode(xu_ChStage, m_matAxis, relativeCh, relativeCh);
+                DTensor<T> xu_ChNode(*m_d_stateInputSizeWorkspace, m_matAxis, ch, ch);
                 DTensor<T> xu_sliceX(xu_ChNode, 0, 0, m_data.numStates() - 1);
                 DTensor<T> xu_sliceU(xu_ChNode, 0, m_data.numStates(), m_data.numStates() + m_data.numInputs() - 1);
                 x_Node.deviceCopyTo(xu_sliceX);
@@ -284,6 +283,7 @@ void Cache<T>::projectOnDynamics() {
         }
         DTensor<T> x_ChStage(*m_d_x, m_matAxis, chStageFr, chStageTo);
         DTensor<T> AB_ChStage(m_data.stateInputDynamics(), m_matAxis, chStageFr, chStageTo);
+        DTensor<T> xu_ChStage(*m_d_stateInputSizeWorkspace, m_matAxis, chStageFr, chStageTo);
         x_ChStage.addAB(AB_ChStage, xu_ChStage);
     }
 }

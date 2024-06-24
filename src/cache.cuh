@@ -28,6 +28,7 @@ private:
     size_t m_countIterations = 0;
     size_t m_matAxis = 2;
     size_t m_primSize = 0;
+    size_t m_numXU = 0;
     size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
     size_t m_sizeX = 0;  ///< States of all nodes
     size_t m_sizeY = 0;  ///< Y for all nonleaf nodes
@@ -63,6 +64,7 @@ public:
     Cache(ScenarioTree<T> &tree, ProblemData<T> &data, T tol, size_t maxIters) :
         m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters) {
         /* Sizes */
+        m_numXU = m_data.numStates() + m_data.numInputs();
         m_sizeU = m_tree.numNonleafNodes() * m_data.numInputs();  ///< Inputs of all nonleaf nodes
         m_sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
         m_sizeY = m_tree.numNonleafNodes() * m_tree.numEvents();  ///< Y for all nonleaf nodes
@@ -79,7 +81,7 @@ public:
         m_d_d = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNonleafNodes(), true);
         m_d_stateSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
         m_d_inputSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNodes(), true);
-        m_d_stateInputSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numStates() + m_data.numInputs(), 1, m_tree.numNodes(), true);
+        m_d_stateInputSizeWorkspace = std::make_unique<DTensor<T>>(m_numXU, 1, m_tree.numNodes(), true);
         /* Slice primal */
         reshapePrimal();
     }
@@ -276,7 +278,7 @@ void Cache<T>::projectOnDynamics() {
             for (size_t ch = m_tree.childFrom()[node]; ch <= m_tree.childTo()[node]; ch++) {
                 DTensor<T> xu_ChNode(*m_d_stateInputSizeWorkspace, m_matAxis, ch, ch);
                 DTensor<T> xu_sliceX(xu_ChNode, 0, 0, m_data.numStates() - 1);
-                DTensor<T> xu_sliceU(xu_ChNode, 0, m_data.numStates(), m_data.numStates() + m_data.numInputs() - 1);
+                DTensor<T> xu_sliceU(xu_ChNode, 0, m_data.numStates(), m_numXU - 1);
                 x_Node.deviceCopyTo(xu_sliceX);
                 u_Node.deviceCopyTo(xu_sliceU);
             }

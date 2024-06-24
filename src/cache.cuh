@@ -95,7 +95,7 @@ public:
 
     void projectOnDynamics();
 
-    void projectOnKernel();
+    void projectOnKernels();
 
     void cpIter();
 
@@ -291,8 +291,10 @@ void Cache<T>::projectOnDynamics() {
 }
 
 template<typename T>
-void Cache<T>::projectOnKernel() {
-
+void Cache<T>::projectOnKernels() {
+    /**
+     * Project on kernel of every node of tree at once
+     */
 }
 
 template<typename T>
@@ -318,7 +320,7 @@ void Cache<T>::vanillaCp(std::vector<T> &initState, std::vector<T> *previousSolu
 template<typename T>
 void Cache<T>::cpIter() {
     projectOnDynamics();
-    projectOnKernel();
+    projectOnKernels();
     /** update z_bar */
     /** update n_bar */
     /** update z */

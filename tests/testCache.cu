@@ -13,7 +13,7 @@ protected:
 
 
 TEMPLATE_WITH_TYPE_T
-class Data {
+class CacheData {
 public:
     std::string m_treeFileLoc = "../../tests/testTreeData.json";
     std::string m_problemFileLoc = "../../tests/testProblemData.json";
@@ -29,7 +29,7 @@ public:
     std::vector<T> m_hostData = std::vector<T>(m_n);
     std::vector<T> m_hostTest = std::vector<T>(m_n);
 
-    Data() {
+    CacheData() {
         std::ifstream tree_data(m_treeFileLoc);
         std::ifstream problem_data(m_problemFileLoc);
         m_tree = std::make_unique<ScenarioTree<T>>(tree_data);
@@ -42,7 +42,7 @@ public:
         m_d_data.upload(m_hostData);
     };
 
-    virtual ~Data() {}
+    virtual ~CacheData() {}
 };
 
 /* ---------------------------------------
@@ -50,7 +50,7 @@ public:
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
-void initialiseState(Data<T> &d) {
+void initialisingState(CacheData<T> &d) {
     std::vector<T> initialState = {3., 5., 4.};
     d.m_cache->initialiseState(initialState);
     std::vector<T> x(initialState.size());
@@ -59,11 +59,11 @@ void initialiseState(Data<T> &d) {
     EXPECT_EQ(x, initialState);
 }
 
-TEST_F(CacheTest, initialiseState) {
-    Data<float> df;
-    initialiseState<float>(df);
-    Data<double> dd;
-    initialiseState<double>(dd);
+TEST_F(CacheTest, initialisingState) {
+    CacheData<float> df;
+    initialisingState<float>(df);
+    CacheData<double> dd;
+    initialisingState<double>(dd);
 }
 
 /* ---------------------------------------
@@ -79,7 +79,7 @@ static void parse(size_t nodeIdx, const rapidjson::Value &value, std::vector<T> 
 }
 
 TEMPLATE_WITH_TYPE_T
-void dynamicsProjectionOnline(Data<T> &d, T epsilon) {
+void dynamicsProjectionOnline(CacheData<T> &d, T epsilon) {
     std::ifstream problem_data(d.m_problemFileLoc);
     std::string json((std::istreambuf_iterator<char>(problem_data)),
                      std::istreambuf_iterator<char>());
@@ -120,8 +120,28 @@ void dynamicsProjectionOnline(Data<T> &d, T epsilon) {
 }
 
 TEST_F(CacheTest, dynamicsProjectionOnline) {
-    Data<float> df;
+    CacheData<float> df;
     dynamicsProjectionOnline<float>(df, TEST_PRECISION_LOW);
-    Data<double> dd;
+    CacheData<double> dd;
     dynamicsProjectionOnline<double>(dd, TEST_PRECISION_HIGH);
+}
+
+/* ---------------------------------------
+ * Project on kernels (online)
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void kernelProjectionOnline(CacheData<T> &d, T epsilon) {
+    T hi = 100.;
+    T lo = -hi;
+    DTensor<T> sol = d.m_cache->solution();
+    DTensor<T> randSol = DTensor<T>::createRandomTensor(sol.numRows(), sol.numCols(), sol.numMats(), lo, hi);
+    randSol.deviceCopyTo(sol);
+}
+
+TEST_F(CacheTest, kernelProjectionOnline) {
+    CacheData<float> df;
+    kernelProjectionOnline<float>(df, TEST_PRECISION_LOW);
+    CacheData<double> dd;
+    kernelProjectionOnline<double>(dd, TEST_PRECISION_HIGH);
 }

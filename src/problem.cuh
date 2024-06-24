@@ -184,6 +184,8 @@ public:
 
     size_t numInputs() { return m_numInputs; }
 
+    size_t nullDim() { return m_nullDim; }
+
     DTensor<T> &stateDynamics() { return *m_d_stateDynamics; }
 
     DTensor<T> &inputDynamics() { return *m_d_inputDynamics; }

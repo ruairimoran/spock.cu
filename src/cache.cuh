@@ -11,6 +11,8 @@
 template<typename T>
 __global__ void k_setToZero(T *vec, size_t n);
 
+class CacheTest;
+
 
 /**
  * Cache of methods for proximal algorithms
@@ -19,7 +21,6 @@ __global__ void k_setToZero(T *vec, size_t n);
  */
 TEMPLATE_WITH_TYPE_T
 class Cache {
-
 private:
     ScenarioTree<T> &m_tree;  ///< Previously created scenario tree
     ProblemData<T> &m_data;  ///< Previously created problem
@@ -48,9 +49,10 @@ private:
     /* Other */
     std::unique_ptr<DTensor<T>> m_d_q = nullptr;
     std::unique_ptr<DTensor<T>> m_d_d = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_stateSizeWorkspace = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_inputSizeWorkspace = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_stateInputSizeWorkspace = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_xSizeWorkspace = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_uSizeWorkspace = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_xuSizeWorkspace = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_ytsSizeWorkspace = nullptr;
 
     /**
      * Private methods
@@ -79,9 +81,10 @@ public:
         m_d_cacheError = std::make_unique<DTensor<T>>(m_maxIters, true);
         m_d_q = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
         m_d_d = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNonleafNodes(), true);
-        m_d_stateSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
-        m_d_inputSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNodes(), true);
-        m_d_stateInputSizeWorkspace = std::make_unique<DTensor<T>>(m_numXU, 1, m_tree.numNodes(), true);
+        m_d_xSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
+        m_d_uSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNodes(), true);
+        m_d_xuSizeWorkspace = std::make_unique<DTensor<T>>(m_numXU, 1, m_tree.numNodes(), true);
+        m_d_ytsSizeWorkspace = std::make_unique<DTensor<T>>(m_data.nullDim(), 1, m_tree.numNonleafNodes(), true);
         /* Slice primal */
         reshapePrimal();
     }
@@ -174,12 +177,12 @@ void Cache<T>::projectOnDynamics() {
         /* Compute `Bq` at every child of current stage */
         DTensor<T> Btr_ChStage(m_data.inputDynamicsTr(), m_matAxis, chStageFr, chStageTo);
         DTensor<T> q_ChStage(*m_d_q, m_matAxis, chStageFr, chStageTo);
-        DTensor<T> Bq_ChStage(*m_d_inputSizeWorkspace, m_matAxis, chStageFr, chStageTo);
+        DTensor<T> Bq_ChStage(*m_d_uSizeWorkspace, m_matAxis, chStageFr, chStageTo);
         Bq_ChStage.addAB(Btr_ChStage, q_ChStage);
         /* Copy into `d` the first child `Bq` of each node (every nonleaf node has at least one child) */
         for (size_t node = stageFr; node <= stageTo; node++) {
             size_t ch = m_tree.childFrom()[node];
-            DTensor<T> Bq_ChNode(*m_d_inputSizeWorkspace, m_matAxis, ch, ch);
+            DTensor<T> Bq_ChNode(*m_d_uSizeWorkspace, m_matAxis, ch, ch);
             DTensor<T> Bq_Node(*m_d_d, m_matAxis, node, node);
             Bq_ChNode.deviceCopyTo(Bq_Node);
         }
@@ -189,12 +192,12 @@ void Cache<T>::projectOnDynamics() {
             for (size_t node = stageFr; node <= stageTo; node++) {
                 size_t ch = m_tree.childFrom()[node] + chIdx;
                 if (ch <= m_tree.childTo()[node]) {  // If more children exist, copy in their `Bq_ChStage`
-                    DTensor<T> Bq_ChNode(*m_d_inputSizeWorkspace, m_matAxis, ch, ch);
-                    DTensor<T> Bq_Node(*m_d_inputSizeWorkspace, m_matAxis, node, node);
+                    DTensor<T> Bq_ChNode(*m_d_uSizeWorkspace, m_matAxis, ch, ch);
+                    DTensor<T> Bq_Node(*m_d_uSizeWorkspace, m_matAxis, node, node);
                     Bq_ChNode.deviceCopyTo(Bq_Node);
                 }
             }
-            DTensor<T> d_Add(*m_d_inputSizeWorkspace, m_matAxis, stageFr, stageTo);
+            DTensor<T> d_Add(*m_d_uSizeWorkspace, m_matAxis, stageFr, stageTo);
             d_Stage += d_Add;
         }
         /* Subtract d from u in place */
@@ -212,18 +215,18 @@ void Cache<T>::projectOnDynamics() {
         for (size_t node = stageFr; node <= stageTo; node++) {
             DTensor<T> d_Node(*m_d_d, m_matAxis, node, node);
             for (size_t ch = m_tree.childFrom()[node]; ch <= m_tree.childTo()[node]; ch++) {
-                DTensor<T> d_ExpandedChNode(*m_d_inputSizeWorkspace, m_matAxis, ch, ch);
+                DTensor<T> d_ExpandedChNode(*m_d_uSizeWorkspace, m_matAxis, ch, ch);
                 d_Node.deviceCopyTo(d_ExpandedChNode);
             }
         }
-        DTensor<T> q_SumChStage(*m_d_stateSizeWorkspace, m_matAxis, chStageFr, chStageTo);
-        DTensor<T> d_ExpandedChStage(*m_d_inputSizeWorkspace, m_matAxis, chStageFr, chStageTo);
+        DTensor<T> q_SumChStage(*m_d_xSizeWorkspace, m_matAxis, chStageFr, chStageTo);
+        DTensor<T> d_ExpandedChStage(*m_d_uSizeWorkspace, m_matAxis, chStageFr, chStageTo);
         q_SumChStage.addAB(APB_ChStage, d_ExpandedChStage);
         q_SumChStage.addAB(ABKtr_ChStage, q_ChStage, 1., 1.);
         /* Copy into `q` the first child `APBdAq` of each node (every nonleaf node has at least one child) */
         for (size_t node = stageFr; node <= stageTo; node++) {
             size_t ch = m_tree.childFrom()[node];
-            DTensor<T> APBdAq_ChNode(*m_d_stateSizeWorkspace, m_matAxis, ch, ch);
+            DTensor<T> APBdAq_ChNode(*m_d_xSizeWorkspace, m_matAxis, ch, ch);
             DTensor<T> APBdAq_Node(*m_d_q, m_matAxis, node, node);
             APBdAq_ChNode.deviceCopyTo(APBdAq_Node);
         }
@@ -233,16 +236,16 @@ void Cache<T>::projectOnDynamics() {
             for (size_t node = stageFr; node <= stageTo; node++) {
                 size_t ch = m_tree.childFrom()[node] + chOfEachNode;
                 if (ch <= m_tree.childTo()[node]) {  // If more children exist, copy in their `Bq_ChStage`
-                    DTensor<T> APBdAq_ChNode(*m_d_stateSizeWorkspace, m_matAxis, ch, ch);
-                    DTensor<T> APBdAq_Node(*m_d_stateSizeWorkspace, m_matAxis, node, node);
+                    DTensor<T> APBdAq_ChNode(*m_d_xSizeWorkspace, m_matAxis, ch, ch);
+                    DTensor<T> APBdAq_Node(*m_d_xSizeWorkspace, m_matAxis, node, node);
                     APBdAq_ChNode.deviceCopyTo(APBdAq_Node);
                 }
             }
-            DTensor<T> q_Add(*m_d_stateSizeWorkspace, m_matAxis, stageFr, stageTo);
+            DTensor<T> q_Add(*m_d_xSizeWorkspace, m_matAxis, stageFr, stageTo);
             q_Stage += q_Add;
         }
         /* Compute Kdux = K.tr(d-u)@x for each node at current stage and add to `q` */
-        DTensor<T> du_Stage(*m_d_inputSizeWorkspace, m_matAxis, stageFr, stageTo);
+        DTensor<T> du_Stage(*m_d_uSizeWorkspace, m_matAxis, stageFr, stageTo);
         d_Stage.deviceCopyTo(du_Stage);
         du_Stage -= u_Stage;
         DTensor<T> Ktr_Stage(m_data.KTr(), m_matAxis, stageFr, stageTo);
@@ -276,7 +279,7 @@ void Cache<T>::projectOnDynamics() {
             DTensor<T> x_Node(*m_d_x, m_matAxis, node, node);
             DTensor<T> u_Node(*m_d_u, m_matAxis, node, node);
             for (size_t ch = m_tree.childFrom()[node]; ch <= m_tree.childTo()[node]; ch++) {
-                DTensor<T> xu_ChNode(*m_d_stateInputSizeWorkspace, m_matAxis, ch, ch);
+                DTensor<T> xu_ChNode(*m_d_xuSizeWorkspace, m_matAxis, ch, ch);
                 DTensor<T> xu_sliceX(xu_ChNode, 0, 0, m_data.numStates() - 1);
                 DTensor<T> xu_sliceU(xu_ChNode, 0, m_data.numStates(), m_numXU - 1);
                 x_Node.deviceCopyTo(xu_sliceX);
@@ -285,7 +288,7 @@ void Cache<T>::projectOnDynamics() {
         }
         DTensor<T> x_ChStage(*m_d_x, m_matAxis, chStageFr, chStageTo);
         DTensor<T> AB_ChStage(m_data.stateInputDynamics(), m_matAxis, chStageFr, chStageTo);
-        DTensor<T> xu_ChStage(*m_d_stateInputSizeWorkspace, m_matAxis, chStageFr, chStageTo);
+        DTensor<T> xu_ChStage(*m_d_xuSizeWorkspace, m_matAxis, chStageFr, chStageTo);
         x_ChStage.addAB(AB_ChStage, xu_ChStage);
     }
 }
@@ -295,6 +298,44 @@ void Cache<T>::projectOnKernels() {
     /**
      * Project on kernel of every node of tree at once
      */
+    k_setToZero<<<numBlocks(m_d_ytsSizeWorkspace->numEl()), TPB>>>(m_d_ytsSizeWorkspace->raw(),
+                                                                   m_d_ytsSizeWorkspace->numEl());
+    /* Gather vec = (y_i, t[i], s[i]) for all nodes */
+    for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
+        size_t chFr = m_tree.childFrom()[node];
+        size_t chTo = m_tree.childTo()[node];
+        size_t numCh = m_tree.numChildren()[node];
+        DTensor<T> yPadded(*m_d_y, m_matAxis, node, node);
+        DTensor<T> y(yPadded, 0, 0, numCh - 1);
+        DTensor<T> t(*m_d_t, m_matAxis, chFr, chTo);
+        DTensor<T> s(*m_d_s, m_matAxis, chFr, chTo);
+        DTensor<T> nodeStore(*m_d_ytsSizeWorkspace, m_matAxis, node, node);
+        DTensor<T> yStore(nodeStore, 0, 0, numCh - 1);
+        DTensor<T> tStore(nodeStore, 0, numCh, numCh * 2 - 1);
+        DTensor<T> sStore(nodeStore, 0, numCh * 2, numCh * 3 - 1);
+        y.deviceCopyTo(yStore);
+        t.deviceCopyTo(tStore);
+        s.deviceCopyTo(sStore);
+    }
+    /* Projection onto nullspace in place */
+    m_d_ytsSizeWorkspace->addAB(m_data.nullspaceProj(), *m_d_ytsSizeWorkspace);
+    /* Disperse vec = (y_i, t[i], s[i]) for all nodes */
+    for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
+        size_t chFr = m_tree.childFrom()[node];
+        size_t chTo = m_tree.childTo()[node];
+        size_t numCh = m_tree.numChildren()[node];
+        DTensor<T> yPadded(*m_d_y, m_matAxis, node, node);
+        DTensor<T> y(yPadded, 0, 0, numCh - 1);
+        DTensor<T> t(*m_d_t, m_matAxis, chFr, chTo);
+        DTensor<T> s(*m_d_s, m_matAxis, chFr, chTo);
+        DTensor<T> nodeStore(*m_d_ytsSizeWorkspace, m_matAxis, node, node);
+        DTensor<T> yStore(nodeStore, 0, 0, numCh - 1);
+        DTensor<T> tStore(nodeStore, 0, numCh, numCh * 2 - 1);
+        DTensor<T> sStore(nodeStore, 0, numCh * 2, numCh * 3 - 1);
+        yStore.deviceCopyTo(y);
+        tStore.deviceCopyTo(t);
+        sStore.deviceCopyTo(s);
+    }
 }
 
 template<typename T>

@@ -60,6 +60,7 @@ class Problem:
         self.__kernel_constraint_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
         self.__nullspace_projection_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
         self.__max_nullspace_dim = self.__tree.num_events * 4 + 1
+        self.__projected_ns = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
 
     # GETTERS
     def state_dynamics_at_node(self, idx):
@@ -137,6 +138,7 @@ class Problem:
         self.__offline_projection_dynamics()
         self.__offline_projection_kernel()
         self.__test_dynamic_programming()
+        self.__test_nullspace_projection()
 
     def __offline_projection_dynamics(self):
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
@@ -206,6 +208,25 @@ class Problem:
         self.__dp_test_inputs = u_bar.T
         self.__dp_projected_states = x.value.T
         self.__dp_projected_inputs = u.value.T
+
+    def __test_nullspace_projection(self):
+        # Solve with cvxpy
+        null_dim = self.__tree.num_events * 3
+        remainder = self.__max_nullspace_dim - null_dim
+        rand = np.random.randn(null_dim, self.__tree.num_nodes)
+        zeros = np.zeros((remainder, self.__tree.num_nodes))
+        stack = np.vstack((rand, zeros))
+        for i in range(self.__tree.num_nonleaf_nodes):
+            point = stack[:, i]
+            var = cvx.Variable(self.__nullspace_projection_matrix[i].shape[1])
+            cost = cvx.sum_squares(self.__nullspace_projection_matrix[i] @ var - point)
+            prob = cvx.Problem(cvx.Minimize(cost))
+            prob.solve()
+            self.__projected_ns[i] = self.__nullspace_projection_matrix[i] @ var.value
+            should_be_zeros = self.__kernel_constraint_matrix[i] @ self.__projected_ns[i]
+            inf_nrm = np.linalg.norm(should_be_zeros, np.inf)
+            if inf_nrm > 1e-6:
+                raise ValueError("CVXPy nullspace projection error")
 
 
 class ProblemFactory:

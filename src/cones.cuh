@@ -3,13 +3,13 @@
 
 #include "../include/gpu.cuh"
 
-TEMPLATE_WITH_TYPE_T
+template<typename T>
 __global__ void k_maxWithZero(T *vec, size_t n);
 
-TEMPLATE_WITH_TYPE_T
+template<typename T>
 __global__ void k_setToZero(T *vec, size_t n);
 
-TEMPLATE_WITH_TYPE_T
+template<typename T>
 __global__ void k_projectOnSoc(T *vec, size_t n, T nrm, T scaling);
 
 

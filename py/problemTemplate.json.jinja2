@@ -18,6 +18,13 @@
 \% if not loop.last %\,\% endif %\
 
 \% endfor %\},
+\# STATE AND INPUT DYNAMICS CONCATENATED #\
+"AB": {
+\% for i in range(AB_dyn|length) %\
+"\~i~\":\% if AB_dyn[i] is none %\[]\% else %\\~AB_dyn[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
 \# NONLEAF STATE COSTS #\
 "nonleafStateCosts": {
 \% for i in range(state_cost|length) %\
@@ -86,10 +93,45 @@
 \% if not loop.last %\,\% endif %\
 
 \% endfor %\},
-\# SUM OF DYNAMICS #\
-"A+BK": {
-\% for i in range(dyn|length) %\
-"\~i~\":\% if dyn[i] is none %\[]\% else %\\~dyn[i].flatten().tolist()~\\% endif %\
+\# SUM OF DYNAMICS TRANSPOSED #\
+"(A+B@K)t": {
+\% for i in range(dyn_tr|length) %\
+"\~i~\":\% if dyn_tr[i] is none %\[]\% else %\\~dyn_tr[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# At @ P @ B #\
+"At@P@B": {
+\% for i in range(APB|length) %\
+"\~i~\":\% if APB[i] is none %\[]\% else %\\~APB[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# DP TEST STATES #\
+"dpStates": {
+\% for i in range(dpTestStates|length) %\
+"\~i~\":\% if dpTestStates[i] is none %\[]\% else %\\~dpTestStates[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# DP TEST INPUTS #\
+"dpInputs": {
+\% for i in range(dpTestInputs|length) %\
+"\~i~\":\% if dpTestInputs[i] is none %\[]\% else %\\~dpTestInputs[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# DP PROJECTED STATES #\
+"dpProjectedStates": {
+\% for i in range(dpProjectedStates|length) %\
+"\~i~\":\% if dpProjectedStates[i] is none %\[]\% else %\\~dpProjectedStates[i].flatten().tolist()~\\% endif %\
+\% if not loop.last %\,\% endif %\
+
+\% endfor %\},
+\# DP PROJECTED INPUTS #\
+"dpProjectedInputs": {
+\% for i in range(dpProjectedInputs|length) %\
+"\~i~\":\% if dpProjectedInputs[i] is none %\[]\% else %\\~dpProjectedInputs[i].flatten().tolist()~\\% endif %\
 \% if not loop.last %\,\% endif %\
 
 \% endfor %\}

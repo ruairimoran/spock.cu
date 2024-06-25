@@ -2,6 +2,7 @@ import jinja2 as j2
 import os
 import numpy as np
 import scipy as sp
+import cvxpy as cvx
 from copy import deepcopy
 from . import treeFactory
 from . import build
@@ -34,6 +35,7 @@ class Problem:
         self.__num_inputs = num_inputs
         self.__list_of_state_dynamics = state_dyn
         self.__list_of_input_dynamics = input_dyn
+        self.__list_of_state_input_dynamics = [None] + [np.hstack((A, B)) for A, B in zip(state_dyn[1:], input_dyn[1:])]
         self.__list_of_nonleaf_state_costs = state_cost
         self.__list_of_nonleaf_input_costs = input_cost
         self.__list_of_leaf_state_costs = terminal_cost
@@ -47,7 +49,13 @@ class Problem:
         self.__d = [np.zeros((self.__num_states, 1))] * self.__tree.num_nonleaf_nodes
         self.__lower = True  # Do not change!
         self.__cholesky_lower = [None] * self.__tree.num_nonleaf_nodes
-        self.__sum_of_dynamics = [np.zeros((0, 0))] * self.__tree.num_nodes  # A+BK
+        self.__sum_of_dynamics_tr = [np.zeros((0, 0))] * self.__tree.num_nodes  # A+B@K
+        self.__At_P_B = [np.zeros((0, 0))] * self.__tree.num_nodes  # At@P@B
+        self.__dp_test_init_state = None
+        self.__dp_test_states = None
+        self.__dp_test_inputs = None
+        self.__dp_projected_states = None
+        self.__dp_projected_inputs = None
         # Kernel projection
         self.__kernel_constraint_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
         self.__nullspace_projection_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
@@ -96,6 +104,7 @@ class Problem:
                                  num_inputs=self.__num_inputs,
                                  state_dyn=self.__list_of_state_dynamics,
                                  input_dyn=self.__list_of_input_dynamics,
+                                 AB_dyn=self.__list_of_state_input_dynamics,
                                  state_cost=self.__list_of_nonleaf_state_costs,
                                  input_cost=self.__list_of_nonleaf_input_costs,
                                  terminal_cost=self.__list_of_leaf_state_costs,
@@ -105,7 +114,12 @@ class Problem:
                                  P=self.__P,
                                  K=self.__K,
                                  low_chol=self.__cholesky_lower,
-                                 dyn=self.__sum_of_dynamics,
+                                 dyn_tr=self.__sum_of_dynamics_tr,
+                                 APB=self.__At_P_B,
+                                 dpTestStates=self.__dp_test_states,
+                                 dpTestInputs=self.__dp_test_inputs,
+                                 dpProjectedStates=self.__dp_projected_states,
+                                 dpProjectedInputs=self.__dp_projected_inputs,
                                  null_dim=self.__max_nullspace_dim,
                                  null=self.__nullspace_projection_matrix)
         path = os.path.join(os.getcwd(), self.__tree.folder)
@@ -122,6 +136,7 @@ class Problem:
     def generate_offline_cache(self):
         self.__offline_projection_dynamics()
         self.__offline_projection_kernel()
+        self.__test_dynamic_programming()
 
     def __offline_projection_dynamics(self):
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
@@ -140,9 +155,10 @@ class Problem:
             self.__K[i] = sp.linalg.cho_solve((self.__cholesky_lower[i], self.__lower), -sum_for_k)
             sum_for_p = 0
             for j in children_of_i:
-                self.__sum_of_dynamics[j] = self.__list_of_state_dynamics[j] \
-                                            + self.__list_of_input_dynamics[j] @ self.__K[i]
-                sum_for_p = sum_for_p + self.__sum_of_dynamics[j].T @ self.__P[j] @ self.__sum_of_dynamics[j]
+                sum_of_dynamics = self.__list_of_state_dynamics[j] + self.__list_of_input_dynamics[j] @ self.__K[i]
+                self.__sum_of_dynamics_tr[j] = sum_of_dynamics.T
+                sum_for_p = sum_for_p + self.__sum_of_dynamics_tr[j] @ self.__P[j] @ sum_of_dynamics
+                self.__At_P_B[j] = self.__sum_of_dynamics_tr[j] @ self.__P[j] @ self.__list_of_input_dynamics[j]
             self.__P[i] = np.eye(self.__num_states) + self.__K[i].T @ self.__K[i] + sum_for_p
 
     def __offline_projection_kernel(self):
@@ -161,6 +177,35 @@ class Problem:
         col_pad = self.__max_nullspace_dim - nullspace.shape[1]
         padded_nullspace = np.pad(nullspace, [(0, row_pad), (0, col_pad)], mode="constant", constant_values=0.)
         return padded_nullspace
+
+    def __test_dynamic_programming(self):
+        # Solve with cvxpy
+        x_bar = 10 * np.random.randn(self.__num_states, self.__tree.num_nodes)
+        u_bar = 10 * np.random.randn(self.__num_inputs, self.__tree.num_nonleaf_nodes)
+        x = cvx.Variable((self.__num_states, self.__tree.num_nodes))
+        u = cvx.Variable((self.__num_inputs, self.__tree.num_nonleaf_nodes))
+        self.__dp_test_init_state = x_bar[:, 0]
+        # Sum problem objectives and concatenate constraints
+        cost = 0
+        constraints = [x[:, 0] == x_bar[:, 0]]
+        # Nonleaf nodes
+        for node in range(self.__tree.num_nonleaf_nodes):
+            cost += cvx.sum_squares(x[:, node] - x_bar[:, node]) + cvx.sum_squares(u[:, node] - u_bar[:, node])
+            for ch in self.__tree.children_of_node(node):
+                constraints += [x[:, ch] ==
+                                self.__list_of_state_dynamics[ch] @ x[:, node] +
+                                self.__list_of_input_dynamics[ch] @ u[:, node]]
+
+        # Leaf nodes
+        for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
+            cost += cvx.sum_squares(x[:, node] - x_bar[:, node])
+
+        problem = cvx.Problem(cvx.Minimize(cost), constraints)
+        problem.solve()
+        self.__dp_test_states = x_bar.T
+        self.__dp_test_inputs = u_bar.T
+        self.__dp_projected_states = x.value.T
+        self.__dp_projected_inputs = u.value.T
 
 
 class ProblemFactory:

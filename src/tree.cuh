@@ -25,6 +25,8 @@ private:
     std::vector<size_t> m_numChildren;
     std::vector<size_t> m_stageFrom;
     std::vector<size_t> m_stageTo;
+    std::vector<size_t> m_maxCh;  ///< Max number of children of any node of stage at index
+    std::vector<size_t> m_ancestors;
     /* Device data */
     std::unique_ptr<DTensor<size_t>> m_d_stages = nullptr;  ///< Ptr to stage of node at index
     std::unique_ptr<DTensor<size_t>> m_d_ancestors = nullptr;  ///< Ptr to ancestor of node at index
@@ -60,15 +62,16 @@ public:
 
         /* Allocate memory on host for JSON data */
         std::vector<size_t> hostStages(m_numNodes);
-        std::vector<size_t> hostAncestors(m_numNodes);
         std::vector<T> hostProbabilities(m_numNodes);
         std::vector<T> hostConditionalProbabilities(m_numNodes);
         std::vector<size_t> hostEvents(m_numNodes);
         m_childFrom = std::vector<size_t>(m_numNonleafNodes);
         m_childTo = std::vector<size_t>(m_numNonleafNodes);
         m_numChildren = std::vector<size_t>(m_numNonleafNodes);
-        m_stageFrom = std::vector<size_t>(m_numNonleafNodes);
-        m_stageTo = std::vector<size_t>(m_numNonleafNodes);
+        m_stageFrom = std::vector<size_t>(m_numStages);
+        m_stageTo = std::vector<size_t>(m_numStages);
+        m_maxCh = std::vector<size_t>(m_numStages);
+        m_ancestors = std::vector<size_t>(m_numNodes);
 
         /* Allocate memory on device */
         m_d_stages = std::make_unique<DTensor<size_t>>(m_numNodes);
@@ -90,7 +93,7 @@ public:
                 m_childTo[i] = doc["childrenTo"][i].GetInt();
             }
             hostStages[i] = doc["stages"][i].GetInt();
-            hostAncestors[i] = doc["ancestors"][i].GetInt();
+            m_ancestors[i] = doc["ancestors"][i].GetInt();
             hostProbabilities[i] = doc["probabilities"][i].GetDouble();
             hostConditionalProbabilities[i] = doc["conditionalProbabilities"][i].GetDouble();
             hostEvents[i] = doc["events"][i].GetInt();
@@ -103,7 +106,7 @@ public:
 
         /* Transfer JSON array data to device */
         m_d_stages->upload(hostStages);
-        m_d_ancestors->upload(hostAncestors);
+        m_d_ancestors->upload(m_ancestors);
         m_d_probabilities->upload(hostProbabilities);
         m_d_conditionalProbabilities->upload(hostConditionalProbabilities);
         m_d_events->upload(hostEvents);
@@ -112,6 +115,15 @@ public:
         m_d_numChildren->upload(m_numChildren);
         m_d_stageFrom->upload(m_stageFrom);
         m_d_stageTo->upload(m_stageTo);
+
+        /* Update remaining fields */
+        for (size_t stage = 0; stage < m_numStages - 1; stage++) {
+            size_t stageFr = m_stageFrom[stage];
+            size_t stageTo = m_stageTo[stage];
+            size_t maxCh = 0;
+            for (size_t node = stageFr; node <= stageTo; node++) { maxCh = std::max(maxCh, m_numChildren[node]); }
+            m_maxCh[stage] = maxCh;
+        }
     }
 
     /**
@@ -138,9 +150,13 @@ public:
 
     std::vector<size_t> &numChildren() { return m_numChildren; }
 
-    std::vector<size_t> &nodeFrom() { return m_stageFrom; }
+    std::vector<size_t> &childMax() { return m_maxCh; }
 
-    std::vector<size_t> &nodeTo() { return m_stageTo; }
+    std::vector<size_t> &stageFrom() { return m_stageFrom; }
+
+    std::vector<size_t> &stageTo() { return m_stageTo; }
+
+    std::vector<size_t> &anc() { return m_ancestors; }
 
     DTensor<size_t> &d_stages() { return *m_d_stages; }
 
@@ -158,9 +174,9 @@ public:
 
     DTensor<size_t> &d_numChildren() { return *m_d_numChildren; }
 
-    DTensor<size_t> &d_nodeFrom() { return *m_d_stageFrom; }
+    DTensor<size_t> &d_stageFrom() { return *m_d_stageFrom; }
 
-    DTensor<size_t> &d_nodeTo() { return *m_d_stageTo; }
+    DTensor<size_t> &d_stageTo() { return *m_d_stageTo; }
 
     /**
      * Debugging

@@ -11,7 +11,8 @@
 template<typename T>
 __global__ void k_setToZero(T *vec, size_t n);
 
-class CacheTest;
+template<typename T> class CacheData;
+template<typename T> void kernelProjectionOnline(CacheData<T> &d, T epsilon);
 
 
 /**
@@ -21,7 +22,7 @@ class CacheTest;
  */
 TEMPLATE_WITH_TYPE_T
 class Cache {
-private:
+protected:
     ScenarioTree<T> &m_tree;  ///< Previously created scenario tree
     ProblemData<T> &m_data;  ///< Previously created problem
     T m_tol = 0;
@@ -114,6 +115,11 @@ public:
     DTensor<T> &inputs() { return *m_d_u; }
 
     DTensor<T> &states() { return *m_d_x; }
+
+    /**
+     * Tests
+     */
+    friend void kernelProjectionOnline <> (CacheData<T> &d, T epsilon);
 
     /**
      * Debugging
@@ -300,19 +306,20 @@ void Cache<T>::projectOnKernels() {
      */
     k_setToZero<<<numBlocks(m_d_ytsSizeWorkspace->numEl()), TPB>>>(m_d_ytsSizeWorkspace->raw(),
                                                                    m_d_ytsSizeWorkspace->numEl());
+    size_t size = m_tree.numEvents();
     /* Gather vec = (y_i, t[i], s[i]) for all nodes */
     for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
         size_t chFr = m_tree.childFrom()[node];
         size_t chTo = m_tree.childTo()[node];
-        size_t numCh = m_tree.numChildren()[node];
+        size_t numCh = m_tree.numChildren()[node] - 1;
         DTensor<T> yPadded(*m_d_y, m_matAxis, node, node);
-        DTensor<T> y(yPadded, 0, 0, numCh - 1);
+        DTensor<T> y(yPadded, 0, 0, numCh);
         DTensor<T> t(*m_d_t, m_matAxis, chFr, chTo);
         DTensor<T> s(*m_d_s, m_matAxis, chFr, chTo);
         DTensor<T> nodeStore(*m_d_ytsSizeWorkspace, m_matAxis, node, node);
-        DTensor<T> yStore(nodeStore, 0, 0, numCh - 1);
-        DTensor<T> tStore(nodeStore, 0, numCh, numCh * 2 - 1);
-        DTensor<T> sStore(nodeStore, 0, numCh * 2, numCh * 3 - 1);
+        DTensor<T> yStore(nodeStore, 0, 0, numCh);
+        DTensor<T> tStore(nodeStore, 0, size, size + numCh);
+        DTensor<T> sStore(nodeStore, 0, size * 2, size * 2 + numCh);
         y.deviceCopyTo(yStore);
         t.deviceCopyTo(tStore);
         s.deviceCopyTo(sStore);
@@ -323,15 +330,15 @@ void Cache<T>::projectOnKernels() {
     for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
         size_t chFr = m_tree.childFrom()[node];
         size_t chTo = m_tree.childTo()[node];
-        size_t numCh = m_tree.numChildren()[node];
+        size_t numCh = m_tree.numChildren()[node] - 1;
         DTensor<T> yPadded(*m_d_y, m_matAxis, node, node);
-        DTensor<T> y(yPadded, 0, 0, numCh - 1);
+        DTensor<T> y(yPadded, 0, 0, numCh);
         DTensor<T> t(*m_d_t, m_matAxis, chFr, chTo);
         DTensor<T> s(*m_d_s, m_matAxis, chFr, chTo);
         DTensor<T> nodeStore(*m_d_ytsSizeWorkspace, m_matAxis, node, node);
-        DTensor<T> yStore(nodeStore, 0, 0, numCh - 1);
-        DTensor<T> tStore(nodeStore, 0, numCh, numCh * 2 - 1);
-        DTensor<T> sStore(nodeStore, 0, numCh * 2, numCh * 3 - 1);
+        DTensor<T> yStore(nodeStore, 0, 0, numCh);
+        DTensor<T> tStore(nodeStore, 0, size, size + numCh);
+        DTensor<T> sStore(nodeStore, 0, size * 2, size * 2 + numCh);
         yStore.deviceCopyTo(y);
         tStore.deviceCopyTo(t);
         sStore.deviceCopyTo(s);

@@ -44,6 +44,7 @@ private:
     /* Kernel projection */
     size_t m_nullDim = 0;  ///< Total number system states
     std::unique_ptr<DTensor<T>> m_d_nullspaceProj = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_constraintMatrix = nullptr;
 
     static void parseMatrix(size_t nodeIdx, const rapidjson::Value &value, std::unique_ptr<DTensor<T>> &matrix) {
         size_t numElements = value.Capacity();

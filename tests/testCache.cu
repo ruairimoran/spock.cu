@@ -132,11 +132,48 @@ TEST_F(CacheTest, dynamicsProjectionOnline) {
 
 TEMPLATE_WITH_TYPE_T
 void kernelProjectionOnline(CacheData<T> &d, T epsilon) {
+    std::ifstream problem_data(d.m_problemFileLoc);
+    std::string json((std::istreambuf_iterator<char>(problem_data)),
+                     std::istreambuf_iterator<char>());
+    rapidjson::Document doc;
+    doc.Parse(json.c_str());
+    if (doc.HasParseError()) {
+        std::cerr << "Error parsing problem data JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
+        throw std::invalid_argument("Cannot parse problem data JSON file for testing DP");
+    }
     T hi = 100.;
     T lo = -hi;
-    DTensor<T> sol = d.m_cache->solution();
-    DTensor<T> randSol = DTensor<T>::createRandomTensor(sol.numRows(), sol.numCols(), sol.numMats(), lo, hi);
-    randSol.deviceCopyTo(sol);
+    size_t matAxis = 2;
+    size_t size = d.m_tree->numEvents();
+    for (size_t node = 0; node < d.m_tree->numNonleafNodes(); node++) {
+        size_t chFr = d.m_tree->childFrom()[node];
+        size_t chTo = d.m_tree->childTo()[node];
+        size_t numCh = d.m_tree->numChildren()[node] - 1;
+        DTensor<T> yPadded(*(d.m_cache->m_d_y), matAxis, node, node);
+        DTensor<T> y(yPadded, 0, 0, numCh);
+        DTensor<T> t(*(d.m_cache->m_d_t), matAxis, chFr, chTo);
+        DTensor<T> s(*(d.m_cache->m_d_s), matAxis, chFr, chTo);
+        DTensor<T> randY = DTensor<T>::createRandomTensor(numCh + 1, 1, 1, lo, hi);
+        DTensor<T> randT = DTensor<T>::createRandomTensor(numCh + 1, 1, 1, lo, hi);
+        DTensor<T> randS = DTensor<T>::createRandomTensor(numCh + 1, 1, 1, lo, hi);
+        randY.deviceCopyTo(y);
+        randT.deviceCopyTo(t);
+        randS.deviceCopyTo(s);
+    }
+//    size_t statesSize = d.m_data->numStates() * d.m_tree->numNodes();
+//    size_t inputsSize = d.m_data->numInputs() * d.m_tree->numNonleafNodes();
+//    std::vector<T> originalStates(statesSize);
+//    std::vector<T> originalInputs(inputsSize);
+//    const char *nodeString = nullptr;
+//    for (size_t i = 0; i < d.m_tree->numNodes(); i++) {
+//        nodeString = std::to_string(i).c_str();
+//        parse(i, doc["dpStates"][nodeString], originalStates);
+//        parse(i, doc["dpProjectedStates"][nodeString], cvxStates);
+//        if (i < d.m_tree->numNonleafNodes()) {
+//            parse(i, doc["dpInputs"][nodeString], originalInputs);
+//            parse(i, doc["dpProjectedInputs"][nodeString], cvxInputs);
+//        }
+//    }
 }
 
 TEST_F(CacheTest, kernelProjectionOnline) {

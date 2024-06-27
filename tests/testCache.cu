@@ -11,7 +11,6 @@ protected:
     virtual ~CacheTest() {}
 };
 
-
 TEMPLATE_WITH_TYPE_T
 class CacheData {
 public:
@@ -45,6 +44,14 @@ public:
     virtual ~CacheData() {}
 };
 
+TEMPLATE_WITH_TYPE_T
+static void parse(size_t nodeIdx, const rapidjson::Value &value, std::vector<T> &vec) {
+    size_t numElements = value.Capacity();
+    for (rapidjson::SizeType i = 0; i < numElements; i++) {
+        vec[nodeIdx * numElements + i] = value[i].GetDouble();
+    }
+}
+
 /* ---------------------------------------
  * Initialise state
  * --------------------------------------- */
@@ -69,14 +76,6 @@ TEST_F(CacheTest, initialisingState) {
 /* ---------------------------------------
  * Project on dynamics (online)
  * --------------------------------------- */
-
-TEMPLATE_WITH_TYPE_T
-static void parse(size_t nodeIdx, const rapidjson::Value &value, std::vector<T> &vec) {
-    size_t numElements = value.Capacity();
-    for (rapidjson::SizeType i = 0; i < numElements; i++) {
-        vec[nodeIdx * numElements + i] = value[i].GetDouble();
-    }
-}
 
 TEMPLATE_WITH_TYPE_T
 void dynamicsProjectionOnline(CacheData<T> &d, T epsilon) {
@@ -139,41 +138,51 @@ void kernelProjectionOnline(CacheData<T> &d, T epsilon) {
     doc.Parse(json.c_str());
     if (doc.HasParseError()) {
         std::cerr << "Error parsing problem data JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
-        throw std::invalid_argument("Cannot parse problem data JSON file for testing DP");
+        throw std::invalid_argument("Cannot parse problem data JSON file for testing projection on kernels");
     }
     T hi = 100.;
     T lo = -hi;
     size_t matAxis = 2;
-    size_t size = d.m_tree->numEvents();
+    const char *nodeString = nullptr;
     for (size_t node = 0; node < d.m_tree->numNonleafNodes(); node++) {
         size_t chFr = d.m_tree->childFrom()[node];
         size_t chTo = d.m_tree->childTo()[node];
-        size_t numCh = d.m_tree->numChildren()[node] - 1;
+        size_t numCh = d.m_tree->numChildren()[node];
         DTensor<T> yPadded(*(d.m_cache->m_d_y), matAxis, node, node);
-        DTensor<T> y(yPadded, 0, 0, numCh);
+        DTensor<T> y(yPadded, 0, 0, numCh - 1);
         DTensor<T> t(*(d.m_cache->m_d_t), matAxis, chFr, chTo);
         DTensor<T> s(*(d.m_cache->m_d_s), matAxis, chFr, chTo);
-        DTensor<T> randY = DTensor<T>::createRandomTensor(numCh + 1, 1, 1, lo, hi);
-        DTensor<T> randT = DTensor<T>::createRandomTensor(numCh + 1, 1, 1, lo, hi);
-        DTensor<T> randS = DTensor<T>::createRandomTensor(numCh + 1, 1, 1, lo, hi);
+        DTensor<T> randY = DTensor<T>::createRandomTensor(numCh, 1, 1, lo, hi);
+        DTensor<T> randT = DTensor<T>::createRandomTensor(numCh, 1, 1, lo, hi);
+        DTensor<T> randS = DTensor<T>::createRandomTensor(numCh, 1, 1, lo, hi);
         randY.deviceCopyTo(y);
         randT.deviceCopyTo(t);
         randS.deviceCopyTo(s);
+
+        d.m_cache->projectOnKernels();
+
+        DTensor<T> projected(d.m_data->nullDim());
+        DTensor<T> projY(projected, 0, 0, numCh - 1);
+        DTensor<T> projT(projected, 0, numCh, numCh * 2 - 1);
+        DTensor<T> projS(projected, 0, numCh * 2, numCh * 3 - 1);
+        y.deviceCopyTo(projY);
+        t.deviceCopyTo(projT);
+        s.deviceCopyTo(projS);
+
+        nodeString = std::to_string(node).c_str();
+        rapidjson::Value &risk = doc["risks"][nodeString];
+        rapidjson::Value &s2 = risk["S2"];
+        size_t numEl = s2.Capacity();
+        std::vector<T> s2Vec(numEl);
+        parse(0, s2, s2Vec);
+        size_t nR = numEl / d.m_data->nullDim();
+        DTensor<T> kerConMat(s2Vec, nR, d.m_data->nullDim());
+
+        DTensor<T> shouldBeZeros = kerConMat * projected;
+        std::vector<T> result(shouldBeZeros.numEl());
+        shouldBeZeros.download(result);
+        for (size_t i = 0; i < shouldBeZeros.numEl(); i++) { EXPECT_NEAR(result[i], 0., epsilon); }
     }
-//    size_t statesSize = d.m_data->numStates() * d.m_tree->numNodes();
-//    size_t inputsSize = d.m_data->numInputs() * d.m_tree->numNonleafNodes();
-//    std::vector<T> originalStates(statesSize);
-//    std::vector<T> originalInputs(inputsSize);
-//    const char *nodeString = nullptr;
-//    for (size_t i = 0; i < d.m_tree->numNodes(); i++) {
-//        nodeString = std::to_string(i).c_str();
-//        parse(i, doc["dpStates"][nodeString], originalStates);
-//        parse(i, doc["dpProjectedStates"][nodeString], cvxStates);
-//        if (i < d.m_tree->numNonleafNodes()) {
-//            parse(i, doc["dpInputs"][nodeString], originalInputs);
-//            parse(i, doc["dpProjectedInputs"][nodeString], cvxInputs);
-//        }
-//    }
 }
 
 TEST_F(CacheTest, kernelProjectionOnline) {

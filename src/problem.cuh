@@ -7,6 +7,18 @@
 #include "risks.cuh"
 
 
+TEMPLATE_WITH_TYPE_T
+static void parseMatrix(size_t nodeIdx, const rapidjson::Value &value, std::unique_ptr<DTensor<T>> &matrix) {
+    size_t numElements = value.Capacity();
+    std::vector<T> matrixData(numElements);
+    for (rapidjson::SizeType i = 0; i < numElements; i++) {
+        matrixData[i] = value[i].GetDouble();
+    }
+    DTensor<T> sliceDevice(*matrix, 2, nodeIdx, nodeIdx);
+    sliceDevice.upload(matrixData, rowMajor);
+}
+
+
 /**
  * Store problem data:
  * - from file
@@ -45,16 +57,6 @@ private:
     size_t m_nullDim = 0;  ///< Total number system states
     std::unique_ptr<DTensor<T>> m_d_nullspaceProj = nullptr;
     std::unique_ptr<DTensor<T>> m_d_constraintMatrix = nullptr;
-
-    static void parseMatrix(size_t nodeIdx, const rapidjson::Value &value, std::unique_ptr<DTensor<T>> &matrix) {
-        size_t numElements = value.Capacity();
-        std::vector<T> matrixData(numElements);
-        for (rapidjson::SizeType i = 0; i < numElements; i++) {
-            matrixData[i] = value[i].GetDouble();
-        }
-        DTensor<T> sliceDevice(*matrix, 2, nodeIdx, nodeIdx);
-        sliceDevice.upload(matrixData, rowMajor);
-    }
 
     static void parseConstraint(size_t nodeIdx, const rapidjson::Value &value,
                                 std::vector<std::unique_ptr<Constraint<T>>> &constraint) {

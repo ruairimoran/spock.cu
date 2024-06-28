@@ -77,10 +77,10 @@ public:
         m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters) {
         /* Sizes */
         m_numXU = m_data.numStates() + m_data.numInputs();
-        m_numY =
+        m_numY = m_data.nullDim() - (m_tree.numEvents() * 2);
         m_sizeU = m_tree.numNonleafNodes() * m_data.numInputs();  ///< Inputs of all nonleaf nodes
         m_sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
-        m_sizeY = m_tree.numNonleafNodes() * m_tree.numEvents();  ///< Y for all nonleaf nodes
+        m_sizeY = m_tree.numNonleafNodes() * m_numY;  ///< Y for all nonleaf nodes
         m_sizeT = m_tree.numNodes();  ///< T for all child nodes
         m_sizeS = m_tree.numNodes();  ///< S for all child nodes
         m_primSize = m_sizeU + m_sizeX + m_sizeY + m_sizeT + m_sizeS;
@@ -146,7 +146,7 @@ void Cache<T>::reshapePrimal() {
     m_d_x->reshape(m_data.numStates(), 1, m_tree.numNodes());
     start += m_sizeX;
     m_d_y = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeY - 1);
-    m_d_y->reshape(m_tree.numEvents(), 1, m_tree.numNonleafNodes());
+    m_d_y->reshape(m_numY, 1, m_tree.numNonleafNodes());
     start += m_sizeY;
     m_d_t = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeT - 1);
     m_d_t->reshape(1, 1, m_tree.numNodes());
@@ -312,41 +312,40 @@ void Cache<T>::projectOnKernels() {
     /**
      * Project on kernel of every node of tree at once
      */
-    k_setToZero<<<numBlocks(m_d_ytsSizeWorkspace->numEl()), TPB>>>(m_d_ytsSizeWorkspace->raw(),
-                                                                   m_d_ytsSizeWorkspace->numEl());
-    size_t size = m_tree.numEvents();
-    /* Gather vec = (y_i, t[i], s[i]) for all nodes */
+    /* Gather vec = (y_i, t[ch(i)], s[ch(i)]) for all nodes */
     for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
         size_t chFr = m_tree.childFrom()[node];
         size_t chTo = m_tree.childTo()[node];
         size_t numCh = m_tree.numChildren()[node] - 1;
-        DTensor<T> yPadded(*m_d_y, m_matAxis, node, node);
-        DTensor<T> y(yPadded, 0, 0, numCh);
+        DTensor<T> y(*m_d_y, m_matAxis, node, node);
         DTensor<T> t(*m_d_t, m_matAxis, chFr, chTo);
         DTensor<T> s(*m_d_s, m_matAxis, chFr, chTo);
         DTensor<T> nodeStore(*m_d_ytsSizeWorkspace, m_matAxis, node, node);
-        DTensor<T> yStore(nodeStore, 0, 0, numCh);
-        DTensor<T> tStore(nodeStore, 0, size, size + numCh);
-        DTensor<T> sStore(nodeStore, 0, size * 2, size * 2 + numCh);
+        DTensor<T> yStore(nodeStore, 0, 0, m_numY - 1);
+        DTensor<T> tStore(nodeStore, 0, m_numY, m_numY + numCh);
+        DTensor<T> sStore(nodeStore, 0, m_numY + m_tree.numEvents(), m_numY + m_tree.numEvents() + numCh);
+        tStore.reshape(1, 1, m_tree.numEvents());
+        sStore.reshape(1, 1, m_tree.numEvents());
         y.deviceCopyTo(yStore);
         t.deviceCopyTo(tStore);
         s.deviceCopyTo(sStore);
     }
     /* Projection onto nullspace in place */
     m_d_ytsSizeWorkspace->addAB(m_data.nullspaceProj(), *m_d_ytsSizeWorkspace);
-    /* Disperse vec = (y_i, t[i], s[i]) for all nodes */
+    /* Disperse vec = (y_i, t[ch(i)], s[ch(i)]) for all nodes */
     for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
         size_t chFr = m_tree.childFrom()[node];
         size_t chTo = m_tree.childTo()[node];
         size_t numCh = m_tree.numChildren()[node] - 1;
-        DTensor<T> yPadded(*m_d_y, m_matAxis, node, node);
-        DTensor<T> y(yPadded, 0, 0, numCh);
+        DTensor<T> y(*m_d_y, m_matAxis, node, node);
         DTensor<T> t(*m_d_t, m_matAxis, chFr, chTo);
         DTensor<T> s(*m_d_s, m_matAxis, chFr, chTo);
         DTensor<T> nodeStore(*m_d_ytsSizeWorkspace, m_matAxis, node, node);
-        DTensor<T> yStore(nodeStore, 0, 0, numCh);
-        DTensor<T> tStore(nodeStore, 0, size, size + numCh);
-        DTensor<T> sStore(nodeStore, 0, size * 2, size * 2 + numCh);
+        DTensor<T> yStore(nodeStore, 0, 0, m_numY - 1);
+        DTensor<T> tStore(nodeStore, 0, m_numY, m_numY + numCh);
+        DTensor<T> sStore(nodeStore, 0, m_numY + m_tree.numEvents(), m_numY + m_tree.numEvents() + numCh);
+        tStore.reshape(1, 1, m_tree.numEvents());
+        sStore.reshape(1, 1, m_tree.numEvents());
         yStore.deviceCopyTo(y);
         tStore.deviceCopyTo(t);
         sStore.deviceCopyTo(s);

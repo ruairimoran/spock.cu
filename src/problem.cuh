@@ -108,7 +108,7 @@ public:
         /** Store single element data from JSON in host memory */
         m_numStates = doc["numStates"].GetInt();
         m_numInputs = doc["numInputs"].GetInt();
-        m_nullDim = doc["nullspaceDimension"].GetInt();
+        m_nullDim = doc["rowsNNtr"].GetInt();
 
         /** Allocate memory on host */
         m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>>(m_tree.numStages() - 1);

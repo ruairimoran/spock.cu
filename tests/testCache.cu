@@ -148,23 +148,43 @@ void kernelProjectionOnline(CacheData<T> &d, T epsilon) {
         size_t chFr = d.m_tree->childFrom()[node];
         size_t chTo = d.m_tree->childTo()[node];
         size_t numCh = d.m_tree->numChildren()[node];
+        size_t actualSizeY = numCh * 2 + 1;
         DTensor<T> yPadded(*(d.m_cache->m_d_y), matAxis, node, node);
-        DTensor<T> y(yPadded, 0, 0, numCh - 1);
+        DTensor<T> y(yPadded, 0, 0, actualSizeY - 1);
         DTensor<T> t(*(d.m_cache->m_d_t), matAxis, chFr, chTo);
         DTensor<T> s(*(d.m_cache->m_d_s), matAxis, chFr, chTo);
-        DTensor<T> randY = DTensor<T>::createRandomTensor(numCh, 1, 1, lo, hi);
-        DTensor<T> randT = DTensor<T>::createRandomTensor(numCh, 1, 1, lo, hi);
-        DTensor<T> randS = DTensor<T>::createRandomTensor(numCh, 1, 1, lo, hi);
+//        DTensor<T> randY = DTensor<T>::createRandomTensor(actualSizeY, 1, 1, lo, hi);
+//        DTensor<T> randT = DTensor<T>::createRandomTensor(1, 1, numCh, lo, hi);
+//        DTensor<T> randS = DTensor<T>::createRandomTensor(1, 1, numCh, lo, hi);
+        std::vector<T> ones(actualSizeY, 1.);
+        std::vector<T> twos(numCh, 2.);
+        std::vector<T> threes(numCh, 3.);
+        DTensor<T> randY(ones, ones.size(), 1, 1);
+        DTensor<T> randT(twos, twos.size(), 1, 1);
+        DTensor<T> randS(threes, threes.size(), 1, 1);
         randY.deviceCopyTo(y);
         randT.deviceCopyTo(t);
         randS.deviceCopyTo(s);
+    }
 
-        d.m_cache->projectOnKernels();
+    d.m_cache->projectOnKernels();
+
+    for (size_t node = 0; node < d.m_tree->numNonleafNodes(); node++) {
+        size_t chFr = d.m_tree->childFrom()[node];
+        size_t chTo = d.m_tree->childTo()[node];
+        size_t numCh = d.m_tree->numChildren()[node];
+        size_t actualSizeY = numCh * 2 + 1;
+        DTensor<T> yPadded(*(d.m_cache->m_d_y), matAxis, node, node);
+        DTensor<T> y(yPadded, 0, 0, actualSizeY - 1);
+        DTensor<T> t(*(d.m_cache->m_d_t), matAxis, chFr, chTo);
+        DTensor<T> s(*(d.m_cache->m_d_s), matAxis, chFr, chTo);
 
         DTensor<T> projected(d.m_data->nullDim());
-        DTensor<T> projY(projected, 0, 0, numCh - 1);
-        DTensor<T> projT(projected, 0, numCh, numCh * 2 - 1);
-        DTensor<T> projS(projected, 0, numCh * 2, numCh * 3 - 1);
+        DTensor<T> projY(projected, 0, 0, actualSizeY - 1);
+        DTensor<T> projT(projected, 0, d.m_cache->m_numY, d.m_cache->m_numY + numCh - 1);
+        DTensor<T> projS(projected, 0, d.m_cache->m_numY + d.m_tree->numEvents(), d.m_cache->m_numY + d.m_tree->numEvents() + numCh - 1);
+        projT.reshape(1, 1, numCh);
+        projS.reshape(1, 1, numCh);
         y.deviceCopyTo(projY);
         t.deviceCopyTo(projT);
         s.deviceCopyTo(projS);
@@ -175,9 +195,11 @@ void kernelProjectionOnline(CacheData<T> &d, T epsilon) {
         size_t numEl = s2.Capacity();
         std::vector<T> s2Vec(numEl);
         parse(0, s2, s2Vec);
-        size_t nR = numEl / d.m_data->nullDim();
-        DTensor<T> kerConMat(s2Vec, nR, d.m_data->nullDim());
+        size_t nR = doc["rowsS2"].GetInt();
+        DTensor<T> kerConMat(s2Vec, nR, d.m_data->nullDim(), 1, rowMajor);
 
+        std::cout << kerConMat;
+        std::cout << projected;
         DTensor<T> shouldBeZeros = kerConMat * projected;
         std::vector<T> result(shouldBeZeros.numEl());
         shouldBeZeros.download(result);

@@ -33,6 +33,7 @@ protected:
     size_t m_matAxis = 2;
     size_t m_primSize = 0;
     size_t m_numXU = 0;
+    size_t m_numY = 0;
     size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
     size_t m_sizeX = 0;  ///< States of all nodes
     size_t m_sizeY = 0;  ///< Y for all nonleaf nodes
@@ -76,6 +77,7 @@ public:
         m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters) {
         /* Sizes */
         m_numXU = m_data.numStates() + m_data.numInputs();
+        m_numY =
         m_sizeU = m_tree.numNonleafNodes() * m_data.numInputs();  ///< Inputs of all nonleaf nodes
         m_sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
         m_sizeY = m_tree.numNonleafNodes() * m_tree.numEvents();  ///< Y for all nonleaf nodes

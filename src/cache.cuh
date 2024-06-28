@@ -40,6 +40,12 @@ protected:
     size_t m_sizeY = 0;  ///< Y for all nonleaf nodes
     size_t m_sizeT = 0;  ///< T for all child nodes
     size_t m_sizeS = 0;  ///< S for all child nodes
+    size_t m_size1 = 0;
+    size_t m_size2 = 0;
+    size_t m_size3 = 0;
+    size_t m_size4 = 0;
+    size_t m_size5 = 0;
+    size_t m_size6 = 0;
     std::unique_ptr<DTensor<T>> m_d_prim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_primPrev = nullptr;
     std::unique_ptr<DTensor<T>> m_d_u = nullptr;
@@ -50,6 +56,12 @@ protected:
     size_t m_dualSize = 0;
     std::unique_ptr<DTensor<T>> m_d_dual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_dualPrev = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_1 = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_2 = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_3 = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_4 = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_5 = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_6 = nullptr;
     std::unique_ptr<DTensor<T>> m_d_cacheError = nullptr;
     /* Other */
     std::unique_ptr<DTensor<T>> m_d_q = nullptr;
@@ -64,11 +76,15 @@ protected:
      */
     void reshapePrimal();
 
+    void reshapeDual();
+
     void initialiseState(std::vector<T> &initState);
 
     void projectOnDynamics();
 
     void projectOnKernels();
+
+    void operatorL();
 
 public:
     /**
@@ -85,6 +101,12 @@ public:
         m_sizeT = m_tree.numNodes();  ///< T for all child nodes
         m_sizeS = m_tree.numNodes();  ///< S for all child nodes
         m_primSize = m_sizeU + m_sizeX + m_sizeY + m_sizeT + m_sizeS;
+        m_size1 = m_tree.numNonleafNodes() * m_numY;
+        m_size2 = m_tree.numNonleafNodes();
+        m_size3 = m_tree.numNonleafNodes() * ;
+        m_size4 =;
+        m_size5 =;
+        m_size6 =;
         /* Allocate memory on device */
         m_d_prim = std::make_unique<DTensor<T>>(m_primSize, true);
         m_d_primPrev = std::make_unique<DTensor<T>>(m_primSize, true);
@@ -99,6 +121,7 @@ public:
         m_d_ytsSizeWorkspace = std::make_unique<DTensor<T>>(m_data.nullDim(), 1, m_tree.numNonleafNodes(), true);
         /* Slice primal */
         reshapePrimal();
+        reshapeDual();
     }
 
     ~Cache() {}
@@ -140,6 +163,26 @@ public:
 
 template<typename T>
 void Cache<T>::reshapePrimal() {
+    size_t rowAxis = 0;
+    size_t start = 0;
+    m_d_u = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeU - 1);
+    m_d_u->reshape(m_data.numInputs(), 1, m_tree.numNonleafNodes());
+    start += m_sizeU;
+    m_d_x = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeX - 1);
+    m_d_x->reshape(m_data.numStates(), 1, m_tree.numNodes());
+    start += m_sizeX;
+    m_d_y = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeY - 1);
+    m_d_y->reshape(m_numY, 1, m_tree.numNonleafNodes());
+    start += m_sizeY;
+    m_d_t = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeT - 1);
+    m_d_t->reshape(1, 1, m_tree.numNodes());
+    start += m_sizeT;
+    m_d_s = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeS - 1);
+    m_d_s->reshape(1, 1, m_tree.numNodes());
+}
+
+template<typename T>
+void Cache<T>::reshapeDual() {
     size_t rowAxis = 0;
     size_t start = 0;
     m_d_u = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeU - 1);
@@ -353,6 +396,13 @@ void Cache<T>::projectOnKernels() {
         tStore.deviceCopyTo(t);
         sStore.deviceCopyTo(s);
     }
+}
+
+template<typename T>
+void Cache<T>::operatorL() {
+    /* Stream A, nonleaf nodes */
+    /* Stream B, nonroot nodes */
+    /* Stream C, leaf nodes */
 }
 
 template<typename T>

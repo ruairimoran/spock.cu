@@ -91,6 +91,7 @@ public:
             if (i < m_numNonleafNodes) {
                 m_childFrom[i] = doc["childrenFrom"][i].GetInt();
                 m_childTo[i] = doc["childrenTo"][i].GetInt();
+                m_numChildren[i] = doc["numChildren"][i].GetInt();
             }
             hostStages[i] = doc["stages"][i].GetInt();
             m_ancestors[i] = doc["ancestors"][i].GetInt();
@@ -99,7 +100,6 @@ public:
             hostEvents[i] = doc["events"][i].GetInt();
         }
         for (rapidjson::SizeType i = 0; i < m_numStages; i++) {
-            m_numChildren[i] = doc["numChildren"][i].GetInt();
             m_stageFrom[i] = doc["stageFrom"][i].GetInt();
             m_stageTo[i] = doc["stageTo"][i].GetInt();
         }

@@ -10,7 +10,7 @@ p = np.array([[0.5, 0.5], [0.5, 0.5]])
 
 v = np.array([0.8, 0.2])
 
-(horizon, stopping_stage) = (2, 2)
+(horizon, stopping_stage) = (3, 2)
 tree = py.treeFactory.TreeFactoryMarkovChain(
     transition_prob=p,
     initial_distribution=v,

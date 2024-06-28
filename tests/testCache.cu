@@ -11,9 +11,8 @@ protected:
     virtual ~CacheTest() {}
 };
 
-
 TEMPLATE_WITH_TYPE_T
-class Data {
+class CacheData {
 public:
     std::string m_treeFileLoc = "../../tests/testTreeData.json";
     std::string m_problemFileLoc = "../../tests/testProblemData.json";
@@ -29,7 +28,7 @@ public:
     std::vector<T> m_hostData = std::vector<T>(m_n);
     std::vector<T> m_hostTest = std::vector<T>(m_n);
 
-    Data() {
+    CacheData() {
         std::ifstream tree_data(m_treeFileLoc);
         std::ifstream problem_data(m_problemFileLoc);
         m_tree = std::make_unique<ScenarioTree<T>>(tree_data);
@@ -42,33 +41,8 @@ public:
         m_d_data.upload(m_hostData);
     };
 
-    virtual ~Data() {}
+    virtual ~CacheData() {}
 };
-
-/* ---------------------------------------
- * Initialise state
- * --------------------------------------- */
-
-TEMPLATE_WITH_TYPE_T
-void initialiseState(Data<T> &d) {
-    std::vector<T> initialState = {3., 5., 4.};
-    d.m_cache->initialiseState(initialState);
-    std::vector<T> x(initialState.size());
-    DTensor<T> firstState(d.m_cache->states(), 0, 0, d.m_data->numStates() - 1);
-    firstState.download(x);
-    EXPECT_EQ(x, initialState);
-}
-
-TEST_F(CacheTest, initialiseState) {
-    Data<float> df;
-    initialiseState<float>(df);
-    Data<double> dd;
-    initialiseState<double>(dd);
-}
-
-/* ---------------------------------------
- * Project on dynamics (online)
- * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
 static void parse(size_t nodeIdx, const rapidjson::Value &value, std::vector<T> &vec) {
@@ -78,8 +52,33 @@ static void parse(size_t nodeIdx, const rapidjson::Value &value, std::vector<T> 
     }
 }
 
+/* ---------------------------------------
+ * Initialise state
+ * --------------------------------------- */
+
 TEMPLATE_WITH_TYPE_T
-void dynamicsProjectionOnline(Data<T> &d, T epsilon) {
+void initialisingState(CacheData<T> &d) {
+    std::vector<T> initialState = {3., 5., 4.};
+    d.m_cache->initialiseState(initialState);
+    std::vector<T> x(initialState.size());
+    DTensor<T> firstState(d.m_cache->states(), 0, 0, d.m_data->numStates() - 1);
+    firstState.download(x);
+    EXPECT_EQ(x, initialState);
+}
+
+TEST_F(CacheTest, initialisingState) {
+    CacheData<float> df;
+    initialisingState<float>(df);
+    CacheData<double> dd;
+    initialisingState<double>(dd);
+}
+
+/* ---------------------------------------
+ * Project on dynamics (online)
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void dynamicsProjectionOnline(CacheData<T> &d, T epsilon) {
     std::ifstream problem_data(d.m_problemFileLoc);
     std::string json((std::istreambuf_iterator<char>(problem_data)),
                      std::istreambuf_iterator<char>());
@@ -120,8 +119,162 @@ void dynamicsProjectionOnline(Data<T> &d, T epsilon) {
 }
 
 TEST_F(CacheTest, dynamicsProjectionOnline) {
-    Data<float> df;
+    CacheData<float> df;
     dynamicsProjectionOnline<float>(df, TEST_PRECISION_LOW);
-    Data<double> dd;
+    CacheData<double> dd;
     dynamicsProjectionOnline<double>(dd, TEST_PRECISION_HIGH);
+}
+
+/* ---------------------------------------
+ * Project on kernels (online)
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void kernelProjectionOnline(CacheData<T> &d, T epsilon) {
+    /* Parse data for testing */
+    std::ifstream problem_data(d.m_problemFileLoc);
+    std::string json((std::istreambuf_iterator<char>(problem_data)),
+                     std::istreambuf_iterator<char>());
+    rapidjson::Document doc;
+    doc.Parse(json.c_str());
+    if (doc.HasParseError()) {
+        std::cerr << "Error parsing problem data JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
+        throw std::invalid_argument("Cannot parse problem data JSON file for testing projection on kernels");
+    }
+    /* Create random tensor data to be projected */
+    T hi = 100.;
+    T lo = -hi;
+    size_t matAxis = 2;
+    const char *nodeString = nullptr;
+    for (size_t node = 0; node < d.m_tree->numNonleafNodes(); node++) {
+        size_t chFr = d.m_tree->childFrom()[node];
+        size_t chTo = d.m_tree->childTo()[node];
+        size_t numCh = d.m_tree->numChildren()[node];
+        size_t actualSizeY = numCh * 2 + 1;
+        DTensor<T> yPadded(*(d.m_cache->m_d_y), matAxis, node, node);
+        DTensor<T> y(yPadded, 0, 0, actualSizeY - 1);
+        DTensor<T> t(*(d.m_cache->m_d_t), matAxis, chFr, chTo);
+        DTensor<T> s(*(d.m_cache->m_d_s), matAxis, chFr, chTo);
+        DTensor<T> randY = DTensor<T>::createRandomTensor(actualSizeY, 1, 1, lo, hi);
+        DTensor<T> randT = DTensor<T>::createRandomTensor(1, 1, numCh, lo, hi);
+        DTensor<T> randS = DTensor<T>::createRandomTensor(1, 1, numCh, lo, hi);
+        randY.deviceCopyTo(y);
+        randT.deviceCopyTo(t);
+        randS.deviceCopyTo(s);
+    }
+
+    /* Project random data */
+    d.m_cache->projectOnKernels();
+
+    /* Check result is in kernel */
+    for (size_t node = 0; node < d.m_tree->numNonleafNodes(); node++) {
+        size_t chFr = d.m_tree->childFrom()[node];
+        size_t chTo = d.m_tree->childTo()[node];
+        size_t numCh = d.m_tree->numChildren()[node];
+        size_t actualSizeY = numCh * 2 + 1;
+        DTensor<T> yPadded(*(d.m_cache->m_d_y), matAxis, node, node);
+        DTensor<T> y(yPadded, 0, 0, actualSizeY - 1);
+        DTensor<T> t(*(d.m_cache->m_d_t), matAxis, chFr, chTo);
+        DTensor<T> s(*(d.m_cache->m_d_s), matAxis, chFr, chTo);
+        /* Copy in projected data */
+        DTensor<T> projected(d.m_data->nullDim());
+        DTensor<T> projY(projected, 0, 0, actualSizeY - 1);
+        DTensor<T> projT(projected, 0, d.m_cache->m_numY, d.m_cache->m_numY + numCh - 1);
+        DTensor<T> projS(projected, 0, d.m_cache->m_numY + d.m_tree->numEvents(), d.m_cache->m_numY + d.m_tree->numEvents() + numCh - 1);
+        projT.reshape(1, 1, numCh);
+        projS.reshape(1, 1, numCh);
+        y.deviceCopyTo(projY);
+        t.deviceCopyTo(projT);
+        s.deviceCopyTo(projS);
+        /* Get kernel constraint matrix from parsed doc */
+        nodeString = std::to_string(node).c_str();
+        rapidjson::Value &risk = doc["risks"][nodeString];
+        rapidjson::Value &s2 = risk["S2"];
+        size_t numEl = s2.Capacity();
+        std::vector<T> s2Vec(numEl);
+        parse(0, s2, s2Vec);
+        size_t nR = doc["rowsS2"].GetInt();
+        DTensor<T> kerConMat(s2Vec, nR, d.m_data->nullDim(), 1, rowMajor);
+        /* Compute kernel matrix * projected vector */
+        DTensor<T> shouldBeZeros = kerConMat * projected;
+        std::vector<T> result(shouldBeZeros.numEl());
+        shouldBeZeros.download(result);
+        /* Ensure result is zeros */
+        for (size_t i = 0; i < shouldBeZeros.numEl(); i++) { EXPECT_NEAR(result[i], 0., epsilon); }
+    }
+}
+
+TEST_F(CacheTest, kernelProjectionOnline) {
+    CacheData<float> df;
+    kernelProjectionOnline<float>(df, TEST_PRECISION_LOW);
+    CacheData<double> dd;
+    kernelProjectionOnline<double>(dd, TEST_PRECISION_HIGH);
+}
+
+/* ---------------------------------------
+ * Project on kernels (online)
+ * - Orthogonality test
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void buildVector(DTensor<T> &vec, size_t yAct, size_t yFull, size_t numCh, size_t numEvents,
+                 DTensor<T> &y, DTensor<T> &t, DTensor<T> &s) {
+    DTensor<T> vecY(vec, 0, 0, yAct - 1);
+    DTensor<T> vecT(vec, 0, yFull, yFull + numCh - 1);
+    DTensor<T> vecS(vec, 0, yFull + numEvents, yFull + numEvents + numCh - 1);
+    vecT.reshape(1, 1, numCh);
+    vecS.reshape(1, 1, numCh);
+    y.deviceCopyTo(vecY);
+    t.deviceCopyTo(vecT);
+    s.deviceCopyTo(vecS);
+}
+
+TEMPLATE_WITH_TYPE_T
+void kernelProjectionOnlineOrthogonality(CacheData<T> &d, T epsilon) {
+    /* Create original data */
+    T hi = 100.;
+    T lo = -hi;
+    size_t matAxis = 2;
+    size_t node = 0;
+    size_t chFr = d.m_tree->childFrom()[node];
+    size_t chTo = d.m_tree->childTo()[node];
+    size_t numCh = d.m_tree->numChildren()[node];
+    size_t actualSizeY = numCh * 2 + 1;
+    DTensor<T> yPadded(*(d.m_cache->m_d_y), matAxis, node, node);
+    DTensor<T> y(yPadded, 0, 0, actualSizeY - 1);
+    DTensor<T> t(*(d.m_cache->m_d_t), matAxis, chFr, chTo);
+    DTensor<T> s(*(d.m_cache->m_d_s), matAxis, chFr, chTo);
+    DTensor<T> randY = DTensor<T>::createRandomTensor(actualSizeY, 1, 1, lo, hi);
+    DTensor<T> randT = DTensor<T>::createRandomTensor(1, 1, numCh, lo, hi);
+    DTensor<T> randS = DTensor<T>::createRandomTensor(1, 1, numCh, lo, hi);
+    randY.deviceCopyTo(y);
+    randT.deviceCopyTo(t);
+    randS.deviceCopyTo(s);
+    /* Build original data */
+    DTensor<T> original(d.m_data->nullDim());
+    buildVector(original, actualSizeY, d.m_cache->m_numY, numCh, d.m_tree->numEvents(), y, t, s);
+    /* Project original data */
+    d.m_cache->projectOnKernels();
+    /* Build projected data */
+    DTensor<T> projected(d.m_data->nullDim());
+    buildVector(projected, actualSizeY, d.m_cache->m_numY, numCh, d.m_tree->numEvents(), y, t, s);
+    /* Build other data */
+    DTensor<T> other(d.m_data->nullDim());
+    buildVector(other, actualSizeY, d.m_cache->m_numY, numCh, d.m_tree->numEvents(), y, t, s);
+    /* Project other data */
+    d.m_cache->projectOnKernels();
+    /* Build otherProjected data */
+    DTensor<T> otherProjected(d.m_data->nullDim());
+    buildVector(otherProjected, actualSizeY, d.m_cache->m_numY, numCh, d.m_tree->numEvents(), y, t, s);
+    /* Orthogonality test (otherProjected - projected) † (projected - original) */
+    DTensor<T> a = otherProjected - projected;
+    DTensor<T> b = projected - original;
+    EXPECT_LT(a.dotF(b), epsilon);
+}
+
+TEST_F(CacheTest, kernelProjectionOnlineOrthogonality) {
+    CacheData<float> df;
+    kernelProjectionOnlineOrthogonality<float>(df, TEST_PRECISION_LOW);
+    CacheData<double> dd;
+    kernelProjectionOnlineOrthogonality<double>(dd, TEST_PRECISION_HIGH);
 }

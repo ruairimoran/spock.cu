@@ -59,7 +59,9 @@ class Problem:
         # Kernel projection
         self.__kernel_constraint_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
         self.__nullspace_projection_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
+        self.__kernel_constraint_matrix_rows = None
         self.__max_nullspace_dim = self.__tree.num_events * 4 + 1
+        self.__projected_ns = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
 
     # GETTERS
     def state_dynamics_at_node(self, idx):
@@ -111,6 +113,8 @@ class Problem:
                                  state_constraint=self.__list_of_state_constraints,
                                  input_constraint=self.__list_of_input_constraints,
                                  risk=self.__list_of_risks,
+                                 ker_con_rows=self.__kernel_constraint_matrix_rows,
+                                 ker_con=self.__kernel_constraint_matrix,
                                  P=self.__P,
                                  K=self.__K,
                                  low_chol=self.__cholesky_lower,
@@ -163,16 +167,23 @@ class Problem:
 
     def __offline_projection_kernel(self):
         for i in range(self.__tree.num_nonleaf_nodes):
-            eye = np.eye(len(self.__tree.children_of_node(i)))
-            zeros = np.zeros((self.__list_of_risks[i].f.shape[1], eye.shape[0]))
-            row1 = np.hstack((self.__list_of_risks[i].e.T, -eye, -eye))
-            row2 = np.hstack((self.__list_of_risks[i].f.T, zeros, zeros))
+            num_ch = len(self.__tree.children_of_node(i))
+            fill = self.__tree.num_events - num_ch
+            e_tr_pad = np.pad(self.__list_of_risks[i].e.T, [(0, fill), (0, fill * 2)], mode="constant", constant_values=0.)
+            eye = np.eye(num_ch)
+            eye_pad = np.pad(eye, [(0, fill), (0, fill)], mode="constant", constant_values=0.)
+            if self.__list_of_risks[i].is_avar:
+                row1 = np.hstack((e_tr_pad, -eye_pad, -eye_pad))
+                row2 = np.zeros((0, 4 * self.__tree.num_events + 1))
+            else:
+                raise ValueError("Risk type not supported")
             self.__kernel_constraint_matrix[i] = np.vstack((row1, row2))
             n = sp.linalg.null_space(self.__kernel_constraint_matrix[i])
             projection_matrix = n @ n.T
-            self.__nullspace_projection_matrix[i] = self.__pad(projection_matrix)
+            self.__nullspace_projection_matrix[i] = self.__pad_nullspace(projection_matrix)
+            self.__kernel_constraint_matrix_rows = self.__kernel_constraint_matrix[i].shape[0]
 
-    def __pad(self, nullspace):
+    def __pad_nullspace(self, nullspace):
         row_pad = self.__max_nullspace_dim - nullspace.shape[0]
         col_pad = self.__max_nullspace_dim - nullspace.shape[1]
         padded_nullspace = np.pad(nullspace, [(0, row_pad), (0, col_pad)], mode="constant", constant_values=0.)

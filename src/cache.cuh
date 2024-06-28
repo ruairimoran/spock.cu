@@ -15,6 +15,7 @@ template<typename T> class CacheData;
 template<typename T> void initialisingState(CacheData<T> &d);
 template<typename T> void dynamicsProjectionOnline(CacheData<T> &d, T epsilon);
 template<typename T> void kernelProjectionOnline(CacheData<T> &d, T epsilon);
+template<typename T> void kernelProjectionOnlineOrthogonality(CacheData<T> &d, T epsilon);
 
 
 /**
@@ -128,6 +129,8 @@ public:
     friend void dynamicsProjectionOnline <> (CacheData<T> &d, T epsilon);
 
     friend void kernelProjectionOnline <> (CacheData<T> &d, T epsilon);
+
+    friend void kernelProjectionOnlineOrthogonality <> (CacheData<T> &d, T epsilon);
 
     /**
      * Debugging
@@ -312,40 +315,40 @@ void Cache<T>::projectOnKernels() {
     /**
      * Project on kernel of every node of tree at once
      */
-    /* Gather vec = (y_i, t[ch(i)], s[ch(i)]) for all nodes */
+    /* Gather vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
     for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
         size_t chFr = m_tree.childFrom()[node];
         size_t chTo = m_tree.childTo()[node];
-        size_t numCh = m_tree.numChildren()[node] - 1;
+        size_t numCh = m_tree.numChildren()[node];
         DTensor<T> y(*m_d_y, m_matAxis, node, node);
         DTensor<T> t(*m_d_t, m_matAxis, chFr, chTo);
         DTensor<T> s(*m_d_s, m_matAxis, chFr, chTo);
         DTensor<T> nodeStore(*m_d_ytsSizeWorkspace, m_matAxis, node, node);
         DTensor<T> yStore(nodeStore, 0, 0, m_numY - 1);
-        DTensor<T> tStore(nodeStore, 0, m_numY, m_numY + numCh);
-        DTensor<T> sStore(nodeStore, 0, m_numY + m_tree.numEvents(), m_numY + m_tree.numEvents() + numCh);
-        tStore.reshape(1, 1, m_tree.numEvents());
-        sStore.reshape(1, 1, m_tree.numEvents());
+        DTensor<T> tStore(nodeStore, 0, m_numY, m_numY + numCh - 1);
+        DTensor<T> sStore(nodeStore, 0, m_numY + m_tree.numEvents(), m_numY + m_tree.numEvents() + numCh - 1);
+        tStore.reshape(1, 1, numCh);
+        sStore.reshape(1, 1, numCh);
         y.deviceCopyTo(yStore);
         t.deviceCopyTo(tStore);
         s.deviceCopyTo(sStore);
     }
-    /* Projection onto nullspace in place */
+    /* Project onto nullspace in place */
     m_d_ytsSizeWorkspace->addAB(m_data.nullspaceProj(), *m_d_ytsSizeWorkspace);
-    /* Disperse vec = (y_i, t[ch(i)], s[ch(i)]) for all nodes */
+    /* Disperse vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
     for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
         size_t chFr = m_tree.childFrom()[node];
         size_t chTo = m_tree.childTo()[node];
-        size_t numCh = m_tree.numChildren()[node] - 1;
+        size_t numCh = m_tree.numChildren()[node];
         DTensor<T> y(*m_d_y, m_matAxis, node, node);
         DTensor<T> t(*m_d_t, m_matAxis, chFr, chTo);
         DTensor<T> s(*m_d_s, m_matAxis, chFr, chTo);
         DTensor<T> nodeStore(*m_d_ytsSizeWorkspace, m_matAxis, node, node);
         DTensor<T> yStore(nodeStore, 0, 0, m_numY - 1);
-        DTensor<T> tStore(nodeStore, 0, m_numY, m_numY + numCh);
-        DTensor<T> sStore(nodeStore, 0, m_numY + m_tree.numEvents(), m_numY + m_tree.numEvents() + numCh);
-        tStore.reshape(1, 1, m_tree.numEvents());
-        sStore.reshape(1, 1, m_tree.numEvents());
+        DTensor<T> tStore(nodeStore, 0, m_numY, m_numY + numCh - 1);
+        DTensor<T> sStore(nodeStore, 0, m_numY + m_tree.numEvents(), m_numY + m_tree.numEvents() + numCh - 1);
+        tStore.reshape(1, 1, numCh);
+        sStore.reshape(1, 1, numCh);
         yStore.deviceCopyTo(y);
         tStore.deviceCopyTo(t);
         sStore.deviceCopyTo(s);

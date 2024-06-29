@@ -58,7 +58,7 @@ state_constraint = py.build.Rectangle(state_lb, state_ub)
 input_lim = 0.3
 input_lb = -input_lim * np.ones((num_inputs, 1))
 input_ub = input_lim * np.ones((num_inputs, 1))
-input_constraint = py.build.Rectangle(state_lb, state_ub)
+input_constraint = py.build.Rectangle(input_lb, input_ub)
 
 # Risk
 alpha = .95

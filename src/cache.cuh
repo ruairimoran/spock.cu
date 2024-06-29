@@ -11,11 +11,20 @@
 template<typename T>
 __global__ void k_setToZero(T *vec, size_t n);
 
-template<typename T> class CacheData;
-template<typename T> void initialisingState(CacheData<T> &d);
-template<typename T> void dynamicsProjectionOnline(CacheData<T> &d, T epsilon);
-template<typename T> void kernelProjectionOnline(CacheData<T> &d, T epsilon);
-template<typename T> void kernelProjectionOnlineOrthogonality(CacheData<T> &d, T epsilon);
+template<typename T>
+class CacheData;
+
+template<typename T>
+void initialisingState(CacheData<T> &d);
+
+template<typename T>
+void dynamicsProjectionOnline(CacheData<T> &d, T epsilon);
+
+template<typename T>
+void kernelProjectionOnline(CacheData<T> &d, T epsilon);
+
+template<typename T>
+void kernelProjectionOnlineOrthogonality(CacheData<T> &d, T epsilon);
 
 
 /**
@@ -103,10 +112,11 @@ public:
         m_primSize = m_sizeU + m_sizeX + m_sizeY + m_sizeT + m_sizeS;
         m_size1 = m_tree.numNonleafNodes() * m_numY;
         m_size2 = m_tree.numNonleafNodes();
-        m_size3 = m_tree.numNonleafNodes() * ;
-        m_size4 =;
-        m_size5 =;
-        m_size6 =;
+        m_size3 = m_tree.numNonleafNodes() * m_numXU;  // Might need to change for non-rectangles
+        m_size4 = m_tree.numNodes() * (m_numXU + 2);
+        m_size5 = m_tree.numNodes() * m_data.numStates();
+        m_size6 = m_tree.numNodes() * (m_data.numStates() + 2);
+        m_dualSize = m_size1 + m_size2 + m_size3 + m_size4 + m_size5 + m_size6;
         /* Allocate memory on device */
         m_d_prim = std::make_unique<DTensor<T>>(m_primSize, true);
         m_d_primPrev = std::make_unique<DTensor<T>>(m_primSize, true);
@@ -119,7 +129,7 @@ public:
         m_d_uSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNodes(), true);
         m_d_xuSizeWorkspace = std::make_unique<DTensor<T>>(m_numXU, 1, m_tree.numNodes(), true);
         m_d_ytsSizeWorkspace = std::make_unique<DTensor<T>>(m_data.nullDim(), 1, m_tree.numNonleafNodes(), true);
-        /* Slice primal */
+        /* Slice and reshape primal and dual */
         reshapePrimal();
         reshapeDual();
     }
@@ -147,13 +157,13 @@ public:
     /**
      * Tests
      */
-    friend void initialisingState <> (CacheData<T> &d);
+    friend void initialisingState<>(CacheData<T> &d);
 
-    friend void dynamicsProjectionOnline <> (CacheData<T> &d, T epsilon);
+    friend void dynamicsProjectionOnline<>(CacheData<T> &d, T epsilon);
 
-    friend void kernelProjectionOnline <> (CacheData<T> &d, T epsilon);
+    friend void kernelProjectionOnline<>(CacheData<T> &d, T epsilon);
 
-    friend void kernelProjectionOnlineOrthogonality <> (CacheData<T> &d, T epsilon);
+    friend void kernelProjectionOnlineOrthogonality<>(CacheData<T> &d, T epsilon);
 
     /**
      * Debugging
@@ -185,20 +195,23 @@ template<typename T>
 void Cache<T>::reshapeDual() {
     size_t rowAxis = 0;
     size_t start = 0;
-    m_d_u = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeU - 1);
-    m_d_u->reshape(m_data.numInputs(), 1, m_tree.numNonleafNodes());
-    start += m_sizeU;
-    m_d_x = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeX - 1);
-    m_d_x->reshape(m_data.numStates(), 1, m_tree.numNodes());
-    start += m_sizeX;
-    m_d_y = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeY - 1);
-    m_d_y->reshape(m_numY, 1, m_tree.numNonleafNodes());
-    start += m_sizeY;
-    m_d_t = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeT - 1);
-    m_d_t->reshape(1, 1, m_tree.numNodes());
-    start += m_sizeT;
-    m_d_s = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeS - 1);
-    m_d_s->reshape(1, 1, m_tree.numNodes());
+    m_d_1 = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_size1 - 1);
+    m_d_1->reshape(m_numY, 1, m_tree.numNonleafNodes());
+    start += m_size1;
+    m_d_2 = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_size2 - 1);
+    m_d_2->reshape(1, 1, m_tree.numNonleafNodes());
+    start += m_size2;
+    m_d_3 = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_size3 - 1);
+    m_d_3->reshape(m_numXU, 1, m_tree.numNonleafNodes());
+    start += m_size3;
+    m_d_4 = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_size4 - 1);
+    m_d_4->reshape(m_numXU + 2, 1, m_tree.numNodes());
+    start += m_size4;
+    m_d_5 = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_size5 - 1);
+    m_d_5->reshape(m_data.numStates(), 1, m_tree.numNodes());
+    start += m_size5;
+    m_d_6 = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_size6 - 1);
+    m_d_6->reshape(m_data.numStates() + 2, 1, m_tree.numNodes());
 }
 
 template<typename T>
@@ -400,9 +413,10 @@ void Cache<T>::projectOnKernels() {
 
 template<typename T>
 void Cache<T>::operatorL() {
-    /* Stream A, nonleaf nodes */
-    /* Stream B, nonroot nodes */
-    /* Stream C, leaf nodes */
+    /* I */
+    m_d_y->deviceCopyTo(*m_d_1);
+    /* II */
+
 }
 
 template<typename T>

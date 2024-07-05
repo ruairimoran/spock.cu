@@ -57,7 +57,7 @@ static void parse(size_t nodeIdx, const rapidjson::Value &value, std::vector<T> 
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
-void initialisingState(CacheData<T> &d) {
+void testInitialisingState(CacheData<T> &d) {
     std::vector<T> initialState = {3., 5., 4.};
     d.m_cache->initialiseState(initialState);
     std::vector<T> x(initialState.size());
@@ -68,9 +68,9 @@ void initialisingState(CacheData<T> &d) {
 
 TEST_F(CacheTest, initialisingState) {
     CacheData<float> df;
-    initialisingState<float>(df);
+    testInitialisingState<float>(df);
     CacheData<double> dd;
-    initialisingState<double>(dd);
+    testInitialisingState<double>(dd);
 }
 
 /* ---------------------------------------
@@ -78,7 +78,7 @@ TEST_F(CacheTest, initialisingState) {
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
-void dynamicsProjectionOnline(CacheData<T> &d, T epsilon) {
+void testDynamicsProjectionOnline(CacheData<T> &d, T epsilon) {
     std::ifstream problem_data(d.m_problemFileLoc);
     std::string json((std::istreambuf_iterator<char>(problem_data)),
                      std::istreambuf_iterator<char>());
@@ -120,9 +120,9 @@ void dynamicsProjectionOnline(CacheData<T> &d, T epsilon) {
 
 TEST_F(CacheTest, dynamicsProjectionOnline) {
     CacheData<float> df;
-    dynamicsProjectionOnline<float>(df, TEST_PRECISION_LOW);
+    testDynamicsProjectionOnline<float>(df, TEST_PRECISION_LOW);
     CacheData<double> dd;
-    dynamicsProjectionOnline<double>(dd, TEST_PRECISION_HIGH);
+    testDynamicsProjectionOnline<double>(dd, TEST_PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -130,7 +130,7 @@ TEST_F(CacheTest, dynamicsProjectionOnline) {
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
-void kernelProjectionOnline(CacheData<T> &d, T epsilon) {
+void testKernelProjectionOnline(CacheData<T> &d, T epsilon) {
     /* Parse data for testing */
     std::ifstream problem_data(d.m_problemFileLoc);
     std::string json((std::istreambuf_iterator<char>(problem_data)),
@@ -206,9 +206,9 @@ void kernelProjectionOnline(CacheData<T> &d, T epsilon) {
 
 TEST_F(CacheTest, kernelProjectionOnline) {
     CacheData<float> df;
-    kernelProjectionOnline<float>(df, TEST_PRECISION_LOW);
+    testKernelProjectionOnline<float>(df, TEST_PRECISION_LOW);
     CacheData<double> dd;
-    kernelProjectionOnline<double>(dd, TEST_PRECISION_HIGH);
+    testKernelProjectionOnline<double>(dd, TEST_PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -230,7 +230,7 @@ void buildVector(DTensor<T> &vec, size_t yAct, size_t yFull, size_t numCh, size_
 }
 
 TEMPLATE_WITH_TYPE_T
-void kernelProjectionOnlineOrthogonality(CacheData<T> &d, T epsilon) {
+void testKernelProjectionOnlineOrthogonality(CacheData<T> &d, T epsilon) {
     /* Create original data */
     T hi = 100.;
     T lo = -hi;
@@ -274,7 +274,7 @@ void kernelProjectionOnlineOrthogonality(CacheData<T> &d, T epsilon) {
 
 TEST_F(CacheTest, kernelProjectionOnlineOrthogonality) {
     CacheData<float> df;
-    kernelProjectionOnlineOrthogonality<float>(df, TEST_PRECISION_LOW);
+    testKernelProjectionOnlineOrthogonality<float>(df, TEST_PRECISION_LOW);
     CacheData<double> dd;
-    kernelProjectionOnlineOrthogonality<double>(dd, TEST_PRECISION_HIGH);
+    testKernelProjectionOnlineOrthogonality<double>(dd, TEST_PRECISION_HIGH);
 }

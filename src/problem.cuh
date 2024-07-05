@@ -7,6 +7,18 @@
 #include "risks.cuh"
 
 
+TEMPLATE_WITH_TYPE_T
+static void parseMatrix(size_t nodeIdx, const rapidjson::Value &value, std::unique_ptr<DTensor<T>> &matrix) {
+    size_t numElements = value.Capacity();
+    std::vector<T> matrixData(numElements);
+    for (rapidjson::SizeType i = 0; i < numElements; i++) {
+        matrixData[i] = value[i].GetDouble();
+    }
+    DTensor<T> sliceDevice(*matrix, 2, nodeIdx, nodeIdx);
+    sliceDevice.upload(matrixData, rowMajor);
+}
+
+
 /**
  * Store problem data:
  * - from file
@@ -44,16 +56,7 @@ private:
     /* Kernel projection */
     size_t m_nullDim = 0;  ///< Total number system states
     std::unique_ptr<DTensor<T>> m_d_nullspaceProj = nullptr;
-
-    static void parseMatrix(size_t nodeIdx, const rapidjson::Value &value, std::unique_ptr<DTensor<T>> &matrix) {
-        size_t numElements = value.Capacity();
-        std::vector<T> matrixData(numElements);
-        for (rapidjson::SizeType i = 0; i < numElements; i++) {
-            matrixData[i] = value[i].GetDouble();
-        }
-        DTensor<T> sliceDevice(*matrix, 2, nodeIdx, nodeIdx);
-        sliceDevice.upload(matrixData, rowMajor);
-    }
+    std::unique_ptr<DTensor<T>> m_d_constraintMatrix = nullptr;
 
     static void parseConstraint(size_t nodeIdx, const rapidjson::Value &value,
                                 std::vector<std::unique_ptr<Constraint<T>>> &constraint) {
@@ -105,7 +108,7 @@ public:
         /** Store single element data from JSON in host memory */
         m_numStates = doc["numStates"].GetInt();
         m_numInputs = doc["numInputs"].GetInt();
-        m_nullDim = doc["nullspaceDimension"].GetInt();
+        m_nullDim = doc["rowsNNtr"].GetInt();
 
         /** Allocate memory on host */
         m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>>(m_tree.numStages() - 1);
@@ -183,6 +186,8 @@ public:
     size_t numStates() { return m_numStates; }
 
     size_t numInputs() { return m_numInputs; }
+
+    size_t nullDim() { return m_nullDim; }
 
     DTensor<T> &stateDynamics() { return *m_d_stateDynamics; }
 

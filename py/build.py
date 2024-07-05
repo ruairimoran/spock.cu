@@ -171,7 +171,7 @@ class AVaR(CoherentRisk):
         self._matrix_e = np.vstack((self.__alpha * eye,
                                     -eye,
                                     np.ones((1, self._num_children))))
-        self._matrix_f = np.zeros((2 * self._num_children + 1, 0))  # Not applicable for AVaR
+        # Matrix F not applicable for AVaR
         self._cone_k_dimension = self._num_children * 2 + 1
         self._vector_b = np.vstack((np.asarray(self._children_probabilities).reshape(-1, 1),
                                     np.zeros((self._num_children, 1)), 1))

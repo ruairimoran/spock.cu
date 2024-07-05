@@ -31,9 +31,9 @@ protected:
 
 TEST_F(MarkovTreeTest, Sizes) {
     EXPECT_EQ(m_mockTree->numEvents(), 2);
-    EXPECT_EQ(m_mockTree->numNonleafNodes(), 3);
-    EXPECT_EQ(m_mockTree->numNodes(), 7);
-    EXPECT_EQ(m_mockTree->numStages(), 3);
+    EXPECT_EQ(m_mockTree->numNonleafNodes(), 7);
+    EXPECT_EQ(m_mockTree->numNodes(), 11);
+    EXPECT_EQ(m_mockTree->numStages(), 4);
 }
 
 TEST_F(MarkovTreeTest, GetStage) {

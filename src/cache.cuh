@@ -11,20 +11,11 @@
 template<typename T>
 __global__ void k_setToZero(T *vec, size_t n);
 
-template<typename T>
-class CacheData;
-
-template<typename T>
-void initialisingState(CacheData<T> &d);
-
-template<typename T>
-void dynamicsProjectionOnline(CacheData<T> &d, T epsilon);
-
-template<typename T>
-void kernelProjectionOnline(CacheData<T> &d, T epsilon);
-
-template<typename T>
-void kernelProjectionOnlineOrthogonality(CacheData<T> &d, T epsilon);
+template<typename T> class CacheData;
+template<typename T> void testInitialisingState(CacheData<T> &d);
+template<typename T> void testDynamicsProjectionOnline(CacheData<T> &d, T epsilon);
+template<typename T> void testKernelProjectionOnline(CacheData<T> &d, T epsilon);
+template<typename T> void testKernelProjectionOnlineOrthogonality(CacheData<T> &d, T epsilon);
 
 
 /**
@@ -155,15 +146,15 @@ public:
     DTensor<T> &states() { return *m_d_x; }
 
     /**
-     * Tests
+     * Test functions. As a friend, they can access protected members.
      */
-    friend void initialisingState<>(CacheData<T> &d);
+    friend void testInitialisingState <> (CacheData<T> &d);
 
-    friend void dynamicsProjectionOnline<>(CacheData<T> &d, T epsilon);
+    friend void testDynamicsProjectionOnline <> (CacheData<T> &d, T epsilon);
 
-    friend void kernelProjectionOnline<>(CacheData<T> &d, T epsilon);
+    friend void testKernelProjectionOnline <> (CacheData<T> &d, T epsilon);
 
-    friend void kernelProjectionOnlineOrthogonality<>(CacheData<T> &d, T epsilon);
+    friend void testKernelProjectionOnlineOrthogonality <> (CacheData<T> &d, T epsilon);
 
     /**
      * Debugging

@@ -6,16 +6,20 @@
 #include "problem.cuh"
 #include "cones.cuh"
 #include "risks.cuh"
+#include "operator.cuh"
 
 
 template<typename T>
 __global__ void k_setToZero(T *vec, size_t n);
 
-template<typename T> class CacheData;
-template<typename T> void testInitialisingState(CacheData<T> &d);
-template<typename T> void testDynamicsProjectionOnline(CacheData<T> &d, T epsilon);
-template<typename T> void testKernelProjectionOnline(CacheData<T> &d, T epsilon);
-template<typename T> void testKernelProjectionOnlineOrthogonality(CacheData<T> &d, T epsilon);
+template<typename T> class TestCacheData;
+template<typename T> void testInitialisingState(TestCacheData<T> &d);
+template<typename T> void testDynamicsProjectionOnline(TestCacheData<T> &d, T epsilon);
+template<typename T> void testKernelProjectionOnline(TestCacheData<T> &d, T epsilon);
+template<typename T> void testKernelProjectionOnlineOrthogonality(TestCacheData<T> &d, T epsilon);
+template<typename T> class TestOperatorData;
+template<typename T> void testOperator(TestOperatorData<T> &d);
+template<typename T> void testAdjoint(TestOperatorData<T> &d);
 
 
 /**
@@ -28,6 +32,7 @@ class Cache {
 protected:
     ScenarioTree<T> &m_tree;  ///< Previously created scenario tree
     ProblemData<T> &m_data;  ///< Previously created problem
+    LinearOperator<T> m_L;  ///< Linear operator and its adjoint
     T m_tol = 0;
     size_t m_maxIters = 0;
     size_t m_countIterations = 0;
@@ -40,12 +45,12 @@ protected:
     size_t m_sizeY = 0;  ///< Y for all nonleaf nodes
     size_t m_sizeT = 0;  ///< T for all child nodes
     size_t m_sizeS = 0;  ///< S for all child nodes
-    size_t m_size1 = 0;
-    size_t m_size2 = 0;
-    size_t m_size3 = 0;
-    size_t m_size4 = 0;
-    size_t m_size5 = 0;
-    size_t m_size6 = 0;
+    size_t m_sizeI = 0;
+    size_t m_sizeII = 0;
+    size_t m_sizeIII = 0;
+    size_t m_sizeIV = 0;
+    size_t m_sizeV = 0;
+    size_t m_sizeVI = 0;
     std::unique_ptr<DTensor<T>> m_d_prim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_primPrev = nullptr;
     std::unique_ptr<DTensor<T>> m_d_u = nullptr;
@@ -56,12 +61,12 @@ protected:
     size_t m_dualSize = 0;
     std::unique_ptr<DTensor<T>> m_d_dual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_dualPrev = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_1 = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_2 = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_3 = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_4 = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_5 = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_6 = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_i = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_ii = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_iii = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_iv = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_v = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_vi = nullptr;
     std::unique_ptr<DTensor<T>> m_d_cacheError = nullptr;
     /* Other */
     std::unique_ptr<DTensor<T>> m_d_q = nullptr;
@@ -72,7 +77,7 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_ytsSizeWorkspace = nullptr;
 
     /**
-     * Private methods
+     * Protected methods
      */
     void reshapePrimal();
 
@@ -83,8 +88,6 @@ protected:
     void projectOnDynamics();
 
     void projectOnKernels();
-
-    void operatorL();
 
 public:
     /**
@@ -101,13 +104,13 @@ public:
         m_sizeT = m_tree.numNodes();  ///< T for all child nodes
         m_sizeS = m_tree.numNodes();  ///< S for all child nodes
         m_primSize = m_sizeU + m_sizeX + m_sizeY + m_sizeT + m_sizeS;
-        m_size1 = m_tree.numNonleafNodes() * m_numY;
-        m_size2 = m_tree.numNonleafNodes();
-        m_size3 = m_tree.numNonleafNodes() * m_numXU;  // Might need to change for non-rectangles
-        m_size4 = m_tree.numNodes() * (m_numXU + 2);
-        m_size5 = m_tree.numNodes() * m_data.numStates();
-        m_size6 = m_tree.numNodes() * (m_data.numStates() + 2);
-        m_dualSize = m_size1 + m_size2 + m_size3 + m_size4 + m_size5 + m_size6;
+        m_sizeI = m_tree.numNonleafNodes() * m_numY;
+        m_sizeII = m_tree.numNonleafNodes();
+        m_sizeIII = m_tree.numNonleafNodes() * m_numXU;  // Might need to change for non-rectangles
+        m_sizeIV = m_tree.numNodes() * (m_numXU + 2);
+        m_sizeV = m_tree.numNodes() * m_data.numStates();
+        m_sizeVI = m_tree.numNodes() * (m_data.numStates() + 2);
+        m_dualSize = m_sizeI + m_sizeII + m_sizeIII + m_sizeIV + m_sizeV + m_sizeVI;
         /* Allocate memory on device */
         m_d_prim = std::make_unique<DTensor<T>>(m_primSize, true);
         m_d_primPrev = std::make_unique<DTensor<T>>(m_primSize, true);
@@ -148,13 +151,17 @@ public:
     /**
      * Test functions. As a friend, they can access protected members.
      */
-    friend void testInitialisingState <> (CacheData<T> &d);
+    friend void testInitialisingState <> (TestCacheData<T> &d);
 
-    friend void testDynamicsProjectionOnline <> (CacheData<T> &d, T epsilon);
+    friend void testDynamicsProjectionOnline <> (TestCacheData<T> &d, T epsilon);
 
-    friend void testKernelProjectionOnline <> (CacheData<T> &d, T epsilon);
+    friend void testKernelProjectionOnline <> (TestCacheData<T> &d, T epsilon);
 
-    friend void testKernelProjectionOnlineOrthogonality <> (CacheData<T> &d, T epsilon);
+    friend void testKernelProjectionOnlineOrthogonality <> (TestCacheData<T> &d, T epsilon);
+
+    friend void testOperator <> (TestOperatorData<T> &d);
+
+    friend void testAdjoint <> (TestOperatorData<T> &d);
 
     /**
      * Debugging
@@ -186,23 +193,23 @@ template<typename T>
 void Cache<T>::reshapeDual() {
     size_t rowAxis = 0;
     size_t start = 0;
-    m_d_1 = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_size1 - 1);
-    m_d_1->reshape(m_numY, 1, m_tree.numNonleafNodes());
-    start += m_size1;
-    m_d_2 = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_size2 - 1);
-    m_d_2->reshape(1, 1, m_tree.numNonleafNodes());
-    start += m_size2;
-    m_d_3 = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_size3 - 1);
-    m_d_3->reshape(m_numXU, 1, m_tree.numNonleafNodes());
-    start += m_size3;
-    m_d_4 = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_size4 - 1);
-    m_d_4->reshape(m_numXU + 2, 1, m_tree.numNodes());
-    start += m_size4;
-    m_d_5 = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_size5 - 1);
-    m_d_5->reshape(m_data.numStates(), 1, m_tree.numNodes());
-    start += m_size5;
-    m_d_6 = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_size6 - 1);
-    m_d_6->reshape(m_data.numStates() + 2, 1, m_tree.numNodes());
+    m_d_i = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeI - 1);
+    m_d_i->reshape(m_numY, 1, m_tree.numNonleafNodes());
+    start += m_sizeI;
+    m_d_ii = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeII - 1);
+    m_d_ii->reshape(1, 1, m_tree.numNonleafNodes());
+    start += m_sizeII;
+    m_d_iii = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeIII - 1);
+    m_d_iii->reshape(m_numXU, 1, m_tree.numNonleafNodes());
+    start += m_sizeIII;
+    m_d_iv = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeIV - 1);
+    m_d_iv->reshape(m_numXU + 2, 1, m_tree.numNodes());
+    start += m_sizeIV;
+    m_d_v = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeV - 1);
+    m_d_v->reshape(m_data.numStates(), 1, m_tree.numNodes());
+    start += m_sizeV;
+    m_d_vi = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeVI - 1);
+    m_d_vi->reshape(m_data.numStates() + 2, 1, m_tree.numNodes());
 }
 
 template<typename T>
@@ -402,12 +409,19 @@ void Cache<T>::projectOnKernels() {
     }
 }
 
+/**
+ * Compute one (1) iteration of vanilla CP algorithm, nothing more.
+ */
 template<typename T>
-void Cache<T>::operatorL() {
-    /* I */
-    m_d_y->deviceCopyTo(*m_d_1);
-    /* II */
-
+void Cache<T>::cpIter() {
+    projectOnDynamics();
+    projectOnKernels();
+    m_L.op(m_d_u, m_d_x, m_d_y, m_d_t, m_d_s, m_d_i, m_d_ii, m_d_iii, m_d_iv, m_d_v, m_d_vi);
+    m_L.adj(m_d_u, m_d_x, m_d_y, m_d_t, m_d_s, m_d_i, m_d_ii, m_d_iii, m_d_iv, m_d_v, m_d_vi);
+    /** update z_bar */
+    /** update n_bar */
+    /** update z */
+    /** update n */
 }
 
 template<typename T>
@@ -425,19 +439,6 @@ void Cache<T>::vanillaCp(std::vector<T> &initState, std::vector<T> *previousSolu
             break;
         }
     }
-}
-
-/**
- * Compute one (1) iteration of vanilla CP algorithm, nothing more.
- */
-template<typename T>
-void Cache<T>::cpIter() {
-    projectOnDynamics();
-    projectOnKernels();
-    /** update z_bar */
-    /** update n_bar */
-    /** update z */
-    /** update n */
 }
 
 template<typename T>

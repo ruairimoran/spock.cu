@@ -31,9 +31,11 @@ TEMPLATE_WITH_TYPE_T
 class ProblemData {
 
 private:
+    std::ifstream &m_file;
     ScenarioTree<T> &m_tree;  ///< Previously created scenario tree of problem
     size_t m_numStates = 0;  ///< Total number system states
     size_t m_numInputs = 0;  ///< Total number control inputs
+    size_t m_numY = 0;  ///< Size of primal vector 'y'
     std::unique_ptr<DTensor<T>> m_d_stateDynamics = nullptr;  ///< Ptr to
     std::unique_ptr<DTensor<T>> m_d_inputDynamics = nullptr;  ///< Ptr to
     std::unique_ptr<DTensor<T>> m_d_inputDynamicsTr = nullptr;  ///< Ptr to
@@ -94,7 +96,7 @@ public:
      * Constructor from JSON file stream
      */
     ProblemData(ScenarioTree<T> &tree, std::ifstream &file) :
-        m_tree(tree) {
+        m_tree(tree), m_file(file) {
         std::string json((std::istreambuf_iterator<char>(file)),
                          std::istreambuf_iterator<char>());
         rapidjson::Document doc;
@@ -109,6 +111,7 @@ public:
         m_numStates = doc["numStates"].GetInt();
         m_numInputs = doc["numInputs"].GetInt();
         m_nullDim = doc["rowsNNtr"].GetInt();
+        m_numY = m_nullDim - (m_tree.numEvents() * 2);
 
         /** Allocate memory on host */
         m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>>(m_tree.numStages() - 1);
@@ -121,7 +124,8 @@ public:
         m_d_stateDynamics = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_inputDynamics = std::make_unique<DTensor<T>>(m_numStates, m_numInputs, m_tree.numNodes(), true);
         m_d_inputDynamicsTr = std::make_unique<DTensor<T>>(m_numInputs, m_numStates, m_tree.numNodes(), true);
-        m_d_stateInputDynamics = std::make_unique<DTensor<T>>(m_numStates, m_numStates + m_numInputs, m_tree.numNodes(), true);
+        m_d_stateInputDynamics = std::make_unique<DTensor<T>>(m_numStates, m_numStates + m_numInputs, m_tree.numNodes(),
+                                                              true);
         m_d_stateWeight = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_inputWeight = std::make_unique<DTensor<T>>(m_numInputs, m_numInputs, m_tree.numNodes(), true);
         m_d_stateWeightLeaf = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
@@ -183,11 +187,15 @@ public:
     /**
      * Getters
      */
+    std::ifstream &file() { return m_file; }
+
     size_t numStates() { return m_numStates; }
 
     size_t numInputs() { return m_numInputs; }
 
     size_t nullDim() { return m_nullDim; }
+
+    size_t numY() { return m_numY; }
 
     DTensor<T> &stateDynamics() { return *m_d_stateDynamics; }
 

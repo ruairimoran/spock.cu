@@ -179,8 +179,8 @@ void testKernelProjectionOnline(TestCacheData<T> &d, T epsilon) {
         /* Copy in projected data */
         DTensor<T> projected(d.m_data->nullDim());
         DTensor<T> projY(projected, 0, 0, actualSizeY - 1);
-        DTensor<T> projT(projected, 0, d.m_cache->m_numY, d.m_cache->m_numY + numCh - 1);
-        DTensor<T> projS(projected, 0, d.m_cache->m_numY + d.m_tree->numEvents(), d.m_cache->m_numY + d.m_tree->numEvents() + numCh - 1);
+        DTensor<T> projT(projected, 0, d.m_data->yDim(), d.m_data->yDim() + numCh - 1);
+        DTensor<T> projS(projected, 0, d.m_data->yDim() + d.m_tree->numEvents(), d.m_data->yDim() + d.m_tree->numEvents() + numCh - 1);
         projT.reshape(1, 1, numCh);
         projS.reshape(1, 1, numCh);
         y.deviceCopyTo(projY);
@@ -252,20 +252,20 @@ void testKernelProjectionOnlineOrthogonality(TestCacheData<T> &d, T epsilon) {
     randS.deviceCopyTo(s);
     /* Build original data */
     DTensor<T> original(d.m_data->nullDim());
-    buildVector(original, actualSizeY, d.m_cache->m_numY, numCh, d.m_tree->numEvents(), y, t, s);
+    buildVector(original, actualSizeY, d.m_data->yDim(), numCh, d.m_tree->numEvents(), y, t, s);
     /* Project original data */
     d.m_cache->projectOnKernels();
     /* Build projected data */
     DTensor<T> projected(d.m_data->nullDim());
-    buildVector(projected, actualSizeY, d.m_cache->m_numY, numCh, d.m_tree->numEvents(), y, t, s);
+    buildVector(projected, actualSizeY, d.m_data->yDim(), numCh, d.m_tree->numEvents(), y, t, s);
     /* Build other data */
     DTensor<T> other(d.m_data->nullDim());
-    buildVector(other, actualSizeY, d.m_cache->m_numY, numCh, d.m_tree->numEvents(), y, t, s);
+    buildVector(other, actualSizeY, d.m_data->yDim(), numCh, d.m_tree->numEvents(), y, t, s);
     /* Project other data */
     d.m_cache->projectOnKernels();
     /* Build otherProjected data */
     DTensor<T> otherProjected(d.m_data->nullDim());
-    buildVector(otherProjected, actualSizeY, d.m_cache->m_numY, numCh, d.m_tree->numEvents(), y, t, s);
+    buildVector(otherProjected, actualSizeY, d.m_data->yDim(), numCh, d.m_tree->numEvents(), y, t, s);
     /* Orthogonality test (otherProjected - projected) † (projected - original) */
     DTensor<T> a = otherProjected - projected;
     DTensor<T> b = projected - original;

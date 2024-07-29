@@ -2,6 +2,7 @@ import jinja2 as j2
 import os
 import numpy as np
 import scipy as sp
+from scipy.linalg import sqrtm
 import cvxpy as cvx
 from copy import deepcopy
 from . import treeFactory
@@ -14,7 +15,7 @@ class Problem:
     """
 
     def __init__(self, scenario_tree: treeFactory.Tree, num_states, num_inputs, state_dyn, input_dyn, state_cost,
-                 input_cost, terminal_cost, state_constraint, input_constraint, risk):
+                 input_cost, terminal_cost, nonleaf_constraint, leaf_constraint, risk):
         """
         :param scenario_tree: instance of ScenarioTree
         :param num_states: number of system states
@@ -24,8 +25,8 @@ class Problem:
         :param state_cost: list of state cost matrices (size: num_nodes, used: 1 to num_nodes)
         :param input_cost: list of input cost matrices (size: num_nodes, used: 1 to num_nodes)
         :param terminal_cost: list of terminal cost matrices (size: num_nodes, used: num_nonleaf_nodes to num_nodes)
-        :param state_constraint: list of state constraint classes (size: num_nodes, used: 1 to num_nodes)
-        :param input_constraint: list of input constraint classes (size: num_nodes, used: 0 to num_nonleaf_nodes)
+        :param nonleaf_constraint: list of state-input constraint classes (size: num_nonleaf_nodes)
+        :param leaf_constraint: list of input constraint classes (size: num_nodes, used: num_nonleaf_nodes to num_nodes)
         :param risk: list of risk classes (size: num_nonleaf_nodes, used: all)
 
         Note: avoid using this constructor directly; use a factory instead
@@ -39,8 +40,8 @@ class Problem:
         self.__list_of_nonleaf_state_costs = state_cost
         self.__list_of_nonleaf_input_costs = input_cost
         self.__list_of_leaf_state_costs = terminal_cost
-        self.__list_of_state_constraints = state_constraint
-        self.__list_of_input_constraints = input_constraint
+        self.__list_of_nonleaf_constraints = nonleaf_constraint
+        self.__list_of_leaf_constraints = leaf_constraint
         self.__list_of_risks = risk
         # Dynamics projection
         self.__P = [np.zeros((self.__num_states, self.__num_states))] * self.__tree.num_nodes
@@ -62,6 +63,11 @@ class Problem:
         self.__kernel_constraint_matrix_rows = None
         self.__max_nullspace_dim = self.__tree.num_events * 4 + 1
         self.__projected_ns = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
+        # Other
+        self.__padded_b = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
+        self.__sqrt_nonleaf_state_costs = [np.zeros((0, 0))] * self.__tree.num_nodes
+        self.__sqrt_nonleaf_input_costs = [np.zeros((0, 0))] * self.__tree.num_nodes
+        self.__sqrt_leaf_state_costs = [np.zeros((0, 0))] * self.__tree.num_nodes
 
     # GETTERS
     def state_dynamics_at_node(self, idx):
@@ -110,11 +116,15 @@ class Problem:
                                  state_cost=self.__list_of_nonleaf_state_costs,
                                  input_cost=self.__list_of_nonleaf_input_costs,
                                  terminal_cost=self.__list_of_leaf_state_costs,
-                                 state_constraint=self.__list_of_state_constraints,
-                                 input_constraint=self.__list_of_input_constraints,
+                                 sqrt_state_cost=self.__sqrt_nonleaf_state_costs,
+                                 sqrt_input_cost=self.__sqrt_nonleaf_input_costs,
+                                 sqrt_terminal_cost=self.__sqrt_leaf_state_costs,
+                                 nonleaf_constraint=self.__list_of_nonleaf_constraints,
+                                 leaf_constraint=self.__list_of_leaf_constraints,
                                  risk=self.__list_of_risks,
                                  ker_con_rows=self.__kernel_constraint_matrix_rows,
                                  ker_con=self.__kernel_constraint_matrix,
+                                 b=self.__padded_b,
                                  P=self.__P,
                                  K=self.__K,
                                  low_chol=self.__cholesky_lower,
@@ -141,6 +151,8 @@ class Problem:
         self.__offline_projection_dynamics()
         self.__offline_projection_kernel()
         self.__test_dynamic_programming()
+        self.__pad_b()
+        self.__sqrt_costs()
 
     def __offline_projection_dynamics(self):
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
@@ -179,15 +191,14 @@ class Problem:
                 raise ValueError("Risk type not supported")
             self.__kernel_constraint_matrix[i] = np.vstack((row1, row2))
             n = sp.linalg.null_space(self.__kernel_constraint_matrix[i])
-            projection_matrix = n @ n.T
-            self.__nullspace_projection_matrix[i] = self.__pad_nullspace(projection_matrix)
+            self.__nullspace_projection_matrix[i] = n @ n.T
             self.__kernel_constraint_matrix_rows = self.__kernel_constraint_matrix[i].shape[0]
 
-    def __pad_nullspace(self, nullspace):
-        row_pad = self.__max_nullspace_dim - nullspace.shape[0]
-        col_pad = self.__max_nullspace_dim - nullspace.shape[1]
-        padded_nullspace = np.pad(nullspace, [(0, row_pad), (0, col_pad)], mode="constant", constant_values=0.)
-        return padded_nullspace
+    # def __pad_nullspace(self, nullspace):
+    #     row_pad = self.__max_nullspace_dim - nullspace.shape[0]
+    #     col_pad = self.__max_nullspace_dim - nullspace.shape[1]
+    #     padded_nullspace = np.pad(nullspace, [(0, row_pad), (0, col_pad)], mode="constant", constant_values=0.)
+    #     return padded_nullspace
 
     def __test_dynamic_programming(self):
         # Solve with cvxpy
@@ -218,6 +229,19 @@ class Problem:
         self.__dp_projected_states = x.value.T
         self.__dp_projected_inputs = u.value.T
 
+    def __pad_b(self):
+        for i in range(self.__tree.num_nonleaf_nodes):
+            pad = 2 * (self.__tree.num_events - len(self.__tree.children_of_node(i)))
+            self.__padded_b[i] = np.pad(self.__list_of_risks[i].b, [(0, pad), (0, 0)], mode="constant", constant_values=0.)
+
+    def __sqrt_costs(self):
+        for i in range(1, self.__tree.num_nodes):
+            self.__sqrt_nonleaf_state_costs[i] = sqrtm(self.__list_of_nonleaf_state_costs[i])
+            self.__sqrt_nonleaf_input_costs[i] = sqrtm(self.__list_of_nonleaf_input_costs[i])
+
+        for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
+            self.__sqrt_leaf_state_costs[i] = sqrtm(self.__list_of_leaf_state_costs[i])
+
 
 class ProblemFactory:
     """
@@ -236,8 +260,8 @@ class ProblemFactory:
         self.__list_of_nonleaf_state_costs = [None] * self.__tree.num_nodes
         self.__list_of_nonleaf_input_costs = [None] * self.__tree.num_nodes
         self.__list_of_leaf_state_costs = [None] * self.__tree.num_nodes
-        self.__list_of_state_constraints = [None] * self.__tree.num_nodes
-        self.__list_of_input_constraints = [None] * self.__tree.num_nonleaf_nodes
+        self.__list_of_nonleaf_constraints = [None] * self.__tree.num_nonleaf_nodes
+        self.__list_of_leaf_constraints = [None] * self.__tree.num_nodes
         self.__list_of_risks = [None] * self.__tree.num_nonleaf_nodes
         self.__preload_constraints()
 
@@ -278,13 +302,13 @@ class ProblemFactory:
             self.__list_of_nonleaf_input_costs[i] = deepcopy(input_costs[event])
         return self
 
-    def with_all_nonleaf_costs(self, state_cost, input_cost):
+    def with_nonleaf_cost(self, state_cost, input_cost):
         for i in range(1, self.__tree.num_nodes):
             self.__list_of_nonleaf_state_costs[i] = deepcopy(state_cost)
             self.__list_of_nonleaf_input_costs[i] = deepcopy(input_cost)
         return self
 
-    def with_all_leaf_costs(self, state_cost):
+    def with_leaf_cost(self, state_cost):
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
             self.__list_of_leaf_state_costs[i] = deepcopy(state_cost)
         return self
@@ -296,26 +320,24 @@ class ProblemFactory:
         # load "No constraint" into constraints list
         for i in range(self.__tree.num_nodes):
             if i < self.__tree.num_nonleaf_nodes:
-                self.__list_of_state_constraints[i] = build.No()
-                self.__list_of_input_constraints[i] = build.No()
+                self.__list_of_nonleaf_constraints[i] = build.No()
             else:
-                self.__list_of_state_constraints[i] = build.No()
+                self.__list_of_leaf_constraints[i] = build.No()
 
-    def with_all_constraints(self, state_constraint, input_constraint):
-        for i in range(self.__tree.num_nodes):
-            if i == 0:
-                self.__list_of_input_constraints[i] = deepcopy(input_constraint)
-            elif i < self.__tree.num_nonleaf_nodes:
-                self.__list_of_state_constraints[i] = deepcopy(state_constraint)
-                self.__list_of_input_constraints[i] = deepcopy(input_constraint)
-            else:
-                self.__list_of_state_constraints[i] = deepcopy(state_constraint)
+    def with_nonleaf_constraint(self, state_input_constraint):
+        for i in range(self.__tree.num_nonleaf_nodes):
+            self.__list_of_nonleaf_constraints[i] = deepcopy(state_input_constraint)
+        return self
+
+    def with_leaf_constraint(self, state_constraint):
+        for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
+            self.__list_of_leaf_constraints[i] = deepcopy(state_constraint)
         return self
 
     # --------------------------------------------------------
     # Risks
     # --------------------------------------------------------
-    def with_all_risks(self, risk):
+    def with_risk(self, risk):
         for i in range(self.__tree.num_nonleaf_nodes):
             risk_i = deepcopy(risk)
             self.__list_of_risks[i] = risk_i.make_risk(self.__tree.cond_prob_of_children_of_node(i))
@@ -336,8 +358,8 @@ class ProblemFactory:
                           self.__list_of_nonleaf_state_costs,
                           self.__list_of_nonleaf_input_costs,
                           self.__list_of_leaf_state_costs,
-                          self.__list_of_state_constraints,
-                          self.__list_of_input_constraints,
+                          self.__list_of_nonleaf_constraints,
+                          self.__list_of_leaf_constraints,
                           self.__list_of_risks)
         problem.generate_offline_cache()
         problem.generate_problem_json()

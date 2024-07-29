@@ -98,11 +98,11 @@ public:
         m_numXU = m_data.numStates() + m_data.numInputs();
         m_sizeU = m_tree.numNonleafNodes() * m_data.numInputs();  ///< Inputs of all nonleaf nodes
         m_sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
-        m_sizeY = m_tree.numNonleafNodes() * m_data.numY();  ///< Y for all nonleaf nodes
+        m_sizeY = m_tree.numNonleafNodes() * m_data.yDim();  ///< Y for all nonleaf nodes
         m_sizeT = m_tree.numNodes();  ///< T for all child nodes
         m_sizeS = m_tree.numNodes();  ///< S for all child nodes
         m_primSize = m_sizeU + m_sizeX + m_sizeY + m_sizeT + m_sizeS;
-        m_sizeI = m_tree.numNonleafNodes() * m_data.numY();
+        m_sizeI = m_tree.numNonleafNodes() * m_data.yDim();
         m_sizeII = m_tree.numNonleafNodes();
         m_sizeIII = m_tree.numNonleafNodes() * m_numXU;  // Might need to change for non-rectangles
         m_sizeIV = m_tree.numNodes() * (m_numXU + 2);
@@ -178,7 +178,7 @@ void Cache<T>::reshapePrimal() {
     m_d_x->reshape(m_data.numStates(), 1, m_tree.numNodes());
     start += m_sizeX;
     m_d_y = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeY - 1);
-    m_d_y->reshape(m_data.numY(), 1, m_tree.numNonleafNodes());
+    m_d_y->reshape(m_data.yDim(), 1, m_tree.numNonleafNodes());
     start += m_sizeY;
     m_d_t = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeT - 1);
     m_d_t->reshape(1, 1, m_tree.numNodes());
@@ -192,7 +192,7 @@ void Cache<T>::reshapeDual() {
     size_t rowAxis = 0;
     size_t start = 0;
     m_d_i = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeI - 1);
-    m_d_i->reshape(m_data.numY(), 1, m_tree.numNonleafNodes());
+    m_d_i->reshape(m_data.yDim(), 1, m_tree.numNonleafNodes());
     start += m_sizeI;
     m_d_ii = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeII - 1);
     m_d_ii->reshape(1, 1, m_tree.numNonleafNodes());
@@ -376,9 +376,10 @@ void Cache<T>::projectOnKernels() {
         DTensor<T> t(*m_d_t, m_matAxis, chFr, chTo);
         DTensor<T> s(*m_d_s, m_matAxis, chFr, chTo);
         DTensor<T> nodeStore(*m_d_ytsSizeWorkspace, m_matAxis, node, node);
-        DTensor<T> yStore(nodeStore, 0, 0, m_data.numY() - 1);
-        DTensor<T> tStore(nodeStore, 0, m_data.numY(), m_data.numY() + numCh - 1);
-        DTensor<T> sStore(nodeStore, 0, m_data.numY() + m_tree.numEvents(), m_data.numY() + m_tree.numEvents() + numCh - 1);
+        DTensor<T> yStore(nodeStore, 0, 0, m_data.yDim() - 1);
+        DTensor<T> tStore(nodeStore, 0, m_data.yDim(), m_data.yDim() + numCh - 1);
+        DTensor<T> sStore(nodeStore, 0, m_data.yDim() + m_tree.numEvents(),
+                          m_data.yDim() + m_tree.numEvents() + numCh - 1);
         tStore.reshape(1, 1, numCh);
         sStore.reshape(1, 1, numCh);
         y.deviceCopyTo(yStore);
@@ -396,9 +397,10 @@ void Cache<T>::projectOnKernels() {
         DTensor<T> t(*m_d_t, m_matAxis, chFr, chTo);
         DTensor<T> s(*m_d_s, m_matAxis, chFr, chTo);
         DTensor<T> nodeStore(*m_d_ytsSizeWorkspace, m_matAxis, node, node);
-        DTensor<T> yStore(nodeStore, 0, 0, m_data.numY() - 1);
-        DTensor<T> tStore(nodeStore, 0, m_data.numY(), m_data.numY() + numCh - 1);
-        DTensor<T> sStore(nodeStore, 0, m_data.numY() + m_tree.numEvents(), m_data.numY() + m_tree.numEvents() + numCh - 1);
+        DTensor<T> yStore(nodeStore, 0, 0, m_data.yDim() - 1);
+        DTensor<T> tStore(nodeStore, 0, m_data.yDim(), m_data.yDim() + numCh - 1);
+        DTensor<T> sStore(nodeStore, 0, m_data.yDim() + m_tree.numEvents(),
+                          m_data.yDim() + m_tree.numEvents() + numCh - 1);
         tStore.reshape(1, 1, numCh);
         sStore.reshape(1, 1, numCh);
         yStore.deviceCopyTo(y);

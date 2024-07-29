@@ -43,8 +43,11 @@ private:
     std::unique_ptr<DTensor<T>> m_d_stateWeight = nullptr;  ///< Ptr to
     std::unique_ptr<DTensor<T>> m_d_inputWeight = nullptr;  ///< Ptr to
     std::unique_ptr<DTensor<T>> m_d_stateWeightLeaf = nullptr;  ///< Ptr to
-    std::vector<std::unique_ptr<Constraint<T>>> m_stateConstraint;  ///< Ptr to
-    std::vector<std::unique_ptr<Constraint<T>>> m_inputConstraint;  ///< Ptr to
+    std::unique_ptr<DTensor<T>> m_d_sqrtStateWeight = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_sqrtInputWeight = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_sqrtStateWeightLeaf = nullptr;
+    std::vector<std::unique_ptr<Constraint<T>>> m_nonleafConstraint;  ///< Ptr to
+    std::vector<std::unique_ptr<Constraint<T>>> m_leafConstraint;  ///< Ptr to
     std::vector<std::unique_ptr<CoherentRisk<T>>> m_risk;  ///< Ptr to
     /* Dynamics projection */
     std::unique_ptr<DTensor<T>> m_d_lowerCholesky = nullptr;
@@ -59,6 +62,9 @@ private:
     size_t m_nullDim = 0;  ///< Total number system states
     std::unique_ptr<DTensor<T>> m_d_nullspaceProj = nullptr;
     std::unique_ptr<DTensor<T>> m_d_constraintMatrix = nullptr;
+    /* Other */
+    std::unique_ptr<DTensor<T>> m_d_b = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_bTr = nullptr;
 
     static void parseConstraint(size_t nodeIdx, const rapidjson::Value &value,
                                 std::vector<std::unique_ptr<Constraint<T>>> &constraint) {
@@ -81,9 +87,11 @@ private:
     void parseRisk(size_t nodeIdx, const rapidjson::Value &value) {
         if (value["type"].GetString() == std::string("avar")) {
             parseMatrix(nodeIdx, value["NNtr"], m_d_nullspaceProj);
+            parseMatrix(nodeIdx, value["b"], m_d_b);
             m_risk[nodeIdx] = std::make_unique<AVaR<T>>(nodeIdx,
                                                         m_tree.numChildren()[nodeIdx],
-                                                        *m_d_nullspaceProj);
+                                                        *m_d_nullspaceProj,
+                                                        *m_d_b);
         } else {
             std::cerr << "Risk type " << value["type"].GetString()
                       << " is not supported. Supported types include: avar" << "\n";
@@ -116,8 +124,8 @@ public:
         /** Allocate memory on host */
         m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>>(m_tree.numStages() - 1);
         m_choleskyStage = std::vector<std::unique_ptr<DTensor<T>>>(m_tree.numStages() - 1);
-        m_stateConstraint = std::vector<std::unique_ptr<Constraint<T>>>(m_tree.numNodes());
-        m_inputConstraint = std::vector<std::unique_ptr<Constraint<T>>>(m_tree.numNodes());
+        m_nonleafConstraint = std::vector<std::unique_ptr<Constraint<T>>>(m_tree.numNonleafNodes());
+        m_leafConstraint = std::vector<std::unique_ptr<Constraint<T>>>(m_tree.numNodes());
         m_risk = std::vector<std::unique_ptr<CoherentRisk<T>>>(m_tree.numNodes());
 
         /** Allocate memory on device */
@@ -129,6 +137,9 @@ public:
         m_d_stateWeight = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_inputWeight = std::make_unique<DTensor<T>>(m_numInputs, m_numInputs, m_tree.numNodes(), true);
         m_d_stateWeightLeaf = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
+        m_d_sqrtStateWeight = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
+        m_d_sqrtInputWeight = std::make_unique<DTensor<T>>(m_numInputs, m_numInputs, m_tree.numNodes(), true);
+        m_d_sqrtStateWeightLeaf = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_lowerCholesky = std::make_unique<DTensor<T>>(m_numInputs, m_numInputs, m_tree.numNonleafNodes(), true);
         m_d_K = std::make_unique<DTensor<T>>(m_numInputs, m_numStates, m_tree.numNonleafNodes(), true);
         m_d_KTr = std::make_unique<DTensor<T>>(m_numStates, m_numInputs, m_tree.numNonleafNodes(), true);
@@ -136,6 +147,8 @@ public:
         m_d_P = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_APB = std::make_unique<DTensor<T>>(m_numStates, m_numInputs, m_tree.numNodes(), true);
         m_d_nullspaceProj = std::make_unique<DTensor<T>>(m_nullDim, m_nullDim, m_tree.numNonleafNodes(), true);
+        m_d_b = std::make_unique<DTensor<T>>(m_numY, 1, m_tree.numNonleafNodes(), true);
+        m_d_bTr = std::make_unique<DTensor<T>>(1, m_numY, m_tree.numNonleafNodes(), true);
 
         /** Upload to device */
         const char *nodeString = nullptr;
@@ -150,13 +163,14 @@ public:
             parseMatrix(i, doc["AB"][nodeString], m_d_stateInputDynamics);
             parseMatrix(i, doc["nonleafStateCosts"][nodeString], m_d_stateWeight);
             parseMatrix(i, doc["nonleafInputCosts"][nodeString], m_d_inputWeight);
-            parseConstraint(i, doc["stateConstraints"][nodeString], m_stateConstraint);
+            parseMatrix(i, doc["sqrtNonleafStateCosts"][nodeString], m_d_sqrtStateWeight);
+            parseMatrix(i, doc["sqrtNonleafInputCosts"][nodeString], m_d_sqrtInputWeight);
             parseMatrix(i, doc["(A+B@K)t"][nodeString], m_d_dynamicsSumTr);
             parseMatrix(i, doc["At@P@B"][nodeString], m_d_APB);
         }
         for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
             nodeString = std::to_string(i).c_str();
-            parseConstraint(i, doc["inputConstraints"][nodeString], m_inputConstraint);
+            parseConstraint(i, doc["nonleafConstraints"][nodeString], m_nonleafConstraint);
             parseMatrix(i, doc["lowerCholesky"][nodeString], m_d_lowerCholesky);
             parseMatrix(i, doc["K"][nodeString], m_d_K);
             parseRisk(i, doc["risks"][nodeString]);
@@ -164,6 +178,8 @@ public:
         for (size_t i = m_tree.numNonleafNodes(); i < m_tree.numNodes(); i++) {
             nodeString = std::to_string(i).c_str();
             parseMatrix(i, doc["leafStateCosts"][nodeString], m_d_stateWeightLeaf);
+            parseConstraint(i, doc["leafConstraints"][nodeString], m_leafConstraint);
+            parseMatrix(i, doc["sqrtLeafStateCosts"][nodeString], m_d_sqrtStateWeightLeaf);
         }
         for (size_t stage = 0; stage < m_tree.numStages() - 1; stage++) {
             size_t nodeFr = m_tree.stageFrom()[stage];
@@ -177,6 +193,8 @@ public:
         BTr.deviceCopyTo(*m_d_inputDynamicsTr);
         DTensor<T> KTr = m_d_K->tr();
         KTr.deviceCopyTo(*m_d_KTr);
+        DTensor<T> bTr = m_d_b->tr();
+        bTr.deviceCopyTo(*m_d_bTr);
     }
 
     /**
@@ -195,7 +213,7 @@ public:
 
     size_t nullDim() { return m_nullDim; }
 
-    size_t numY() { return m_numY; }
+    size_t yDim() { return m_numY; }
 
     DTensor<T> &stateDynamics() { return *m_d_stateDynamics; }
 
@@ -211,6 +229,12 @@ public:
 
     DTensor<T> &stateWeightLeaf() { return *m_d_stateWeightLeaf; }
 
+    DTensor<T> &sqrtStateWeight() { return *m_d_sqrtStateWeight; }
+
+    DTensor<T> &sqrtInputWeight() { return *m_d_sqrtInputWeight; }
+
+    DTensor<T> &sqrtStateWeightLeaf() { return *m_d_sqrtStateWeightLeaf; }
+
     DTensor<T> &K() { return *m_d_K; }
 
     DTensor<T> &KTr() { return *m_d_KTr; }
@@ -223,11 +247,15 @@ public:
 
     DTensor<T> &nullspaceProj() { return *m_d_nullspaceProj; }
 
+    DTensor<T> &b() { return *m_d_b; }
+
+    DTensor<T> &bTr() { return *m_d_bTr; }
+
     std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>> &choleskyBatch() { return m_choleskyBatch; }
 
-    std::vector<std::unique_ptr<Constraint<T>>> &stateConstraint() { return m_stateConstraint; }
+    std::vector<std::unique_ptr<Constraint<T>>> &nonleafConstraint() { return m_nonleafConstraint; }
 
-    std::vector<std::unique_ptr<Constraint<T>>> &inputConstraint() { return m_inputConstraint; }
+    std::vector<std::unique_ptr<Constraint<T>>> &leafConstraint() { return m_leafConstraint; }
 
     std::vector<std::unique_ptr<CoherentRisk<T>>> &risk() { return m_risk; }
 
@@ -242,13 +270,13 @@ public:
         printIfTensor("State weight (from device): ", m_d_stateWeight);
         printIfTensor("Input weight (from device): ", m_d_inputWeight);
         printIfTensor("Terminal state weight (from device): ", m_d_stateWeightLeaf);
-        std::cout << "State constraints: \n";
-        for (size_t i = 1; i < m_tree.numNodes(); i++) {
-            m_stateConstraint[i]->print();
-        }
-        std::cout << "Input constraints: \n";
+        std::cout << "State-input constraints: \n";
         for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
-            m_inputConstraint[i]->print();
+            m_nonleafConstraint[i]->print();
+        }
+        std::cout << "Leaf state constraints: \n";
+        for (size_t i = 1; i < m_tree.numNodes(); i++) {
+            m_leafConstraint[i]->print();
         }
         for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
             m_risk[i]->print();

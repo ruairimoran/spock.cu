@@ -48,17 +48,22 @@ Rs = [1 * R, 1 * R, 1 * R]
 # Terminal state cost
 T = 100 * np.eye(num_states)
 
-# State constraint
+# State-input constraint
 state_lim = 6
+input_lim = 0.3
 state_lb = -state_lim * np.ones((num_states, 1))
 state_ub = state_lim * np.ones((num_states, 1))
-state_constraint = py.build.Rectangle(state_lb, state_ub)
-
-# Input constraint
-input_lim = 0.3
 input_lb = -input_lim * np.ones((num_inputs, 1))
 input_ub = input_lim * np.ones((num_inputs, 1))
-input_constraint = py.build.Rectangle(input_lb, input_ub)
+si_lb = np.vstack((state_lb, input_lb))
+si_ub = np.vstack((state_ub, input_ub))
+state_input_constraint = py.build.Rectangle(si_lb, si_ub)
+
+# Terminal constraint
+leaf_state_lim = 0.1
+leaf_state_lb = -leaf_state_lim * np.ones((num_states, 1))
+leaf_state_ub = leaf_state_lim * np.ones((num_states, 1))
+leaf_state_constraint = py.build.Rectangle(leaf_state_lb, leaf_state_ub)
 
 # Risk
 alpha = .95
@@ -72,8 +77,9 @@ problem = (
         num_inputs=num_inputs)
     .with_markovian_dynamics(As, Bs)
     .with_markovian_nonleaf_costs(Qs, Rs)
-    .with_all_leaf_costs(T)
-    .with_all_constraints(state_constraint, input_constraint)
-    .with_all_risks(risk)
+    .with_leaf_cost(T)
+    .with_nonleaf_constraint(state_input_constraint)
+    .with_leaf_constraint(leaf_state_constraint)
+    .with_risk(risk)
     .generate_problem()
 )

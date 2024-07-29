@@ -85,11 +85,11 @@ class Problem:
     def leaf_state_cost_at_node(self, idx):
         return self.__list_of_leaf_state_costs[idx]
 
-    def state_constraint_at_node(self, idx):
-        return self.__list_of_state_constraints[idx]
+    def nonleaf_constraint_at_node(self, idx):
+        return self.__list_of_nonleaf_constraints[idx]
 
-    def input_constraint_at_node(self, idx):
-        return self.__list_of_input_constraints[idx]
+    def leaf_constraint_at_node(self, idx):
+        return self.__list_of_leaf_constraints[idx]
 
     def risk_at_node(self, idx):
         return self.__list_of_risks[idx]

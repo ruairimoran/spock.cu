@@ -38,7 +38,6 @@ protected:
     size_t m_countIterations = 0;
     size_t m_matAxis = 2;
     size_t m_primSize = 0;
-    size_t m_numXU = 0;
     size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
     size_t m_sizeX = 0;  ///< States of all nodes
     size_t m_sizeY = 0;  ///< Y for all nonleaf nodes
@@ -95,7 +94,6 @@ public:
     Cache(ScenarioTree<T> &tree, ProblemData<T> &data, T tol, size_t maxIters) :
         m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters) {
         /* Sizes */
-        m_numXU = m_data.numStates() + m_data.numInputs();
         m_sizeU = m_tree.numNonleafNodes() * m_data.numInputs();  ///< Inputs of all nonleaf nodes
         m_sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
         m_sizeY = m_tree.numNonleafNodes() * m_data.yDim();  ///< Y for all nonleaf nodes
@@ -104,8 +102,8 @@ public:
         m_primSize = m_sizeU + m_sizeX + m_sizeY + m_sizeT + m_sizeS;
         m_sizeI = m_tree.numNonleafNodes() * m_data.yDim();
         m_sizeII = m_tree.numNonleafNodes();
-        m_sizeIII = m_tree.numNonleafNodes() * m_numXU;  // Might need to change for non-rectangles
-        m_sizeIV = m_tree.numNodes() * (m_numXU + 2);
+        m_sizeIII = m_tree.numNonleafNodes() * m_data.numStatesAndInputs();  // Might need to change for non-rectangles
+        m_sizeIV = m_tree.numNodes() * (m_data.numStatesAndInputs() + 2);
         m_sizeV = m_tree.numNodes() * m_data.numStates();
         m_sizeVI = m_tree.numNodes() * (m_data.numStates() + 2);
         m_dualSize = m_sizeI + m_sizeII + m_sizeIII + m_sizeIV + m_sizeV + m_sizeVI;
@@ -119,7 +117,7 @@ public:
         m_d_d = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNonleafNodes(), true);
         m_d_xSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
         m_d_uSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNodes(), true);
-        m_d_xuSizeWorkspace = std::make_unique<DTensor<T>>(m_numXU, 1, m_tree.numNodes(), true);
+        m_d_xuSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNodes(), true);
         m_d_ytsSizeWorkspace = std::make_unique<DTensor<T>>(m_data.nullDim(), 1, m_tree.numNonleafNodes(), true);
         /* Slice and reshape primal and dual */
         reshapePrimal();
@@ -198,10 +196,10 @@ void Cache<T>::reshapeDual() {
     m_d_ii->reshape(1, 1, m_tree.numNonleafNodes());
     start += m_sizeII;
     m_d_iii = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeIII - 1);
-    m_d_iii->reshape(m_numXU, 1, m_tree.numNonleafNodes());
+    m_d_iii->reshape(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
     start += m_sizeIII;
     m_d_iv = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeIV - 1);
-    m_d_iv->reshape(m_numXU + 2, 1, m_tree.numNodes());
+    m_d_iv->reshape(m_data.numStatesAndInputs() + 2, 1, m_tree.numNodes());
     start += m_sizeIV;
     m_d_v = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeV - 1);
     m_d_v->reshape(m_data.numStates(), 1, m_tree.numNodes());
@@ -350,7 +348,7 @@ void Cache<T>::projectOnDynamics() {
             for (size_t ch = m_tree.childFrom()[node]; ch <= m_tree.childTo()[node]; ch++) {
                 DTensor<T> xu_ChNode(*m_d_xuSizeWorkspace, m_matAxis, ch, ch);
                 DTensor<T> xu_sliceX(xu_ChNode, 0, 0, m_data.numStates() - 1);
-                DTensor<T> xu_sliceU(xu_ChNode, 0, m_data.numStates(), m_numXU - 1);
+                DTensor<T> xu_sliceU(xu_ChNode, 0, m_data.numStates(), m_data.numStatesAndInputs() - 1);
                 x_Node.deviceCopyTo(xu_sliceX);
                 u_Node.deviceCopyTo(xu_sliceU);
             }

@@ -67,6 +67,7 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_vi = nullptr;
     std::unique_ptr<DTensor<T>> m_d_cacheError = nullptr;
     /* Other */
+    std::unique_ptr<DTensor<T>> m_d_initState = nullptr;
     std::unique_ptr<DTensor<T>> m_d_q = nullptr;
     std::unique_ptr<DTensor<T>> m_d_d = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xSizeWorkspace = nullptr;
@@ -80,6 +81,8 @@ protected:
     void reshapePrimal();
 
     void reshapeDual();
+
+    void setRootState();
 
     void initialiseState(std::vector<T> &initState);
 
@@ -113,6 +116,7 @@ public:
         m_d_dual = std::make_unique<DTensor<T>>(m_dualSize, true);
         m_d_dualPrev = std::make_unique<DTensor<T>>(m_dualSize, true);
         m_d_cacheError = std::make_unique<DTensor<T>>(m_maxIters, true);
+        m_d_initState = std::make_unique<DTensor<T>>(m_data.numStates(), true);
         m_d_q = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
         m_d_d = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNonleafNodes(), true);
         m_d_xSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
@@ -214,10 +218,16 @@ void Cache<T>::initialiseState(std::vector<T> &initState) {
     if (initState.size() != m_data.numStates()) {
         std::cerr << "Error initialising state: problem setup for " << m_data.numStates()
                   << " but given " << initState.size() << " states" << "\n";
-        throw std::invalid_argument("Incorrect dimension of initial state");
+        throw std::invalid_argument("[initialiseState] Incorrect dimension of initial state");
     }
+    m_d_initState->upload(initState);
+    setRootState();
+}
+
+template<typename T>
+void Cache<T>::setRootState() {
     DTensor<T> firstState(*m_d_x, m_matAxis, 0, 0);
-    firstState.upload(initState);
+    m_d_initState->deviceCopyTo(firstState);
 }
 
 template<typename T>
@@ -321,8 +331,9 @@ void Cache<T>::projectOnDynamics() {
         q_Stage -= x_Stage;
     }
     /*
-     * Initial state has already been set, move on
+     * Set initial state
      */
+    setRootState();
     for (size_t stage = 0; stage < m_tree.numStages() - 1; stage++) {
         size_t stageFr = m_tree.stageFrom()[stage];
         size_t stageTo = m_tree.stageTo()[stage];

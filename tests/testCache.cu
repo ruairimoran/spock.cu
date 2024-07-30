@@ -104,7 +104,8 @@ void testDynamicsProjectionOnline(CacheTestData<T> &d, T epsilon) {
             parse(i, doc["dpProjectedInputs"][nodeString], cvxInputs);
         }
     }
-    std::vector<T> initialState(d.m_data->numStates());
+    std::vector<T> x0(originalStates.begin(), originalStates.begin() + d.m_data->numStates());
+    d.m_cache->initialiseState(x0);
     d.m_cache->states().upload(originalStates);
     d.m_cache->inputs().upload(originalInputs);
     d.m_cache->projectOnDynamics();

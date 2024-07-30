@@ -12,14 +12,14 @@
 template<typename T>
 __global__ void k_setToZero(T *vec, size_t n);
 
-template<typename T> class TestCacheData;
-template<typename T> void testInitialisingState(TestCacheData<T> &d);
-template<typename T> void testDynamicsProjectionOnline(TestCacheData<T> &d, T epsilon);
-template<typename T> void testKernelProjectionOnline(TestCacheData<T> &d, T epsilon);
-template<typename T> void testKernelProjectionOnlineOrthogonality(TestCacheData<T> &d, T epsilon);
-template<typename T> class TestOperatorData;
-template<typename T> void testOperator(TestOperatorData<T> &d);
-template<typename T> void testAdjoint(TestOperatorData<T> &d);
+template<typename T> class CacheTestData;
+template<typename T> void testInitialisingState(CacheTestData<T> &d);
+template<typename T> void testDynamicsProjectionOnline(CacheTestData<T> &d, T epsilon);
+template<typename T> void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon);
+template<typename T> void testKernelProjectionOnlineOrthogonality(CacheTestData<T> &d, T epsilon);
+template<typename T> class OperatorTestData;
+template<typename T> void testOperator(OperatorTestData<T> &d);
+template<typename T> void testAdjoint(OperatorTestData<T> &d);
 
 
 /**
@@ -147,17 +147,17 @@ public:
     /**
      * Test functions. As a friend, they can access protected members.
      */
-    friend void testInitialisingState <> (TestCacheData<T> &d);
+    friend void testInitialisingState <> (CacheTestData<T> &d);
 
-    friend void testDynamicsProjectionOnline <> (TestCacheData<T> &d, T epsilon);
+    friend void testDynamicsProjectionOnline <> (CacheTestData<T> &d, T epsilon);
 
-    friend void testKernelProjectionOnline <> (TestCacheData<T> &d, T epsilon);
+    friend void testKernelProjectionOnline <> (CacheTestData<T> &d, T epsilon);
 
-    friend void testKernelProjectionOnlineOrthogonality <> (TestCacheData<T> &d, T epsilon);
+    friend void testKernelProjectionOnlineOrthogonality <> (CacheTestData<T> &d, T epsilon);
 
-    friend void testOperator <> (TestOperatorData<T> &d);
+    friend void testOperator <> (OperatorTestData<T> &d);
 
-    friend void testAdjoint <> (TestOperatorData<T> &d);
+    friend void testAdjoint <> (OperatorTestData<T> &d);
 
     /**
      * Debugging
@@ -414,8 +414,8 @@ template<typename T>
 void Cache<T>::cpIter() {
     projectOnDynamics();
     projectOnKernels();
-    m_L.op(m_d_u, m_d_x, m_d_y, m_d_t, m_d_s, m_d_i, m_d_ii, m_d_iii, m_d_iv, m_d_v, m_d_vi);
-    m_L.adj(m_d_u, m_d_x, m_d_y, m_d_t, m_d_s, m_d_i, m_d_ii, m_d_iii, m_d_iv, m_d_v, m_d_vi);
+    m_L.op(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
+    m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
     /** update z_bar */
     /** update n_bar */
     /** update z */

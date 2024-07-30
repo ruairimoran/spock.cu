@@ -13,7 +13,7 @@ protected:
 };
 
 TEMPLATE_WITH_TYPE_T
-class TestOperatorData {
+class OperatorTestData {
 public:
     std::string m_treeFileLoc = "../../tests/testTreeData.json";
     std::string m_problemFileLoc = "../../tests/testProblemData.json";
@@ -29,7 +29,7 @@ public:
     std::vector<T> m_hostData = std::vector<T>(m_n);
     std::vector<T> m_hostTest = std::vector<T>(m_n);
 
-    TestOperatorData() {
+    OperatorTestData() {
         std::ifstream tree_data(m_treeFileLoc);
         std::ifstream problem_data(m_problemFileLoc);
         m_tree = std::make_unique<ScenarioTree<T>>(tree_data);
@@ -42,7 +42,7 @@ public:
         m_d_data.upload(m_hostData);
     };
 
-    virtual ~TestOperatorData() {}
+    virtual ~OperatorTestData() {}
 };
 
 TEMPLATE_WITH_TYPE_T
@@ -58,16 +58,16 @@ static void parse(size_t nodeIdx, const rapidjson::Value &value, std::vector<T> 
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
-void testOperator(TestOperatorData<T> &d) {
+void testOperator(OperatorTestData<T> &d) {
     Cache<T> &c = *d.m_cache;
     c.m_L.op(*c.m_d_u, *c.m_d_x, *c.m_d_y, *c.m_d_t, *c.m_d_s,
              *c.m_d_i, *c.m_d_ii, *c.m_d_iii, *c.m_d_iv, *c.m_d_v, *c.m_d_vi);
 }
 
 TEST_F(OperatorTest, op) {
-    TestOperatorData<float> df;
+    OperatorTestData<float> df;
     testOperator<float>(df);
-    TestOperatorData<double> dd;
+    OperatorTestData<double> dd;
     testOperator<double>(dd);
 }
 
@@ -76,15 +76,15 @@ TEST_F(OperatorTest, op) {
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
-void testAdjoint(TestOperatorData<T> &d) {
+void testAdjoint(OperatorTestData<T> &d) {
     Cache<T> &c = *d.m_cache;
     c.m_L.adj(*c.m_d_u, *c.m_d_x, *c.m_d_y, *c.m_d_t, *c.m_d_s,
               *c.m_d_i, *c.m_d_ii, *c.m_d_iii, *c.m_d_iv, *c.m_d_v, *c.m_d_vi);
 }
 
 TEST_F(OperatorTest, adj) {
-    TestOperatorData<float> df;
+    OperatorTestData<float> df;
     testAdjoint<float>(df);
-    TestOperatorData<double> dd;
+    OperatorTestData<double> dd;
     testAdjoint<double>(dd);
 }

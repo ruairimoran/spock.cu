@@ -12,7 +12,7 @@ protected:
 };
 
 TEMPLATE_WITH_TYPE_T
-class TestCacheData {
+class CacheTestData {
 public:
     std::string m_treeFileLoc = "../../tests/testTreeData.json";
     std::string m_problemFileLoc = "../../tests/testProblemData.json";
@@ -28,7 +28,7 @@ public:
     std::vector<T> m_hostData = std::vector<T>(m_n);
     std::vector<T> m_hostTest = std::vector<T>(m_n);
 
-    TestCacheData() {
+    CacheTestData() {
         std::ifstream tree_data(m_treeFileLoc);
         std::ifstream problem_data(m_problemFileLoc);
         m_tree = std::make_unique<ScenarioTree<T>>(tree_data);
@@ -41,7 +41,7 @@ public:
         m_d_data.upload(m_hostData);
     };
 
-    virtual ~TestCacheData() {}
+    virtual ~CacheTestData() {}
 };
 
 TEMPLATE_WITH_TYPE_T
@@ -57,7 +57,7 @@ static void parse(size_t nodeIdx, const rapidjson::Value &value, std::vector<T> 
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
-void testInitialisingState(TestCacheData<T> &d) {
+void testInitialisingState(CacheTestData<T> &d) {
     std::vector<T> initialState = {3., 5., 4.};
     d.m_cache->initialiseState(initialState);
     std::vector<T> x(initialState.size());
@@ -67,9 +67,9 @@ void testInitialisingState(TestCacheData<T> &d) {
 }
 
 TEST_F(CacheTest, initialisingState) {
-    TestCacheData<float> df;
+    CacheTestData<float> df;
     testInitialisingState<float>(df);
-    TestCacheData<double> dd;
+    CacheTestData<double> dd;
     testInitialisingState<double>(dd);
 }
 
@@ -78,7 +78,7 @@ TEST_F(CacheTest, initialisingState) {
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
-void testDynamicsProjectionOnline(TestCacheData<T> &d, T epsilon) {
+void testDynamicsProjectionOnline(CacheTestData<T> &d, T epsilon) {
     std::ifstream problem_data(d.m_problemFileLoc);
     std::string json((std::istreambuf_iterator<char>(problem_data)),
                      std::istreambuf_iterator<char>());
@@ -119,9 +119,9 @@ void testDynamicsProjectionOnline(TestCacheData<T> &d, T epsilon) {
 }
 
 TEST_F(CacheTest, dynamicsProjectionOnline) {
-    TestCacheData<float> df;
+    CacheTestData<float> df;
     testDynamicsProjectionOnline<float>(df, TEST_PRECISION_LOW);
-    TestCacheData<double> dd;
+    CacheTestData<double> dd;
     testDynamicsProjectionOnline<double>(dd, TEST_PRECISION_HIGH);
 }
 
@@ -130,7 +130,7 @@ TEST_F(CacheTest, dynamicsProjectionOnline) {
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
-void testKernelProjectionOnline(TestCacheData<T> &d, T epsilon) {
+void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon) {
     /* Parse data for testing */
     std::ifstream problem_data(d.m_problemFileLoc);
     std::string json((std::istreambuf_iterator<char>(problem_data)),
@@ -205,9 +205,9 @@ void testKernelProjectionOnline(TestCacheData<T> &d, T epsilon) {
 }
 
 TEST_F(CacheTest, kernelProjectionOnline) {
-    TestCacheData<float> df;
+    CacheTestData<float> df;
     testKernelProjectionOnline<float>(df, TEST_PRECISION_LOW);
-    TestCacheData<double> dd;
+    CacheTestData<double> dd;
     testKernelProjectionOnline<double>(dd, TEST_PRECISION_HIGH);
 }
 
@@ -230,7 +230,7 @@ void buildVector(DTensor<T> &vec, size_t yAct, size_t yFull, size_t numCh, size_
 }
 
 TEMPLATE_WITH_TYPE_T
-void testKernelProjectionOnlineOrthogonality(TestCacheData<T> &d, T epsilon) {
+void testKernelProjectionOnlineOrthogonality(CacheTestData<T> &d, T epsilon) {
     /* Create original data */
     T hi = 100.;
     T lo = -hi;
@@ -273,8 +273,8 @@ void testKernelProjectionOnlineOrthogonality(TestCacheData<T> &d, T epsilon) {
 }
 
 TEST_F(CacheTest, kernelProjectionOnlineOrthogonality) {
-    TestCacheData<float> df;
+    CacheTestData<float> df;
     testKernelProjectionOnlineOrthogonality<float>(df, TEST_PRECISION_LOW);
-    TestCacheData<double> dd;
+    CacheTestData<double> dd;
     testKernelProjectionOnlineOrthogonality<double>(dd, TEST_PRECISION_HIGH);
 }

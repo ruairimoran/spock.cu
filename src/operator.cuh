@@ -155,7 +155,7 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     ii.deviceCopyTo(sNonleaf);
     /* y */
     i.deviceCopyTo(y);
-    i.addAB(m_data.b(), ii, -1., 1.);
+//    y.addAB(m_data.b(), ii, -1., 1.);
     /* x (nonleaf) and u:Gamma */
     if (m_data.nonleafConstraint()[0]->isNone() || m_data.nonleafConstraint()[0]->isRectangle()) {
         for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {

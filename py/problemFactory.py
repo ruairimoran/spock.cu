@@ -63,6 +63,10 @@ class Problem:
         self.__kernel_constraint_matrix_rows = None
         self.__max_nullspace_dim = self.__tree.num_events * 4 + 1
         self.__projected_ns = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
+        # L operator and adjoint testing
+        self.__prim_before_op = None
+        self.__dual_after_op_before_adj = None
+        self.__prim_after_adj = None
         # Other
         self.__padded_b = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
         self.__sqrt_nonleaf_state_costs = [np.zeros((0, 0))] * self.__tree.num_nodes
@@ -135,7 +139,10 @@ class Problem:
                                  dpProjectedStates=self.__dp_projected_states,
                                  dpProjectedInputs=self.__dp_projected_inputs,
                                  null_dim=self.__max_nullspace_dim,
-                                 null=self.__nullspace_projection_matrix)
+                                 null=self.__nullspace_projection_matrix,
+                                 prim_before_op=self.__prim_before_op,
+                                 dual_after_op_before_adj=self.__dual_after_op_before_adj,
+                                 prim_after_adj=self.__prim_after_adj)
         path = os.path.join(os.getcwd(), self.__tree.folder)
         os.makedirs(path, exist_ok=True)
         output_file = os.path.join(path, "problemData.json")
@@ -153,8 +160,7 @@ class Problem:
         self.__test_dynamic_programming()
         self.__pad_b()
         self.__sqrt_costs()
-        self.__test_ell_op()
-        self.__test_ell_adj()
+        self.__test_ell_op_and_adj()
 
     def __offline_projection_dynamics(self):
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
@@ -246,25 +252,132 @@ class Problem:
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
             self.__sqrt_leaf_state_costs[i] = sqrtm(self.__list_of_leaf_state_costs[i])
 
-    def __test_ell_op(self):
+    @staticmethod
+    def __flatten(list_of_vectors):
+        return np.hstack(np.vstack(list_of_vectors)).tolist()
+
+    def __test_ell_op_and_adj(self):
+        num_si = self.__num_states + self.__num_inputs
+        # Create random primal
         f = 10
-        u = (f * np.random.randn(2 * self.__tree.num_nonleaf_nodes)).tolist()
-        x = (f * np.random.randn(3 * self.__tree.num_nodes)).tolist()
-        y = []
+        u = [f * np.random.randn(2, 1) for _ in range(self.__tree.num_nonleaf_nodes)]
+        x = [f * np.random.randn(3, 1) for _ in range(self.__tree.num_nodes)]
+        y = [None] * self.__tree.num_nonleaf_nodes
         num_ev = self.__tree.num_events
         full_size_y = 2 * num_ev + 1
         for i in range(self.__tree.num_nonleaf_nodes):
             num_ch = len(self.__tree.children_of_node(i))
             size_y = 2 * num_ch + 1
-            y += ((f * np.random.randn(size_y)).tolist()) + [0.] * (full_size_y - size_y)
+            y[i] = np.vstack(((f * np.random.randn(size_y, 1)), np.zeros((full_size_y - size_y, 1))))
         t = [0.] + (f * np.random.randn(self.__tree.num_nodes - 1)).tolist()
         s = (f * np.random.randn(self.__tree.num_nodes)).tolist()
-        prim = deepcopy(u + x + y + t + s)
+        prim = self.__flatten(u) + self.__flatten(x) + self.__flatten(y) + t + s
+        self.__prim_before_op = deepcopy(prim)
 
-        # operator L
+        # ---- L operator ----
+        # -> i
+        i_ = deepcopy(y)
 
-    def __test_ell_adj(self):
-        pass
+        # -> ii
+        ii = [None] * self.__tree.num_nonleaf_nodes
+        for i in range(self.__tree.num_nonleaf_nodes):
+            ii[i] = s[i] - np.asarray(self.__padded_b[i]).T @ y[i]
+
+        # -> iii
+        iii = None
+        if (self.__list_of_nonleaf_constraints[0].is_no
+                or self.__list_of_nonleaf_constraints[0].is_rectangle):
+            # Gamma_{x} and Gamma{u} do not change x and u
+            iii = [None] * self.__tree.num_nonleaf_nodes
+            for i in range(self.__tree.num_nonleaf_nodes):
+                iii[i] = np.vstack((x[i], u[i]))
+        if self.__list_of_nonleaf_constraints[0].is_ball:
+            pass  # TODO!
+
+        # -> iv
+        iv = [np.zeros((num_si + 2, 1))] * self.__tree.num_nodes
+        for i in range(1, self.__tree.num_nodes):
+            anc = self.__tree.ancestor_of_node(i)
+            half_t = t[i] * 0.5
+            iv[i] = np.vstack((self.__sqrt_nonleaf_state_costs[i] @ x[anc],
+                               self.__sqrt_nonleaf_input_costs[i] @ u[anc],
+                               half_t, half_t))
+
+        # -> v
+        v = None
+        if (self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_no
+                or self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_rectangle):
+            # Gamma_{x} and Gamma{u} do not change x and u
+            v = [np.zeros((num_si, 1))] * self.__tree.num_nodes
+            for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
+                v[i] = x[i]
+        if self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_ball:
+            pass  # TODO!
+
+        # -> vi
+        vi = [np.zeros((self.__num_states + 2, 1))] * self.__tree.num_nodes
+        for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
+            half_s = s[i] * 0.5
+            vi[i] = np.vstack((self.__sqrt_leaf_state_costs[i] @ x[i],
+                               half_s, half_s))
+
+        # ---- end L operator ----
+
+        # Gather dual
+        dual = []
+        for i in [i_, ii, iii, iv, v, vi]:
+            dual += self.__flatten(i)
+        self.__dual_after_op_before_adj = deepcopy(dual)
+
+        # ---- L adjoint ----
+        # -> s (nonleaf)
+        s[:self.__tree.num_nonleaf_nodes] = ii[:self.__tree.num_nonleaf_nodes]
+
+        # -> y
+        for i in range(self.__tree.num_nonleaf_nodes):
+            y[i] = i_[i] - np.asarray(self.__padded_b[i]) * ii[i]
+
+        # -> x (nonleaf) and u:Gamma
+        if (self.__list_of_nonleaf_constraints[0].is_no
+                or self.__list_of_nonleaf_constraints[0].is_rectangle):
+            # Gamma_{x} and Gamma{u} do not change x and u
+            for i in range(self.__tree.num_nonleaf_nodes):
+                x[i] = iii[i][:self.__num_states]
+                u[i] = iii[i][self.__num_states:num_si]
+        if self.__list_of_nonleaf_constraints[0].is_ball:
+            pass  # TODO!
+
+        # -> x (nonleaf) and u
+        for i in range(1, self.__tree.num_nodes):
+            anc = self.__tree.ancestor_of_node(i)
+            x[anc] += self.__sqrt_nonleaf_state_costs[i] @ iv[i][:self.__num_states]
+            u[anc] += self.__sqrt_nonleaf_input_costs[i] @ iv[i][self.__num_states:num_si]
+
+        # -> t
+        for i in range(1, self.__tree.num_nodes):
+            t[i] = 0.5 * (iv[i][num_si] + iv[i][num_si + 1])
+
+        # -> x (leaf):Gamma
+        if (self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_no
+                or self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_rectangle):
+            for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
+                x[i] = v[i]
+        if self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_ball:
+            pass  # TODO!
+
+        # -> x (leaf)
+        for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
+            x[i] += self.__sqrt_leaf_state_costs[i] @ vi[i][:self.__num_states]
+
+        # -> s (leaf)
+        for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
+            s[i] = 0.5 * (vi[i][self.__num_states] + vi[i][self.__num_states + 1])
+
+        # ---- end L adjoint ----
+
+        # Gather primal
+        prim = self.__flatten(u) + self.__flatten(x) + self.__flatten(y) + t + s
+        self.__prim_after_adj = deepcopy(prim)
 
 
 class ProblemFactory:

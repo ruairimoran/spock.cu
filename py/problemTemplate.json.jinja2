@@ -155,5 +155,11 @@
 "\~i~\":\% if dpProjectedInputs[i] is none %\[]\% else %\\~dpProjectedInputs[i].flatten().tolist()~\\% endif %\
 \% if not loop.last %\,\% endif %\
 
-\% endfor %\}
+\% endfor %\},
+\# OPERATOR PRIMAL BEFORE #\
+"primBeforeOp": \~prim_before_op~\,
+\# OPERATOR DUAL MIDDLE #\
+"dualAfterOpBeforeAdj": \~dual_after_op_before_adj~\,
+\# OPERATOR PRIMAL AFTER ADJOINT #\
+"primAfterAdj": \~prim_after_adj~\
 }

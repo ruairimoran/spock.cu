@@ -107,23 +107,16 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
         tNode.deviceCopyTo(iv4);
     }
     /* V */
+    DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
     if (m_data.leafConstraint()[m_tree.numNonleafNodes()]->isNone() || m_data.leafConstraint()[m_tree.numNonleafNodes()]->isRectangle()) {
-        for (size_t node = m_tree.numNonleafNodes(); node < m_tree.numNodes(); node++) {
-            DTensor<T> vNode(v, m_matAxis, node, node);
-            DTensor<T> vX(vNode, 0, 0, m_data.numStates() - 1);
-            DTensor<T> vU(vNode, 0, m_data.numStates(), m_data.numStatesAndInputs() - 1);
-            DTensor<T> xNode(x, m_matAxis, node, node);
-            DTensor<T> uNode(u, m_matAxis, node, node);
-            xNode.deviceCopyTo(vX);
-            uNode.deviceCopyTo(vU);
-        }
+        DTensor<T> vLeaf(v, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
+        xLeaf.deviceCopyTo(vLeaf);
     } else if (m_data.leafConstraint()[m_tree.numNonleafNodes()]->isBall()) {
         /* Pre-multiply xLeaf by Gamma_{xN} */
     } else {
         throw std::invalid_argument("[L operator] leaf constraint given is not supported.");
     }
     /* VI:1 */
-    DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
     m_d_xLeafWorkspace->addAB(m_data.sqrtStateWeightLeaf(), xLeaf);
     /* VI:2,3 */
     s *= 0.5;  // This affects the current 's'!!! But it shouldn't matter...
@@ -228,16 +221,10 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     t += *m_d_scalarWorkspace;
     t *= 0.5;
     /* x (leaf):Gamma */
+    DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
     if (m_data.leafConstraint()[m_tree.numNonleafNodes()]->isNone() || m_data.leafConstraint()[m_tree.numNonleafNodes()]->isRectangle()) {
-        for (size_t node = m_tree.numNonleafNodes(); node < m_tree.numNodes(); node++) {
-            DTensor<T> vNode(v, m_matAxis, node, node);
-            DTensor<T> vX(vNode, 0, 0, m_data.numStates() - 1);
-            DTensor<T> vU(vNode, 0, m_data.numStates(), m_data.numStatesAndInputs() - 1);
-            DTensor<T> xNode(x, m_matAxis, node, node);
-            DTensor<T> uNode(u, m_matAxis, node, node);
-            vX.deviceCopyTo(xNode);
-            vU.deviceCopyTo(uNode);
-        }
+        DTensor<T> vLeaf(v, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
+        vLeaf.deviceCopyTo(xLeaf);
     } else if (m_data.leafConstraint()[m_tree.numNonleafNodes()]->isBall()) {
         /* Pre-multiply v by Gamma^{T}_{xN} */
     } else {
@@ -251,7 +238,6 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
         DTensor<T> ws(*m_d_xLeafWorkspace, m_matAxis, idx, idx);
         vi1.deviceCopyTo(ws);
     }
-    DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
     xLeaf.addAB(m_data.sqrtStateWeightLeaf(), *m_d_xLeafWorkspace, 1., 1.);
     /* s (leaf) */
     for (size_t node = m_tree.numNonleafNodes(); node < m_tree.numNodes(); node++) {

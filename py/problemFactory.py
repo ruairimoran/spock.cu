@@ -153,6 +153,8 @@ class Problem:
         self.__test_dynamic_programming()
         self.__pad_b()
         self.__sqrt_costs()
+        self.__test_ell_op()
+        self.__test_ell_adj()
 
     def __offline_projection_dynamics(self):
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
@@ -181,7 +183,8 @@ class Problem:
         for i in range(self.__tree.num_nonleaf_nodes):
             num_ch = len(self.__tree.children_of_node(i))
             fill = self.__tree.num_events - num_ch
-            e_tr_pad = np.pad(self.__list_of_risks[i].e.T, [(0, fill), (0, fill * 2)], mode="constant", constant_values=0.)
+            e_tr_pad = np.pad(self.__list_of_risks[i].e.T, [(0, fill), (0, fill * 2)], mode="constant",
+                              constant_values=0.)
             eye = np.eye(num_ch)
             eye_pad = np.pad(eye, [(0, fill), (0, fill)], mode="constant", constant_values=0.)
             if self.__list_of_risks[i].is_avar:
@@ -232,7 +235,8 @@ class Problem:
     def __pad_b(self):
         for i in range(self.__tree.num_nonleaf_nodes):
             pad = 2 * (self.__tree.num_events - len(self.__tree.children_of_node(i)))
-            self.__padded_b[i] = np.pad(self.__list_of_risks[i].b, [(0, pad), (0, 0)], mode="constant", constant_values=0.)
+            self.__padded_b[i] = np.pad(self.__list_of_risks[i].b, [(0, pad), (0, 0)], mode="constant",
+                                        constant_values=0.)
 
     def __sqrt_costs(self):
         for i in range(1, self.__tree.num_nodes):
@@ -241,6 +245,26 @@ class Problem:
 
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
             self.__sqrt_leaf_state_costs[i] = sqrtm(self.__list_of_leaf_state_costs[i])
+
+    def __test_ell_op(self):
+        f = 10
+        u = (f * np.random.randn(2 * self.__tree.num_nonleaf_nodes)).tolist()
+        x = (f * np.random.randn(3 * self.__tree.num_nodes)).tolist()
+        y = []
+        num_ev = self.__tree.num_events
+        full_size_y = 2 * num_ev + 1
+        for i in range(self.__tree.num_nonleaf_nodes):
+            num_ch = len(self.__tree.children_of_node(i))
+            size_y = 2 * num_ch + 1
+            y += ((f * np.random.randn(size_y)).tolist()) + [0.] * (full_size_y - size_y)
+        t = [0.] + (f * np.random.randn(self.__tree.num_nodes - 1)).tolist()
+        s = (f * np.random.randn(self.__tree.num_nodes)).tolist()
+        prim = deepcopy(u + x + y + t + s)
+
+        # operator L
+
+    def __test_ell_adj(self):
+        pass
 
 
 class ProblemFactory:

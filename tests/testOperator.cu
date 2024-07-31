@@ -60,12 +60,13 @@ static void parse(size_t nodeIdx, const rapidjson::Value &value, std::vector<T> 
 TEMPLATE_WITH_TYPE_T
 void testOperator(OperatorTestData<T> &d) {
     Cache<T> &c = *d.m_cache;
-//    std::cout << "primal before op(): " << c.m_d_prim->tr();
-//    std::cout << "dual before op(): " << c.m_d_dual->tr();
+    std::vector<T> prim(d.m_cache->m_primSize);
+    std::iota(std::begin(prim), std::end(prim), 0);
+    d.m_cache->m_d_prim->upload(prim);
+    std::cout << "primal before op(): " << c.m_d_prim->tr();
     c.m_L.op(*c.m_d_u, *c.m_d_x, *c.m_d_y, *c.m_d_t, *c.m_d_s,
              *c.m_d_i, *c.m_d_ii, *c.m_d_iii, *c.m_d_iv, *c.m_d_v, *c.m_d_vi);
-//    std::cout << "primal after op(): " << c.m_d_prim->tr();
-//    std::cout << "dual after op(): " << c.m_d_dual->tr();
+    std::cout << "dual after op(): " << c.m_d_dual->tr();
 }
 
 TEST_F(OperatorTest, op) {
@@ -82,12 +83,13 @@ TEST_F(OperatorTest, op) {
 TEMPLATE_WITH_TYPE_T
 void testAdjoint(OperatorTestData<T> &d) {
     Cache<T> &c = *d.m_cache;
-//    std::cout << "primal before adj(): " << c.m_d_prim->tr();
-//    std::cout << "dual before adj(): " << c.m_d_dual->tr();
+    std::vector<T> dual(d.m_cache->m_dualSize);
+    std::iota(std::begin(dual), std::end(dual), 0);
+    d.m_cache->m_d_dual->upload(dual);
+    std::cout << "dual before adj(): " << c.m_d_dual->tr();
     c.m_L.adj(*c.m_d_u, *c.m_d_x, *c.m_d_y, *c.m_d_t, *c.m_d_s,
               *c.m_d_i, *c.m_d_ii, *c.m_d_iii, *c.m_d_iv, *c.m_d_v, *c.m_d_vi);
-//    std::cout << "primal after adj(): " << c.m_d_prim->tr();
-//    std::cout << "dual after adj(): " << c.m_d_dual->tr();
+    std::cout << "primal after adj(): " << c.m_d_prim->tr();
 }
 
 TEST_F(OperatorTest, adj) {

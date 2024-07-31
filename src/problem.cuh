@@ -138,10 +138,10 @@ public:
                                                               true);
         m_d_stateWeight = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_inputWeight = std::make_unique<DTensor<T>>(m_numInputs, m_numInputs, m_tree.numNodes(), true);
-        m_d_stateWeightLeaf = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
+        m_d_stateWeightLeaf = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numLeafNodes(), true);
         m_d_sqrtStateWeight = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_sqrtInputWeight = std::make_unique<DTensor<T>>(m_numInputs, m_numInputs, m_tree.numNodes(), true);
-        m_d_sqrtStateWeightLeaf = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
+        m_d_sqrtStateWeightLeaf = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numLeafNodes(), true);
         m_d_lowerCholesky = std::make_unique<DTensor<T>>(m_numInputs, m_numInputs, m_tree.numNonleafNodes(), true);
         m_d_K = std::make_unique<DTensor<T>>(m_numInputs, m_numStates, m_tree.numNonleafNodes(), true);
         m_d_KTr = std::make_unique<DTensor<T>>(m_numStates, m_numInputs, m_tree.numNonleafNodes(), true);
@@ -179,9 +179,9 @@ public:
         }
         for (size_t i = m_tree.numNonleafNodes(); i < m_tree.numNodes(); i++) {
             nodeString = std::to_string(i).c_str();
-            parseMatrix(i, doc["leafStateCosts"][nodeString], m_d_stateWeightLeaf);
+            parseMatrix(i - m_tree.numNonleafNodes(), doc["leafStateCosts"][nodeString], m_d_stateWeightLeaf);
+            parseMatrix(i - m_tree.numNonleafNodes(), doc["sqrtLeafStateCosts"][nodeString], m_d_sqrtStateWeightLeaf);
             parseConstraint(i, doc["leafConstraints"][nodeString], m_leafConstraint);
-            parseMatrix(i, doc["sqrtLeafStateCosts"][nodeString], m_d_sqrtStateWeightLeaf);
         }
         for (size_t stage = 0; stage < m_tree.numStages() - 1; stage++) {
             size_t nodeFr = m_tree.stageFrom()[stage];

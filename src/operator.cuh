@@ -123,9 +123,8 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
         throw std::invalid_argument("[L operator] leaf constraint given is not supported.");
     }
     /* VI:1 */
-    DTensor<T> sqrtQLeaf(m_data.sqrtStateWeightLeaf(), m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
     DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
-    m_d_xLeafWorkspace->addAB(sqrtQLeaf, xLeaf);
+    m_d_xLeafWorkspace->addAB(m_data.sqrtStateWeightLeaf(), xLeaf);
     /* VI:2,3 */
     s *= 0.5;  // This affects the current 's'!!! But it shouldn't matter...
     /* VI (organise VI:1-3) */
@@ -155,7 +154,7 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     ii.deviceCopyTo(sNonleaf);
     /* y */
     i.deviceCopyTo(y);
-//    y.addAB(m_data.b(), ii, -1., 1.);
+    y.addAB(m_data.b(), ii, -1., 1.);
     /* x (nonleaf) and u:Gamma */
     if (m_data.nonleafConstraint()[0]->isNone() || m_data.nonleafConstraint()[0]->isRectangle()) {
         for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
@@ -252,7 +251,7 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
         DTensor<T> ws(*m_d_xLeafWorkspace, m_matAxis, idx, idx);
         vi1.deviceCopyTo(ws);
     }
-    DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes());
+    DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
     xLeaf.addAB(m_data.sqrtStateWeightLeaf(), *m_d_xLeafWorkspace, 1., 1.);
     /* s (leaf) */
     for (size_t node = m_tree.numNonleafNodes(); node < m_tree.numNodes(); node++) {

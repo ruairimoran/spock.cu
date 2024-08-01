@@ -37,11 +37,11 @@ class TestProblem(unittest.TestCase):
             set_control = [control, 2 * control, 3 * control]  # n x u matrices
 
             # construct cost weight matrices
-            nonleaf_state_weight = 10 * np.eye(2)  # n x n matrix
+            nonleaf_state_weight = 10 * np.eye(TestProblem.__num_states)  # n x n matrix
             nonleaf_state_weights = [nonleaf_state_weight, 2 * nonleaf_state_weight, 3 * nonleaf_state_weight]
-            control_weight = np.eye(2)  # u x u matrix OR scalar
+            control_weight = np.eye(TestProblem.__num_inputs)  # u x u matrix OR scalar
             control_weights = [control_weight, 2 * control_weight, 3 * control_weight]
-            leaf_state_weight = 5 * np.eye(2)  # n x n matrix
+            leaf_state_weight = 5 * np.eye(TestProblem.__num_states)  # n x n matrix
 
             # State-input constraint
             state_lim = 6

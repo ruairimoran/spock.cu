@@ -154,7 +154,7 @@ class Problem:
     # Cache
     # --------------------------------------------------------
 
-    def generate_offline_cache(self):
+    def generate_offline(self):
         self.__offline_projection_dynamics()
         self.__offline_projection_kernel()
         self.__test_dynamic_programming()
@@ -385,7 +385,6 @@ class Problem:
         # Gather primal
         prim = []
         for i in [u, x, y, t, s]:
-            print(len(prim))
             prim += self.__flatten(i)
         self.__prim_after_adj = deepcopy(prim)
 
@@ -508,6 +507,6 @@ class ProblemFactory:
                           self.__list_of_nonleaf_constraints,
                           self.__list_of_leaf_constraints,
                           self.__list_of_risks)
-        problem.generate_offline_cache()
+        problem.generate_offline()
         problem.generate_problem_json()
         return problem

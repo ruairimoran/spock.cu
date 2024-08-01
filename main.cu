@@ -8,7 +8,6 @@
 #include "src/tree.cuh"
 #include "src/problem.cuh"
 #include "src/cache.cuh"
-#include "src/cp.cuh"
 
 
 
@@ -27,13 +26,12 @@ int main() {
     double tol = 1e-4;
     size_t maxIters = 20;
     Cache cache(tree, problem, tol, maxIters);
-    cache.print();
+//    cache.print();
 
     /** VANILLA CP */
     std::vector<double> initState = {.1, -.2, .3};
-    size_t exit_status = timeCp(cache, initState);
+    size_t exit_status = cache.cpTime(initState);
     std::cout << "cp exit status: " << exit_status << std::endl;
-    cache.print();
 
     return 0;
 }

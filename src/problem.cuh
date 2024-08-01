@@ -79,9 +79,9 @@ private:
             }
             constraint[nodeIdx] = std::make_unique<Rectangle<T>>(nodeIdx, numElements, lb, ub);
         } else {
-            std::cerr << "Constraint type " << value["type"].GetString()
-                      << " is not supported. Supported types include: rectangle" << "\n";
-            throw std::invalid_argument("Constraint type not supported");
+            err << "Constraint type " << value["type"].GetString()
+                << " is not supported. Supported types include: rectangle" << "\n";
+            throw std::invalid_argument(err.str());
         }
     }
 
@@ -94,9 +94,9 @@ private:
                                                         *m_d_nullspaceProj,
                                                         *m_d_b);
         } else {
-            std::cerr << "Risk type " << value["type"].GetString()
-                      << " is not supported. Supported types include: avar" << "\n";
-            throw std::invalid_argument("Risk type not supported");
+            err << "Risk type " << value["type"].GetString()
+                << " is not supported. Supported types include: avar" << "\n";
+            throw std::invalid_argument(err.str());
         }
     }
 

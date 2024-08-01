@@ -7,6 +7,8 @@
 #include "cones.cuh"
 #include "risks.cuh"
 #include "operator.cuh"
+#include "projections.cuh"
+#include <chrono>
 
 
 template<typename T>
@@ -83,19 +85,29 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_cacheError = nullptr;
     /* Other */
     std::unique_ptr<DTensor<T>> m_d_initState = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_primWorkspace = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_dualWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_q = nullptr;
     std::unique_ptr<DTensor<T>> m_d_d = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xSizeWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_uSizeWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xuSizeWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_ytsSizeWorkspace = nullptr;
+    std::unique_ptr<SocProjection<T>> m_socsNonleaf = nullptr;
+    std::unique_ptr<SocProjection<T>> m_socsLeaf = nullptr;
+    std::unique_ptr<NonnegativeOrthantCone<T>> m_nnocNonleaf = nullptr;
+    std::unique_ptr<Cartesian<T>> m_cartRiskNonleaf = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_loBoundNonleaf = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_hiBoundNonleaf = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_loBoundLeaf = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_hiBoundLeaf = nullptr;
 
     /**
      * Protected methods
      */
-    void reshapePrimal();
+    void reshapePrimalWorkspace();
 
-    void reshapeDual();
+    void reshapeDualWorkspace();
 
     void setRootState();
 
@@ -128,8 +140,10 @@ public:
         /* Allocate memory on device */
         m_d_prim = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
         m_d_primPrev = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
+        m_d_primWorkspace = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
         m_d_dual = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
         m_d_dualPrev = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
+        m_d_dualWorkspace = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
         m_d_cacheError = std::make_unique<DTensor<T>>(m_maxIters, 1, 1, true);
         m_d_initState = std::make_unique<DTensor<T>>(m_data.numStates(), 1, 1, true);
         m_d_q = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
@@ -138,9 +152,49 @@ public:
         m_d_uSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNodes(), true);
         m_d_xuSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNodes(), true);
         m_d_ytsSizeWorkspace = std::make_unique<DTensor<T>>(m_data.nullDim(), 1, m_tree.numNonleafNodes(), true);
-        /* Slice and reshape primal and dual */
-        reshapePrimal();
-        reshapeDual();
+        /* Slice and reshape primal and dual workspaces */
+        reshapePrimalWorkspace();
+        reshapeDualWorkspace();
+        /* Initialise projectors */
+        /* I */
+        m_cartRiskNonleaf = std::make_unique<Cartesian<T>>();
+        for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) { m_cartRiskNonleaf->addCone(m_data.risk()[i]->cone()); }
+        /* II */
+        m_nnocNonleaf = std::make_unique<NonnegativeOrthantCone<T>>(m_tree.numNonleafNodes());
+        /* III */
+        if (m_data.nonleafConstraint()[0]->isRectangle()) {
+            m_d_loBoundNonleaf = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
+            m_d_hiBoundNonleaf = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
+            for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
+                DTensor<T> lo(*m_d_loBoundNonleaf, m_matAxis, i, i);
+                DTensor<T> hi(*m_d_hiBoundNonleaf, m_matAxis, i, i);
+                m_data.nonleafConstraint()[i]->lo().deviceCopyTo(lo);
+                m_data.nonleafConstraint()[i]->hi().deviceCopyTo(hi);
+            }
+        } else if (m_data.nonleafConstraint()[0]->isBall()) {
+            /* TODO! */
+        } else {
+            throw std::invalid_argument("[Cache] Nonleaf constraint given is not supported.");
+        }
+        /* IV */
+        m_socsNonleaf = std::make_unique<SocProjection<T>>(*m_d_iv);
+        /* V */
+        if (m_data.leafConstraint()[0]->isRectangle()) {
+            m_d_loBoundLeaf = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numLeafNodes());
+            m_d_hiBoundLeaf = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numLeafNodes());
+            for (size_t i = 0; i < m_tree.numLeafNodes(); i++) {
+                DTensor<T> lo(*m_d_loBoundLeaf, m_matAxis, i, i);
+                DTensor<T> hi(*m_d_hiBoundLeaf, m_matAxis, i, i);
+                m_data.leafConstraint()[i]->lo().deviceCopyTo(lo);
+                m_data.leafConstraint()[i]->hi().deviceCopyTo(hi);
+            }
+        } else if (m_data.leafConstraint()[0]->isBall()) {
+            /* TODO! */
+        } else {
+            throw std::invalid_argument("[Cache] Leaf constraint given is not supported.");
+        }
+        /* VI */
+        m_socsLeaf = std::make_unique<SocProjection<T>>(*m_d_vi);
     }
 
     ~Cache() = default;
@@ -150,7 +204,9 @@ public:
      */
     void cpIter();
 
-    void vanillaCp(std::vector<T> &initState, std::vector<T> *previousSolution = nullptr);
+    void cpAlgo(std::vector<T> &, std::vector<T> * = nullptr);
+
+    size_t cpTime(std::vector<T> &);
 
     /**
      * Getters
@@ -185,45 +241,45 @@ public:
 };
 
 template<typename T>
-void Cache<T>::reshapePrimal() {
+void Cache<T>::reshapePrimalWorkspace() {
     size_t rowAxis = 0;
     size_t start = 0;
-    m_d_u = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeU - 1);
+    m_d_u = std::make_unique<DTensor<T>>(*m_d_primWorkspace, rowAxis, start, start + m_sizeU - 1);
     m_d_u->reshape(m_data.numInputs(), 1, m_tree.numNonleafNodes());
     start += m_sizeU;
-    m_d_x = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeX - 1);
+    m_d_x = std::make_unique<DTensor<T>>(*m_d_primWorkspace, rowAxis, start, start + m_sizeX - 1);
     m_d_x->reshape(m_data.numStates(), 1, m_tree.numNodes());
     start += m_sizeX;
-    m_d_y = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeY - 1);
+    m_d_y = std::make_unique<DTensor<T>>(*m_d_primWorkspace, rowAxis, start, start + m_sizeY - 1);
     m_d_y->reshape(m_data.yDim(), 1, m_tree.numNonleafNodes());
     start += m_sizeY;
-    m_d_t = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeT - 1);
+    m_d_t = std::make_unique<DTensor<T>>(*m_d_primWorkspace, rowAxis, start, start + m_sizeT - 1);
     m_d_t->reshape(1, 1, m_tree.numNodes());
     start += m_sizeT;
-    m_d_s = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeS - 1);
+    m_d_s = std::make_unique<DTensor<T>>(*m_d_primWorkspace, rowAxis, start, start + m_sizeS - 1);
     m_d_s->reshape(1, 1, m_tree.numNodes());
 }
 
 template<typename T>
-void Cache<T>::reshapeDual() {
+void Cache<T>::reshapeDualWorkspace() {
     size_t rowAxis = 0;
     size_t start = 0;
-    m_d_i = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeI - 1);
+    m_d_i = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeI - 1);
     m_d_i->reshape(m_data.yDim(), 1, m_tree.numNonleafNodes());
     start += m_sizeI;
-    m_d_ii = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeII - 1);
+    m_d_ii = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeII - 1);
     m_d_ii->reshape(1, 1, m_tree.numNonleafNodes());
     start += m_sizeII;
-    m_d_iii = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeIII - 1);
+    m_d_iii = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeIII - 1);
     m_d_iii->reshape(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
     start += m_sizeIII;
-    m_d_iv = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeIV - 1);
+    m_d_iv = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeIV - 1);
     m_d_iv->reshape(m_data.numStatesAndInputs() + 2, 1, m_tree.numNodes());
     start += m_sizeIV;
-    m_d_v = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeV - 1);
+    m_d_v = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeV - 1);
     m_d_v->reshape(m_data.numStates(), 1, m_tree.numLeafNodes());
     start += m_sizeV;
-    m_d_vi = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeVI - 1);
+    m_d_vi = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeVI - 1);
     m_d_vi->reshape(m_data.numStates() + 2, 1, m_tree.numLeafNodes());
 }
 
@@ -438,23 +494,67 @@ void Cache<T>::projectOnKernels() {
  */
 template<typename T>
 void Cache<T>::cpIter() {
+    /* Update previous primal and dual */
+    m_d_prim->deviceCopyTo(*m_d_primPrev);
+    m_d_dual->deviceCopyTo(*m_d_dualPrev);
+    /* Determine step size */
+    T alpha = 0.1;
+    /* Compute primalBar */
+    m_d_dual->deviceCopyTo(*m_d_dualWorkspace);
+    m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
+    *m_d_primWorkspace *= -alpha;
+    *m_d_primWorkspace += *m_d_prim;
+    /* Compute new primal */
     projectOnDynamics();
     projectOnKernels();
+    /* Do not change new primal! */
+    m_d_primWorkspace->deviceCopyTo(*m_d_prim);
+    /* Compute dualBar */
+    *m_d_primWorkspace *= 2.;
+    *m_d_primWorkspace -= *m_d_primPrev;
     m_L.op(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
-    m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
-    /** update z_bar */
-    /** update n_bar */
-    /** update z */
-    /** update n */
+    *m_d_dualWorkspace *= alpha;
+    *m_d_dualWorkspace += *m_d_dualPrev;
+    /* Compute new dual */
+    m_d_dualWorkspace->deviceCopyTo(*m_d_dual);
+    *m_d_dualWorkspace *= 1 / alpha;
+    /* -> Project I */
+    m_cartRiskNonleaf->project(*m_d_i);
+    /* -> Project II */
+    m_nnocNonleaf->project(*m_d_ii);
+    /* -> Project III */
+    if (m_data.nonleafConstraint()[0]->isRectangle()) {
+        k_projectRectangle<<<numBlocks(m_d_iii->numEl(), TPB), TPB>>>(m_d_iii->numEl(), m_d_iii->raw(),
+                                                                      m_d_loBoundNonleaf->raw(),
+                                                                      m_d_hiBoundNonleaf->raw());
+    } else if (m_data.nonleafConstraint()[0]->isBall()) {
+        /* TODO!  */
+    }
+    /* -> Project IV */
+    m_socsNonleaf->project(*m_d_iv);
+    /* -> Project V */
+    if (m_data.leafConstraint()[0]->isRectangle()) {
+        k_projectRectangle<<<numBlocks(m_d_v->numEl(), TPB), TPB>>>(m_d_v->numEl(), m_d_v->raw(),
+                                                                    m_d_loBoundLeaf->raw(), m_d_hiBoundLeaf->raw());
+    } else if (m_data.leafConstraint()[0]->isBall()) {
+        /* TODO!  */
+    }
+    /* -> Project VI */
+    m_socsLeaf->project(*m_d_vi);
+    /* Do not change new dual! */
+    *m_d_dual -= *m_d_dualWorkspace;
 }
 
+/**
+ * Compute iterations of vanilla CP algorithm and check error.
+ */
 template<typename T>
-void Cache<T>::vanillaCp(std::vector<T> &initState, std::vector<T> *previousSolution) {
+void Cache<T>::cpAlgo(std::vector<T> &initState, std::vector<T> *previousSolution) {
     initialiseState(initState);
     /* Load previous solution if given */
     if (previousSolution) m_d_prim->upload(*previousSolution);
-    /* Run CP algo */
     for (size_t i = 0; i < m_maxIters; i++) {
+        /* Compute CP iteration */
         cpIter();
         /** compute error */
         /** check error */
@@ -463,6 +563,21 @@ void Cache<T>::vanillaCp(std::vector<T> &initState, std::vector<T> *previousSolu
             break;
         }
     }
+}
+
+/**
+ * Time vanilla CP algorithm with a parallelised cache
+ */
+template<typename T>
+size_t Cache<T>::cpTime(std::vector<T> &initialState) {
+    std::cout << "timer started" << "\n";
+    const auto tick = std::chrono::high_resolution_clock::now();
+    /* Run vanilla CP algorithm */
+    cpAlgo(initialState);
+    const auto tock = std::chrono::high_resolution_clock::now();
+    auto durationMilli = std::chrono::duration<double, std::milli>(tock - tick).count();
+    std::cout << "timer stopped:  " << durationMilli << " ms" << "\n";
+    return 0;
 }
 
 template<typename T>

@@ -72,9 +72,7 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
             uNode.deviceCopyTo(iiiU);
         }
     } else if (m_data.nonleafConstraint()[0]->isBall()) {
-        /* Pre-multiply xuNonleaf by Gamma_{xu} */
-    } else {
-        throw std::invalid_argument("[L operator] nonleaf constraint given is not supported.");
+        /* TODO! Pre-multiply xuNonleaf by Gamma_{xu} */
     }
     /* IV:1 */
     for (size_t node = 1; node < m_tree.numNodes(); node++) {
@@ -118,9 +116,7 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
     if (m_data.leafConstraint()[0]->isNone() || m_data.leafConstraint()[0]->isRectangle()) {
         xLeaf.deviceCopyTo(v);
     } else if (m_data.leafConstraint()[0]->isBall()) {
-        /* Pre-multiply xLeaf by Gamma_{xN} */
-    } else {
-        throw std::invalid_argument("[L operator] leaf constraint given is not supported.");
+        /* TODO! Pre-multiply xLeaf by Gamma_{xN} */
     }
     /* VI:1 */
     m_d_xLeafWorkspace->addAB(m_data.sqrtStateWeightLeaf(), xLeaf);
@@ -166,9 +162,7 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
             iiiU.deviceCopyTo(uNode);
         }
     } else if (m_data.nonleafConstraint()[0]->isBall()) {
-        /* Pre-multiply iii by Gamma^{T}_{x} and Gamma^{T}_{u} */
-    } else {
-        throw std::invalid_argument("[L adjoint] nonleaf constraint given is not supported.");
+        /* TODO! Pre-multiply iii by Gamma^{T}_{x} and Gamma^{T}_{u} */
     }
     /* x (nonleaf) */
     /* -> Compute `Qiv1` at every nonroot node */
@@ -234,9 +228,7 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     if (m_data.leafConstraint()[0]->isNone() || m_data.leafConstraint()[0]->isRectangle()) {
         v.deviceCopyTo(xLeaf);
     } else if (m_data.leafConstraint()[0]->isBall()) {
-        /* Pre-multiply v by Gamma^{T}_{xN} */
-    } else {
-        throw std::invalid_argument("[L adjoint] leaf constraint given is not supported.");
+        /* TODO! Pre-multiply v by Gamma^{T}_{xN} */
     }
     /* x (leaf) */
     for (size_t idx = 0; idx < m_tree.numLeafNodes(); idx++) {

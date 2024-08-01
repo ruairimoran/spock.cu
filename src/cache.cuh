@@ -117,6 +117,8 @@ protected:
 
     void projectOnKernels();
 
+    void computeError();
+
 public:
     /**
      * Constructor
@@ -489,6 +491,33 @@ void Cache<T>::projectOnKernels() {
     }
 }
 
+template<typename T>
+void Cache<T>::computeError() {
+    /* Primal error */
+    m_d_primPrev->deviceCopyTo(*m_d_primWorkspace);
+    *m_d_primWorkspace -= *m_d_prim;
+    *m_d_primWorkspace *= m_data.stepSizeRecip();
+
+//    p_minus_p_new_over_alpha1 = [(a_i - b_i) / self.__parameter_1 for a_i, b_i in zip(old_prim_, new_prim_)]
+//    ell_transpose_d_minus_d_new = [a_i - b_i for a_i, b_i in zip(self.__old_ell_t_dual, ell_t_dual_)]
+//    xi_1 = [a_i - b_i for a_i, b_i in zip(p_minus_p_new_over_alpha1, ell_transpose_d_minus_d_new)]
+//    /* Dual error */
+//    d_minus_d_new_over_alpha2 = [(a_i - b_i) / self.__parameter_2 for a_i, b_i in zip(old_dual_, new_dual_)]
+//    ell_p_new_minus_p = [a_i - b_i for a_i, b_i in zip(ell_prim_, self.__old_ell_prim)]
+//    xi_2 = [a_i + b_i for a_i, b_i in zip(d_minus_d_new_over_alpha2, ell_p_new_minus_p)]
+//    /* Primal-dual error */
+//    ell_transpose_error2 = self.get_primal()  # get memory position
+//        self.__linear_operator.ell_transpose(xi_2, ell_transpose_error2)
+//    xi_0 = [a_i + b_i for a_i, b_i in zip(xi_1, ell_transpose_error2)]
+//    /* Sort errors */
+//    if xi_0 is not None:
+//    xi = [xi_0, xi_1, xi_2]
+//    for i in range(3):
+//    inf_norm_xi = [np.linalg.norm(a_i, ord=np.inf) for a_i in xi[i]]
+//    self.__error[i] = np.linalg.norm(inf_norm_xi, np.inf)
+//    return max(self.__error)
+}
+
 /**
  * Compute one (1) iteration of vanilla CP algorithm, nothing more.
  */
@@ -497,12 +526,10 @@ void Cache<T>::cpIter() {
     /* Update previous primal and dual */
     m_d_prim->deviceCopyTo(*m_d_primPrev);
     m_d_dual->deviceCopyTo(*m_d_dualPrev);
-    /* Determine step size */
-    T alpha = 0.1;
     /* Compute primalBar */
     m_d_dual->deviceCopyTo(*m_d_dualWorkspace);
     m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
-    *m_d_primWorkspace *= -alpha;
+    *m_d_primWorkspace *= -m_data.stepSize();
     *m_d_primWorkspace += *m_d_prim;
     /* Compute new primal */
     projectOnDynamics();
@@ -513,11 +540,11 @@ void Cache<T>::cpIter() {
     *m_d_primWorkspace *= 2.;
     *m_d_primWorkspace -= *m_d_primPrev;
     m_L.op(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
-    *m_d_dualWorkspace *= alpha;
+    *m_d_dualWorkspace *= m_data.stepSize();
     *m_d_dualWorkspace += *m_d_dualPrev;
     /* Compute new dual */
     m_d_dualWorkspace->deviceCopyTo(*m_d_dual);
-    *m_d_dualWorkspace *= 1 / alpha;
+    *m_d_dualWorkspace *= m_data.stepSizeRecip();
     /* -> Project I */
     m_cartRiskNonleaf->project(*m_d_i);
     /* -> Project II */
@@ -556,8 +583,8 @@ void Cache<T>::cpAlgo(std::vector<T> &initState, std::vector<T> *previousSolutio
     for (size_t i = 0; i < m_maxIters; i++) {
         /* Compute CP iteration */
         cpIter();
-        /** compute error */
-        /** check error */
+        /* Compute error */
+        /* Check error */
         if ((*m_d_cacheError)(i) <= m_tol) {
             m_countIterations = i;
             break;

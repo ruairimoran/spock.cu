@@ -37,6 +37,8 @@ private:
     size_t m_numInputs = 0;  ///< Total number control inputs
     size_t m_numStatesAndInputs = 0;
     size_t m_numY = 0;  ///< Size of primal vector 'y'
+    T m_alpha = 0.1;  ///< Step size of CP operator T
+    T m_oneOverAlpha = 1 / m_alpha;  ///< Step size of CP operator T
     std::unique_ptr<DTensor<T>> m_d_stateDynamics = nullptr;  ///< Ptr to
     std::unique_ptr<DTensor<T>> m_d_inputDynamics = nullptr;  ///< Ptr to
     std::unique_ptr<DTensor<T>> m_d_inputDynamicsTr = nullptr;  ///< Ptr to
@@ -214,6 +216,10 @@ public:
     size_t numInputs() { return m_numInputs; }
 
     size_t numStatesAndInputs() { return m_numStatesAndInputs; }
+
+    T stepSize() { return m_alpha; }
+
+    T stepSizeRecip() { return m_oneOverAlpha; }
 
     size_t nullDim() { return m_nullDim; }
 

@@ -110,10 +110,9 @@ public:
                          std::istreambuf_iterator<char>());
         rapidjson::Document doc;
         doc.Parse(json.c_str());
-
         if (doc.HasParseError()) {
-            std::cerr << "Error parsing problem data JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
-            throw std::invalid_argument("Cannot parse problem data JSON file");
+            err << "[Problem] Cannot parse problem data JSON file: " << GetParseError_En(doc.GetParseError()) << "\n";
+            throw std::invalid_argument(err.str());
         }
 
         /** Store single element data from JSON in host memory */
@@ -127,8 +126,8 @@ public:
         m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>>(m_tree.numStages() - 1);
         m_choleskyStage = std::vector<std::unique_ptr<DTensor<T>>>(m_tree.numStages() - 1);
         m_nonleafConstraint = std::vector<std::unique_ptr<Constraint<T>>>(m_tree.numNonleafNodes());
-        m_leafConstraint = std::vector<std::unique_ptr<Constraint<T>>>(m_tree.numNodes());
-        m_risk = std::vector<std::unique_ptr<CoherentRisk<T>>>(m_tree.numNodes());
+        m_leafConstraint = std::vector<std::unique_ptr<Constraint<T>>>(m_tree.numLeafNodes());
+        m_risk = std::vector<std::unique_ptr<CoherentRisk<T>>>(m_tree.numNonleafNodes());
 
         /** Allocate memory on device */
         m_d_stateDynamics = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
@@ -179,9 +178,10 @@ public:
         }
         for (size_t i = m_tree.numNonleafNodes(); i < m_tree.numNodes(); i++) {
             nodeString = std::to_string(i).c_str();
-            parseMatrix(i - m_tree.numNonleafNodes(), doc["leafStateCosts"][nodeString], m_d_stateWeightLeaf);
-            parseMatrix(i - m_tree.numNonleafNodes(), doc["sqrtLeafStateCosts"][nodeString], m_d_sqrtStateWeightLeaf);
-            parseConstraint(i, doc["leafConstraints"][nodeString], m_leafConstraint);
+            size_t idx = i - m_tree.numNonleafNodes();
+            parseMatrix(idx, doc["leafStateCosts"][nodeString], m_d_stateWeightLeaf);
+            parseMatrix(idx, doc["sqrtLeafStateCosts"][nodeString], m_d_sqrtStateWeightLeaf);
+            parseConstraint(idx, doc["leafConstraints"][nodeString], m_leafConstraint);
         }
         for (size_t stage = 0; stage < m_tree.numStages() - 1; stage++) {
             size_t nodeFr = m_tree.stageFrom()[stage];
@@ -279,7 +279,7 @@ public:
             m_nonleafConstraint[i]->print();
         }
         std::cout << "Leaf state constraints: \n";
-        for (size_t i = 1; i < m_tree.numNodes(); i++) {
+        for (size_t i = m_tree.numNonleafNodes(); i < m_tree.numNodes(); i++) {
             m_leafConstraint[i]->print();
         }
         for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {

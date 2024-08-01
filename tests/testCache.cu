@@ -7,8 +7,9 @@
 
 class CacheTest : public testing::Test {
 protected:
-    CacheTest() {}
-    virtual ~CacheTest() {}
+    CacheTest() = default;
+
+    virtual ~CacheTest() = default;
 };
 
 TEMPLATE_WITH_TYPE_T
@@ -21,12 +22,8 @@ public:
     std::unique_ptr<Cache<T>> m_cache;
 
     /** Prepare some host and device data */
-    size_t m_n = 64;
     T m_tol = 1e-4;
     size_t m_maxIters = 20;
-    DTensor<T> m_d_data = DTensor<T>(m_n);
-    std::vector<T> m_hostData = std::vector<T>(m_n);
-    std::vector<T> m_hostTest = std::vector<T>(m_n);
 
     CacheTestData() {
         std::ifstream tree_data(m_treeFileLoc);
@@ -34,18 +31,13 @@ public:
         m_tree = std::make_unique<ScenarioTree<T>>(tree_data);
         m_data = std::make_unique<ProblemData<T>>(*m_tree, problem_data);
         m_cache = std::make_unique<Cache<T>>(*m_tree, *m_data, m_tol, m_maxIters);
-
-        /** Positive and negative values in m_data */
-        for (size_t i = 0; i < m_n; i = i + 2) { m_hostData[i] = -2. * (i + 1.); }
-        for (size_t i = 1; i < m_n; i = i + 2) { m_hostData[i] = 2. * (i + 1.); }
-        m_d_data.upload(m_hostData);
     };
 
-    virtual ~CacheTestData() {}
+    virtual ~CacheTestData() = default;
 };
 
 TEMPLATE_WITH_TYPE_T
-static void parse(size_t nodeIdx, const rapidjson::Value &value, std::vector<T> &vec) {
+static void parseNode(size_t nodeIdx, const rapidjson::Value &value, std::vector<T> &vec) {
     size_t numElements = value.Capacity();
     for (rapidjson::SizeType i = 0; i < numElements; i++) {
         vec[nodeIdx * numElements + i] = value[i].GetDouble();
@@ -86,7 +78,7 @@ void testDynamicsProjectionOnline(CacheTestData<T> &d, T epsilon) {
     doc.Parse(json.c_str());
     if (doc.HasParseError()) {
         std::cerr << "Error parsing problem data JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
-        throw std::invalid_argument("Cannot parse problem data JSON file for testing DP");
+        throw std::invalid_argument("[TestDynamicsProjectionOnline] Cannot parse problem data JSON file");
     }
     size_t statesSize = d.m_data->numStates() * d.m_tree->numNodes();
     size_t inputsSize = d.m_data->numInputs() * d.m_tree->numNonleafNodes();
@@ -97,11 +89,11 @@ void testDynamicsProjectionOnline(CacheTestData<T> &d, T epsilon) {
     const char *nodeString = nullptr;
     for (size_t i = 0; i < d.m_tree->numNodes(); i++) {
         nodeString = std::to_string(i).c_str();
-        parse(i, doc["dpStates"][nodeString], originalStates);
-        parse(i, doc["dpProjectedStates"][nodeString], cvxStates);
+        parseNode(i, doc["dpStates"][nodeString], originalStates);
+        parseNode(i, doc["dpProjectedStates"][nodeString], cvxStates);
         if (i < d.m_tree->numNonleafNodes()) {
-            parse(i, doc["dpInputs"][nodeString], originalInputs);
-            parse(i, doc["dpProjectedInputs"][nodeString], cvxInputs);
+            parseNode(i, doc["dpInputs"][nodeString], originalInputs);
+            parseNode(i, doc["dpProjectedInputs"][nodeString], cvxInputs);
         }
     }
     std::vector<T> x0(originalStates.begin(), originalStates.begin() + d.m_data->numStates());
@@ -140,7 +132,7 @@ void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon) {
     doc.Parse(json.c_str());
     if (doc.HasParseError()) {
         std::cerr << "Error parsing problem data JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
-        throw std::invalid_argument("Cannot parse problem data JSON file for testing projection on kernels");
+        throw std::invalid_argument("[TestKernelProjectionOnline] Cannot parse problem data JSON file");
     }
     /* Create random tensor data to be projected */
     T hi = 100.;
@@ -193,7 +185,7 @@ void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon) {
         rapidjson::Value &s2 = risk["S2"];
         size_t numEl = s2.Capacity();
         std::vector<T> s2Vec(numEl);
-        parse(0, s2, s2Vec);
+        parseNode(0, s2, s2Vec);
         size_t nR = doc["rowsS2"].GetInt();
         DTensor<T> kerConMat(s2Vec, nR, d.m_data->nullDim(), 1, rowMajor);
         /* Compute kernel matrix * projected vector */

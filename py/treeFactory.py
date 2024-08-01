@@ -85,6 +85,13 @@ class Tree:
         return len(self.__ancestors)
 
     @property
+    def num_leaf_nodes(self):
+        """
+        :return: number of leaf nodes of the tree
+        """
+        return self.num_nodes - self.num_nonleaf_nodes
+
+    @property
     def num_stages(self):
         """
         :return: number of stages including zero stage

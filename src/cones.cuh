@@ -24,9 +24,10 @@ protected:
 
     bool dimensionCheck(DTensor<T> &d_vec) {
         if (d_vec.numRows() != m_dimension || d_vec.numCols() != 1 || d_vec.numMats() != 1) {
-            std::cerr << "DTensor is [" << d_vec.numRows() << " x " << d_vec.numCols() << " x " << d_vec.numMats()
-                      << "], but cone has dimensions [" << m_dimension << " x " << 1 << " x " << 1 << "]\n";
-            throw std::invalid_argument("DTensor and cone dimensions mismatch");
+            err << "[ConvexCone] DTensor is ["
+                << d_vec.numRows() << " x " << d_vec.numCols() << " x " << d_vec.numMats()
+                << "], but cone has dimensions [" << m_dimension << " x 1 x 1]\n";
+            throw std::invalid_argument(err.str());
         }
         return true;
     }

@@ -12,14 +12,29 @@
 template<typename T>
 __global__ void k_setToZero(T *vec, size_t n);
 
-template<typename T> class CacheTestData;
-template<typename T> void testInitialisingState(CacheTestData<T> &d);
-template<typename T> void testDynamicsProjectionOnline(CacheTestData<T> &d, T epsilon);
-template<typename T> void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon);
-template<typename T> void testKernelProjectionOnlineOrthogonality(CacheTestData<T> &d, T epsilon);
-template<typename T> class OperatorTestData;
-template<typename T> void testOperator(OperatorTestData<T> &d);
-template<typename T> void testAdjoint(OperatorTestData<T> &d);
+template<typename T>
+class CacheTestData;
+
+template<typename T>
+void testInitialisingState(CacheTestData<T> &);
+
+template<typename T>
+void testDynamicsProjectionOnline(CacheTestData<T> &, T);
+
+template<typename T>
+void testKernelProjectionOnline(CacheTestData<T> &, T);
+
+template<typename T>
+void testKernelProjectionOnlineOrthogonality(CacheTestData<T> &, T);
+
+template<typename T>
+class OperatorTestData;
+
+template<typename T>
+void testOperator(OperatorTestData<T> &, T);
+
+template<typename T>
+void testAdjoint(OperatorTestData<T> &, T);
 
 
 /**
@@ -107,16 +122,16 @@ public:
         m_sizeII = m_tree.numNonleafNodes();
         m_sizeIII = m_tree.numNonleafNodes() * m_data.numStatesAndInputs();  // Might need to change for non-rectangles
         m_sizeIV = m_tree.numNodes() * (m_data.numStatesAndInputs() + 2);
-        m_sizeV = m_tree.numNodes() * m_data.numStates();
-        m_sizeVI = m_tree.numNodes() * (m_data.numStates() + 2);
+        m_sizeV = m_tree.numLeafNodes() * m_data.numStates();
+        m_sizeVI = m_tree.numLeafNodes() * (m_data.numStates() + 2);
         m_dualSize = m_sizeI + m_sizeII + m_sizeIII + m_sizeIV + m_sizeV + m_sizeVI;
         /* Allocate memory on device */
-        m_d_prim = std::make_unique<DTensor<T>>(m_primSize, true);
-        m_d_primPrev = std::make_unique<DTensor<T>>(m_primSize, true);
-        m_d_dual = std::make_unique<DTensor<T>>(m_dualSize, true);
-        m_d_dualPrev = std::make_unique<DTensor<T>>(m_dualSize, true);
-        m_d_cacheError = std::make_unique<DTensor<T>>(m_maxIters, true);
-        m_d_initState = std::make_unique<DTensor<T>>(m_data.numStates(), true);
+        m_d_prim = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
+        m_d_primPrev = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
+        m_d_dual = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
+        m_d_dualPrev = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
+        m_d_cacheError = std::make_unique<DTensor<T>>(m_maxIters, 1, 1, true);
+        m_d_initState = std::make_unique<DTensor<T>>(m_data.numStates(), 1, 1, true);
         m_d_q = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
         m_d_d = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNonleafNodes(), true);
         m_d_xSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
@@ -128,7 +143,7 @@ public:
         reshapeDual();
     }
 
-    ~Cache() {}
+    ~Cache() = default;
 
     /**
      * Public methods
@@ -151,17 +166,17 @@ public:
     /**
      * Test functions. As a friend, they can access protected members.
      */
-    friend void testInitialisingState <> (CacheTestData<T> &d);
+    friend void testInitialisingState<>(CacheTestData<T> &);
 
-    friend void testDynamicsProjectionOnline <> (CacheTestData<T> &d, T epsilon);
+    friend void testDynamicsProjectionOnline<>(CacheTestData<T> &, T);
 
-    friend void testKernelProjectionOnline <> (CacheTestData<T> &d, T epsilon);
+    friend void testKernelProjectionOnline<>(CacheTestData<T> &, T);
 
-    friend void testKernelProjectionOnlineOrthogonality <> (CacheTestData<T> &d, T epsilon);
+    friend void testKernelProjectionOnlineOrthogonality<>(CacheTestData<T> &, T);
 
-    friend void testOperator <> (OperatorTestData<T> &d);
+    friend void testOperator<>(OperatorTestData<T> &, T);
 
-    friend void testAdjoint <> (OperatorTestData<T> &d);
+    friend void testAdjoint<>(OperatorTestData<T> &, T);
 
     /**
      * Debugging
@@ -206,10 +221,10 @@ void Cache<T>::reshapeDual() {
     m_d_iv->reshape(m_data.numStatesAndInputs() + 2, 1, m_tree.numNodes());
     start += m_sizeIV;
     m_d_v = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeV - 1);
-    m_d_v->reshape(m_data.numStates(), 1, m_tree.numNodes());
+    m_d_v->reshape(m_data.numStates(), 1, m_tree.numLeafNodes());
     start += m_sizeV;
     m_d_vi = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeVI - 1);
-    m_d_vi->reshape(m_data.numStates() + 2, 1, m_tree.numNodes());
+    m_d_vi->reshape(m_data.numStates() + 2, 1, m_tree.numLeafNodes());
 }
 
 template<typename T>

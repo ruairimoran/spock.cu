@@ -4,6 +4,9 @@
 #include "../include/gpu.cuh"
 
 
+template<typename T>
+__global__ void k_setToZero(T *vec, size_t n);
+
 
 /**
  * Linear operator 'L' and its adjoint
@@ -16,6 +19,8 @@ protected:
     size_t m_matAxis = 2;
     std::unique_ptr<DTensor<T>> m_d_uNonleafWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xNonleafWorkspace = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_uNonleafAdd = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_xNonleafAdd = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xLeafWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_scalarWorkspace = nullptr;
 
@@ -27,6 +32,8 @@ public:
         m_tree(tree), m_data(data) {
         m_d_uNonleafWorkspace = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNodes(), true);
         m_d_xNonleafWorkspace = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
+        m_d_uNonleafAdd = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNonleafNodes(), true);
+        m_d_xNonleafAdd = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNonleafNodes(), true);
         m_d_xLeafWorkspace = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numLeafNodes(), true);
         m_d_scalarWorkspace = std::make_unique<DTensor<T>>(1, 1, m_tree.numNodes(), true);
     }
@@ -108,10 +115,9 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
     }
     /* V */
     DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
-    if (m_data.leafConstraint()[m_tree.numNonleafNodes()]->isNone() || m_data.leafConstraint()[m_tree.numNonleafNodes()]->isRectangle()) {
-        DTensor<T> vLeaf(v, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
-        xLeaf.deviceCopyTo(vLeaf);
-    } else if (m_data.leafConstraint()[m_tree.numNonleafNodes()]->isBall()) {
+    if (m_data.leafConstraint()[0]->isNone() || m_data.leafConstraint()[0]->isRectangle()) {
+        xLeaf.deviceCopyTo(v);
+    } else if (m_data.leafConstraint()[0]->isBall()) {
         /* Pre-multiply xLeaf by Gamma_{xN} */
     } else {
         throw std::invalid_argument("[L operator] leaf constraint given is not supported.");
@@ -123,7 +129,7 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
     /* VI (organise VI:1-3) */
     for (size_t node = m_tree.numNonleafNodes(); node < m_tree.numNodes(); node++) {
         size_t idx = node - m_tree.numNonleafNodes();
-        DTensor<T> viNode(vi, m_matAxis, node, node);
+        DTensor<T> viNode(vi, m_matAxis, idx, idx);
         DTensor<T> sNode(s, m_matAxis, node, node);
         /* :1 */
         DTensor<T> xNode(*m_d_xLeafWorkspace, m_matAxis, idx, idx);
@@ -178,14 +184,15 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     for (size_t chIdx = 0; chIdx < m_tree.numEvents(); chIdx++) {  // Index of child of every nonleaf node
         for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
             size_t ch = m_tree.childFrom()[node] + chIdx;
+            DTensor<T> Qiv1_Node(*m_d_xNonleafAdd, m_matAxis, node, node);
             if (ch <= m_tree.childTo()[node]) {  // If more children exist, copy in their `Qiv1`
                 DTensor<T> Qiv1_ChNode(*m_d_xNonleafWorkspace, m_matAxis, ch, ch);
-                DTensor<T> Qiv1_Node(*m_d_xNonleafWorkspace, m_matAxis, node, node);
                 Qiv1_ChNode.deviceCopyTo(Qiv1_Node);
+            } else {  // If child does not exist, copy in zeros
+                k_setToZero<<<numBlocks(m_data.numStates(), TPB), TPB>>>(Qiv1_Node.raw(), m_data.numStates());
             }
         }
-        DTensor<T> x_Add(*m_d_xNonleafWorkspace, m_matAxis, 0, m_tree.numNonleafNodes() - 1);
-        x_Nonleaf += x_Add;
+        x_Nonleaf += *m_d_xNonleafAdd;
     }
     /* u */
     /* -> Compute `Riv2` at every nonroot node */
@@ -200,13 +207,15 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     for (size_t chIdx = 0; chIdx < m_tree.numEvents(); chIdx++) {  // Index of child of every nonleaf node
         for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
             size_t ch = m_tree.childFrom()[node] + chIdx;
+            DTensor<T> Riv2_Node(*m_d_uNonleafAdd, m_matAxis, node, node);
             if (ch <= m_tree.childTo()[node]) {  // If more children exist, copy in their `Qiv1`
                 DTensor<T> Riv2_ChNode(*m_d_uNonleafWorkspace, m_matAxis, ch, ch);
-                DTensor<T> Riv2_Node(*m_d_uNonleafWorkspace, m_matAxis, node, node);
                 Riv2_ChNode.deviceCopyTo(Riv2_Node);
+            } else {  // If child does not exist, copy in zeros
+                k_setToZero<<<numBlocks(m_data.numInputs(), TPB), TPB>>>(Riv2_Node.raw(), m_data.numInputs());
             }
         }
-        u += *m_d_uNonleafWorkspace;
+        u += *m_d_uNonleafAdd;
     }
     /* t */
     for (size_t node = 1; node < m_tree.numNodes(); node++) {
@@ -222,18 +231,16 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     t *= 0.5;
     /* x (leaf):Gamma */
     DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
-    if (m_data.leafConstraint()[m_tree.numNonleafNodes()]->isNone() || m_data.leafConstraint()[m_tree.numNonleafNodes()]->isRectangle()) {
-        DTensor<T> vLeaf(v, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
-        vLeaf.deviceCopyTo(xLeaf);
-    } else if (m_data.leafConstraint()[m_tree.numNonleafNodes()]->isBall()) {
+    if (m_data.leafConstraint()[0]->isNone() || m_data.leafConstraint()[0]->isRectangle()) {
+        v.deviceCopyTo(xLeaf);
+    } else if (m_data.leafConstraint()[0]->isBall()) {
         /* Pre-multiply v by Gamma^{T}_{xN} */
     } else {
         throw std::invalid_argument("[L adjoint] leaf constraint given is not supported.");
     }
     /* x (leaf) */
-    for (size_t node = m_tree.numNonleafNodes(); node < m_tree.numNodes(); node++) {
-        size_t idx = node - m_tree.numNonleafNodes();
-        DTensor<T> viNode(vi, m_matAxis, node, node);
+    for (size_t idx = 0; idx < m_tree.numLeafNodes(); idx++) {
+        DTensor<T> viNode(vi, m_matAxis, idx, idx);
         DTensor<T> vi1(viNode, 0, 0, m_data.numStates() - 1);
         DTensor<T> ws(*m_d_xLeafWorkspace, m_matAxis, idx, idx);
         vi1.deviceCopyTo(ws);
@@ -241,7 +248,8 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     xLeaf.addAB(m_data.sqrtStateWeightLeaf(), *m_d_xLeafWorkspace, 1., 1.);
     /* s (leaf) */
     for (size_t node = m_tree.numNonleafNodes(); node < m_tree.numNodes(); node++) {
-        DTensor<T> viNode(vi, m_matAxis, node, node);
+        size_t idx = node - m_tree.numNonleafNodes();
+        DTensor<T> viNode(vi, m_matAxis, idx, idx);
         DTensor<T> sNode(s, m_matAxis, node, node);
         DTensor<T> wsNode(*m_d_scalarWorkspace, m_matAxis, node, node);
         DTensor<T> vi2(viNode, 0, m_data.numStates(), m_data.numStates());
@@ -251,7 +259,7 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     }
     DTensor<T> sLeaf(*m_d_scalarWorkspace, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
     DTensor<T> wsLeaf(*m_d_scalarWorkspace, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
-    sLeaf += *m_d_scalarWorkspace;
+    sLeaf += wsLeaf;
     sLeaf *= 0.5;
 }
 

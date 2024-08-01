@@ -271,7 +271,9 @@ class Problem:
             y[i] = np.vstack(((f * np.random.randn(size_y, 1)), np.zeros((full_size_y - size_y, 1))))
         t = [0.] + (f * np.random.randn(self.__tree.num_nodes - 1)).tolist()
         s = (f * np.random.randn(self.__tree.num_nodes)).tolist()
-        prim = self.__flatten(u) + self.__flatten(x) + self.__flatten(y) + t + s
+        prim = []
+        for i in [u, x, y, t, s]:
+            prim += self.__flatten(i)
         self.__prim_before_op = deepcopy(prim)
 
         # ---- L operator ----
@@ -308,18 +310,20 @@ class Problem:
         if (self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_no
                 or self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_rectangle):
             # Gamma_{x} and Gamma{u} do not change x and u
-            v = [np.zeros((num_si, 1))] * self.__tree.num_nodes
+            v = [np.zeros((num_si, 1))] * self.__tree.num_leaf_nodes
             for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
-                v[i] = x[i]
+                idx = i - self.__tree.num_nonleaf_nodes
+                v[idx] = x[i]
         if self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_ball:
             pass  # TODO!
 
         # -> vi
-        vi = [np.zeros((self.__num_states + 2, 1))] * self.__tree.num_nodes
+        vi = [np.zeros((self.__num_states + 2, 1))] * self.__tree.num_leaf_nodes
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
+            idx = i - self.__tree.num_nonleaf_nodes
             half_s = s[i] * 0.5
-            vi[i] = np.vstack((self.__sqrt_leaf_state_costs[i] @ x[i],
-                               half_s, half_s))
+            vi[idx] = np.vstack((self.__sqrt_leaf_state_costs[i] @ x[i],
+                                 half_s, half_s))
 
         # ---- end L operator ----
 
@@ -361,22 +365,28 @@ class Problem:
         if (self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_no
                 or self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_rectangle):
             for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
-                x[i] = v[i]
+                idx = i - self.__tree.num_nonleaf_nodes
+                x[i] = v[idx]
         if self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_ball:
             pass  # TODO!
 
         # -> x (leaf)
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
-            x[i] += self.__sqrt_leaf_state_costs[i] @ vi[i][:self.__num_states]
+            idx = i - self.__tree.num_nonleaf_nodes
+            x[i] += self.__sqrt_leaf_state_costs[i] @ vi[idx][:self.__num_states]
 
         # -> s (leaf)
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
-            s[i] = 0.5 * (vi[i][self.__num_states] + vi[i][self.__num_states + 1])
+            idx = i - self.__tree.num_nonleaf_nodes
+            s[i] = 0.5 * (vi[idx][self.__num_states] + vi[idx][self.__num_states + 1])
 
         # ---- end L adjoint ----
 
         # Gather primal
-        prim = self.__flatten(u) + self.__flatten(x) + self.__flatten(y) + t + s
+        prim = []
+        for i in [u, x, y, t, s]:
+            print(len(prim))
+            prim += self.__flatten(i)
         self.__prim_after_adj = deepcopy(prim)
 
 

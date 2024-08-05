@@ -37,8 +37,9 @@ private:
     size_t m_numInputs = 0;  ///< Total number control inputs
     size_t m_numStatesAndInputs = 0;
     size_t m_numY = 0;  ///< Size of primal vector 'y'
-    T m_alpha = 0.1;  ///< Step size of CP operator T
-    T m_oneOverAlpha = 1 / m_alpha;  ///< Step size of CP operator T
+    T m_alpha = 10;  ///< Step size of CP operator T
+    T m_oneOverAlpha = 1 / m_alpha;  ///< Reciprocal of step size of CP operator T
+    std::unique_ptr<DTensor<T>> m_d_alpha = nullptr;  ///< Step size of CP operator T
     std::unique_ptr<DTensor<T>> m_d_stateDynamics = nullptr;  ///< Ptr to
     std::unique_ptr<DTensor<T>> m_d_inputDynamics = nullptr;  ///< Ptr to
     std::unique_ptr<DTensor<T>> m_d_inputDynamicsTr = nullptr;  ///< Ptr to
@@ -132,6 +133,7 @@ public:
         m_risk = std::vector<std::unique_ptr<CoherentRisk<T>>>(m_tree.numNonleafNodes());
 
         /** Allocate memory on device */
+        m_d_alpha = std::make_unique<DTensor<T>>(1, 1, 1, true);
         m_d_stateDynamics = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_inputDynamics = std::make_unique<DTensor<T>>(m_numStates, m_numInputs, m_tree.numNodes(), true);
         m_d_inputDynamicsTr = std::make_unique<DTensor<T>>(m_numInputs, m_numStates, m_tree.numNodes(), true);
@@ -193,6 +195,7 @@ public:
         }
 
         /* Update remaining fields */
+        m_d_alpha->upload(std::vector{m_alpha});
         DTensor<T> BTr = m_d_inputDynamics->tr();
         BTr.deviceCopyTo(*m_d_inputDynamicsTr);
         DTensor<T> KTr = m_d_K->tr();
@@ -224,6 +227,8 @@ public:
     size_t nullDim() { return m_nullDim; }
 
     size_t yDim() { return m_numY; }
+
+    DTensor<T> &d_stepSize() { return *m_d_alpha; }
 
     DTensor<T> &stateDynamics() { return *m_d_stateDynamics; }
 

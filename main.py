@@ -8,9 +8,9 @@ import numpy as np
 
 p = np.array([[0.5, 0.5], [0.5, 0.5]])
 
-v = np.array([0.8, 0.2])
+v = np.array([0.3, 0.7])
 
-(horizon, stopping_stage) = (3, 2)
+(horizon, stopping_stage) = (5, 5)
 tree = py.treeFactory.TreeFactoryMarkovChain(
     transition_prob=p,
     initial_distribution=v,
@@ -26,31 +26,37 @@ print(tree)
 # --------------------------------------------------------
 
 # Sizes
-num_states = 3
-num_inputs = 2
+num_states = 4
+num_inputs = 4
+num_events = 2
 
 # State dynamics
-A = np.array([[1, 2, 3], [3, 1, 2], [2, 3, 1]])
-As = [1.5 * A, A, -1.5 * A]
+off_diag = 0.01 * np.ones((1, num_states - 1))[0]
+As = [None] * num_events
+for w in range(num_events):
+    As[w] = np.diag(off_diag, -1) + np.diag(off_diag, 1)
+    for j in range(num_states):
+        diag = 1 + (w/num_events) * (1 + (j-1)/num_states)
+        As[w][j][j] = diag
 
 # Input dynamics
-B = np.array([[3, 0], [1, 0], [0, 2]])
-Bs = [-1.5 * B, B, 1.5 * B]
+B = np.eye(num_inputs)
+Bs = [B, B]
 
 # State cost
 Q = np.eye(num_states)
-Qs = [2 * Q, 2 * Q, 2 * Q]
+Qs = [Q, Q]
 
 # Input cost
-R = np.eye(num_inputs)
-Rs = [1 * R, 1 * R, 1 * R]
+R = 10 * np.eye(num_inputs)
+Rs = [R, R]
 
 # Terminal state cost
-T = 100 * np.eye(num_states)
+T = np.eye(num_states)
 
 # State-input constraint
-state_lim = 6
-input_lim = 0.3
+state_lim = 1.
+input_lim = 1.5
 state_lb = -state_lim * np.ones((num_states, 1))
 state_ub = state_lim * np.ones((num_states, 1))
 input_lb = -input_lim * np.ones((num_inputs, 1))
@@ -60,7 +66,7 @@ si_ub = np.vstack((state_ub, input_ub))
 state_input_constraint = py.build.Rectangle(si_lb, si_ub)
 
 # Terminal constraint
-leaf_state_lim = 0.1
+leaf_state_lim = 1.
 leaf_state_lb = -leaf_state_lim * np.ones((num_states, 1))
 leaf_state_ub = leaf_state_lim * np.ones((num_states, 1))
 leaf_state_constraint = py.build.Rectangle(leaf_state_lb, leaf_state_ub)

@@ -50,7 +50,9 @@ public:
     explicit AVaR(size_t nodeIdx, size_t numChildren, DTensor<T> &nullspaceProj, DTensor<T> &b) :
         CoherentRisk<T>(nodeIdx, nullspaceProj, b) {
         size_t doubleNumCh = numChildren * 2;
-        /* The zero cone is extended for nodes with fewer children. */
+        /* The zero cone is extended for nodes with fewer children.
+         * As we are projecting on the dual, the buffer elements will never be changed.
+         */
         size_t fill = this->m_d_b->numEl() - doubleNumCh;
         m_nnoc = std::make_unique<NonnegativeOrthantCone<T>>(doubleNumCh);
         m_zero = std::make_unique<ZeroCone<T>>(fill);

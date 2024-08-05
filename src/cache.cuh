@@ -53,6 +53,9 @@ protected:
     T m_tol = 0;
     size_t m_maxIters = 0;
     size_t m_countIterations = 0;
+    T m_maxErr = 0;
+    std::vector<T> m_cacheError;
+    size_t m_warmupIters = 3;
     size_t m_matAxis = 2;
     size_t m_primSize = 0;
     size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
@@ -68,6 +71,8 @@ protected:
     size_t m_sizeVI = 0;
     std::unique_ptr<DTensor<T>> m_d_prim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_primPrev = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_adjDual = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_adjDualPrev = nullptr;
     std::unique_ptr<DTensor<T>> m_d_u = nullptr;
     std::unique_ptr<DTensor<T>> m_d_x = nullptr;
     std::unique_ptr<DTensor<T>> m_d_y = nullptr;
@@ -76,14 +81,15 @@ protected:
     size_t m_dualSize = 0;
     std::unique_ptr<DTensor<T>> m_d_dual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_dualPrev = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_opPrim = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_opPrimPrev = nullptr;
     std::unique_ptr<DTensor<T>> m_d_i = nullptr;
     std::unique_ptr<DTensor<T>> m_d_ii = nullptr;
     std::unique_ptr<DTensor<T>> m_d_iii = nullptr;
     std::unique_ptr<DTensor<T>> m_d_iv = nullptr;
     std::unique_ptr<DTensor<T>> m_d_v = nullptr;
     std::unique_ptr<DTensor<T>> m_d_vi = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_cacheError = nullptr;
-    /* Other */
+    /* Workspaces */
     std::unique_ptr<DTensor<T>> m_d_initState = nullptr;
     std::unique_ptr<DTensor<T>> m_d_primWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_dualWorkspace = nullptr;
@@ -93,14 +99,20 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_uSizeWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xuSizeWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_ytsSizeWorkspace = nullptr;
+    /* Projections */
     std::unique_ptr<SocProjection<T>> m_socsNonleaf = nullptr;
     std::unique_ptr<SocProjection<T>> m_socsLeaf = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_socsNonleafHalves = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_socsLeafHalves = nullptr;
     std::unique_ptr<NonnegativeOrthantCone<T>> m_nnocNonleaf = nullptr;
     std::unique_ptr<Cartesian<T>> m_cartRiskNonleaf = nullptr;
     std::unique_ptr<DTensor<T>> m_d_loBoundNonleaf = nullptr;
     std::unique_ptr<DTensor<T>> m_d_hiBoundNonleaf = nullptr;
     std::unique_ptr<DTensor<T>> m_d_loBoundLeaf = nullptr;
     std::unique_ptr<DTensor<T>> m_d_hiBoundLeaf = nullptr;
+    /* Errors */
+    std::unique_ptr<DTensor<T>> m_d_primErr = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_dualErr = nullptr;
 
     /**
      * Protected methods
@@ -113,11 +125,25 @@ protected:
 
     void initialiseState(std::vector<T> &initState);
 
-    void projectOnDynamics();
+    void proxRootS();
 
-    void projectOnKernels();
+    void projectPrimalWorkspaceOnDynamics();
+
+    void projectPrimalWorkspaceOnKernels();
+
+    void projectDualWorkspaceOnConstraints();
+
+    void modifyPrimal();
+
+    void proximalPrimal();
+
+    void modifyDual();
+
+    void proximalDual();
 
     void computeError();
+
+    void printToJson();
 
 public:
     /**
@@ -125,6 +151,7 @@ public:
      */
     Cache(ScenarioTree<T> &tree, ProblemData<T> &data, T tol, size_t maxIters) :
         m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters) {
+        m_cacheError = std::vector<T>(m_maxIters - m_warmupIters);
         /* Sizes */
         m_sizeU = m_tree.numNonleafNodes() * m_data.numInputs();  ///< Inputs of all nonleaf nodes
         m_sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
@@ -146,7 +173,6 @@ public:
         m_d_dual = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
         m_d_dualPrev = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
         m_d_dualWorkspace = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
-        m_d_cacheError = std::make_unique<DTensor<T>>(m_maxIters, 1, 1, true);
         m_d_initState = std::make_unique<DTensor<T>>(m_data.numStates(), 1, 1, true);
         m_d_q = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
         m_d_d = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNonleafNodes(), true);
@@ -154,6 +180,12 @@ public:
         m_d_uSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNodes(), true);
         m_d_xuSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNodes(), true);
         m_d_ytsSizeWorkspace = std::make_unique<DTensor<T>>(m_data.nullDim(), 1, m_tree.numNonleafNodes(), true);
+        m_d_adjDual = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
+        m_d_adjDualPrev = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
+        m_d_opPrim = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
+        m_d_opPrimPrev = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
+        m_d_primErr = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
+        m_d_dualErr = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
         /* Slice and reshape primal and dual workspaces */
         reshapePrimalWorkspace();
         reshapeDualWorkspace();
@@ -180,6 +212,14 @@ public:
         }
         /* IV */
         m_socsNonleaf = std::make_unique<SocProjection<T>>(*m_d_iv);
+        m_d_socsNonleafHalves = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs() + 2, 1, m_tree.numNodes());
+        std::vector<T> nonleafHalves(m_data.numStatesAndInputs() + 2, 0.);
+        nonleafHalves[m_data.numStatesAndInputs()] = -0.5;
+        nonleafHalves[m_data.numStatesAndInputs() + 1] = 0.5;
+        for (size_t i = 1; i < m_tree.numNodes(); i++) {
+            DTensor<T> node(*m_d_socsNonleafHalves, m_matAxis, i, i);
+            node.upload(nonleafHalves);
+        }
         /* V */
         if (m_data.leafConstraint()[0]->isRectangle()) {
             m_d_loBoundLeaf = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numLeafNodes());
@@ -197,6 +237,14 @@ public:
         }
         /* VI */
         m_socsLeaf = std::make_unique<SocProjection<T>>(*m_d_vi);
+        m_d_socsLeafHalves = std::make_unique<DTensor<T>>(m_data.numStates() + 2, 1, m_tree.numLeafNodes());
+        std::vector<T> leafHalves(m_data.numStates() + 2, 0.);
+        leafHalves[m_data.numStates()] = -0.5;
+        leafHalves[m_data.numStates() + 1] = 0.5;
+        for (size_t i = 0; i < m_tree.numLeafNodes(); i++) {
+            DTensor<T> node(*m_d_socsLeafHalves, m_matAxis, i, i);
+            node.upload(leafHalves);
+        }
     }
 
     ~Cache() = default;
@@ -303,8 +351,17 @@ void Cache<T>::setRootState() {
     m_d_initState->deviceCopyTo(firstState);
 }
 
+/**
+ * Proximal operator of `alpha * Id` on `s` at root node
+ */
 template<typename T>
-void Cache<T>::projectOnDynamics() {
+void Cache<T>::proxRootS() {
+    DTensor<T> sRoot(*m_d_s, m_matAxis, 0, 0);
+    sRoot -= m_data.d_stepSize();
+}
+
+template<typename T>
+void Cache<T>::projectPrimalWorkspaceOnDynamics() {
     /*
      * Set first q
      */
@@ -445,7 +502,7 @@ void Cache<T>::projectOnDynamics() {
 }
 
 template<typename T>
-void Cache<T>::projectOnKernels() {
+void Cache<T>::projectPrimalWorkspaceOnKernels() {
     /**
      * Project on kernel of every node of tree at once
      */
@@ -492,64 +549,12 @@ void Cache<T>::projectOnKernels() {
 }
 
 template<typename T>
-void Cache<T>::computeError() {
-    /* Primal error */
-    m_d_primPrev->deviceCopyTo(*m_d_primWorkspace);
-    *m_d_primWorkspace -= *m_d_prim;
-    *m_d_primWorkspace *= m_data.stepSizeRecip();
-
-//    p_minus_p_new_over_alpha1 = [(a_i - b_i) / self.__parameter_1 for a_i, b_i in zip(old_prim_, new_prim_)]
-//    ell_transpose_d_minus_d_new = [a_i - b_i for a_i, b_i in zip(self.__old_ell_t_dual, ell_t_dual_)]
-//    xi_1 = [a_i - b_i for a_i, b_i in zip(p_minus_p_new_over_alpha1, ell_transpose_d_minus_d_new)]
-//    /* Dual error */
-//    d_minus_d_new_over_alpha2 = [(a_i - b_i) / self.__parameter_2 for a_i, b_i in zip(old_dual_, new_dual_)]
-//    ell_p_new_minus_p = [a_i - b_i for a_i, b_i in zip(ell_prim_, self.__old_ell_prim)]
-//    xi_2 = [a_i + b_i for a_i, b_i in zip(d_minus_d_new_over_alpha2, ell_p_new_minus_p)]
-//    /* Primal-dual error */
-//    ell_transpose_error2 = self.get_primal()  # get memory position
-//        self.__linear_operator.ell_transpose(xi_2, ell_transpose_error2)
-//    xi_0 = [a_i + b_i for a_i, b_i in zip(xi_1, ell_transpose_error2)]
-//    /* Sort errors */
-//    if xi_0 is not None:
-//    xi = [xi_0, xi_1, xi_2]
-//    for i in range(3):
-//    inf_norm_xi = [np.linalg.norm(a_i, ord=np.inf) for a_i in xi[i]]
-//    self.__error[i] = np.linalg.norm(inf_norm_xi, np.inf)
-//    return max(self.__error)
-}
-
-/**
- * Compute one (1) iteration of vanilla CP algorithm, nothing more.
- */
-template<typename T>
-void Cache<T>::cpIter() {
-    /* Update previous primal and dual */
-    m_d_prim->deviceCopyTo(*m_d_primPrev);
-    m_d_dual->deviceCopyTo(*m_d_dualPrev);
-    /* Compute primalBar */
-    m_d_dual->deviceCopyTo(*m_d_dualWorkspace);
-    m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
-    *m_d_primWorkspace *= -m_data.stepSize();
-    *m_d_primWorkspace += *m_d_prim;
-    /* Compute new primal */
-    projectOnDynamics();
-    projectOnKernels();
-    /* Do not change new primal! */
-    m_d_primWorkspace->deviceCopyTo(*m_d_prim);
-    /* Compute dualBar */
-    *m_d_primWorkspace *= 2.;
-    *m_d_primWorkspace -= *m_d_primPrev;
-    m_L.op(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
-    *m_d_dualWorkspace *= m_data.stepSize();
-    *m_d_dualWorkspace += *m_d_dualPrev;
-    /* Compute new dual */
-    m_d_dualWorkspace->deviceCopyTo(*m_d_dual);
-    *m_d_dualWorkspace *= m_data.stepSizeRecip();
-    /* -> Project I */
-    m_cartRiskNonleaf->project(*m_d_i);
-    /* -> Project II */
+void Cache<T>::projectDualWorkspaceOnConstraints() {
+    /* I */
+    m_cartRiskNonleaf->projectOnDual(*m_d_i);
+    /* II */
     m_nnocNonleaf->project(*m_d_ii);
-    /* -> Project III */
+    /* III */
     if (m_data.nonleafConstraint()[0]->isRectangle()) {
         k_projectRectangle<<<numBlocks(m_d_iii->numEl(), TPB), TPB>>>(m_d_iii->numEl(), m_d_iii->raw(),
                                                                       m_d_loBoundNonleaf->raw(),
@@ -557,19 +562,143 @@ void Cache<T>::cpIter() {
     } else if (m_data.nonleafConstraint()[0]->isBall()) {
         /* TODO!  */
     }
-    /* -> Project IV */
+    /* IV */
+    *m_d_iv += *m_d_socsNonleafHalves;
     m_socsNonleaf->project(*m_d_iv);
-    /* -> Project V */
+    /* V */
     if (m_data.leafConstraint()[0]->isRectangle()) {
         k_projectRectangle<<<numBlocks(m_d_v->numEl(), TPB), TPB>>>(m_d_v->numEl(), m_d_v->raw(),
                                                                     m_d_loBoundLeaf->raw(), m_d_hiBoundLeaf->raw());
     } else if (m_data.leafConstraint()[0]->isBall()) {
         /* TODO!  */
     }
-    /* -> Project VI */
+    /* VI */
+    *m_d_vi += *m_d_socsLeafHalves;
     m_socsLeaf->project(*m_d_vi);
-    /* Do not change new dual! */
+}
+
+/**
+ * Compute primalBar
+ */
+template<typename T>
+void Cache<T>::modifyPrimal() {
+    m_d_dual->deviceCopyTo(*m_d_dualWorkspace);
+    m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
+    m_d_adjDual->deviceCopyTo(*m_d_adjDualPrev);  // Save previous adjoint of dual for error computation
+    m_d_primWorkspace->deviceCopyTo(*m_d_adjDual);  // Save adjoint of dual for error computation
+    *m_d_primWorkspace *= -m_data.stepSize();
+    *m_d_primWorkspace += *m_d_prim;
+}
+
+/**
+ * Compute proximal of f on primalBar
+ */
+template<typename T>
+void Cache<T>::proximalPrimal() {
+    proxRootS();
+    projectPrimalWorkspaceOnDynamics();
+    projectPrimalWorkspaceOnKernels();
+    m_d_primWorkspace->deviceCopyTo(*m_d_prim);  // Store new primal
+}
+
+/**
+ * Compute dualBar
+ */
+template<typename T>
+void Cache<T>::modifyDual() {
+    *m_d_primWorkspace *= 2.;
+    *m_d_primWorkspace -= *m_d_primPrev;
+    m_L.op(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
+    m_d_opPrim->deviceCopyTo(*m_d_opPrimPrev);  // Save previous op of primal for error computation
+    m_d_dualWorkspace->deviceCopyTo(*m_d_opPrim);  // Save op of primal for error computation
+    *m_d_dualWorkspace *= m_data.stepSize();
+    *m_d_dualWorkspace += *m_d_dualPrev;
+}
+
+/**
+ * Compute proximal of g* on dualBar
+ */
+template<typename T>
+void Cache<T>::proximalDual() {
+    m_d_dualWorkspace->deviceCopyTo(*m_d_dual);
+    *m_d_dualWorkspace *= m_data.stepSizeRecip();
+    projectDualWorkspaceOnConstraints();
     *m_d_dual -= *m_d_dualWorkspace;
+}
+
+template<typename T>
+void Cache<T>::computeError() {
+    /* Primal error */
+    m_d_primPrev->deviceCopyTo(*m_d_primWorkspace);
+    *m_d_primWorkspace -= *m_d_prim;
+    *m_d_primWorkspace *= m_data.stepSizeRecip();
+    *m_d_primWorkspace += *m_d_adjDual;
+    *m_d_primWorkspace -= *m_d_adjDualPrev;
+    m_d_primWorkspace->deviceCopyTo(*m_d_primErr);
+    /* Dual error */
+    m_d_dualPrev->deviceCopyTo(*m_d_dualWorkspace);
+    *m_d_dualWorkspace -= *m_d_dual;
+    *m_d_dualWorkspace *= m_data.stepSizeRecip();
+    *m_d_dualWorkspace += *m_d_opPrim;
+    *m_d_dualWorkspace -= *m_d_opPrimPrev;
+    m_d_dualWorkspace->deviceCopyTo(*m_d_dualErr);
+    /* Primal-dual error (adds extra L adj) */
+    m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
+    *m_d_primWorkspace += *m_d_dualWorkspace;
+    /* Sort errors */
+    T primErr = m_d_primErr->maxAbs();
+    T dualErr = m_d_dualErr->maxAbs();
+    T pdErr = m_d_primWorkspace->maxAbs();
+    m_maxErr = primErr < dualErr ? dualErr : primErr;
+    m_maxErr = m_maxErr < pdErr ? m_maxErr : pdErr;
+}
+
+/**
+ * Compute one (1) iteration of vanilla CP algorithm, nothing more.
+ */
+template<typename T>
+void Cache<T>::cpIter() {
+    m_d_prim->deviceCopyTo(*m_d_primPrev);  // Update previous primal
+    m_d_dual->deviceCopyTo(*m_d_dualPrev);  // Update previous dual
+    modifyPrimal();
+    proximalPrimal();
+    modifyDual();
+    proximalDual();
+}
+
+/**
+ * Add a named vector to a .json file
+ */
+template<typename T>
+static void addArrayToJson(rapidjson::Document &doc, rapidjson::GenericStringRef<char> const &name, std::vector<T> &vec) {
+    rapidjson::Value array(rapidjson::kArrayType);
+    for (size_t i = 0; i < vec.size(); i++) {
+        array.PushBack(vec[i], doc.GetAllocator());
+    }
+    doc.AddMember(name, array, doc.GetAllocator());
+}
+
+/**
+ * Print data to .json file
+ */
+template<typename T>
+void Cache<T>::printToJson() {
+    char text[1000000];
+    rapidjson::MemoryPoolAllocator<> allocator(text, sizeof(text));
+    rapidjson::Document doc(&allocator, 256);
+    doc.SetObject();
+    doc.AddMember("maxIters", m_maxIters, doc.GetAllocator());
+    doc.AddMember("tol", m_tol, doc.GetAllocator());
+    rapidjson::GenericStringRef<char> n = "maxErrors";
+    addArrayToJson(doc, n, m_cacheError);
+    typedef rapidjson::GenericStringBuffer<rapidjson::UTF8<>, rapidjson::MemoryPoolAllocator<>> StringBuffer;
+    StringBuffer buffer(&allocator);
+    rapidjson::Writer<StringBuffer> writer(buffer, reinterpret_cast<rapidjson::CrtAllocator *>(&allocator));
+    doc.Accept(writer);
+    std::string json(buffer.GetString(), buffer.GetSize());
+    std::ofstream of("/home/biggirl/Documents/remote_host/raocp-parallel/json/errorCache.json");
+    of << json;
+    if (!of.good()) throw std::runtime_error("[Cache::printToJson] Can't write the JSON string to the file!");
 }
 
 /**
@@ -580,16 +709,23 @@ void Cache<T>::cpAlgo(std::vector<T> &initState, std::vector<T> *previousSolutio
     initialiseState(initState);
     /* Load previous solution if given */
     if (previousSolution) m_d_prim->upload(*previousSolution);
-    for (size_t i = 0; i < m_maxIters; i++) {
+    /* Warm-up algorithm */
+    for (size_t i = 0; i < m_warmupIters; i++) { cpIter(); }
+    /* Run algorithm */
+    size_t iters = m_maxIters - m_warmupIters;
+    for (size_t i = 0; i < iters; i++) {
         /* Compute CP iteration */
         cpIter();
         /* Compute error */
-        /* Check error */
-        if ((*m_d_cacheError)(i) <= m_tol) {
-            m_countIterations = i;
+        computeError();
+        /* Store and check error */
+        m_cacheError[i] = m_maxErr;
+        if (m_maxErr <= m_tol) {
+            m_countIterations = m_warmupIters + i;
             break;
         }
     }
+    printToJson();
 }
 
 /**

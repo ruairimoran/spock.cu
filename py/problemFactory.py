@@ -260,8 +260,8 @@ class Problem:
         num_si = self.__num_states + self.__num_inputs
         # Create random primal
         f = 10
-        u = [f * np.random.randn(2, 1) for _ in range(self.__tree.num_nonleaf_nodes)]
-        x = [f * np.random.randn(3, 1) for _ in range(self.__tree.num_nodes)]
+        u = [f * np.random.randn(self.__num_inputs, 1) for _ in range(self.__tree.num_nonleaf_nodes)]
+        x = [f * np.random.randn(self.__num_states, 1) for _ in range(self.__tree.num_nodes)]
         y = [None] * self.__tree.num_nonleaf_nodes
         num_ev = self.__tree.num_events
         full_size_y = 2 * num_ev + 1

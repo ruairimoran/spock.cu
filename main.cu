@@ -13,23 +13,23 @@
 
 int main() {
     /** SCENARIO TREE */
-    std::ifstream fileTree("tests/testTreeData.json");
+    std::ifstream fileTree("json/treeData.json");
     ScenarioTree tree(fileTree);
 //  	tree.print();
 
     /** PROBLEM DATA */
-    std::ifstream fileProblem("tests/testProblemData.json");
+    std::ifstream fileProblem("json/problemData.json");
     ProblemData problem(tree, fileProblem);
 //  	problem.print();
 
     /** CACHE */
     double tol = 1e-4;
-    size_t maxIters = 20;
+    size_t maxIters = 50;
     Cache cache(tree, problem, tol, maxIters);
 //    cache.print();
 
     /** VANILLA CP */
-    std::vector<double> initState = {.1, -.2, .3};
+    std::vector<double> initState(problem.numStates(), .1);
     size_t exit_status = cache.cpTime(initState);
     std::cout << "cp exit status: " << exit_status << std::endl;
 

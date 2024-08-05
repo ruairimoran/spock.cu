@@ -100,7 +100,7 @@ void testDynamicsProjectionOnline(CacheTestData<T> &d, T epsilon) {
     d.m_cache->initialiseState(x0);
     d.m_cache->states().upload(originalStates);
     d.m_cache->inputs().upload(originalInputs);
-    d.m_cache->projectOnDynamics();
+    d.m_cache->projectPrimalWorkspaceOnDynamics();
     /* Compare spockStates */
     std::vector<T> spockStates(statesSize);
     d.m_cache->states().download(spockStates);
@@ -157,7 +157,7 @@ void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon) {
     }
 
     /* Project random data */
-    d.m_cache->projectOnKernels();
+    d.m_cache->projectPrimalWorkspaceOnKernels();
 
     /* Check result is in kernel */
     for (size_t node = 0; node < d.m_tree->numNonleafNodes(); node++) {
@@ -247,7 +247,7 @@ void testKernelProjectionOnlineOrthogonality(CacheTestData<T> &d, T epsilon) {
     DTensor<T> original(d.m_data->nullDim());
     buildVector(original, actualSizeY, d.m_data->yDim(), numCh, d.m_tree->numEvents(), y, t, s);
     /* Project original data */
-    d.m_cache->projectOnKernels();
+    d.m_cache->projectPrimalWorkspaceOnKernels();
     /* Build projected data */
     DTensor<T> projected(d.m_data->nullDim());
     buildVector(projected, actualSizeY, d.m_data->yDim(), numCh, d.m_tree->numEvents(), y, t, s);
@@ -255,7 +255,7 @@ void testKernelProjectionOnlineOrthogonality(CacheTestData<T> &d, T epsilon) {
     DTensor<T> other(d.m_data->nullDim());
     buildVector(other, actualSizeY, d.m_data->yDim(), numCh, d.m_tree->numEvents(), y, t, s);
     /* Project other data */
-    d.m_cache->projectOnKernels();
+    d.m_cache->projectPrimalWorkspaceOnKernels();
     /* Build otherProjected data */
     DTensor<T> otherProjected(d.m_data->nullDim());
     buildVector(otherProjected, actualSizeY, d.m_data->yDim(), numCh, d.m_tree->numEvents(), y, t, s);

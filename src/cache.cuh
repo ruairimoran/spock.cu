@@ -357,7 +357,8 @@ void Cache<T>::setRootState() {
 }
 
 /**
- * Proximal operator of `alpha * Id` on `s` at root node
+ * Proximal operator of `alpha * Id` on `s` at root node.
+ * This operates on `primWorkspace`
  */
 template<typename T>
 void Cache<T>::proxRootS() {
@@ -587,12 +588,12 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
  */
 template<typename T>
 void Cache<T>::modifyPrimal() {
-    m_d_dual->deviceCopyTo(*m_d_dualWorkspace);
+    m_d_dualPrev->deviceCopyTo(*m_d_dualWorkspace);
     m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
     m_d_adjDual->deviceCopyTo(*m_d_adjDualPrev);  // Save previous adjoint of dual for error computation
     m_d_primWorkspace->deviceCopyTo(*m_d_adjDual);  // Save adjoint of dual for error computation
     *m_d_primWorkspace *= -m_data.stepSize();
-    *m_d_primWorkspace += *m_d_prim;
+    *m_d_primWorkspace += *m_d_primPrev;
 }
 
 /**

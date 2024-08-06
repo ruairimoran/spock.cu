@@ -68,6 +68,7 @@ class Problem:
         self.__dual_after_op_before_adj = None
         self.__prim_after_adj = None
         # Other
+        self.__step_size = 0
         self.__padded_b = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
         self.__sqrt_nonleaf_state_costs = [np.zeros((0, 0))] * self.__tree.num_nodes
         self.__sqrt_nonleaf_input_costs = [np.zeros((0, 0))] * self.__tree.num_nodes
@@ -256,27 +257,7 @@ class Problem:
     def __flatten(list_of_vectors):
         return np.hstack(np.vstack(list_of_vectors)).tolist()
 
-    def __test_ell_op_and_adj(self):
-        num_si = self.__num_states + self.__num_inputs
-        # Create random primal
-        f = 10
-        u = [f * np.random.randn(self.__num_inputs, 1) for _ in range(self.__tree.num_nonleaf_nodes)]
-        x = [f * np.random.randn(self.__num_states, 1) for _ in range(self.__tree.num_nodes)]
-        y = [None] * self.__tree.num_nonleaf_nodes
-        num_ev = self.__tree.num_events
-        full_size_y = 2 * num_ev + 1
-        for i in range(self.__tree.num_nonleaf_nodes):
-            num_ch = len(self.__tree.children_of_node(i))
-            size_y = 2 * num_ch + 1
-            y[i] = np.vstack(((f * np.random.randn(size_y, 1)), np.zeros((full_size_y - size_y, 1))))
-        t = [0.] + (f * np.random.randn(self.__tree.num_nodes - 1)).tolist()
-        s = (f * np.random.randn(self.__tree.num_nodes)).tolist()
-        prim = []
-        for i in [u, x, y, t, s]:
-            prim += self.__flatten(i)
-        self.__prim_before_op = deepcopy(prim)
-
-        # ---- L operator ----
+    def __op(self, prim):
         # -> i
         i_ = deepcopy(y)
 
@@ -325,15 +306,14 @@ class Problem:
             vi[idx] = np.vstack((self.__sqrt_leaf_state_costs[i] @ x[i],
                                  half_s, half_s))
 
-        # ---- end L operator ----
-
         # Gather dual
         dual = []
         for i in [i_, ii, iii, iv, v, vi]:
             dual += self.__flatten(i)
-        self.__dual_after_op_before_adj = deepcopy(dual)
 
-        # ---- L adjoint ----
+        return dual
+
+    def __adj(self, dual):
         # -> s (nonleaf)
         s[:self.__tree.num_nonleaf_nodes] = ii[:self.__tree.num_nonleaf_nodes]
 
@@ -380,13 +360,45 @@ class Problem:
             idx = i - self.__tree.num_nonleaf_nodes
             s[i] = 0.5 * (vi[idx][self.__num_states] + vi[idx][self.__num_states + 1])
 
-        # ---- end L adjoint ----
-
         # Gather primal
         prim = []
         for i in [u, x, y, t, s]:
             prim += self.__flatten(i)
+
+        return prim
+
+    def __test_op_and_adj(self):
+        num_si = self.__num_states + self.__num_inputs
+        # Create random primal
+        f = 10
+        u = [f * np.random.randn(self.__num_inputs, 1) for _ in range(self.__tree.num_nonleaf_nodes)]
+        x = [f * np.random.randn(self.__num_states, 1) for _ in range(self.__tree.num_nodes)]
+        y = [None] * self.__tree.num_nonleaf_nodes
+        num_ev = self.__tree.num_events
+        full_size_y = 2 * num_ev + 1
+        for i in range(self.__tree.num_nonleaf_nodes):
+            num_ch = len(self.__tree.children_of_node(i))
+            size_y = 2 * num_ch + 1
+            y[i] = np.vstack(((f * np.random.randn(size_y, 1)), np.zeros((full_size_y - size_y, 1))))
+        t = [0.] + (f * np.random.randn(self.__tree.num_nodes - 1)).tolist()
+        s = (f * np.random.randn(self.__tree.num_nodes)).tolist()
+        prim = []
+        for i in [u, x, y, t, s]:
+            prim += self.__flatten(i)
+        self.__prim_before_op = deepcopy(prim)
+        dual = self.__op(prim)
+        self.__dual_after_op_before_adj = deepcopy(dual)
+        prim = self.__adj(dual)
         self.__prim_after_adj = deepcopy(prim)
+
+    def get_step_size(self):
+        op = LinearOperator(dtype=None, shape=(size_dual, size_prim), matvec=self.__op)
+        adj = LinearOperator(dtype=None, shape=(size_prim, size_dual), matvec=self.__adj)
+        adj_op = adj * op
+        eigen, _ = eigs(adj_op)
+        nrm = np.real(max(eigen))
+        nrm_recip = 0.999 / nrm
+        self.__step_size = nrm_recip
 
 
 class ProblemFactory:

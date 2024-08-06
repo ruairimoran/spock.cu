@@ -271,3 +271,34 @@ TEST_F(CacheTest, kernelProjectionOnlineOrthogonality) {
     CacheTestData<double> dd;
     testKernelProjectionOnlineOrthogonality<double>(dd, TEST_PRECISION_HIGH);
 }
+
+/* ---------------------------------------
+ * Test how primal and dual errors
+ * are computed
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void testComputeErrors(CacheTestData<T> &d, T epsilon) {
+    std::vector<T> v = {2., -3., 4., -5., 6., -7., 8., -9.};
+    Cache<T> &c = *d.m_cache;
+    c.m_d_prim->upload(std::vector<T>(c.m_primSize, v[0]));
+    c.m_d_primPrev->upload(std::vector<T>(c.m_primSize, v[1]));
+    c.m_d_adjDual->upload(std::vector<T>(c.m_primSize, v[2]));
+    c.m_d_adjDualPrev->upload(std::vector<T>(c.m_primSize, v[3]));
+    c.m_d_dual->upload(std::vector<T>(c.m_dualSize, v[4]));
+    c.m_d_dualPrev->upload(std::vector<T>(c.m_dualSize, v[5]));
+    c.m_d_opPrim->upload(std::vector<T>(c.m_dualSize, v[6]));
+    c.m_d_opPrimPrev->upload(std::vector<T>(c.m_dualSize, v[7]));
+    c.computeError();
+    T primErr = d.m_data->stepSizeRecip() * (v[1] - v[0]) - (v[3] - v[2]);
+    T dualErr = d.m_data->stepSizeRecip() * (v[5] - v[4]) - (v[7] - v[6]);
+    EXPECT_NEAR(primErr, (*c.m_d_primErr)(0), epsilon);
+    EXPECT_NEAR(dualErr, (*c.m_d_dualErr)(0), epsilon);
+}
+
+TEST_F(CacheTest, computeErrors) {
+    CacheTestData<float> df;
+    testComputeErrors<float>(df, TEST_PRECISION_LOW);
+    CacheTestData<double> dd;
+    testComputeErrors<double>(dd, TEST_PRECISION_HIGH);
+}

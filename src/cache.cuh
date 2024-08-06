@@ -38,6 +38,9 @@ void testOperator(OperatorTestData<T> &, T);
 template<typename T>
 void testAdjoint(OperatorTestData<T> &, T);
 
+template<typename T>
+void testComputeErrors(CacheTestData<T> &, T);
+
 
 /**
  * Cache of methods for proximal algorithms
@@ -283,6 +286,8 @@ public:
     friend void testOperator<>(OperatorTestData<T> &, T);
 
     friend void testAdjoint<>(OperatorTestData<T> &, T);
+
+    friend void testComputeErrors<>(CacheTestData<T> &d, T epsilon);
 
     /**
      * Debugging
@@ -642,15 +647,17 @@ void Cache<T>::computeError() {
     *m_d_dualWorkspace += *m_d_opPrim;
     *m_d_dualWorkspace -= *m_d_opPrimPrev;
     m_d_dualWorkspace->deviceCopyTo(*m_d_dualErr);
-    /* Primal-dual error (adds extra L adj) */
-    m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
-    *m_d_primWorkspace += *m_d_dualWorkspace;
+//    /* Primal-dual error (adds extra L adj) */
+//    m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
+//    *m_d_primWorkspace += *m_d_dualWorkspace;
     /* Sort errors */
     T primErr = m_d_primErr->maxAbs();
     T dualErr = m_d_dualErr->maxAbs();
-    T pdErr = m_d_primWorkspace->maxAbs();
+//    T pdErr = m_d_primWorkspace->maxAbs();
     m_maxErr = primErr < dualErr ? dualErr : primErr;
-    m_maxErr = m_maxErr < pdErr ? m_maxErr : pdErr;
+//    m_maxErr = m_maxErr < pdErr ? m_maxErr : pdErr;
+    std::cout << "primErr: " << primErr << ", dualErr: " << dualErr << "\n";
+
 }
 
 /**

@@ -37,7 +37,7 @@ private:
     size_t m_numInputs = 0;  ///< Total number control inputs
     size_t m_numStatesAndInputs = 0;
     size_t m_numY = 0;  ///< Size of primal vector 'y'
-    T m_alpha = 0.1;  ///< Step size of CP operator T
+    T m_alpha = 0.009;  ///< Step size of CP operator T
     T m_oneOverAlpha = 1 / m_alpha;  ///< Reciprocal of step size of CP operator T
     std::unique_ptr<DTensor<T>> m_d_alpha = nullptr;  ///< Step size of CP operator T
     std::unique_ptr<DTensor<T>> m_d_stateDynamics = nullptr;  ///< Ptr to

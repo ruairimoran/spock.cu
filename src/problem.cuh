@@ -37,8 +37,8 @@ private:
     size_t m_numInputs = 0;  ///< Total number control inputs
     size_t m_numStatesAndInputs = 0;
     size_t m_numY = 0;  ///< Size of primal vector 'y'
-    T m_alpha = 0.009;  ///< Step size of CP operator T
-    T m_oneOverAlpha = 1 / m_alpha;  ///< Reciprocal of step size of CP operator T
+    T m_stepSize = 0;  ///< Step size of CP operator T
+    T m_stepSizeRecip = 0;  ///< Reciprocal of step size of CP operator T
     std::unique_ptr<DTensor<T>> m_d_alpha = nullptr;  ///< Step size of CP operator T
     std::unique_ptr<DTensor<T>> m_d_stateDynamics = nullptr;  ///< Ptr to
     std::unique_ptr<DTensor<T>> m_d_inputDynamics = nullptr;  ///< Ptr to
@@ -124,6 +124,8 @@ public:
         m_numStatesAndInputs = m_numStates + m_numInputs;
         m_nullDim = doc["rowsNNtr"].GetInt();
         m_numY = m_nullDim - (m_tree.numEvents() * 2);
+        m_stepSize = doc["stepSize"].GetDouble();
+        m_stepSizeRecip = 1 / m_stepSize;
 
         /** Allocate memory on host */
         m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>>(m_tree.numStages() - 1);
@@ -195,7 +197,7 @@ public:
         }
 
         /* Update remaining fields */
-        m_d_alpha->upload(std::vector{m_alpha});
+        m_d_alpha->upload(std::vector{m_stepSize});
         DTensor<T> BTr = m_d_inputDynamics->tr();
         BTr.deviceCopyTo(*m_d_inputDynamicsTr);
         DTensor<T> KTr = m_d_K->tr();
@@ -220,9 +222,9 @@ public:
 
     size_t numStatesAndInputs() { return m_numStatesAndInputs; }
 
-    T stepSize() { return m_alpha; }
+    T stepSize() { return m_stepSize; }
 
-    T stepSizeRecip() { return m_oneOverAlpha; }
+    T stepSizeRecip() { return m_stepSizeRecip; }
 
     size_t nullDim() { return m_nullDim; }
 

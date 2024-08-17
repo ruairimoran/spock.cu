@@ -143,6 +143,7 @@ class Problem:
                                  dpProjectedInputs=self.__dp_projected_inputs,
                                  null_dim=self.__max_nullspace_dim,
                                  null=self.__nullspace_projection_matrix,
+                                 step_size=self.__step_size,
                                  prim_before_op=self.__prim_before_op,
                                  dual_after_op_before_adj=self.__dual_after_op_before_adj,
                                  prim_after_adj=self.__prim_after_adj)
@@ -453,7 +454,6 @@ class Problem:
         nrm = np.real(max(eigen))
         nrm_recip = 0.999 / nrm
         self.__step_size = nrm_recip
-        print(self.__step_size)
 
 
 class ProblemFactory:

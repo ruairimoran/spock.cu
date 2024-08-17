@@ -629,6 +629,7 @@ void Cache<T>::proximalDual() {
     m_d_dualWorkspace->deviceCopyTo(*m_d_dual);
     *m_d_dualWorkspace *= m_data.stepSizeRecip();
     projectDualWorkspaceOnConstraints();
+    *m_d_dualWorkspace *= m_data.stepSize();
     *m_d_dual -= *m_d_dualWorkspace;
 }
 
@@ -693,7 +694,7 @@ template<typename T>
 void Cache<T>::printToJson() {
     char text[1000000];
     rapidjson::MemoryPoolAllocator<> allocator(text, sizeof(text));
-    rapidjson::Document doc(&allocator, 256);
+    rapidjson::Document doc(&allocator, 1024);
     doc.SetObject();
     doc.AddMember("maxIters", m_maxIters, doc.GetAllocator());
     doc.AddMember("tol", m_tol, doc.GetAllocator());

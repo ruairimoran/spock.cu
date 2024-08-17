@@ -24,7 +24,7 @@ int main() {
 
     /** CACHE */
     double tol = 1e-4;
-    size_t maxIters = 50;
+    size_t maxIters = 3000;
     Cache cache(tree, problem, tol, maxIters);
 //    cache.print();
 

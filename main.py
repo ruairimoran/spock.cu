@@ -10,7 +10,7 @@ p = np.array([[0.5, 0.5], [0.5, 0.5]])
 
 v = np.array([0.3, 0.7])
 
-(horizon, stopping_stage) = (5, 5)
+(horizon, stopping_stage) = (7, 7)
 tree = py.treeFactory.TreeFactoryMarkovChain(
     transition_prob=p,
     initial_distribution=v,
@@ -26,8 +26,8 @@ print(tree)
 # --------------------------------------------------------
 
 # Sizes
-num_states = 4
-num_inputs = 4
+num_states = 5
+num_inputs = 5
 num_events = 2
 
 # State dynamics

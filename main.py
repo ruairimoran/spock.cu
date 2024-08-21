@@ -10,7 +10,7 @@ p = np.array([[0.5, 0.5], [0.5, 0.5]])
 
 v = np.array([0.3, 0.7])
 
-(horizon, stopping_stage) = (7, 7)
+(horizon, stopping_stage) = (4, 4)
 tree = py.treeFactory.TreeFactoryMarkovChain(
     transition_prob=p,
     initial_distribution=v,
@@ -26,8 +26,8 @@ print(tree)
 # --------------------------------------------------------
 
 # Sizes
-num_states = 5
-num_inputs = 5
+num_states = 3
+num_inputs = 3
 num_events = 2
 
 # State dynamics
@@ -38,6 +38,8 @@ for w in range(num_events):
     for j in range(num_states):
         diag = 1 + (w/num_events) * (1 + (j-1)/num_states)
         As[w][j][j] = diag
+# A = np.eye(num_states)
+# As = [A, A]
 
 # Input dynamics
 B = np.eye(num_inputs)
@@ -56,7 +58,7 @@ T = np.eye(num_states)
 
 # State-input constraint
 state_lim = 1.
-input_lim = 1.5
+input_lim = 10.5
 state_lb = -state_lim * np.ones((num_states, 1))
 state_ub = state_lim * np.ones((num_states, 1))
 input_lb = -input_lim * np.ones((num_inputs, 1))

@@ -56,9 +56,11 @@ protected:
     T m_tol = 0;
     size_t m_maxIters = 0;
     size_t m_countIterations = 0;
-    T m_maxErr = 0;
+    T m_err = 0;
     std::vector<T> m_cacheError;
-    size_t m_warmupIters = 3;
+    std::vector<T> m_cacheError1;
+    std::vector<T> m_cacheError2;
+    size_t m_warmupIters = 2;
     size_t m_matAxis = 2;
     size_t m_primSize = 0;
     size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
@@ -136,6 +138,8 @@ protected:
 
     void projectDualWorkspaceOnConstraints();
 
+    void computeAdjDual();
+
     void modifyPrimal();
 
     void proximalPrimal();
@@ -144,7 +148,7 @@ protected:
 
     void proximalDual();
 
-    void computeError();
+    bool computeError(size_t);
 
     void printToJson();
 
@@ -155,6 +159,8 @@ public:
     Cache(ScenarioTree<T> &tree, ProblemData<T> &data, T tol, size_t maxIters) :
         m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters) {
         m_cacheError = std::vector<T>(m_maxIters - m_warmupIters);
+        m_cacheError1 = std::vector<T>(m_maxIters - m_warmupIters);
+        m_cacheError2 = std::vector<T>(m_maxIters - m_warmupIters);
         /* Sizes */
         m_sizeU = m_tree.numNonleafNodes() * m_data.numInputs();  ///< Inputs of all nonleaf nodes
         m_sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
@@ -562,9 +568,10 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
     m_nnocNonleaf->project(*m_d_ii);
     /* III */
     if (m_data.nonleafConstraint()[0]->isRectangle()) {
-        k_projectRectangle<<<numBlocks(m_d_iii->numEl(), TPB), TPB>>>(m_d_iii->numEl(), m_d_iii->raw(),
-                                                                      m_d_loBoundNonleaf->raw(),
-                                                                      m_d_hiBoundNonleaf->raw());
+        size_t s = m_d_iii->numEl() - m_data.numStates();
+        k_projectRectangle<<<numBlocks(s, TPB), TPB>>>(s, m_d_iii->raw() + m_data.numStates(),
+                                                       m_d_loBoundNonleaf->raw() + m_data.numStates(),
+                                                       m_d_hiBoundNonleaf->raw() + m_data.numStates());
     } else if (m_data.nonleafConstraint()[0]->isBall()) {
         /* TODO!  */
     }
@@ -588,10 +595,7 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
  */
 template<typename T>
 void Cache<T>::modifyPrimal() {
-    m_d_dualPrev->deviceCopyTo(*m_d_dualWorkspace);
-    m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
-    m_d_adjDual->deviceCopyTo(*m_d_adjDualPrev);  // Save previous adjoint of dual for error computation
-    m_d_primWorkspace->deviceCopyTo(*m_d_adjDual);  // Save adjoint of dual for error computation
+    m_d_adjDual->deviceCopyTo(*m_d_primWorkspace);
     *m_d_primWorkspace *= -m_data.stepSize();
     *m_d_primWorkspace += *m_d_primPrev;
 }
@@ -612,11 +616,11 @@ void Cache<T>::proximalPrimal() {
  */
 template<typename T>
 void Cache<T>::modifyDual() {
-    *m_d_primWorkspace *= 2.;
-    *m_d_primWorkspace -= *m_d_primPrev;
     m_L.op(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
     m_d_opPrim->deviceCopyTo(*m_d_opPrimPrev);  // Save previous op of primal for error computation
     m_d_dualWorkspace->deviceCopyTo(*m_d_opPrim);  // Save op of primal for error computation
+    *m_d_dualWorkspace *= 2.;
+    *m_d_dualWorkspace -= *m_d_opPrimPrev;
     *m_d_dualWorkspace *= m_data.stepSize();
     *m_d_dualWorkspace += *m_d_dualPrev;
 }
@@ -633,33 +637,51 @@ void Cache<T>::proximalDual() {
     *m_d_dual -= *m_d_dualWorkspace;
 }
 
+/**
+ * Compute adjoint of dual
+ */
 template<typename T>
-void Cache<T>::computeError() {
+void Cache<T>::computeAdjDual() {
+    m_d_dual->deviceCopyTo(*m_d_dualWorkspace);
+    m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
+    m_d_adjDual->deviceCopyTo(*m_d_adjDualPrev);  // Save previous adjoint of dual for error computation
+    m_d_primWorkspace->deviceCopyTo(*m_d_adjDual);  // Save adjoint of dual for error computation
+}
+
+template<typename T>
+bool Cache<T>::computeError(size_t iter) {
     /* Primal error */
     m_d_primPrev->deviceCopyTo(*m_d_primWorkspace);
     *m_d_primWorkspace -= *m_d_prim;
     *m_d_primWorkspace *= m_data.stepSizeRecip();
-    *m_d_primWorkspace += *m_d_adjDual;
     *m_d_primWorkspace -= *m_d_adjDualPrev;
+    *m_d_primWorkspace += *m_d_adjDual;
     m_d_primWorkspace->deviceCopyTo(*m_d_primErr);
     /* Dual error */
     m_d_dualPrev->deviceCopyTo(*m_d_dualWorkspace);
     *m_d_dualWorkspace -= *m_d_dual;
     *m_d_dualWorkspace *= m_data.stepSizeRecip();
-    *m_d_dualWorkspace += *m_d_opPrim;
     *m_d_dualWorkspace -= *m_d_opPrimPrev;
+    *m_d_dualWorkspace += *m_d_opPrim;
     m_d_dualWorkspace->deviceCopyTo(*m_d_dualErr);
-//    /* Primal-dual error (adds extra L adj) */
-//    m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
-//    *m_d_primWorkspace += *m_d_dualWorkspace;
-    /* Sort errors */
+    /* Inf-norm of errors */
     T primErr = m_d_primErr->maxAbs();
     T dualErr = m_d_dualErr->maxAbs();
-//    T pdErr = m_d_primWorkspace->maxAbs();
-    m_maxErr = primErr < dualErr ? dualErr : primErr;
-//    m_maxErr = m_maxErr < pdErr ? m_maxErr : pdErr;
     std::cout << "primErr: " << primErr << ", dualErr: " << dualErr << "\n";
-
+    m_cacheError1[iter] = primErr;
+    m_cacheError2[iter] = dualErr;
+    /* Primal-dual error (avoid extra L adj until prim and dual errors pass tol) */
+//    if (primErr <= m_tol && dualErr <= m_tol) {
+    m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
+    *m_d_primWorkspace += *m_d_primErr;
+    m_err = m_d_primWorkspace->maxAbs();
+    std::cout << "err: " << m_err << "\n";
+    m_cacheError[iter] = m_err;
+    if (m_err <= m_tol) { return true; }
+//    } else {
+//    m_cacheError[iter] = max(primErr, dualErr);
+//    }
+    return false;
 }
 
 /**
@@ -673,13 +695,15 @@ void Cache<T>::cpIter() {
     proximalPrimal();
     modifyDual();
     proximalDual();
+    computeAdjDual();
 }
 
 /**
  * Add a named vector to a .json file
  */
 template<typename T>
-static void addArrayToJson(rapidjson::Document &doc, rapidjson::GenericStringRef<char> const &name, std::vector<T> &vec) {
+static void
+addArrayToJson(rapidjson::Document &doc, rapidjson::GenericStringRef<char> const &name, std::vector<T> &vec) {
     rapidjson::Value array(rapidjson::kArrayType);
     for (size_t i = 0; i < vec.size(); i++) {
         array.PushBack(vec[i], doc.GetAllocator());
@@ -698,8 +722,12 @@ void Cache<T>::printToJson() {
     doc.SetObject();
     doc.AddMember("maxIters", m_maxIters, doc.GetAllocator());
     doc.AddMember("tol", m_tol, doc.GetAllocator());
-    rapidjson::GenericStringRef<char> n = "maxErrors";
-    addArrayToJson(doc, n, m_cacheError);
+    rapidjson::GenericStringRef<char> nErr0 = "err0";
+    addArrayToJson(doc, nErr0, m_cacheError);
+    rapidjson::GenericStringRef<char> nErr1 = "err1";
+    addArrayToJson(doc, nErr1, m_cacheError1);
+    rapidjson::GenericStringRef<char> nErr2 = "err2";
+    addArrayToJson(doc, nErr2, m_cacheError2);
     typedef rapidjson::GenericStringBuffer<rapidjson::UTF8<>, rapidjson::MemoryPoolAllocator<>> StringBuffer;
     StringBuffer buffer(&allocator);
     rapidjson::Writer<StringBuffer> writer(buffer, reinterpret_cast<rapidjson::CrtAllocator *>(&allocator));
@@ -722,14 +750,13 @@ void Cache<T>::cpAlgo(std::vector<T> &initState, std::vector<T> *previousSolutio
     for (size_t i = 0; i < m_warmupIters; i++) { cpIter(); }
     /* Run algorithm */
     size_t iters = m_maxIters - m_warmupIters;
+    bool status = false;
     for (size_t i = 0; i < iters; i++) {
         /* Compute CP iteration */
         cpIter();
-        /* Compute error */
-        computeError();
-        /* Store and check error */
-        m_cacheError[i] = m_maxErr;
-        if (m_maxErr <= m_tol) {
+        /* Compute, store, and check error */
+        status = computeError(i);
+        if (status) {
             m_countIterations = m_warmupIters + i;
             break;
         }

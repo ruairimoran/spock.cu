@@ -24,12 +24,12 @@ int main() {
 
     /** CACHE */
     double tol = 1e-4;
-    size_t maxIters = 3000;
+    size_t maxIters = 2500;
     Cache cache(tree, problem, tol, maxIters);
 //    cache.print();
 
     /** VANILLA CP */
-    std::vector<double> initState(problem.numStates(), .1);
+    std::vector<double> initState(problem.numStates(), -2.1);
     size_t exit_status = cache.cpTime(initState);
     std::cout << "cp exit status: " << exit_status << std::endl;
 

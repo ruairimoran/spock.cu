@@ -1,7 +1,5 @@
 # Custom
-treeData.json
-problemData.json
-cacheData.json
+*.json
 .vscode
 venv*
 __pycache__

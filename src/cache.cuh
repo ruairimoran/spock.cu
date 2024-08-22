@@ -110,7 +110,7 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_socsNonleafHalves = nullptr;
     std::unique_ptr<DTensor<T>> m_d_socsLeafHalves = nullptr;
     std::unique_ptr<NonnegativeOrthantCone<T>> m_nnocNonleaf = nullptr;
-    std::unique_ptr<Cartesian<T>> m_cartRiskNonleaf = nullptr;
+    std::unique_ptr<Cartesian<T>> m_cartRisk = nullptr;
     std::unique_ptr<DTensor<T>> m_d_loBoundNonleaf = nullptr;
     std::unique_ptr<DTensor<T>> m_d_hiBoundNonleaf = nullptr;
     std::unique_ptr<DTensor<T>> m_d_loBoundLeaf = nullptr;
@@ -200,8 +200,8 @@ public:
         reshapeDualWorkspace();
         /* Initialise projectors */
         /* I */
-        m_cartRiskNonleaf = std::make_unique<Cartesian<T>>();
-        for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) { m_cartRiskNonleaf->addCone(m_data.risk()[i]->cone()); }
+        m_cartRisk = std::make_unique<Cartesian<T>>();
+        for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) { m_cartRisk->addCone(m_data.risk()[i]->cone()); }
         /* II */
         m_nnocNonleaf = std::make_unique<NonnegativeOrthantCone<T>>(m_tree.numNonleafNodes());
         /* III */
@@ -563,7 +563,7 @@ void Cache<T>::projectPrimalWorkspaceOnKernels() {
 template<typename T>
 void Cache<T>::projectDualWorkspaceOnConstraints() {
     /* I */
-    m_cartRiskNonleaf->projectOnDual(*m_d_i);
+    m_cartRisk->projectOnDual(*m_d_i);
     /* II */
     m_nnocNonleaf->project(*m_d_ii);
     /* III */

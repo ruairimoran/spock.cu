@@ -10,7 +10,7 @@ p = np.array([[0.5, 0.5], [0.5, 0.5]])
 
 v = np.array([0.3, 0.7])
 
-(horizon, stopping_stage) = (4, 4)
+(horizon, stopping_stage) = (2, 2)
 tree = py.treeFactory.TreeFactoryMarkovChain(
     transition_prob=p,
     initial_distribution=v,
@@ -26,20 +26,20 @@ print(tree)
 # --------------------------------------------------------
 
 # Sizes
-num_states = 3
-num_inputs = 3
+num_states = 2
+num_inputs = 2
 num_events = 2
 
 # State dynamics
-off_diag = 0.01 * np.ones((1, num_states - 1))[0]
-As = [None] * num_events
-for w in range(num_events):
-    As[w] = np.diag(off_diag, -1) + np.diag(off_diag, 1)
-    for j in range(num_states):
-        diag = 1 + (w/num_events) * (1 + (j-1)/num_states)
-        As[w][j][j] = diag
-# A = np.eye(num_states)
-# As = [A, A]
+# off_diag = 0.01 * np.ones((1, num_states - 1))[0]
+# As = [None] * num_events
+# for w in range(num_events):
+#     As[w] = np.diag(off_diag, -1) + np.diag(off_diag, 1)
+#     for j in range(num_states):
+#         diag = 1 + (w/num_events) * (1 + (j-1)/num_states)
+#         As[w][j][j] = diag
+A = 0.1 * np.eye(num_states)
+As = [A, A]
 
 # Input dynamics
 B = np.eye(num_inputs)
@@ -54,11 +54,11 @@ R = 10 * np.eye(num_inputs)
 Rs = [R, R]
 
 # Terminal state cost
-T = np.eye(num_states)
+T = 10 * np.eye(num_states)
 
 # State-input constraint
 state_lim = 1.
-input_lim = 10.5
+input_lim = 1.5
 state_lb = -state_lim * np.ones((num_states, 1))
 state_ub = state_lim * np.ones((num_states, 1))
 input_lb = -input_lim * np.ones((num_inputs, 1))

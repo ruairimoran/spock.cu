@@ -344,8 +344,8 @@ void Cache<T>::initialiseProjectable() {
     m_socsNonleaf = std::make_unique<SocProjection<T>>(*m_d_iv);
     m_d_socsNonleafHalves = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs() + 2, 1, m_tree.numNodes());
     std::vector<T> nonleafHalves(m_data.numStatesAndInputs() + 2, 0.);
-    nonleafHalves[m_data.numStatesAndInputs()] = -0.5;
-    nonleafHalves[m_data.numStatesAndInputs() + 1] = 0.5;
+    nonleafHalves[m_data.numStatesAndInputs()] = -.5;
+    nonleafHalves[m_data.numStatesAndInputs() + 1] = .5;
     for (size_t i = 1; i < m_tree.numNodes(); i++) {
         DTensor<T> node(*m_d_socsNonleafHalves, m_matAxis, i, i);
         node.upload(nonleafHalves);
@@ -369,8 +369,8 @@ void Cache<T>::initialiseProjectable() {
     m_socsLeaf = std::make_unique<SocProjection<T>>(*m_d_vi);
     m_d_socsLeafHalves = std::make_unique<DTensor<T>>(m_data.numStates() + 2, 1, m_tree.numLeafNodes());
     std::vector<T> leafHalves(m_data.numStates() + 2, 0.);
-    leafHalves[m_data.numStates()] = -0.5;
-    leafHalves[m_data.numStates() + 1] = 0.5;
+    leafHalves[m_data.numStates()] = -.5;
+    leafHalves[m_data.numStates() + 1] = .5;
     for (size_t i = 0; i < m_tree.numLeafNodes(); i++) {
         DTensor<T> node(*m_d_socsLeafHalves, m_matAxis, i, i);
         node.upload(leafHalves);

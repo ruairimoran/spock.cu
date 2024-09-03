@@ -55,11 +55,9 @@ protected:
     LinearOperator<T> m_L = LinearOperator<T>(m_tree, m_data);  ///< Linear operator and its adjoint
     T m_tol = 0;
     size_t m_maxIters = 0;
+    bool m_detectInfeas = false;
     size_t m_countIterations = 0;
     T m_err = 0;
-    std::vector<T> m_cacheError;
-    std::vector<T> m_cacheError1;
-    std::vector<T> m_cacheError2;
     size_t m_warmupIters = 2;
     size_t m_matAxis = 2;
     size_t m_primSize = 0;
@@ -118,6 +116,16 @@ protected:
     /* Errors */
     std::unique_ptr<DTensor<T>> m_d_primErr = nullptr;
     std::unique_ptr<DTensor<T>> m_d_dualErr = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_deltaPrim = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_deltaDual = nullptr;
+    std::vector<T> m_cacheError0;
+    std::vector<T> m_cacheError1;
+    std::vector<T> m_cacheError2;
+    std::vector<T> m_cacheDeltaPrim;
+    std::vector<T> m_cacheDeltaDual;
+    std::vector<T> m_cacheNrmLtrDeltaDual;
+    std::vector<T> m_cacheDistDeltaDual;
+    std::vector<T> m_cacheSuppDeltaDual;
 
     /**
      * Protected methods
@@ -125,6 +133,10 @@ protected:
     void reshapePrimalWorkspace();
 
     void reshapeDualWorkspace();
+
+    void initialiseProjectable();
+
+    void initialiseSizes();
 
     void setRootState();
 
@@ -156,25 +168,20 @@ public:
     /**
      * Constructor
      */
-    Cache(ScenarioTree<T> &tree, ProblemData<T> &data, T tol, size_t maxIters) :
-        m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters) {
-        m_cacheError = std::vector<T>(m_maxIters - m_warmupIters);
-        m_cacheError1 = std::vector<T>(m_maxIters - m_warmupIters);
-        m_cacheError2 = std::vector<T>(m_maxIters - m_warmupIters);
+    Cache(ScenarioTree<T> &tree, ProblemData<T> &data, T tol, size_t maxIters, bool detectInfeas=false) :
+        m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters), m_detectInfeas(detectInfeas) {
+        /* Allocate memory on host */
+        size_t cacheSize = m_maxIters - m_warmupIters;
+        m_cacheError0 = std::vector<T>(cacheSize);
+        m_cacheError1 = std::vector<T>(cacheSize);
+        m_cacheError2 = std::vector<T>(cacheSize);
+        m_cacheDeltaPrim = std::vector<T>(cacheSize);
+        m_cacheDeltaDual = std::vector<T>(cacheSize);
+        m_cacheNrmLtrDeltaDual = std::vector<T>(cacheSize);
+        m_cacheDistDeltaDual = std::vector<T>(cacheSize);
+        m_cacheSuppDeltaDual = std::vector<T>(cacheSize);
         /* Sizes */
-        m_sizeU = m_tree.numNonleafNodes() * m_data.numInputs();  ///< Inputs of all nonleaf nodes
-        m_sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
-        m_sizeY = m_tree.numNonleafNodes() * m_data.yDim();  ///< Y for all nonleaf nodes
-        m_sizeT = m_tree.numNodes();  ///< T for all child nodes
-        m_sizeS = m_tree.numNodes();  ///< S for all child nodes
-        m_primSize = m_sizeU + m_sizeX + m_sizeY + m_sizeT + m_sizeS;
-        m_sizeI = m_tree.numNonleafNodes() * m_data.yDim();
-        m_sizeII = m_tree.numNonleafNodes();
-        m_sizeIII = m_tree.numNonleafNodes() * m_data.numStatesAndInputs();  // Might need to change for non-rectangles
-        m_sizeIV = m_tree.numNodes() * (m_data.numStatesAndInputs() + 2);
-        m_sizeV = m_tree.numLeafNodes() * m_data.numStates();
-        m_sizeVI = m_tree.numLeafNodes() * (m_data.numStates() + 2);
-        m_dualSize = m_sizeI + m_sizeII + m_sizeIII + m_sizeIV + m_sizeV + m_sizeVI;
+        initialiseSizes();
         /* Allocate memory on device */
         m_d_prim = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
         m_d_primPrev = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
@@ -195,65 +202,13 @@ public:
         m_d_opPrimPrev = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
         m_d_primErr = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
         m_d_dualErr = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
+        m_d_deltaPrim = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
+        m_d_deltaDual = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
         /* Slice and reshape primal and dual workspaces */
         reshapePrimalWorkspace();
         reshapeDualWorkspace();
-        /* Initialise projectors */
-        /* I */
-        m_cartRisk = std::make_unique<Cartesian<T>>();
-        for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) { m_cartRisk->addCone(m_data.risk()[i]->cone()); }
-        /* II */
-        m_nnocNonleaf = std::make_unique<NonnegativeOrthantCone<T>>(m_tree.numNonleafNodes());
-        /* III */
-        if (m_data.nonleafConstraint()[0]->isRectangle()) {
-            m_d_loBoundNonleaf = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
-            m_d_hiBoundNonleaf = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
-            for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
-                DTensor<T> lo(*m_d_loBoundNonleaf, m_matAxis, i, i);
-                DTensor<T> hi(*m_d_hiBoundNonleaf, m_matAxis, i, i);
-                m_data.nonleafConstraint()[i]->lo().deviceCopyTo(lo);
-                m_data.nonleafConstraint()[i]->hi().deviceCopyTo(hi);
-            }
-        } else if (m_data.nonleafConstraint()[0]->isBall()) {
-            /* TODO! */
-        } else {
-            throw std::invalid_argument("[Cache] Nonleaf constraint given is not supported.");
-        }
-        /* IV */
-        m_socsNonleaf = std::make_unique<SocProjection<T>>(*m_d_iv);
-        m_d_socsNonleafHalves = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs() + 2, 1, m_tree.numNodes());
-        std::vector<T> nonleafHalves(m_data.numStatesAndInputs() + 2, 0.);
-        nonleafHalves[m_data.numStatesAndInputs()] = -0.5;
-        nonleafHalves[m_data.numStatesAndInputs() + 1] = 0.5;
-        for (size_t i = 1; i < m_tree.numNodes(); i++) {
-            DTensor<T> node(*m_d_socsNonleafHalves, m_matAxis, i, i);
-            node.upload(nonleafHalves);
-        }
-        /* V */
-        if (m_data.leafConstraint()[0]->isRectangle()) {
-            m_d_loBoundLeaf = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numLeafNodes());
-            m_d_hiBoundLeaf = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numLeafNodes());
-            for (size_t i = 0; i < m_tree.numLeafNodes(); i++) {
-                DTensor<T> lo(*m_d_loBoundLeaf, m_matAxis, i, i);
-                DTensor<T> hi(*m_d_hiBoundLeaf, m_matAxis, i, i);
-                m_data.leafConstraint()[i]->lo().deviceCopyTo(lo);
-                m_data.leafConstraint()[i]->hi().deviceCopyTo(hi);
-            }
-        } else if (m_data.leafConstraint()[0]->isBall()) {
-            /* TODO! */
-        } else {
-            throw std::invalid_argument("[Cache] Leaf constraint given is not supported.");
-        }
-        /* VI */
-        m_socsLeaf = std::make_unique<SocProjection<T>>(*m_d_vi);
-        m_d_socsLeafHalves = std::make_unique<DTensor<T>>(m_data.numStates() + 2, 1, m_tree.numLeafNodes());
-        std::vector<T> leafHalves(m_data.numStates() + 2, 0.);
-        leafHalves[m_data.numStates()] = -0.5;
-        leafHalves[m_data.numStates() + 1] = 0.5;
-        for (size_t i = 0; i < m_tree.numLeafNodes(); i++) {
-            DTensor<T> node(*m_d_socsLeafHalves, m_matAxis, i, i);
-            node.upload(leafHalves);
-        }
+        /* Initialise projectable objects */
+        initialiseProjectable();
     }
 
     ~Cache() = default;
@@ -302,6 +257,23 @@ public:
 };
 
 template<typename T>
+void Cache<T>::initialiseSizes() {
+    m_sizeU = m_tree.numNonleafNodes() * m_data.numInputs();  ///< Inputs of all nonleaf nodes
+    m_sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
+    m_sizeY = m_tree.numNonleafNodes() * m_data.yDim();  ///< Y for all nonleaf nodes
+    m_sizeT = m_tree.numNodes();  ///< T for all child nodes
+    m_sizeS = m_tree.numNodes();  ///< S for all child nodes
+    m_primSize = m_sizeU + m_sizeX + m_sizeY + m_sizeT + m_sizeS;
+    m_sizeI = m_tree.numNonleafNodes() * m_data.yDim();
+    m_sizeII = m_tree.numNonleafNodes();
+    m_sizeIII = m_tree.numNonleafNodes() * m_data.numStatesAndInputs();  // Might need to change for non-rectangles
+    m_sizeIV = m_tree.numNodes() * (m_data.numStatesAndInputs() + 2);
+    m_sizeV = m_tree.numLeafNodes() * m_data.numStates();
+    m_sizeVI = m_tree.numLeafNodes() * (m_data.numStates() + 2);
+    m_dualSize = m_sizeI + m_sizeII + m_sizeIII + m_sizeIV + m_sizeV + m_sizeVI;
+}
+
+template<typename T>
 void Cache<T>::reshapePrimalWorkspace() {
     size_t rowAxis = 0;
     size_t start = 0;
@@ -342,6 +314,65 @@ void Cache<T>::reshapeDualWorkspace() {
     start += m_sizeV;
     m_d_vi = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeVI - 1);
     m_d_vi->reshape(m_data.numStates() + 2, 1, m_tree.numLeafNodes());
+}
+
+template<typename T>
+void Cache<T>::initialiseProjectable() {
+    /* I */
+    m_cartRisk = std::make_unique<Cartesian<T>>();
+    for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) { m_cartRisk->addCone(m_data.risk()[i]->cone()); }
+    /* II */
+    m_nnocNonleaf = std::make_unique<NonnegativeOrthantCone<T>>(m_tree.numNonleafNodes());
+    /* III */
+    if (m_data.nonleafConstraint()[0]->isRectangle()) {
+        m_d_loBoundNonleaf = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
+        m_d_hiBoundNonleaf = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
+        for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
+            DTensor<T> lo(*m_d_loBoundNonleaf, m_matAxis, i, i);
+            DTensor<T> hi(*m_d_hiBoundNonleaf, m_matAxis, i, i);
+            m_data.nonleafConstraint()[i]->lo().deviceCopyTo(lo);
+            m_data.nonleafConstraint()[i]->hi().deviceCopyTo(hi);
+        }
+    } else if (m_data.nonleafConstraint()[0]->isBall()) {
+        /* TODO! */
+    } else {
+        throw std::invalid_argument("[Cache] Nonleaf constraint given is not supported.");
+    }
+    /* IV */
+    m_socsNonleaf = std::make_unique<SocProjection<T>>(*m_d_iv);
+    m_d_socsNonleafHalves = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs() + 2, 1, m_tree.numNodes());
+    std::vector<T> nonleafHalves(m_data.numStatesAndInputs() + 2, 0.);
+    nonleafHalves[m_data.numStatesAndInputs()] = -0.5;
+    nonleafHalves[m_data.numStatesAndInputs() + 1] = 0.5;
+    for (size_t i = 1; i < m_tree.numNodes(); i++) {
+        DTensor<T> node(*m_d_socsNonleafHalves, m_matAxis, i, i);
+        node.upload(nonleafHalves);
+    }
+    /* V */
+    if (m_data.leafConstraint()[0]->isRectangle()) {
+        m_d_loBoundLeaf = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numLeafNodes());
+        m_d_hiBoundLeaf = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numLeafNodes());
+        for (size_t i = 0; i < m_tree.numLeafNodes(); i++) {
+            DTensor<T> lo(*m_d_loBoundLeaf, m_matAxis, i, i);
+            DTensor<T> hi(*m_d_hiBoundLeaf, m_matAxis, i, i);
+            m_data.leafConstraint()[i]->lo().deviceCopyTo(lo);
+            m_data.leafConstraint()[i]->hi().deviceCopyTo(hi);
+        }
+    } else if (m_data.leafConstraint()[0]->isBall()) {
+        /* TODO! */
+    } else {
+        throw std::invalid_argument("[Cache] Leaf constraint given is not supported.");
+    }
+    /* VI */
+    m_socsLeaf = std::make_unique<SocProjection<T>>(*m_d_vi);
+    m_d_socsLeafHalves = std::make_unique<DTensor<T>>(m_data.numStates() + 2, 1, m_tree.numLeafNodes());
+    std::vector<T> leafHalves(m_data.numStates() + 2, 0.);
+    leafHalves[m_data.numStates()] = -0.5;
+    leafHalves[m_data.numStates() + 1] = 0.5;
+    for (size_t i = 0; i < m_tree.numLeafNodes(); i++) {
+        DTensor<T> node(*m_d_socsLeafHalves, m_matAxis, i, i);
+        node.upload(leafHalves);
+    }
 }
 
 template<typename T>
@@ -649,7 +680,7 @@ void Cache<T>::computeAdjDual() {
 }
 
 template<typename T>
-bool Cache<T>::computeError(size_t iter) {
+bool Cache<T>::computeError(size_t idx) {
     /* Primal error */
     m_d_primPrev->deviceCopyTo(*m_d_primWorkspace);
     *m_d_primWorkspace -= *m_d_prim;
@@ -668,19 +699,33 @@ bool Cache<T>::computeError(size_t iter) {
     T primErr = m_d_primErr->maxAbs();
     T dualErr = m_d_dualErr->maxAbs();
     std::cout << "primErr: " << primErr << ", dualErr: " << dualErr << "\n";
-    m_cacheError1[iter] = primErr;
-    m_cacheError2[iter] = dualErr;
+    m_cacheError1[idx] = primErr;
+    m_cacheError2[idx] = dualErr;
     /* Primal-dual error (avoid extra L adj until prim and dual errors pass tol) */
 //    if (primErr <= m_tol && dualErr <= m_tol) {
     m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
     *m_d_primWorkspace += *m_d_primErr;
     m_err = m_d_primWorkspace->maxAbs();
     std::cout << "err: " << m_err << "\n";
-    m_cacheError[iter] = m_err;
+    m_cacheError0[idx] = m_err;
     if (m_err <= m_tol) { return true; }
 //    } else {
-//    m_cacheError[iter] = max(primErr, dualErr);
+//    m_cacheError0[idx] = max(primErr, dualErr);
 //    }
+    /* Infeasibility detection */
+    if (m_detectInfeas) {
+        /* Primal */
+        m_d_prim->deviceCopyTo(*m_d_deltaPrim);
+        *m_d_deltaPrim -= *m_d_primPrev;
+        m_cacheDeltaPrim[idx] = m_d_deltaPrim->maxAbs();
+        m_d_deltaPrim->deviceCopyTo(*m_d_primWorkspace);
+        m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
+        m_cacheNrmLtrDeltaDual[idx] = m_d_dualWorkspace->normF();
+        /* Dual */
+        m_d_dual->deviceCopyTo(*m_d_deltaDual);
+        *m_d_deltaDual -= *m_d_dualPrev;
+        m_cacheDeltaDual[idx] = m_d_deltaDual->maxAbs();
+    }
     return false;
 }
 
@@ -723,11 +768,17 @@ void Cache<T>::printToJson() {
     doc.AddMember("maxIters", m_maxIters, doc.GetAllocator());
     doc.AddMember("tol", m_tol, doc.GetAllocator());
     rapidjson::GenericStringRef<char> nErr0 = "err0";
-    addArrayToJson(doc, nErr0, m_cacheError);
+    addArrayToJson(doc, nErr0, m_cacheError0);
     rapidjson::GenericStringRef<char> nErr1 = "err1";
     addArrayToJson(doc, nErr1, m_cacheError1);
     rapidjson::GenericStringRef<char> nErr2 = "err2";
     addArrayToJson(doc, nErr2, m_cacheError2);
+    rapidjson::GenericStringRef<char> nDeltaPrim = "deltaPrim";
+    addArrayToJson(doc, nDeltaPrim, m_cacheDeltaPrim);
+    rapidjson::GenericStringRef<char> nDeltaDual = "deltaDual";
+    addArrayToJson(doc, nDeltaDual, m_cacheDeltaDual);
+    rapidjson::GenericStringRef<char> nNrmLtrDeltaDual = "nrmLtrDeltaDual";
+    addArrayToJson(doc, nNrmLtrDeltaDual, m_cacheNrmLtrDeltaDual);
     typedef rapidjson::GenericStringBuffer<rapidjson::UTF8<>, rapidjson::MemoryPoolAllocator<>> StringBuffer;
     StringBuffer buffer(&allocator);
     rapidjson::Writer<StringBuffer> writer(buffer, reinterpret_cast<rapidjson::CrtAllocator *>(&allocator));

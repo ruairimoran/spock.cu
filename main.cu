@@ -25,11 +25,12 @@ int main() {
     /** CACHE */
     double tol = 1e-3;
     size_t maxIters = 3000;
-    Cache cache(tree, problem, tol, maxIters);
+    bool detectInfeasibility = false;
+    Cache cache(tree, problem, tol, maxIters, detectInfeasibility);
 //    cache.print();
 
     /** VANILLA CP */
-    std::vector<double> initState(problem.numStates(), -2.1);
+    std::vector<double> initState(problem.numStates(), .1);
     size_t exit_status = cache.cpTime(initState);
     std::cout << "cp exit status: " << exit_status << std::endl;
 

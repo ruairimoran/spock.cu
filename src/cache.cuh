@@ -148,6 +148,8 @@ protected:
 
     void projectPrimalWorkspaceOnKernels();
 
+    void translateSocs();
+
     void projectDualWorkspaceOnConstraints();
 
     void computeAdjDual();
@@ -168,7 +170,7 @@ public:
     /**
      * Constructor
      */
-    Cache(ScenarioTree<T> &tree, ProblemData<T> &data, T tol, size_t maxIters, bool detectInfeas=false) :
+    Cache(ScenarioTree<T> &tree, ProblemData<T> &data, T tol, size_t maxIters, bool detectInfeas = false) :
         m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters), m_detectInfeas(detectInfeas) {
         /* Allocate memory on host */
         size_t cacheSize = m_maxIters - m_warmupIters;
@@ -592,6 +594,12 @@ void Cache<T>::projectPrimalWorkspaceOnKernels() {
 }
 
 template<typename T>
+void Cache<T>::translateSocs() {
+    *m_d_iv += *m_d_socsNonleafHalves;
+    *m_d_vi += *m_d_socsLeafHalves;
+}
+
+template<typename T>
 void Cache<T>::projectDualWorkspaceOnConstraints() {
     /* I */
     m_cartRisk->projectOnDual(*m_d_i);
@@ -607,7 +615,6 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
         /* TODO!  */
     }
     /* IV */
-    *m_d_iv += *m_d_socsNonleafHalves;
     m_socsNonleaf->project(*m_d_iv);
     /* V */
     if (m_data.leafConstraint()[0]->isRectangle()) {
@@ -617,7 +624,6 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
         /* TODO!  */
     }
     /* VI */
-    *m_d_vi += *m_d_socsLeafHalves;
     m_socsLeaf->project(*m_d_vi);
 }
 
@@ -663,13 +669,14 @@ template<typename T>
 void Cache<T>::proximalDual() {
     m_d_dualWorkspace->deviceCopyTo(*m_d_dual);
     *m_d_dualWorkspace *= m_data.stepSizeRecip();
+    translateSocs();
     projectDualWorkspaceOnConstraints();
     *m_d_dualWorkspace *= m_data.stepSize();
     *m_d_dual -= *m_d_dualWorkspace;
 }
 
 /**
- * Compute adjoint of dual
+ * Compute adjoint of new dual
  */
 template<typename T>
 void Cache<T>::computeAdjDual() {

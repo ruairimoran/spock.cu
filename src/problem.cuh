@@ -63,6 +63,7 @@ private:
     std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>> m_choleskyBatch;
     std::vector<std::unique_ptr<DTensor<T>>> m_choleskyStage;
     /* Kernel projection */
+    size_t m_s2Rows = 0;  ///< Number of rows of S2
     size_t m_nullDim = 0;  ///< Total number system states
     std::unique_ptr<DTensor<T>> m_d_nullspaceProj = nullptr;
     std::unique_ptr<DTensor<T>> m_d_constraintMatrix = nullptr;
@@ -72,7 +73,9 @@ private:
 
     static void parseConstraint(size_t nodeIdx, const rapidjson::Value &value,
                                 std::vector<std::unique_ptr<Constraint<T>>> &constraint) {
-        if (value["type"].GetString() == std::string("rectangle")) {
+        if (value["type"].GetString() == std::string("no")) {
+            constraint[nodeIdx] = std::make_unique<NoConstraint<T>>(nodeIdx, 0);
+        } else if (value["type"].GetString() == std::string("rectangle")) {
             size_t numElements = value["lb"].Capacity();
             std::vector<T> lb(numElements);
             std::vector<T> ub(numElements);
@@ -82,7 +85,7 @@ private:
             }
             constraint[nodeIdx] = std::make_unique<Rectangle<T>>(nodeIdx, numElements, lb, ub);
         } else {
-            err << "Constraint type " << value["type"].GetString()
+            err << "[ProblemData] Constraint type " << value["type"].GetString()
                 << " is not supported. Supported types include: rectangle" << "\n";
             throw std::invalid_argument(err.str());
         }
@@ -90,6 +93,7 @@ private:
 
     void parseRisk(size_t nodeIdx, const rapidjson::Value &value) {
         if (value["type"].GetString() == std::string("avar")) {
+            parseMatrix(nodeIdx, value["S2"], m_d_constraintMatrix);
             parseMatrix(nodeIdx, value["NNtr"], m_d_nullspaceProj);
             parseMatrix(nodeIdx, value["b"], m_d_b);
             m_risk[nodeIdx] = std::make_unique<AVaR<T>>(nodeIdx,
@@ -122,6 +126,7 @@ public:
         m_numStates = doc["numStates"].GetInt();
         m_numInputs = doc["numInputs"].GetInt();
         m_numStatesAndInputs = m_numStates + m_numInputs;
+        m_s2Rows = doc["rowsS2"].GetInt();
         m_nullDim = doc["rowsNNtr"].GetInt();
         m_numY = m_nullDim - (m_tree.numEvents() * 2);
         m_stepSize = doc["stepSize"].GetDouble();
@@ -153,6 +158,7 @@ public:
         m_d_dynamicsSumTr = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_P = std::make_unique<DTensor<T>>(m_numStates, m_numStates, m_tree.numNodes(), true);
         m_d_APB = std::make_unique<DTensor<T>>(m_numStates, m_numInputs, m_tree.numNodes(), true);
+        m_d_constraintMatrix = std::make_unique<DTensor<T>>(m_s2Rows, m_nullDim, m_tree.numNonleafNodes(), true);
         m_d_nullspaceProj = std::make_unique<DTensor<T>>(m_nullDim, m_nullDim, m_tree.numNonleafNodes(), true);
         m_d_b = std::make_unique<DTensor<T>>(m_numY, 1, m_tree.numNonleafNodes(), true);
         m_d_bTr = std::make_unique<DTensor<T>>(1, m_numY, m_tree.numNonleafNodes(), true);
@@ -226,6 +232,8 @@ public:
 
     T stepSizeRecip() { return m_stepSizeRecip; }
 
+    size_t numS2Rows() { return m_s2Rows; }
+
     size_t nullDim() { return m_nullDim; }
 
     size_t yDim() { return m_numY; }
@@ -261,6 +269,8 @@ public:
     DTensor<T> &P() { return *m_d_P; }
 
     DTensor<T> &APB() { return *m_d_APB; }
+
+    DTensor<T> &constraintMatrix() { return *m_d_constraintMatrix; }
 
     DTensor<T> &nullspaceProj() { return *m_d_nullspaceProj; }
 

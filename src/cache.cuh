@@ -126,6 +126,8 @@ protected:
     std::vector<T> m_cacheNrmLtrDeltaDual;
     std::vector<T> m_cacheDistDeltaDual;
     std::vector<T> m_cacheSuppDeltaDual;
+    std::vector<std::vector<T>> m_cachePrim;
+    std::vector<std::vector<T>> m_cacheDual;
 
     /**
      * Protected methods
@@ -184,6 +186,8 @@ public:
         m_cacheSuppDeltaDual = std::vector<T>(cacheSize);
         /* Sizes */
         initialiseSizes();
+        m_cachePrim = std::vector<std::vector<T>>(cacheSize, std::vector<T>(m_primSize));
+        m_cacheDual = std::vector<std::vector<T>>(cacheSize, std::vector<T>(m_dualSize));
         /* Allocate memory on device */
         m_d_prim = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
         m_d_primPrev = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
@@ -326,15 +330,17 @@ void Cache<T>::initialiseProjectable() {
     /* II */
     m_nnocNonleaf = std::make_unique<NonnegativeOrthantCone<T>>(m_tree.numNonleafNodes());
     /* III */
-    if (m_data.nonleafConstraint()[0]->isRectangle()) {
-        m_d_loBoundNonleaf = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
-        m_d_hiBoundNonleaf = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
-        for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
-            DTensor<T> lo(*m_d_loBoundNonleaf, m_matAxis, i, i);
-            DTensor<T> hi(*m_d_hiBoundNonleaf, m_matAxis, i, i);
-            m_data.nonleafConstraint()[i]->lo().deviceCopyTo(lo);
-            m_data.nonleafConstraint()[i]->hi().deviceCopyTo(hi);
-        }
+    if (m_data.nonleafConstraint()[0]->isNone()) {
+        /* Do nothing */
+    } else if (m_data.nonleafConstraint()[0]->isRectangle()) {
+            m_d_loBoundNonleaf = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
+            m_d_hiBoundNonleaf = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
+            for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
+                DTensor<T> lo(*m_d_loBoundNonleaf, m_matAxis, i, i);
+                DTensor<T> hi(*m_d_hiBoundNonleaf, m_matAxis, i, i);
+                m_data.nonleafConstraint()[i]->lo().deviceCopyTo(lo);
+                m_data.nonleafConstraint()[i]->hi().deviceCopyTo(hi);
+            }
     } else if (m_data.nonleafConstraint()[0]->isBall()) {
         /* TODO! */
     } else {
@@ -351,7 +357,9 @@ void Cache<T>::initialiseProjectable() {
         node.upload(nonleafHalves);
     }
     /* V */
-    if (m_data.leafConstraint()[0]->isRectangle()) {
+    if (m_data.leafConstraint()[0]->isNone()) {
+        /* Do nothing */
+    } else if (m_data.leafConstraint()[0]->isRectangle()) {
         m_d_loBoundLeaf = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numLeafNodes());
         m_d_hiBoundLeaf = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numLeafNodes());
         for (size_t i = 0; i < m_tree.numLeafNodes(); i++) {
@@ -572,6 +580,7 @@ void Cache<T>::projectPrimalWorkspaceOnKernels() {
     }
     /* Project onto nullspace in place */
     m_d_ytsSizeWorkspace->addAB(m_data.nullspaceProj(), *m_d_ytsSizeWorkspace);
+
     /* Disperse vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
     for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
         size_t chFr = m_tree.childFrom()[node];
@@ -688,6 +697,8 @@ void Cache<T>::computeAdjDual() {
 
 template<typename T>
 bool Cache<T>::computeError(size_t idx) {
+    m_d_prim->download(m_cachePrim[idx]);
+    m_d_dual->download(m_cacheDual[idx]);
     /* Primal error */
     m_d_primPrev->deviceCopyTo(*m_d_primWorkspace);
     *m_d_primWorkspace -= *m_d_prim;
@@ -705,7 +716,7 @@ bool Cache<T>::computeError(size_t idx) {
     /* Inf-norm of errors */
     T primErr = m_d_primErr->maxAbs();
     T dualErr = m_d_dualErr->maxAbs();
-    std::cout << "primErr: " << primErr << ", dualErr: " << dualErr << "\n";
+//    std::cout << "primErr: " << primErr << ", dualErr: " << dualErr << "\n";
     m_cacheError1[idx] = primErr;
     m_cacheError2[idx] = dualErr;
     /* Primal-dual error (avoid extra L adj until prim and dual errors pass tol) */
@@ -747,20 +758,39 @@ void Cache<T>::cpIter() {
     proximalPrimal();
     modifyDual();
     proximalDual();
+//    std::cout << "primal: " << m_d_prim->tr();
+//    std::cout << "dual: " << m_d_dual->tr();
     computeAdjDual();
 }
 
 /**
- * Add a named vector to a .json file
+ * Add a vector to a .json file with a referenced name
  */
 template<typename T>
 static void
-addArrayToJson(rapidjson::Document &doc, rapidjson::GenericStringRef<char> const &name, std::vector<T> &vec) {
+addArrayToJsonRef(rapidjson::Document &doc, rapidjson::GenericStringRef<char> const &name, std::vector<T> &vec) {
     rapidjson::Value array(rapidjson::kArrayType);
     for (size_t i = 0; i < vec.size(); i++) {
         array.PushBack(vec[i], doc.GetAllocator());
     }
     doc.AddMember(name, array, doc.GetAllocator());
+}
+
+/**
+ * Add a vector to a .json file with a literal name
+ */
+template<typename T>
+static void
+addArrayToJsonStr(rapidjson::Document &doc, std::string const &name, std::vector<T> &vec) {
+    rapidjson::Value array(rapidjson::kArrayType);
+    for (size_t i = 0; i < vec.size(); i++) {
+        array.PushBack(vec[i], doc.GetAllocator());
+    }
+    rapidjson::Value n;
+    char buff[10];
+    int len = sprintf(buff, "%s", name.c_str());
+    n.SetString(buff, len, doc.GetAllocator());
+    doc.AddMember(n, array, doc.GetAllocator());
 }
 
 /**
@@ -774,18 +804,29 @@ void Cache<T>::printToJson() {
     doc.SetObject();
     doc.AddMember("maxIters", m_maxIters, doc.GetAllocator());
     doc.AddMember("tol", m_tol, doc.GetAllocator());
+    doc.AddMember("sizeCache", m_maxIters - m_warmupIters, doc.GetAllocator());
+    doc.AddMember("sizePrim", m_primSize, doc.GetAllocator());
+    doc.AddMember("sizeDual", m_dualSize, doc.GetAllocator());
     rapidjson::GenericStringRef<char> nErr0 = "err0";
-    addArrayToJson(doc, nErr0, m_cacheError0);
+    addArrayToJsonRef(doc, nErr0, m_cacheError0);
     rapidjson::GenericStringRef<char> nErr1 = "err1";
-    addArrayToJson(doc, nErr1, m_cacheError1);
+    addArrayToJsonRef(doc, nErr1, m_cacheError1);
     rapidjson::GenericStringRef<char> nErr2 = "err2";
-    addArrayToJson(doc, nErr2, m_cacheError2);
+    addArrayToJsonRef(doc, nErr2, m_cacheError2);
+
+    for (size_t i = 0; i < m_cachePrim.size(); i++) {
+        std::string nPrim = "prim_" + std::to_string(i);
+        addArrayToJsonStr(doc, nPrim, m_cachePrim[i]);
+        std::string nDual = "dual_" + std::to_string(i);
+        addArrayToJsonStr(doc, nDual, m_cacheDual[i]);
+    }
+
     rapidjson::GenericStringRef<char> nDeltaPrim = "deltaPrim";
-    addArrayToJson(doc, nDeltaPrim, m_cacheDeltaPrim);
+    addArrayToJsonRef(doc, nDeltaPrim, m_cacheDeltaPrim);
     rapidjson::GenericStringRef<char> nDeltaDual = "deltaDual";
-    addArrayToJson(doc, nDeltaDual, m_cacheDeltaDual);
+    addArrayToJsonRef(doc, nDeltaDual, m_cacheDeltaDual);
     rapidjson::GenericStringRef<char> nNrmLtrDeltaDual = "nrmLtrDeltaDual";
-    addArrayToJson(doc, nNrmLtrDeltaDual, m_cacheNrmLtrDeltaDual);
+    addArrayToJsonRef(doc, nNrmLtrDeltaDual, m_cacheNrmLtrDeltaDual);
     typedef rapidjson::GenericStringBuffer<rapidjson::UTF8<>, rapidjson::MemoryPoolAllocator<>> StringBuffer;
     StringBuffer buffer(&allocator);
     rapidjson::Writer<StringBuffer> writer(buffer, reinterpret_cast<rapidjson::CrtAllocator *>(&allocator));

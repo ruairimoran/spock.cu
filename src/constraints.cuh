@@ -37,7 +37,7 @@ public:
 
     virtual size_t dimension() { return m_dimension; }
 
-    virtual void project(DTensor<T> &d_vec) = 0;
+    virtual void project(DTensor<T> &d_vec) {};
 
     virtual bool isNone() { return false; }
 
@@ -49,7 +49,7 @@ public:
 
     virtual bool isBall() { return false; }
 
-    virtual void print() = 0;
+    virtual void print() {};
 };
 
 

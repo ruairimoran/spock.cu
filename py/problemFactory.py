@@ -451,9 +451,10 @@ class Problem:
         adj = LinearOperator(dtype=None, shape=(prim_size, dual_size), matvec=self.__adj)
         adj_op = adj * op
         eigen, _ = eigs(adj_op)
-        nrm = np.real(max(eigen))
+        nrm = np.sqrt(np.real(max(eigen)))
         nrm_recip = 0.999 / nrm
         self.__step_size = nrm_recip
+        print("Step size: ", nrm_recip)
 
 
 class ProblemFactory:

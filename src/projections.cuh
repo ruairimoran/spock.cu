@@ -47,7 +47,9 @@ public:
 
 
 /**
- * Projection onto second order cones
+ * Projection onto second order cones.
+ * Note: The number of matrices for projection must be 1,
+ * where the columns are the vectors.
 */
 TEMPLATE_WITH_TYPE_T
 class SocProjection : public Projectable<T> {

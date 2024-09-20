@@ -7,16 +7,15 @@ where = ["src", "tests"]
 
 [project]
 name = "spock"
-dynamic = [
-    "version",
-    "license",]
+dynamic = ["version"]
+license = {file = "LICENSE.txt"}
+readme = "README.md"
 authors = [
     {name = "Ruairi Moran", email = "rmoran05@qub.ac.uk"},
     {name = "Pantelis Sopasakis", email = "p.sopasakis@qub.ac.uk"},
 ]
 description = "API for SPOCK: a solver for multistage risk-averse optimal control problems"
 keywords=['risk averse, optimal control, parallel']
-readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Languages :: Python :: C++ :: CUDA",

@@ -90,8 +90,10 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_ii = nullptr;
     std::unique_ptr<DTensor<T>> m_d_iii = nullptr;
     std::unique_ptr<DTensor<T>> m_d_iv = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_ivSoc = nullptr;
     std::unique_ptr<DTensor<T>> m_d_v = nullptr;
     std::unique_ptr<DTensor<T>> m_d_vi = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_viSoc = nullptr;
     /* Workspaces */
     std::unique_ptr<DTensor<T>> m_d_initState = nullptr;
     std::unique_ptr<DTensor<T>> m_d_primWorkspace = nullptr;
@@ -224,9 +226,9 @@ public:
      */
     void cpIter();
 
-    void cpAlgo(std::vector<T> &, std::vector<T> * = nullptr);
+    int cpAlgo(std::vector<T> &, std::vector<T> * = nullptr);
 
-    size_t cpTime(std::vector<T> &);
+    int cpTime(std::vector<T> &);
 
     /**
      * Getters
@@ -255,11 +257,6 @@ public:
     friend void testAdjoint<>(OperatorTestData<T> &, T);
 
     friend void testComputeErrors<>(CacheTestData<T> &d, T epsilon);
-
-    /**
-     * Debugging
-     */
-    void print();
 };
 
 template<typename T>
@@ -328,6 +325,11 @@ void Cache<T>::reshapeDualWorkspace() {
     start += m_sizeIII;
     m_d_iv = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeIV - 1);
     m_d_iv->reshape(m_data.numStatesAndInputs() + 2, 1, m_tree.numNodes());
+    /*
+     * SocProjection requires one matrix, where the columns are the vectors.
+     */
+    m_d_ivSoc = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeIV - 1);
+    m_d_ivSoc->reshape(m_data.numStatesAndInputs() + 2, m_tree.numNodes(), 1);
     start += m_sizeIV;
     if (m_sizeV) {
         m_d_v = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeV - 1);
@@ -336,6 +338,11 @@ void Cache<T>::reshapeDualWorkspace() {
     start += m_sizeV;
     m_d_vi = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeVI - 1);
     m_d_vi->reshape(m_data.numStates() + 2, 1, m_tree.numLeafNodes());
+    /*
+     * SocProjection requires one matrix, where the columns are the vectors.
+     */
+    m_d_viSoc = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeVI - 1);
+    m_d_viSoc->reshape(m_data.numStates() + 2, m_tree.numLeafNodes(), 1);
 }
 
 template<typename T>
@@ -361,7 +368,7 @@ void Cache<T>::initialiseProjectable() {
         /* TODO! */
     } else { constraintNotSupported(); }
     /* IV */
-    m_socsNonleaf = std::make_unique<SocProjection<T>>(*m_d_iv);
+    m_socsNonleaf = std::make_unique<SocProjection<T>>(*m_d_ivSoc);
     m_d_socsNonleafHalves = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs() + 2, 1, m_tree.numNodes());
     std::vector<T> nonleafHalves(m_data.numStatesAndInputs() + 2, 0.);
     nonleafHalves[m_data.numStatesAndInputs()] = -.5;
@@ -386,7 +393,7 @@ void Cache<T>::initialiseProjectable() {
         /* TODO! */
     } else { constraintNotSupported(); }
     /* VI */
-    m_socsLeaf = std::make_unique<SocProjection<T>>(*m_d_vi);
+    m_socsLeaf = std::make_unique<SocProjection<T>>(*m_d_viSoc);
     m_d_socsLeafHalves = std::make_unique<DTensor<T>>(m_data.numStates() + 2, 1, m_tree.numLeafNodes());
     std::vector<T> leafHalves(m_data.numStates() + 2, 0.);
     leafHalves[m_data.numStates()] = -.5;
@@ -636,9 +643,7 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
         /* TODO!  */
     }
     /* IV */
-    std::cout << "iv before" << m_d_iv->tr();
-    m_socsNonleaf->project(*m_d_iv);
-    std::cout << "iv after" << m_d_iv->tr();
+    m_socsNonleaf->project(*m_d_ivSoc);
     /* V */
     if (m_data.leafConstraint()[0]->isRectangle()) {
         k_projectRectangle<<<numBlocks(m_d_v->numEl(), TPB), TPB>>>(m_d_v->numEl(), m_d_v->raw(),
@@ -647,9 +652,7 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
         /* TODO!  */
     }
     /* VI */
-    std::cout << "vi before" << m_d_vi->tr();
-    m_socsLeaf->project(*m_d_vi);
-    std::cout << "vi after" << m_d_vi->tr();
+    m_socsLeaf->project(*m_d_viSoc);
 }
 
 /**
@@ -732,7 +735,6 @@ bool Cache<T>::computeError(size_t idx) {
     /* Inf-norm of errors */
     T primErr = m_d_primErr->maxAbs();
     T dualErr = m_d_dualErr->maxAbs();
-//    std::cout << "primErr: " << primErr << ", dualErr: " << dualErr << "\n";
     m_cacheError1[idx] = primErr;
     m_cacheError2[idx] = dualErr;
     /* Primal-dual error (avoid extra L adj until prim and dual errors pass tol) */
@@ -740,7 +742,6 @@ bool Cache<T>::computeError(size_t idx) {
     m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
     *m_d_primWorkspace += *m_d_primErr;
     m_err = m_d_primWorkspace->maxAbs();
-    std::cout << "err: " << m_err << "\n";
     m_cacheError0[idx] = m_err;
     if (m_err <= m_tol) { return true; }
 //    } else {
@@ -774,8 +775,6 @@ void Cache<T>::cpIter() {
     proximalPrimal();
     modifyDual();
     proximalDual();
-    std::cout << "primal: " << m_d_prim->tr();
-    std::cout << "dual: " << m_d_dual->tr();
     computeAdjDual();
 }
 
@@ -857,7 +856,7 @@ void Cache<T>::printToJson() {
  * Compute iterations of vanilla CP algorithm and check error.
  */
 template<typename T>
-void Cache<T>::cpAlgo(std::vector<T> &initState, std::vector<T> *previousSolution) {
+int Cache<T>::cpAlgo(std::vector<T> &initState, std::vector<T> *previousSolution) {
     initialiseState(initState);
     /* Load previous solution if given */
     if (previousSolution) m_d_prim->upload(*previousSolution);
@@ -866,7 +865,6 @@ void Cache<T>::cpAlgo(std::vector<T> &initState, std::vector<T> *previousSolutio
     /* Run algorithm */
     size_t iters = m_maxIters - m_warmupIters;
     bool status = false;
-    computeAdjDual();  // TO BE DELETED !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     for (size_t i = 0; i < iters; i++) {
         /* Compute CP iteration */
         cpIter();
@@ -877,29 +875,30 @@ void Cache<T>::cpAlgo(std::vector<T> &initState, std::vector<T> *previousSolutio
             break;
         }
     }
-    printToJson();
+    /* Return status */
+    if (status) {
+        std::cout << "Converged in " << m_countIterations << " iterations, to a tolerance of " << m_tol << "\n";
+        return 0;
+    } else {
+        std::cout << "Max iterations " << m_maxIters << " reached.\n";
+        return 1;
+    }
 }
 
 /**
  * Time vanilla CP algorithm with a parallelised cache
  */
 template<typename T>
-size_t Cache<T>::cpTime(std::vector<T> &initialState) {
+int Cache<T>::cpTime(std::vector<T> &initialState) {
     std::cout << "timer started" << "\n";
     const auto tick = std::chrono::high_resolution_clock::now();
     /* Run vanilla CP algorithm */
-    cpAlgo(initialState);
+    int status = cpAlgo(initialState);
     const auto tock = std::chrono::high_resolution_clock::now();
     auto durationMilli = std::chrono::duration<double, std::milli>(tock - tick).count();
-    std::cout << "timer stopped:  " << durationMilli << " ms" << "\n";
-    return 0;
-}
-
-template<typename T>
-void Cache<T>::print() {
-    std::cout << "Tolerance: " << m_tol << "\n";
-    std::cout << "Num iterations: " << m_countIterations << " of " << m_maxIters << "\n";
-    std::cout << "Primal (from device): " << m_d_prim->tr();
+    std::cout << "timer stopped: " << durationMilli << " ms" << "\n";
+    printToJson();
+    return status;
 }
 
 

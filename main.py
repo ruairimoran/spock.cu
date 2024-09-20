@@ -59,14 +59,12 @@ input_ub = input_lim * np.ones((num_inputs, 1))
 nonleaf_lb = np.vstack((state_lb, input_lb))
 nonleaf_ub = np.vstack((state_ub, input_ub))
 nonleaf_constraint = py.build.Rectangle(nonleaf_lb, nonleaf_ub)
-nonleaf_constraint_none = py.build.No()
 
 # Terminal constraint
 leaf_state_lim = 1000.
 leaf_lb = -leaf_state_lim * np.ones((num_states, 1))
 leaf_ub = leaf_state_lim * np.ones((num_states, 1))
 leaf_constraint = py.build.Rectangle(leaf_lb, leaf_ub)
-leaf_constraint_none = py.build.No()
 
 # Risk
 alpha = .95
@@ -81,8 +79,8 @@ problem = (
     .with_markovian_dynamics(As, Bs)
     .with_markovian_nonleaf_costs(Qs, Rs)
     .with_leaf_cost(T)
-    .with_nonleaf_constraint(nonleaf_constraint_none)
-    .with_leaf_constraint(leaf_constraint_none)
+    .with_nonleaf_constraint(nonleaf_constraint)
+    .with_leaf_constraint(leaf_constraint)
     .with_risk(risk)
     .generate_problem()
 )

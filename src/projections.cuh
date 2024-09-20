@@ -31,11 +31,10 @@ protected:
 
     bool dimensionCheck(DTensor<T> &d_tensor) {
         if (d_tensor.numRows() != m_numRows || d_tensor.numCols() != m_numCols || d_tensor.numMats() != m_numMats) {
-            std::cerr << "Given DTensor [" << d_tensor.numRows() << " x " << d_tensor.numCols() << " x "
-                      << d_tensor.numMats()
-                      << "], but projection setup for [" << m_numRows << " x " << m_numCols << " x " << m_numMats
-                      << "]\n";
-            throw std::invalid_argument("DTensor and projection dimensions mismatch");
+            err << "Given DTensor [" << d_tensor.numRows() << " x " << d_tensor.numCols() << " x " << d_tensor.numMats()
+                << "], but projection setup for [" << m_numRows << " x " << m_numCols << " x " << m_numMats
+                << "]\n";
+            throw std::invalid_argument(err.str());
         }
         return true;
     }
@@ -66,6 +65,11 @@ private:
 
 public:
     explicit SocProjection(DTensor<T> &d_tensor) : Projectable<T>(d_tensor) {
+        if (this->m_numMats != 1) {
+            err << "Trying to setup [SocProjection] with " << d_tensor.numMats()
+                << " matrices. Number of matrices must be 1.\n";
+            throw std::invalid_argument(err.str());
+        }
         m_d_zeros = std::make_unique<DTensor<T>>(this->m_numCols, 1, 1, true);
         m_d_lastElementOfSocs = std::make_unique<DTensor<T>>(this->m_numCols);
         m_d_squaredElements = std::make_unique<DTensor<T>>(this->m_numCols * (this->m_numRows - 1));

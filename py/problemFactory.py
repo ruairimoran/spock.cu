@@ -471,8 +471,7 @@ class Problem:
         eigen, _ = eigs(adj_op)
         max_eigen = np.real(max(eigen))
         nrm = np.sqrt(max_eigen)
-        # nrm_recip = 0.999 / nrm
-        nrm_recip = 0.31306548835666953  # TO BE DELETED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        nrm_recip = 0.999 / nrm
         self.__step_size = nrm_recip
         print("Step size: ", nrm_recip)
 

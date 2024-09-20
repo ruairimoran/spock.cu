@@ -1,14 +1,7 @@
-[build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-where = ["src", "tests"]
-
 [project]
 name = "spock"
 dynamic = ["version"]
-license = {file = "LICENSE.txt"}
+license = {file = "LICENSE"}
 readme = "README.md"
 authors = [
     {name = "Ruairi Moran", email = "rmoran05@qub.ac.uk"},
@@ -39,3 +32,13 @@ test = [
 [project.urls]
 Repository = "https://github.com/ruairimoran/raocp-parallel"
 Issues = "https://github.com/ruairimoran/raocp-parallel/issues"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src", "tests"]
+
+[tool.setuptools.dynamic]
+version = {file = "VERSION"}

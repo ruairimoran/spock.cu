@@ -128,8 +128,6 @@ protected:
     std::vector<T> m_cacheNrmLtrDeltaDual;
     std::vector<T> m_cacheDistDeltaDual;
     std::vector<T> m_cacheSuppDeltaDual;
-    std::vector<std::vector<T>> m_cachePrim;
-    std::vector<std::vector<T>> m_cacheDual;
 
     /**
      * Protected methods
@@ -188,8 +186,6 @@ public:
         m_cacheSuppDeltaDual = std::vector<T>(cacheSize);
         /* Sizes */
         initialiseSizes();
-        m_cachePrim = std::vector<std::vector<T>>(cacheSize, std::vector<T>(m_primSize));
-        m_cacheDual = std::vector<std::vector<T>>(cacheSize, std::vector<T>(m_dualSize));
         /* Allocate memory on device */
         m_d_prim = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
         m_d_primPrev = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
@@ -716,8 +712,7 @@ void Cache<T>::computeAdjDual() {
 
 template<typename T>
 bool Cache<T>::computeError(size_t idx) {
-    m_d_prim->download(m_cachePrim[idx]);
-    m_d_dual->download(m_cacheDual[idx]);
+    cudaDeviceSynchronize();  // DO NOT REMOVE !!!
     /* Primal error */
     m_d_primPrev->deviceCopyTo(*m_d_primWorkspace);
     *m_d_primWorkspace -= *m_d_prim;
@@ -822,20 +817,16 @@ void Cache<T>::printToJson() {
     doc.AddMember("sizeCache", m_maxIters - m_warmupIters, doc.GetAllocator());
     doc.AddMember("sizePrim", m_primSize, doc.GetAllocator());
     doc.AddMember("sizeDual", m_dualSize, doc.GetAllocator());
+    std::vector<T> solution(m_primSize);
+    m_d_prim->download(solution);
+    rapidjson::GenericStringRef<char> nSol = "sol";
+    addArrayToJsonRef(doc, nSol, solution);
     rapidjson::GenericStringRef<char> nErr0 = "err0";
     addArrayToJsonRef(doc, nErr0, m_cacheError0);
     rapidjson::GenericStringRef<char> nErr1 = "err1";
     addArrayToJsonRef(doc, nErr1, m_cacheError1);
     rapidjson::GenericStringRef<char> nErr2 = "err2";
     addArrayToJsonRef(doc, nErr2, m_cacheError2);
-
-    for (size_t i = 0; i < m_cachePrim.size(); i++) {
-        std::string nPrim = "prim_" + std::to_string(i);
-        addArrayToJsonStr(doc, nPrim, m_cachePrim[i]);
-        std::string nDual = "dual_" + std::to_string(i);
-        addArrayToJsonStr(doc, nDual, m_cacheDual[i]);
-    }
-
     rapidjson::GenericStringRef<char> nDeltaPrim = "deltaPrim";
     addArrayToJsonRef(doc, nDeltaPrim, m_cacheDeltaPrim);
     rapidjson::GenericStringRef<char> nDeltaDual = "deltaDual";

@@ -24,7 +24,7 @@ int main() {
 
     /** CACHE */
     double tol = 1e-5;
-    size_t maxIters = 3000;
+    size_t maxIters = 2000;
     bool detectInfeasibility = false;
     Cache cache(tree, problem, tol, maxIters, detectInfeasibility);
 //    cache.print();

@@ -32,7 +32,7 @@ int main() {
     /** VANILLA CP */
     std::vector<double> initState(problem.numStates(), .1);
     size_t exit_status = cache.cpTime(initState);
-    std::cout << "cp exit status: " << exit_status << std::endl;
+    std::cout << "exit status: " << exit_status << std::endl;
 
     return 0;
 }

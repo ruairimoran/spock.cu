@@ -7,7 +7,9 @@ where = ["src", "tests"]
 
 [project]
 name = "spock"
-dynamic = ["version"]
+dynamic = [
+    "version",
+    "license",]
 authors = [
     {name = "Ruairi Moran", email = "rmoran05@qub.ac.uk"},
     {name = "Pantelis Sopasakis", email = "p.sopasakis@qub.ac.uk"},
@@ -18,7 +20,6 @@ readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Languages :: Python :: C++ :: CUDA",
-    "License :: Apache 2.0",
     "Operating System :: OS Independent",
 ]
 dependencies = [

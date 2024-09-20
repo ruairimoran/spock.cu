@@ -10,7 +10,7 @@ p = np.array([[0.5, 0.5], [0.5, 0.5]])
 
 v = np.array([0.3, 0.7])
 
-(final_stage, stop_branching_stage) = (1, 1)
+(final_stage, stop_branching_stage) = (7, 7)
 tree = py.treeFactory.TreeFactoryMarkovChain(
     transition_prob=p,
     initial_distribution=v,
@@ -26,13 +26,18 @@ print(tree)
 # --------------------------------------------------------
 
 # Sizes
-num_states = 1
-num_inputs = 1
+num_states = 5
+num_inputs = num_states
 num_events = 2
 
 # State dynamics
-A = 1. * np.eye(num_states)
-As = [A, A]
+off_diag = 0.01 * np.ones((1, num_states - 1))[0]
+As = [None] * num_events
+for w in range(num_events):
+    As[w] = np.diag(off_diag, -1) + np.diag(off_diag, 1)
+    for j in range(num_states):
+        diag = 1 + (w/num_events) * (1 + (j-1)/num_states)
+        As[w][j][j] = diag
 
 # Input dynamics
 B = 1. * np.eye(num_inputs)
@@ -50,8 +55,8 @@ Rs = [R, R]
 T = 1e-1 * np.eye(num_states)
 
 # State-input constraint
-state_lim = 1000.
-input_lim = 1000.
+state_lim = 1.
+input_lim = 1.5
 state_lb = -state_lim * np.ones((num_states, 1))
 state_ub = state_lim * np.ones((num_states, 1))
 input_lb = -input_lim * np.ones((num_inputs, 1))
@@ -61,7 +66,7 @@ nonleaf_ub = np.vstack((state_ub, input_ub))
 nonleaf_constraint = py.build.Rectangle(nonleaf_lb, nonleaf_ub)
 
 # Terminal constraint
-leaf_state_lim = 1000.
+leaf_state_lim = 1.
 leaf_lb = -leaf_state_lim * np.ones((num_states, 1))
 leaf_ub = leaf_state_lim * np.ones((num_states, 1))
 leaf_constraint = py.build.Rectangle(leaf_lb, leaf_ub)

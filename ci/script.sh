@@ -21,7 +21,7 @@ test_python() {
     pip install --upgrade pip
 
     # -- install dependencies
-    pip install .
+    pip install '.[test]'
 
     # -- run the python tests
     python -W ignore tests/testTreeFactory.py -v

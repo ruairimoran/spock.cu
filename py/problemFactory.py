@@ -473,7 +473,6 @@ class Problem:
         nrm = np.sqrt(max_eigen)
         nrm_recip = 0.999 / nrm
         self.__step_size = nrm_recip
-        print("Step size: ", nrm_recip)
 
 
 class ProblemFactory:

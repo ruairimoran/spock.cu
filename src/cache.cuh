@@ -58,7 +58,7 @@ protected:
     bool m_detectInfeas = false;
     size_t m_countIterations = 0;
     T m_err = 0;
-    size_t m_warmupIters = 2;
+    size_t m_warmupIters = 0;
     size_t m_matAxis = 2;
     size_t m_primSize = 0;
     size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
@@ -272,9 +272,21 @@ void Cache<T>::initialiseSizes() {
     m_primSize = m_sizeU + m_sizeX + m_sizeY + m_sizeT + m_sizeS;
     m_sizeI = m_tree.numNonleafNodes() * m_data.yDim();
     m_sizeII = m_tree.numNonleafNodes();
-    m_sizeIII = m_tree.numNonleafNodes() * m_data.numStatesAndInputs();  // Might need to change for non-rectangles
+    if (m_data.nonleafConstraint()[0]->isNone()){
+        m_sizeIII = 0;
+    } else if (m_data.nonleafConstraint()[0]->isRectangle()) {
+        m_sizeIII = m_tree.numNonleafNodes() * m_data.numStatesAndInputs();
+    } else if (m_data.nonleafConstraint()[0]->isBall()) {
+        /* TODO */
+    } else { constraintNotSupported(); }
     m_sizeIV = m_tree.numNodes() * (m_data.numStatesAndInputs() + 2);
-    m_sizeV = m_tree.numLeafNodes() * m_data.numStates();
+    if (m_data.leafConstraint()[0]->isNone()){
+        m_sizeV = 0;
+    } else if (m_data.leafConstraint()[0]->isRectangle()) {
+        m_sizeV = m_tree.numLeafNodes() * m_data.numStates();
+    } else if (m_data.leafConstraint()[0]->isBall()) {
+        /* TODO */
+    } else { constraintNotSupported(); }
     m_sizeVI = m_tree.numLeafNodes() * (m_data.numStates() + 2);
     m_dualSize = m_sizeI + m_sizeII + m_sizeIII + m_sizeIV + m_sizeV + m_sizeVI;
 }
@@ -309,14 +321,18 @@ void Cache<T>::reshapeDualWorkspace() {
     m_d_ii = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeII - 1);
     m_d_ii->reshape(1, 1, m_tree.numNonleafNodes());
     start += m_sizeII;
-    m_d_iii = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeIII - 1);
-    m_d_iii->reshape(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
+    if (m_sizeIII) {
+        m_d_iii = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeIII - 1);
+        m_d_iii->reshape(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
+    }
     start += m_sizeIII;
     m_d_iv = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeIV - 1);
     m_d_iv->reshape(m_data.numStatesAndInputs() + 2, 1, m_tree.numNodes());
     start += m_sizeIV;
-    m_d_v = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeV - 1);
-    m_d_v->reshape(m_data.numStates(), 1, m_tree.numLeafNodes());
+    if (m_sizeV) {
+        m_d_v = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeV - 1);
+        m_d_v->reshape(m_data.numStates(), 1, m_tree.numLeafNodes());
+    }
     start += m_sizeV;
     m_d_vi = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeVI - 1);
     m_d_vi->reshape(m_data.numStates() + 2, 1, m_tree.numLeafNodes());
@@ -343,9 +359,7 @@ void Cache<T>::initialiseProjectable() {
             }
     } else if (m_data.nonleafConstraint()[0]->isBall()) {
         /* TODO! */
-    } else {
-        throw std::invalid_argument("[Cache] Nonleaf constraint given is not supported.");
-    }
+    } else { constraintNotSupported(); }
     /* IV */
     m_socsNonleaf = std::make_unique<SocProjection<T>>(*m_d_iv);
     m_d_socsNonleafHalves = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs() + 2, 1, m_tree.numNodes());
@@ -370,9 +384,7 @@ void Cache<T>::initialiseProjectable() {
         }
     } else if (m_data.leafConstraint()[0]->isBall()) {
         /* TODO! */
-    } else {
-        throw std::invalid_argument("[Cache] Leaf constraint given is not supported.");
-    }
+    } else { constraintNotSupported(); }
     /* VI */
     m_socsLeaf = std::make_unique<SocProjection<T>>(*m_d_vi);
     m_d_socsLeafHalves = std::make_unique<DTensor<T>>(m_data.numStates() + 2, 1, m_tree.numLeafNodes());
@@ -624,7 +636,9 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
         /* TODO!  */
     }
     /* IV */
+    std::cout << "iv before" << m_d_iv->tr();
     m_socsNonleaf->project(*m_d_iv);
+    std::cout << "iv after" << m_d_iv->tr();
     /* V */
     if (m_data.leafConstraint()[0]->isRectangle()) {
         k_projectRectangle<<<numBlocks(m_d_v->numEl(), TPB), TPB>>>(m_d_v->numEl(), m_d_v->raw(),
@@ -633,7 +647,9 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
         /* TODO!  */
     }
     /* VI */
+    std::cout << "vi before" << m_d_vi->tr();
     m_socsLeaf->project(*m_d_vi);
+    std::cout << "vi after" << m_d_vi->tr();
 }
 
 /**
@@ -676,12 +692,12 @@ void Cache<T>::modifyDual() {
  */
 template<typename T>
 void Cache<T>::proximalDual() {
-    m_d_dualWorkspace->deviceCopyTo(*m_d_dual);
     *m_d_dualWorkspace *= m_data.stepSizeRecip();
     translateSocs();
+    m_d_dualWorkspace->deviceCopyTo(*m_d_dual);
     projectDualWorkspaceOnConstraints();
-    *m_d_dualWorkspace *= m_data.stepSize();
     *m_d_dual -= *m_d_dualWorkspace;
+    *m_d_dual *= m_data.stepSize();
 }
 
 /**
@@ -758,8 +774,8 @@ void Cache<T>::cpIter() {
     proximalPrimal();
     modifyDual();
     proximalDual();
-//    std::cout << "primal: " << m_d_prim->tr();
-//    std::cout << "dual: " << m_d_dual->tr();
+    std::cout << "primal: " << m_d_prim->tr();
+    std::cout << "dual: " << m_d_dual->tr();
     computeAdjDual();
 }
 
@@ -850,6 +866,7 @@ void Cache<T>::cpAlgo(std::vector<T> &initState, std::vector<T> *previousSolutio
     /* Run algorithm */
     size_t iters = m_maxIters - m_warmupIters;
     bool status = false;
+    computeAdjDual();  // TO BE DELETED !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     for (size_t i = 0; i < iters; i++) {
         /* Compute CP iteration */
         cpIter();

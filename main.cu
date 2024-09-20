@@ -23,8 +23,8 @@ int main() {
 //  	problem.print();
 
     /** CACHE */
-    double tol = 1e-3;
-    size_t maxIters = 3000;
+    double tol = 1e-5;
+    size_t maxIters = 3;
     bool detectInfeasibility = false;
     Cache cache(tree, problem, tol, maxIters, detectInfeasibility);
 //    cache.print();

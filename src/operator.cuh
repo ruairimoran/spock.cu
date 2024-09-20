@@ -7,6 +7,10 @@
 template<typename T>
 __global__ void k_setToZero(T *vec, size_t n);
 
+static void constraintNotSupported() {
+    throw std::invalid_argument("Constraint not supported.");
+}
+
 
 /**
  * Linear operator 'L' and its adjoint
@@ -61,7 +65,9 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
     sNonleaf.deviceCopyTo(ii);
     ii.addAB(m_data.bTr(), y, -1., 1.);
     /* III */
-    if (m_data.nonleafConstraint()[0]->isNone() || m_data.nonleafConstraint()[0]->isRectangle()) {
+    if (m_data.nonleafConstraint()[0]->isNone()) {
+        /* Do nothing */
+    } else if (m_data.nonleafConstraint()[0]->isRectangle()) {
         for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
             DTensor<T> iiiNode(iii, m_matAxis, node, node);
             DTensor<T> iiiX(iiiNode, 0, 0, m_data.numStates() - 1);
@@ -73,7 +79,7 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
         }
     } else if (m_data.nonleafConstraint()[0]->isBall()) {
         /* TODO! Pre-multiply xuNonleaf by Gamma_{xu} */
-    }
+    } else { constraintNotSupported(); }
     /* IV:1 */
     for (size_t node = 1; node < m_tree.numNodes(); node++) {
         size_t anc = m_tree.ancestors()[node];
@@ -113,11 +119,13 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
     }
     /* V */
     DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
-    if (m_data.leafConstraint()[0]->isNone() || m_data.leafConstraint()[0]->isRectangle()) {
+    if (m_data.leafConstraint()[0]->isNone()) {
+        /* Do nothing */
+    } else if (m_data.leafConstraint()[0]->isRectangle()) {
         xLeaf.deviceCopyTo(v);
     } else if (m_data.leafConstraint()[0]->isBall()) {
         /* TODO! Pre-multiply xLeaf by Gamma_{xN} */
-    }
+    } else { constraintNotSupported(); }
     /* VI:1 */
     m_d_xLeafWorkspace->addAB(m_data.sqrtStateWeightLeaf(), xLeaf);
     /* VI:2,3 */
@@ -151,7 +159,9 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     i.deviceCopyTo(y);
     y.addAB(m_data.b(), ii, -1., 1.);
     /* x (nonleaf) and u:Gamma */
-    if (m_data.nonleafConstraint()[0]->isNone() || m_data.nonleafConstraint()[0]->isRectangle()) {
+    if (m_data.nonleafConstraint()[0]->isNone()) {
+        /* Do nothing */
+    } else if (m_data.nonleafConstraint()[0]->isRectangle()) {
         for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
             DTensor<T> iiiNode(iii, m_matAxis, node, node);
             DTensor<T> iiiX(iiiNode, 0, 0, m_data.numStates() - 1);
@@ -163,7 +173,7 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
         }
     } else if (m_data.nonleafConstraint()[0]->isBall()) {
         /* TODO! Pre-multiply iii by Gamma^{T}_{x} and Gamma^{T}_{u} */
-    }
+    } else { constraintNotSupported(); }
     /* x (nonleaf) */
     /* -> Compute `Qiv1` at every nonroot node */
     for (size_t node = 1; node < m_tree.numNodes(); node++) {
@@ -225,11 +235,13 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     t *= 0.5;
     /* x (leaf):Gamma */
     DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
-    if (m_data.leafConstraint()[0]->isNone() || m_data.leafConstraint()[0]->isRectangle()) {
+    if (m_data.leafConstraint()[0]->isNone()) {
+        /* Do nothing */
+    } else if (m_data.leafConstraint()[0]->isRectangle()) {
         v.deviceCopyTo(xLeaf);
     } else if (m_data.leafConstraint()[0]->isBall()) {
         /* TODO! Pre-multiply v by Gamma^{T}_{xN} */
-    }
+    } else { constraintNotSupported(); }
     /* x (leaf) */
     for (size_t idx = 0; idx < m_tree.numLeafNodes(); idx++) {
         DTensor<T> viNode(vi, m_matAxis, idx, idx);

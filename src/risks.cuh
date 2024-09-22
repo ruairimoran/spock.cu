@@ -43,17 +43,22 @@ template<typename T>
 class AVaR : public CoherentRisk<T> {
 
 protected:
-    NonnegativeOrthantCone<T> m_nnoc;
-    ZeroCone<T> m_zero;
+    std::unique_ptr<NonnegativeOrthantCone<T>> m_nnoc = nullptr;
+    std::unique_ptr<ZeroCone<T>> m_zero = nullptr;
 
 public:
     explicit AVaR(size_t nodeIdx, size_t numChildren, DTensor<T> &nullspaceProj, DTensor<T> &b) :
-        CoherentRisk<T>(nodeIdx, nullspaceProj, b),
-        m_nnoc(numChildren * 2),
-        m_zero(1) {
+        CoherentRisk<T>(nodeIdx, nullspaceProj, b) {
+        size_t doubleNumCh = numChildren * 2;
+        /* The zero cone is extended for nodes with fewer children.
+         * As we are projecting on the dual, the buffer elements will never be changed.
+         */
+        size_t fill = this->m_d_b->numEl() - doubleNumCh;
+        m_nnoc = std::make_unique<NonnegativeOrthantCone<T>>(doubleNumCh);
+        m_zero = std::make_unique<ZeroCone<T>>(fill);
         this->m_K = std::make_unique<Cartesian<T>>();
-        this->m_K->addCone(m_nnoc);
-        this->m_K->addCone(m_zero);
+        this->m_K->addCone(*m_nnoc);
+        this->m_K->addCone(*m_zero);
     }
 
     void print() {

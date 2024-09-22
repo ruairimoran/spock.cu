@@ -31,11 +31,10 @@ protected:
 
     bool dimensionCheck(DTensor<T> &d_tensor) {
         if (d_tensor.numRows() != m_numRows || d_tensor.numCols() != m_numCols || d_tensor.numMats() != m_numMats) {
-            std::cerr << "Given DTensor [" << d_tensor.numRows() << " x " << d_tensor.numCols() << " x "
-                      << d_tensor.numMats()
-                      << "], but projection setup for [" << m_numRows << " x " << m_numCols << " x " << m_numMats
-                      << "]\n";
-            throw std::invalid_argument("DTensor and projection dimensions mismatch");
+            err << "Given DTensor [" << d_tensor.numRows() << " x " << d_tensor.numCols() << " x " << d_tensor.numMats()
+                << "], but projection setup for [" << m_numRows << " x " << m_numCols << " x " << m_numMats
+                << "]\n";
+            throw std::invalid_argument(err.str());
         }
         return true;
     }
@@ -48,31 +47,38 @@ public:
 
 
 /**
- * Projection onto second order cones
+ * Projection onto second order cones.
+ * Note: The number of matrices for projection must be 1,
+ * where the columns are the vectors.
 */
 TEMPLATE_WITH_TYPE_T
 class SocProjection : public Projectable<T> {
 private:
-    std::unique_ptr<DTensor<T>> m_lastElementOfSocs = nullptr;
-    std::unique_ptr<DTensor<T>> m_squaredElements = nullptr;
-    std::unique_ptr<DTensor<T>> m_norms = nullptr;
-    std::unique_ptr<DTensor<T>> m_scalingParams = nullptr;
-    std::unique_ptr<DTensor<int>> m_i2 = nullptr;
-    std::unique_ptr<DTensor<int>> m_i3 = nullptr;
-    std::unique_ptr<DTensor<T>> m_zeros = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_lastElementOfSocs = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_squaredElements = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_norms = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_scalingParams = nullptr;
+    std::unique_ptr<DTensor<int>> m_d_i2 = nullptr;
+    std::unique_ptr<DTensor<int>> m_d_i3 = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_zeros = nullptr;
     size_t m_threadsPerBlock = 0;
     dim3 m_gridDims;
     size_t m_sharedMemBytes = 0;
 
 public:
     explicit SocProjection(DTensor<T> &d_tensor) : Projectable<T>(d_tensor) {
-        m_zeros = std::make_unique<DTensor<T>>(this->m_numCols, 1, 1, true);
-        m_lastElementOfSocs = std::make_unique<DTensor<T>>(this->m_numCols);
-        m_squaredElements = std::make_unique<DTensor<T>>(this->m_numCols * (this->m_numRows - 1));
-        m_norms = std::make_unique<DTensor<T>>(this->m_numCols);
-        m_scalingParams = std::make_unique<DTensor<T>>(this->m_numCols, 1, 1, true);
-        m_i2 = std::make_unique<DTensor<int>>(this->m_numCols, 1, 1, true);
-        m_i3 = std::make_unique<DTensor<int>>(this->m_numCols, 1, 1, true);
+        if (this->m_numMats != 1) {
+            err << "Trying to setup [SocProjection] with " << d_tensor.numMats()
+                << " matrices. Number of matrices must be 1.\n";
+            throw std::invalid_argument(err.str());
+        }
+        m_d_zeros = std::make_unique<DTensor<T>>(this->m_numCols, 1, 1, true);
+        m_d_lastElementOfSocs = std::make_unique<DTensor<T>>(this->m_numCols);
+        m_d_squaredElements = std::make_unique<DTensor<T>>(this->m_numCols * (this->m_numRows - 1));
+        m_d_norms = std::make_unique<DTensor<T>>(this->m_numCols);
+        m_d_scalingParams = std::make_unique<DTensor<T>>(this->m_numCols, 1, 1, true);
+        m_d_i2 = std::make_unique<DTensor<int>>(this->m_numCols, 1, 1, true);
+        m_d_i3 = std::make_unique<DTensor<int>>(this->m_numCols, 1, 1, true);
         m_threadsPerBlock = TPB;
         size_t blocksDimX = numBlocks(this->m_numRows, m_threadsPerBlock);
         m_gridDims.x = blocksDimX;
@@ -83,19 +89,19 @@ public:
 
     void project(DTensor<T> &d_tensor) {
         this->dimensionCheck(d_tensor);
-        m_zeros->deviceCopyTo(*m_norms);
+        m_d_zeros->deviceCopyTo(*m_d_norms);
         k_projectionMultiSocStep1<<<m_gridDims, m_threadsPerBlock, m_sharedMemBytes>>>(d_tensor.raw(), this->m_numCols,
                                                                                        this->m_numRows,
-                                                                                       m_lastElementOfSocs->raw(),
-                                                                                       m_squaredElements->raw(),
-                                                                                       m_norms->raw(), m_i2->raw(),
-                                                                                       m_i3->raw(),
-                                                                                       m_scalingParams->raw());
+                                                                                       m_d_lastElementOfSocs->raw(),
+                                                                                       m_d_squaredElements->raw(),
+                                                                                       m_d_norms->raw(), m_d_i2->raw(),
+                                                                                       m_d_i3->raw(),
+                                                                                       m_d_scalingParams->raw());
         k_projectionMultiSocStep2<<<m_gridDims, m_threadsPerBlock>>>(d_tensor.raw(), this->m_numCols, this->m_numRows,
-                                                                     m_i2->raw());
+                                                                     m_d_i2->raw());
         k_projectionMultiSocStep3<<<m_gridDims, m_threadsPerBlock>>>(d_tensor.raw(), this->m_numCols, this->m_numRows,
-                                                                     m_norms->raw(), m_i2->raw(), m_i3->raw(),
-                                                                     m_scalingParams->raw());
+                                                                     m_d_norms->raw(), m_d_i2->raw(), m_d_i3->raw(),
+                                                                     m_d_scalingParams->raw());
     }
 };
 

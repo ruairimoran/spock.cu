@@ -100,7 +100,7 @@ void testDynamicsProjectionOnline(CacheTestData<T> &d, T epsilon) {
     d.m_cache->initialiseState(x0);
     d.m_cache->states().upload(originalStates);
     d.m_cache->inputs().upload(originalInputs);
-    d.m_cache->projectOnDynamics();
+    d.m_cache->projectPrimalWorkspaceOnDynamics();
     /* Compare spockStates */
     std::vector<T> spockStates(statesSize);
     d.m_cache->states().download(spockStates);
@@ -157,7 +157,7 @@ void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon) {
     }
 
     /* Project random data */
-    d.m_cache->projectOnKernels();
+    d.m_cache->projectPrimalWorkspaceOnKernels();
 
     /* Check result is in kernel */
     for (size_t node = 0; node < d.m_tree->numNonleafNodes(); node++) {
@@ -247,7 +247,7 @@ void testKernelProjectionOnlineOrthogonality(CacheTestData<T> &d, T epsilon) {
     DTensor<T> original(d.m_data->nullDim());
     buildVector(original, actualSizeY, d.m_data->yDim(), numCh, d.m_tree->numEvents(), y, t, s);
     /* Project original data */
-    d.m_cache->projectOnKernels();
+    d.m_cache->projectPrimalWorkspaceOnKernels();
     /* Build projected data */
     DTensor<T> projected(d.m_data->nullDim());
     buildVector(projected, actualSizeY, d.m_data->yDim(), numCh, d.m_tree->numEvents(), y, t, s);
@@ -255,7 +255,7 @@ void testKernelProjectionOnlineOrthogonality(CacheTestData<T> &d, T epsilon) {
     DTensor<T> other(d.m_data->nullDim());
     buildVector(other, actualSizeY, d.m_data->yDim(), numCh, d.m_tree->numEvents(), y, t, s);
     /* Project other data */
-    d.m_cache->projectOnKernels();
+    d.m_cache->projectPrimalWorkspaceOnKernels();
     /* Build otherProjected data */
     DTensor<T> otherProjected(d.m_data->nullDim());
     buildVector(otherProjected, actualSizeY, d.m_data->yDim(), numCh, d.m_tree->numEvents(), y, t, s);
@@ -270,4 +270,35 @@ TEST_F(CacheTest, kernelProjectionOnlineOrthogonality) {
     testKernelProjectionOnlineOrthogonality<float>(df, TEST_PRECISION_LOW);
     CacheTestData<double> dd;
     testKernelProjectionOnlineOrthogonality<double>(dd, TEST_PRECISION_HIGH);
+}
+
+/* ---------------------------------------
+ * Test how primal and dual errors
+ * are computed
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void testComputeErrors(CacheTestData<T> &d, T epsilon) {
+    std::vector<T> v = {2., -3., 4., -5., 6., -7., 8., -9.};
+    Cache<T> &c = *d.m_cache;
+    c.m_d_prim->upload(std::vector<T>(c.m_primSize, v[0]));
+    c.m_d_primPrev->upload(std::vector<T>(c.m_primSize, v[1]));
+    c.m_d_adjDual->upload(std::vector<T>(c.m_primSize, v[2]));
+    c.m_d_adjDualPrev->upload(std::vector<T>(c.m_primSize, v[3]));
+    c.m_d_dual->upload(std::vector<T>(c.m_dualSize, v[4]));
+    c.m_d_dualPrev->upload(std::vector<T>(c.m_dualSize, v[5]));
+    c.m_d_opPrim->upload(std::vector<T>(c.m_dualSize, v[6]));
+    c.m_d_opPrimPrev->upload(std::vector<T>(c.m_dualSize, v[7]));
+    bool status = c.computeError(0);
+    T primErr = d.m_data->stepSizeRecip() * (v[1] - v[0]) - (v[3] - v[2]);
+    T dualErr = d.m_data->stepSizeRecip() * (v[5] - v[4]) - (v[7] - v[6]);
+    EXPECT_NEAR(primErr, (*c.m_d_primErr)(0), epsilon);
+    EXPECT_NEAR(dualErr, (*c.m_d_dualErr)(0), epsilon);
+}
+
+TEST_F(CacheTest, computeErrors) {
+    CacheTestData<float> df;
+    testComputeErrors<float>(df, TEST_PRECISION_LOW);
+    CacheTestData<double> dd;
+    testComputeErrors<double>(dd, TEST_PRECISION_HIGH);
 }

@@ -23,10 +23,11 @@ protected:
     explicit ConvexCone(size_t dim) : m_dimension(dim) {}
 
     bool dimensionCheck(DTensor<T> &d_vec) {
-        if (d_vec.numRows() != m_dimension || d_vec.numCols() != 1 || d_vec.numMats() != 1) {
+        /* Only check (numRows * numMats) is correct, to allow 1-row and multiple-row tensors. */
+        if (d_vec.numRows() * d_vec.numCols() * d_vec.numMats() != this->m_dimension) {
             err << "[ConvexCone] DTensor is ["
                 << d_vec.numRows() << " x " << d_vec.numCols() << " x " << d_vec.numMats()
-                << "], but cone has dimensions [" << m_dimension << " x 1 x 1]\n";
+                << "], but cone has total dimension [" << this->m_dimension << "]\n";
             throw std::invalid_argument(err.str());
         }
         return true;
@@ -187,7 +188,8 @@ public:
 /**
  * A Cartesian cone (Cart)
  * - the set is a Cartesian product of cones (cone x cone x ...)
- * - the dual is the concatenation of the dual of each constituent cone 
+ * - the dual is the concatenation of the dual of each constituent cone
+ * - this class can handle cones of different dimensions
 */
 TEMPLATE_WITH_TYPE_T
 class Cartesian : public ConvexCone<T> {

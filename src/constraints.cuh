@@ -9,14 +9,17 @@ TEMPLATE_WITH_TYPE_T
 __global__ void k_projectRectangle(size_t, T *, T *, T *);
 
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 class Constraint {
 
 protected:
     size_t m_nodeIndex = 0;
     size_t m_dimension = 0;
+    std::unique_ptr<DTensor<T>> m_d_empty = nullptr;
 
-    explicit Constraint(size_t node, size_t dim) : m_nodeIndex(node), m_dimension(dim) {}
+    explicit Constraint(size_t node, size_t dim) : m_nodeIndex(node), m_dimension(dim) {
+        m_d_empty = std::make_unique<DTensor<T>>(0);
+    }
 
     bool dimensionCheck(DTensor<T> &d_vec) {
         if (d_vec.numRows() != m_dimension || d_vec.numCols() != 1 || d_vec.numMats() != 1) {
@@ -28,21 +31,25 @@ protected:
     }
 
 public:
-    virtual ~Constraint() {}
+    virtual ~Constraint() = default;
 
     virtual size_t node() { return m_nodeIndex; }
 
     virtual size_t dimension() { return m_dimension; }
 
-    virtual void project(DTensor<T> &d_vec) = 0;
+    virtual void project(DTensor<T> &d_vec) {};
 
     virtual bool isNone() { return false; }
 
     virtual bool isRectangle() { return false; }
 
+    virtual DTensor<T> &lo() { return *m_d_empty; }
+
+    virtual DTensor<T> &hi() { return *m_d_empty; }
+
     virtual bool isBall() { return false; }
 
-    virtual void print() = 0;
+    virtual void print() {};
 };
 
 
@@ -50,10 +57,11 @@ public:
  * No constraint
  * - used as placeholder
 */
-class NoConstraint : public Constraint<void> {
+TEMPLATE_WITH_TYPE_T
+class NoConstraint : public Constraint<T> {
 
 public:
-    explicit NoConstraint(size_t node, size_t dim) : Constraint<void>(node, dim) {}
+    explicit NoConstraint(size_t node, size_t dim) : Constraint<T>(node, dim) {}
 
     bool isNone() { return true; }
 };
@@ -66,12 +74,12 @@ public:
  * @param lb lower bound
  * @param ub upper bound
 */
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 class Rectangle : public Constraint<T> {
 
 private:
-    std::unique_ptr<DTensor<T>> m_d_lowerBound;
-    std::unique_ptr<DTensor<T>> m_d_upperBound;
+    std::unique_ptr<DTensor<T>> m_d_lowerBound = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_upperBound = nullptr;
 
 public:
     explicit Rectangle(size_t node, size_t dim, std::vector<T> &lb, std::vector<T> &ub) : Constraint<T>(node, dim) {
@@ -87,6 +95,10 @@ public:
 
     bool isRectangle() { return true; }
 
+    DTensor<T> &lo() { return *m_d_lowerBound; }
+
+    DTensor<T> &hi() { return *m_d_upperBound; }
+
     void print() {
         std::cout << "Node: " << this->m_nodeIndex << ", Constraint: Rectangle, \n";
         printIfTensor("Lower bound: ", m_d_lowerBound);
@@ -101,10 +113,11 @@ public:
  *
  * @param ub upper bound
 */
-class Ball : public Constraint<void> {
+TEMPLATE_WITH_TYPE_T
+class Ball : public Constraint<T> {
 
 public:
-    explicit Ball(size_t node, size_t dim) : Constraint<void>(node, dim) {}
+    explicit Ball(size_t node, size_t dim) : Constraint<T>(node, dim) {}
 
     bool isBall() { return true; }
 };

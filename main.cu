@@ -8,32 +8,31 @@
 #include "src/tree.cuh"
 #include "src/problem.cuh"
 #include "src/cache.cuh"
-#include "src/cp.cuh"
 
 
 
 int main() {
     /** SCENARIO TREE */
-    std::ifstream fileTree("tests/testTreeData.json");
+    std::ifstream fileTree("json/treeData.json");
     ScenarioTree tree(fileTree);
 //  	tree.print();
 
     /** PROBLEM DATA */
-    std::ifstream fileProblem("tests/testProblemData.json");
+    std::ifstream fileProblem("json/problemData.json");
     ProblemData problem(tree, fileProblem);
 //  	problem.print();
 
     /** CACHE */
-    double tol = 1e-4;
-    size_t maxIters = 20;
-    Cache cache(tree, problem, tol, maxIters);
-    cache.print();
+    double tol = 1e-5;
+    size_t maxIters = 2000;
+    bool detectInfeasibility = false;
+    Cache cache(tree, problem, tol, maxIters, detectInfeasibility);
+//    cache.print();
 
     /** VANILLA CP */
-    std::vector<double> initState = {.1, -.2, .3};
-    size_t exit_status = timeCp(cache, initState);
-    std::cout << "cp exit status: " << exit_status << std::endl;
-    cache.print();
+    std::vector<double> initState(problem.numStates(), .1);
+    size_t exit_status = cache.cpTime(initState);
+    std::cout << "exit status: " << exit_status << std::endl;
 
     return 0;
 }

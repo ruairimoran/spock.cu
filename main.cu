@@ -15,19 +15,18 @@ int main() {
     /** SCENARIO TREE */
     std::ifstream fileTree("json/treeData.json");
     ScenarioTree tree(fileTree);
-//  	tree.print();
+//  	std::cout << tree;
 
     /** PROBLEM DATA */
     std::ifstream fileProblem("json/problemData.json");
     ProblemData problem(tree, fileProblem);
-//  	problem.print();
+//  	std::cout << problem;
 
     /** CACHE */
     double tol = 1e-5;
     size_t maxIters = 2000;
     bool detectInfeasibility = false;
     Cache cache(tree, problem, tol, maxIters, detectInfeasibility);
-//    cache.print();
 
     /** VANILLA CP */
     std::vector<double> initState(problem.numStates(), .1);

@@ -27,11 +27,11 @@ static std::ostringstream err;
  * Debugging
  */
 template<typename T>
-static void printIfTensor(const std::string &description, std::unique_ptr<DTensor<T>> &data) {
+static void printIfTensor(std::ostream &out, const std::string &description, const std::unique_ptr<DTensor<T>> &data) {
     if (data) {
-        std::cout << description << *data;
+        out << description << *data;
     } else {
-        std::cout << description << "NOTHING TO PRINT.\n";
+        out << description << "NOTHING TO PRINT.\n";
     }
 }
 

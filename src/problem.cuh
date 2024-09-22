@@ -107,6 +107,33 @@ private:
         }
     }
 
+    std::ostream &print(std::ostream &out) const {
+        out << "Number of states: " << m_numStates << "\n";
+        out << "Number of inputs: " << m_numInputs << "\n";
+        printIfTensor(out, "State dynamics (from device): ", m_d_stateDynamics);
+        printIfTensor(out, "Input dynamics (from device): ", m_d_inputDynamics);
+        printIfTensor(out, "State weight (from device): ", m_d_stateWeight);
+        printIfTensor(out, "Input weight (from device): ", m_d_inputWeight);
+        printIfTensor(out, "Terminal state weight (from device): ", m_d_stateWeightLeaf);
+        out << "State-input constraints: \n";
+        for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
+            out << *m_nonleafConstraint[i];
+        }
+        out << "Leaf state constraints: \n";
+        for (size_t i = 0; i < m_tree.numLeafNodes(); i++) {
+            out << *m_leafConstraint[i];
+        }
+        for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
+            out << *m_risk[i];
+        }
+        printIfTensor(out, "Lower Cholesky (from device): ", m_d_lowerCholesky);
+        printIfTensor(out, "K (from device): ", m_d_K);
+        printIfTensor(out, "A + BK (from device): ", m_d_dynamicsSumTr);
+        printIfTensor(out, "P (from device): ", m_d_P);
+        printIfTensor(out, "Nullspace projection matrix (from device): ", m_d_nullspaceProj);
+        return out;
+    }
+
 public:
     /**
      * Constructor from JSON file stream
@@ -286,34 +313,7 @@ public:
 
     std::vector<std::unique_ptr<CoherentRisk<T>>> &risk() { return m_risk; }
 
-    /**
-     * Debugging
-     */
-    void print() {
-        std::cout << "Number of states: " << m_numStates << "\n";
-        std::cout << "Number of inputs: " << m_numInputs << "\n";
-        printIfTensor("State dynamics (from device): ", m_d_stateDynamics);
-        printIfTensor("Input dynamics (from device): ", m_d_inputDynamics);
-        printIfTensor("State weight (from device): ", m_d_stateWeight);
-        printIfTensor("Input weight (from device): ", m_d_inputWeight);
-        printIfTensor("Terminal state weight (from device): ", m_d_stateWeightLeaf);
-        std::cout << "State-input constraints: \n";
-        for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
-            m_nonleafConstraint[i]->print();
-        }
-        std::cout << "Leaf state constraints: \n";
-        for (size_t i = m_tree.numNonleafNodes(); i < m_tree.numNodes(); i++) {
-            m_leafConstraint[i]->print();
-        }
-        for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
-            m_risk[i]->print();
-        }
-        printIfTensor("Lower Cholesky (from device): ", m_d_lowerCholesky);
-        printIfTensor("K (from device): ", m_d_K);
-        printIfTensor("A + BK (from device): ", m_d_dynamicsSumTr);
-        printIfTensor("P (from device): ", m_d_P);
-        printIfTensor("Nullspace projection matrix (from device): ", m_d_nullspaceProj);
-    }
+    friend std::ostream &operator<<(std::ostream &out, const ProblemData<T> &data) { return data.print(out); }
 };
 
 

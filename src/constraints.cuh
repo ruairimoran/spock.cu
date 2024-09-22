@@ -30,6 +30,8 @@ protected:
         return true;
     }
 
+    virtual std::ostream &print(std::ostream &out) const { return out; };
+
 public:
     virtual ~Constraint() = default;
 
@@ -49,7 +51,7 @@ public:
 
     virtual bool isBall() { return false; }
 
-    virtual void print() {};
+    friend std::ostream &operator<<(std::ostream &out, const Constraint<T> &data) { return data.print(out); }
 };
 
 
@@ -81,6 +83,13 @@ private:
     std::unique_ptr<DTensor<T>> m_d_lowerBound = nullptr;
     std::unique_ptr<DTensor<T>> m_d_upperBound = nullptr;
 
+    std::ostream &print(std::ostream &out) const {
+        out << "Node: " << this->m_nodeIndex << ", Constraint: Rectangle, \n";
+        printIfTensor(out, "Lower bound: ", m_d_lowerBound);
+        printIfTensor(out, "Upper bound: ", m_d_upperBound);
+        return out;
+    }
+
 public:
     explicit Rectangle(size_t node, size_t dim, std::vector<T> &lb, std::vector<T> &ub) : Constraint<T>(node, dim) {
         m_d_lowerBound = std::make_unique<DTensor<T>>(lb, dim);
@@ -98,12 +107,6 @@ public:
     DTensor<T> &lo() { return *m_d_lowerBound; }
 
     DTensor<T> &hi() { return *m_d_upperBound; }
-
-    void print() {
-        std::cout << "Node: " << this->m_nodeIndex << ", Constraint: Rectangle, \n";
-        printIfTensor("Lower bound: ", m_d_lowerBound);
-        printIfTensor("Upper bound: ", m_d_upperBound);
-    }
 };
 
 

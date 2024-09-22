@@ -37,21 +37,28 @@ class TestProblem(unittest.TestCase):
             set_control = [control, 2 * control, 3 * control]  # n x u matrices
 
             # construct cost weight matrices
-            nonleaf_state_weight = 10 * np.eye(2)  # n x n matrix
+            nonleaf_state_weight = 10 * np.eye(TestProblem.__num_states)  # n x n matrix
             nonleaf_state_weights = [nonleaf_state_weight, 2 * nonleaf_state_weight, 3 * nonleaf_state_weight]
-            control_weight = np.eye(2)  # u x u matrix OR scalar
+            control_weight = np.eye(TestProblem.__num_inputs)  # u x u matrix OR scalar
             control_weights = [control_weight, 2 * control_weight, 3 * control_weight]
-            leaf_state_weight = 5 * np.eye(2)  # n x n matrix
+            leaf_state_weight = 5 * np.eye(TestProblem.__num_states)  # n x n matrix
 
-            # construct constraint min and max
-            state_lim = 2
-            state_min = -state_lim * np.ones((TestProblem.__num_states, 1))
-            state_max = state_lim * np.ones((TestProblem.__num_states, 1))
-            input_lim = 1
-            input_min = -input_lim * np.ones((TestProblem.__num_inputs, 1))
-            input_max = input_lim * np.ones((TestProblem.__num_inputs, 1))
-            state_rect = py.build.Rectangle(state_min, state_max)
-            input_rect = py.build.Rectangle(input_min, input_max)
+            # State-input constraint
+            state_lim = 6
+            input_lim = 0.3
+            state_lb = -state_lim * np.ones((TestProblem.__num_states, 1))
+            state_ub = state_lim * np.ones((TestProblem.__num_states, 1))
+            input_lb = -input_lim * np.ones((TestProblem.__num_inputs, 1))
+            input_ub = input_lim * np.ones((TestProblem.__num_inputs, 1))
+            si_lb = np.vstack((state_lb, input_lb))
+            si_ub = np.vstack((state_ub, input_ub))
+            state_input_constraint = py.build.Rectangle(si_lb, si_ub)
+
+            # Terminal constraint
+            leaf_state_lim = 0.1
+            leaf_state_lb = -leaf_state_lim * np.ones((TestProblem.__num_states, 1))
+            leaf_state_ub = leaf_state_lim * np.ones((TestProblem.__num_states, 1))
+            leaf_state_constraint = py.build.Rectangle(leaf_state_lb, leaf_state_ub)
 
             # define risks
             alpha = 0.5
@@ -61,18 +68,19 @@ class TestProblem(unittest.TestCase):
             TestProblem.__problem_from_markov = (
                 py.problemFactory.ProblemFactory(tree, TestProblem.__num_states, TestProblem.__num_inputs)
                 .with_markovian_dynamics(set_system, set_control)
-                .with_all_nonleaf_costs(nonleaf_state_weight, control_weight)
-                .with_all_leaf_costs(leaf_state_weight)
-                .with_all_risks(risks)
+                .with_nonleaf_cost(nonleaf_state_weight, control_weight)
+                .with_leaf_cost(leaf_state_weight)
+                .with_risk(risks)
             ).generate_problem()
 
             TestProblem.__problem_from_markov_with_markov = (
                 py.problemFactory.ProblemFactory(tree, TestProblem.__num_states, TestProblem.__num_inputs)
                 .with_markovian_dynamics(set_system, set_control)
                 .with_markovian_nonleaf_costs(nonleaf_state_weights, control_weights)
-                .with_all_leaf_costs(leaf_state_weight)
-                .with_all_constraints(state_rect, input_rect)
-                .with_all_risks(risks)
+                .with_leaf_cost(leaf_state_weight)
+                .with_nonleaf_constraint(state_input_constraint)
+                .with_leaf_constraint(leaf_state_constraint)
+                .with_risk(risks)
             ).generate_problem()
 
     @classmethod
@@ -122,10 +130,9 @@ class TestProblem(unittest.TestCase):
         problem = TestProblem.__problem_from_markov_with_markov
         for i in range(tree.num_nodes):
             if i < tree.num_nonleaf_nodes:
-                self.assertTrue(problem.state_constraint_at_node(i) is not None)
-                self.assertTrue(problem.input_constraint_at_node(i) is not None)
+                self.assertTrue(problem.nonleaf_constraint_at_node(i) is not None)
             else:
-                self.assertTrue(problem.state_constraint_at_node(i) is not None)
+                self.assertTrue(problem.leaf_constraint_at_node(i) is not None)
 
     def test_risks_list(self):
         tree = TestProblem.__tree_from_markov

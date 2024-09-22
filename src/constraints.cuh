@@ -30,11 +30,17 @@ protected:
 public:
     virtual ~Constraint() {}
 
-    size_t node() { return m_nodeIndex; }
+    virtual size_t node() { return m_nodeIndex; }
 
-    size_t dimension() { return m_dimension; }
+    virtual size_t dimension() { return m_dimension; }
 
     virtual void project(DTensor<T> &d_vec) = 0;
+
+    virtual bool isNone() { return false; }
+
+    virtual bool isRectangle() { return false; }
+
+    virtual bool isBall() { return false; }
 
     virtual void print() = 0;
 };
@@ -48,6 +54,8 @@ class NoConstraint : public Constraint<void> {
 
 public:
     explicit NoConstraint(size_t node, size_t dim) : Constraint<void>(node, dim) {}
+
+    bool isNone() { return true; }
 };
 
 
@@ -77,11 +85,28 @@ public:
                                                                        m_d_lowerBound->raw(), m_d_upperBound->raw());
     }
 
+    bool isRectangle() { return true; }
+
     void print() {
         std::cout << "Node: " << this->m_nodeIndex << ", Constraint: Rectangle, \n";
         printIfTensor("Lower bound: ", m_d_lowerBound);
         printIfTensor("Upper bound: ", m_d_upperBound);
     }
+};
+
+
+/**
+ * Ball constraint
+ * ||x||_{2} <= ub
+ *
+ * @param ub upper bound
+*/
+class Ball : public Constraint<void> {
+
+public:
+    explicit Ball(size_t node, size_t dim) : Constraint<void>(node, dim) {}
+
+    bool isBall() { return true; }
 };
 
 

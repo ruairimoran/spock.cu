@@ -7,12 +7,13 @@
 
 class CacheTest : public testing::Test {
 protected:
-    CacheTest() {}
-    virtual ~CacheTest() {}
+    CacheTest() = default;
+
+    virtual ~CacheTest() = default;
 };
 
 TEMPLATE_WITH_TYPE_T
-class CacheData {
+class CacheTestData {
 public:
     std::string m_treeFileLoc = "../../tests/testTreeData.json";
     std::string m_problemFileLoc = "../../tests/testProblemData.json";
@@ -21,31 +22,22 @@ public:
     std::unique_ptr<Cache<T>> m_cache;
 
     /** Prepare some host and device data */
-    size_t m_n = 64;
     T m_tol = 1e-4;
     size_t m_maxIters = 20;
-    DTensor<T> m_d_data = DTensor<T>(m_n);
-    std::vector<T> m_hostData = std::vector<T>(m_n);
-    std::vector<T> m_hostTest = std::vector<T>(m_n);
 
-    CacheData() {
+    CacheTestData() {
         std::ifstream tree_data(m_treeFileLoc);
         std::ifstream problem_data(m_problemFileLoc);
         m_tree = std::make_unique<ScenarioTree<T>>(tree_data);
         m_data = std::make_unique<ProblemData<T>>(*m_tree, problem_data);
         m_cache = std::make_unique<Cache<T>>(*m_tree, *m_data, m_tol, m_maxIters);
-
-        /** Positive and negative values in m_data */
-        for (size_t i = 0; i < m_n; i = i + 2) { m_hostData[i] = -2. * (i + 1.); }
-        for (size_t i = 1; i < m_n; i = i + 2) { m_hostData[i] = 2. * (i + 1.); }
-        m_d_data.upload(m_hostData);
     };
 
-    virtual ~CacheData() {}
+    virtual ~CacheTestData() = default;
 };
 
 TEMPLATE_WITH_TYPE_T
-static void parse(size_t nodeIdx, const rapidjson::Value &value, std::vector<T> &vec) {
+static void parseNode(size_t nodeIdx, const rapidjson::Value &value, std::vector<T> &vec) {
     size_t numElements = value.Capacity();
     for (rapidjson::SizeType i = 0; i < numElements; i++) {
         vec[nodeIdx * numElements + i] = value[i].GetDouble();
@@ -57,7 +49,7 @@ static void parse(size_t nodeIdx, const rapidjson::Value &value, std::vector<T> 
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
-void testInitialisingState(CacheData<T> &d) {
+void testInitialisingState(CacheTestData<T> &d) {
     std::vector<T> initialState = {3., 5., 4.};
     d.m_cache->initialiseState(initialState);
     std::vector<T> x(initialState.size());
@@ -67,9 +59,9 @@ void testInitialisingState(CacheData<T> &d) {
 }
 
 TEST_F(CacheTest, initialisingState) {
-    CacheData<float> df;
+    CacheTestData<float> df;
     testInitialisingState<float>(df);
-    CacheData<double> dd;
+    CacheTestData<double> dd;
     testInitialisingState<double>(dd);
 }
 
@@ -78,7 +70,7 @@ TEST_F(CacheTest, initialisingState) {
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
-void testDynamicsProjectionOnline(CacheData<T> &d, T epsilon) {
+void testDynamicsProjectionOnline(CacheTestData<T> &d, T epsilon) {
     std::ifstream problem_data(d.m_problemFileLoc);
     std::string json((std::istreambuf_iterator<char>(problem_data)),
                      std::istreambuf_iterator<char>());
@@ -86,7 +78,7 @@ void testDynamicsProjectionOnline(CacheData<T> &d, T epsilon) {
     doc.Parse(json.c_str());
     if (doc.HasParseError()) {
         std::cerr << "Error parsing problem data JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
-        throw std::invalid_argument("Cannot parse problem data JSON file for testing DP");
+        throw std::invalid_argument("[TestDynamicsProjectionOnline] Cannot parse problem data JSON file");
     }
     size_t statesSize = d.m_data->numStates() * d.m_tree->numNodes();
     size_t inputsSize = d.m_data->numInputs() * d.m_tree->numNonleafNodes();
@@ -97,14 +89,15 @@ void testDynamicsProjectionOnline(CacheData<T> &d, T epsilon) {
     const char *nodeString = nullptr;
     for (size_t i = 0; i < d.m_tree->numNodes(); i++) {
         nodeString = std::to_string(i).c_str();
-        parse(i, doc["dpStates"][nodeString], originalStates);
-        parse(i, doc["dpProjectedStates"][nodeString], cvxStates);
+        parseNode(i, doc["dpStates"][nodeString], originalStates);
+        parseNode(i, doc["dpProjectedStates"][nodeString], cvxStates);
         if (i < d.m_tree->numNonleafNodes()) {
-            parse(i, doc["dpInputs"][nodeString], originalInputs);
-            parse(i, doc["dpProjectedInputs"][nodeString], cvxInputs);
+            parseNode(i, doc["dpInputs"][nodeString], originalInputs);
+            parseNode(i, doc["dpProjectedInputs"][nodeString], cvxInputs);
         }
     }
-    std::vector<T> initialState(d.m_data->numStates());
+    std::vector<T> x0(originalStates.begin(), originalStates.begin() + d.m_data->numStates());
+    d.m_cache->initialiseState(x0);
     d.m_cache->states().upload(originalStates);
     d.m_cache->inputs().upload(originalInputs);
     d.m_cache->projectOnDynamics();
@@ -119,9 +112,9 @@ void testDynamicsProjectionOnline(CacheData<T> &d, T epsilon) {
 }
 
 TEST_F(CacheTest, dynamicsProjectionOnline) {
-    CacheData<float> df;
+    CacheTestData<float> df;
     testDynamicsProjectionOnline<float>(df, TEST_PRECISION_LOW);
-    CacheData<double> dd;
+    CacheTestData<double> dd;
     testDynamicsProjectionOnline<double>(dd, TEST_PRECISION_HIGH);
 }
 
@@ -130,7 +123,7 @@ TEST_F(CacheTest, dynamicsProjectionOnline) {
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
-void testKernelProjectionOnline(CacheData<T> &d, T epsilon) {
+void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon) {
     /* Parse data for testing */
     std::ifstream problem_data(d.m_problemFileLoc);
     std::string json((std::istreambuf_iterator<char>(problem_data)),
@@ -139,7 +132,7 @@ void testKernelProjectionOnline(CacheData<T> &d, T epsilon) {
     doc.Parse(json.c_str());
     if (doc.HasParseError()) {
         std::cerr << "Error parsing problem data JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
-        throw std::invalid_argument("Cannot parse problem data JSON file for testing projection on kernels");
+        throw std::invalid_argument("[TestKernelProjectionOnline] Cannot parse problem data JSON file");
     }
     /* Create random tensor data to be projected */
     T hi = 100.;
@@ -179,8 +172,8 @@ void testKernelProjectionOnline(CacheData<T> &d, T epsilon) {
         /* Copy in projected data */
         DTensor<T> projected(d.m_data->nullDim());
         DTensor<T> projY(projected, 0, 0, actualSizeY - 1);
-        DTensor<T> projT(projected, 0, d.m_cache->m_numY, d.m_cache->m_numY + numCh - 1);
-        DTensor<T> projS(projected, 0, d.m_cache->m_numY + d.m_tree->numEvents(), d.m_cache->m_numY + d.m_tree->numEvents() + numCh - 1);
+        DTensor<T> projT(projected, 0, d.m_data->yDim(), d.m_data->yDim() + numCh - 1);
+        DTensor<T> projS(projected, 0, d.m_data->yDim() + d.m_tree->numEvents(), d.m_data->yDim() + d.m_tree->numEvents() + numCh - 1);
         projT.reshape(1, 1, numCh);
         projS.reshape(1, 1, numCh);
         y.deviceCopyTo(projY);
@@ -192,7 +185,7 @@ void testKernelProjectionOnline(CacheData<T> &d, T epsilon) {
         rapidjson::Value &s2 = risk["S2"];
         size_t numEl = s2.Capacity();
         std::vector<T> s2Vec(numEl);
-        parse(0, s2, s2Vec);
+        parseNode(0, s2, s2Vec);
         size_t nR = doc["rowsS2"].GetInt();
         DTensor<T> kerConMat(s2Vec, nR, d.m_data->nullDim(), 1, rowMajor);
         /* Compute kernel matrix * projected vector */
@@ -205,9 +198,9 @@ void testKernelProjectionOnline(CacheData<T> &d, T epsilon) {
 }
 
 TEST_F(CacheTest, kernelProjectionOnline) {
-    CacheData<float> df;
+    CacheTestData<float> df;
     testKernelProjectionOnline<float>(df, TEST_PRECISION_LOW);
-    CacheData<double> dd;
+    CacheTestData<double> dd;
     testKernelProjectionOnline<double>(dd, TEST_PRECISION_HIGH);
 }
 
@@ -230,7 +223,7 @@ void buildVector(DTensor<T> &vec, size_t yAct, size_t yFull, size_t numCh, size_
 }
 
 TEMPLATE_WITH_TYPE_T
-void testKernelProjectionOnlineOrthogonality(CacheData<T> &d, T epsilon) {
+void testKernelProjectionOnlineOrthogonality(CacheTestData<T> &d, T epsilon) {
     /* Create original data */
     T hi = 100.;
     T lo = -hi;
@@ -252,20 +245,20 @@ void testKernelProjectionOnlineOrthogonality(CacheData<T> &d, T epsilon) {
     randS.deviceCopyTo(s);
     /* Build original data */
     DTensor<T> original(d.m_data->nullDim());
-    buildVector(original, actualSizeY, d.m_cache->m_numY, numCh, d.m_tree->numEvents(), y, t, s);
+    buildVector(original, actualSizeY, d.m_data->yDim(), numCh, d.m_tree->numEvents(), y, t, s);
     /* Project original data */
     d.m_cache->projectOnKernels();
     /* Build projected data */
     DTensor<T> projected(d.m_data->nullDim());
-    buildVector(projected, actualSizeY, d.m_cache->m_numY, numCh, d.m_tree->numEvents(), y, t, s);
+    buildVector(projected, actualSizeY, d.m_data->yDim(), numCh, d.m_tree->numEvents(), y, t, s);
     /* Build other data */
     DTensor<T> other(d.m_data->nullDim());
-    buildVector(other, actualSizeY, d.m_cache->m_numY, numCh, d.m_tree->numEvents(), y, t, s);
+    buildVector(other, actualSizeY, d.m_data->yDim(), numCh, d.m_tree->numEvents(), y, t, s);
     /* Project other data */
     d.m_cache->projectOnKernels();
     /* Build otherProjected data */
     DTensor<T> otherProjected(d.m_data->nullDim());
-    buildVector(otherProjected, actualSizeY, d.m_cache->m_numY, numCh, d.m_tree->numEvents(), y, t, s);
+    buildVector(otherProjected, actualSizeY, d.m_data->yDim(), numCh, d.m_tree->numEvents(), y, t, s);
     /* Orthogonality test (otherProjected - projected) † (projected - original) */
     DTensor<T> a = otherProjected - projected;
     DTensor<T> b = projected - original;
@@ -273,8 +266,8 @@ void testKernelProjectionOnlineOrthogonality(CacheData<T> &d, T epsilon) {
 }
 
 TEST_F(CacheTest, kernelProjectionOnlineOrthogonality) {
-    CacheData<float> df;
+    CacheTestData<float> df;
     testKernelProjectionOnlineOrthogonality<float>(df, TEST_PRECISION_LOW);
-    CacheData<double> dd;
+    CacheTestData<double> dd;
     testKernelProjectionOnlineOrthogonality<double>(dd, TEST_PRECISION_HIGH);
 }

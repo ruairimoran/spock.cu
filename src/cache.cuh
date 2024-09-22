@@ -6,16 +6,35 @@
 #include "problem.cuh"
 #include "cones.cuh"
 #include "risks.cuh"
+#include "operator.cuh"
 
 
 template<typename T>
 __global__ void k_setToZero(T *vec, size_t n);
 
-template<typename T> class CacheData;
-template<typename T> void testInitialisingState(CacheData<T> &d);
-template<typename T> void testDynamicsProjectionOnline(CacheData<T> &d, T epsilon);
-template<typename T> void testKernelProjectionOnline(CacheData<T> &d, T epsilon);
-template<typename T> void testKernelProjectionOnlineOrthogonality(CacheData<T> &d, T epsilon);
+template<typename T>
+class CacheTestData;
+
+template<typename T>
+void testInitialisingState(CacheTestData<T> &);
+
+template<typename T>
+void testDynamicsProjectionOnline(CacheTestData<T> &, T);
+
+template<typename T>
+void testKernelProjectionOnline(CacheTestData<T> &, T);
+
+template<typename T>
+void testKernelProjectionOnlineOrthogonality(CacheTestData<T> &, T);
+
+template<typename T>
+class OperatorTestData;
+
+template<typename T>
+void testOperator(OperatorTestData<T> &, T);
+
+template<typename T>
+void testAdjoint(OperatorTestData<T> &, T);
 
 
 /**
@@ -28,18 +47,23 @@ class Cache {
 protected:
     ScenarioTree<T> &m_tree;  ///< Previously created scenario tree
     ProblemData<T> &m_data;  ///< Previously created problem
+    LinearOperator<T> m_L = LinearOperator<T>(m_tree, m_data);  ///< Linear operator and its adjoint
     T m_tol = 0;
     size_t m_maxIters = 0;
     size_t m_countIterations = 0;
     size_t m_matAxis = 2;
     size_t m_primSize = 0;
-    size_t m_numXU = 0;
-    size_t m_numY = 0;
     size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
     size_t m_sizeX = 0;  ///< States of all nodes
     size_t m_sizeY = 0;  ///< Y for all nonleaf nodes
     size_t m_sizeT = 0;  ///< T for all child nodes
     size_t m_sizeS = 0;  ///< S for all child nodes
+    size_t m_sizeI = 0;
+    size_t m_sizeII = 0;
+    size_t m_sizeIII = 0;
+    size_t m_sizeIV = 0;
+    size_t m_sizeV = 0;
+    size_t m_sizeVI = 0;
     std::unique_ptr<DTensor<T>> m_d_prim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_primPrev = nullptr;
     std::unique_ptr<DTensor<T>> m_d_u = nullptr;
@@ -50,8 +74,15 @@ protected:
     size_t m_dualSize = 0;
     std::unique_ptr<DTensor<T>> m_d_dual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_dualPrev = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_i = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_ii = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_iii = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_iv = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_v = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_vi = nullptr;
     std::unique_ptr<DTensor<T>> m_d_cacheError = nullptr;
     /* Other */
+    std::unique_ptr<DTensor<T>> m_d_initState = nullptr;
     std::unique_ptr<DTensor<T>> m_d_q = nullptr;
     std::unique_ptr<DTensor<T>> m_d_d = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xSizeWorkspace = nullptr;
@@ -60,9 +91,13 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_ytsSizeWorkspace = nullptr;
 
     /**
-     * Private methods
+     * Protected methods
      */
     void reshapePrimal();
+
+    void reshapeDual();
+
+    void setRootState();
 
     void initialiseState(std::vector<T> &initState);
 
@@ -77,31 +112,38 @@ public:
     Cache(ScenarioTree<T> &tree, ProblemData<T> &data, T tol, size_t maxIters) :
         m_tree(tree), m_data(data), m_tol(tol), m_maxIters(maxIters) {
         /* Sizes */
-        m_numXU = m_data.numStates() + m_data.numInputs();
-        m_numY = m_data.nullDim() - (m_tree.numEvents() * 2);
         m_sizeU = m_tree.numNonleafNodes() * m_data.numInputs();  ///< Inputs of all nonleaf nodes
         m_sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
-        m_sizeY = m_tree.numNonleafNodes() * m_numY;  ///< Y for all nonleaf nodes
+        m_sizeY = m_tree.numNonleafNodes() * m_data.yDim();  ///< Y for all nonleaf nodes
         m_sizeT = m_tree.numNodes();  ///< T for all child nodes
         m_sizeS = m_tree.numNodes();  ///< S for all child nodes
         m_primSize = m_sizeU + m_sizeX + m_sizeY + m_sizeT + m_sizeS;
+        m_sizeI = m_tree.numNonleafNodes() * m_data.yDim();
+        m_sizeII = m_tree.numNonleafNodes();
+        m_sizeIII = m_tree.numNonleafNodes() * m_data.numStatesAndInputs();  // Might need to change for non-rectangles
+        m_sizeIV = m_tree.numNodes() * (m_data.numStatesAndInputs() + 2);
+        m_sizeV = m_tree.numLeafNodes() * m_data.numStates();
+        m_sizeVI = m_tree.numLeafNodes() * (m_data.numStates() + 2);
+        m_dualSize = m_sizeI + m_sizeII + m_sizeIII + m_sizeIV + m_sizeV + m_sizeVI;
         /* Allocate memory on device */
-        m_d_prim = std::make_unique<DTensor<T>>(m_primSize, true);
-        m_d_primPrev = std::make_unique<DTensor<T>>(m_primSize, true);
-        m_d_dual = std::make_unique<DTensor<T>>(m_dualSize, true);
-        m_d_dualPrev = std::make_unique<DTensor<T>>(m_dualSize, true);
-        m_d_cacheError = std::make_unique<DTensor<T>>(m_maxIters, true);
+        m_d_prim = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
+        m_d_primPrev = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
+        m_d_dual = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
+        m_d_dualPrev = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
+        m_d_cacheError = std::make_unique<DTensor<T>>(m_maxIters, 1, 1, true);
+        m_d_initState = std::make_unique<DTensor<T>>(m_data.numStates(), 1, 1, true);
         m_d_q = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
         m_d_d = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNonleafNodes(), true);
         m_d_xSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
         m_d_uSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNodes(), true);
-        m_d_xuSizeWorkspace = std::make_unique<DTensor<T>>(m_numXU, 1, m_tree.numNodes(), true);
+        m_d_xuSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNodes(), true);
         m_d_ytsSizeWorkspace = std::make_unique<DTensor<T>>(m_data.nullDim(), 1, m_tree.numNonleafNodes(), true);
-        /* Slice primal */
+        /* Slice and reshape primal and dual */
         reshapePrimal();
+        reshapeDual();
     }
 
-    ~Cache() {}
+    ~Cache() = default;
 
     /**
      * Public methods
@@ -124,13 +166,17 @@ public:
     /**
      * Test functions. As a friend, they can access protected members.
      */
-    friend void testInitialisingState <> (CacheData<T> &d);
+    friend void testInitialisingState<>(CacheTestData<T> &);
 
-    friend void testDynamicsProjectionOnline <> (CacheData<T> &d, T epsilon);
+    friend void testDynamicsProjectionOnline<>(CacheTestData<T> &, T);
 
-    friend void testKernelProjectionOnline <> (CacheData<T> &d, T epsilon);
+    friend void testKernelProjectionOnline<>(CacheTestData<T> &, T);
 
-    friend void testKernelProjectionOnlineOrthogonality <> (CacheData<T> &d, T epsilon);
+    friend void testKernelProjectionOnlineOrthogonality<>(CacheTestData<T> &, T);
+
+    friend void testOperator<>(OperatorTestData<T> &, T);
+
+    friend void testAdjoint<>(OperatorTestData<T> &, T);
 
     /**
      * Debugging
@@ -149,7 +195,7 @@ void Cache<T>::reshapePrimal() {
     m_d_x->reshape(m_data.numStates(), 1, m_tree.numNodes());
     start += m_sizeX;
     m_d_y = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeY - 1);
-    m_d_y->reshape(m_numY, 1, m_tree.numNonleafNodes());
+    m_d_y->reshape(m_data.yDim(), 1, m_tree.numNonleafNodes());
     start += m_sizeY;
     m_d_t = std::make_unique<DTensor<T>>(*m_d_prim, rowAxis, start, start + m_sizeT - 1);
     m_d_t->reshape(1, 1, m_tree.numNodes());
@@ -159,15 +205,44 @@ void Cache<T>::reshapePrimal() {
 }
 
 template<typename T>
+void Cache<T>::reshapeDual() {
+    size_t rowAxis = 0;
+    size_t start = 0;
+    m_d_i = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeI - 1);
+    m_d_i->reshape(m_data.yDim(), 1, m_tree.numNonleafNodes());
+    start += m_sizeI;
+    m_d_ii = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeII - 1);
+    m_d_ii->reshape(1, 1, m_tree.numNonleafNodes());
+    start += m_sizeII;
+    m_d_iii = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeIII - 1);
+    m_d_iii->reshape(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
+    start += m_sizeIII;
+    m_d_iv = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeIV - 1);
+    m_d_iv->reshape(m_data.numStatesAndInputs() + 2, 1, m_tree.numNodes());
+    start += m_sizeIV;
+    m_d_v = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeV - 1);
+    m_d_v->reshape(m_data.numStates(), 1, m_tree.numLeafNodes());
+    start += m_sizeV;
+    m_d_vi = std::make_unique<DTensor<T>>(*m_d_dual, rowAxis, start, start + m_sizeVI - 1);
+    m_d_vi->reshape(m_data.numStates() + 2, 1, m_tree.numLeafNodes());
+}
+
+template<typename T>
 void Cache<T>::initialiseState(std::vector<T> &initState) {
     /* Set initial state */
     if (initState.size() != m_data.numStates()) {
         std::cerr << "Error initialising state: problem setup for " << m_data.numStates()
                   << " but given " << initState.size() << " states" << "\n";
-        throw std::invalid_argument("Incorrect dimension of initial state");
+        throw std::invalid_argument("[initialiseState] Incorrect dimension of initial state");
     }
+    m_d_initState->upload(initState);
+    setRootState();
+}
+
+template<typename T>
+void Cache<T>::setRootState() {
     DTensor<T> firstState(*m_d_x, m_matAxis, 0, 0);
-    firstState.upload(initState);
+    m_d_initState->deviceCopyTo(firstState);
 }
 
 template<typename T>
@@ -271,8 +346,9 @@ void Cache<T>::projectOnDynamics() {
         q_Stage -= x_Stage;
     }
     /*
-     * Initial state has already been set, move on
+     * Set initial state
      */
+    setRootState();
     for (size_t stage = 0; stage < m_tree.numStages() - 1; stage++) {
         size_t stageFr = m_tree.stageFrom()[stage];
         size_t stageTo = m_tree.stageTo()[stage];
@@ -298,7 +374,7 @@ void Cache<T>::projectOnDynamics() {
             for (size_t ch = m_tree.childFrom()[node]; ch <= m_tree.childTo()[node]; ch++) {
                 DTensor<T> xu_ChNode(*m_d_xuSizeWorkspace, m_matAxis, ch, ch);
                 DTensor<T> xu_sliceX(xu_ChNode, 0, 0, m_data.numStates() - 1);
-                DTensor<T> xu_sliceU(xu_ChNode, 0, m_data.numStates(), m_numXU - 1);
+                DTensor<T> xu_sliceU(xu_ChNode, 0, m_data.numStates(), m_data.numStatesAndInputs() - 1);
                 x_Node.deviceCopyTo(xu_sliceX);
                 u_Node.deviceCopyTo(xu_sliceU);
             }
@@ -324,9 +400,10 @@ void Cache<T>::projectOnKernels() {
         DTensor<T> t(*m_d_t, m_matAxis, chFr, chTo);
         DTensor<T> s(*m_d_s, m_matAxis, chFr, chTo);
         DTensor<T> nodeStore(*m_d_ytsSizeWorkspace, m_matAxis, node, node);
-        DTensor<T> yStore(nodeStore, 0, 0, m_numY - 1);
-        DTensor<T> tStore(nodeStore, 0, m_numY, m_numY + numCh - 1);
-        DTensor<T> sStore(nodeStore, 0, m_numY + m_tree.numEvents(), m_numY + m_tree.numEvents() + numCh - 1);
+        DTensor<T> yStore(nodeStore, 0, 0, m_data.yDim() - 1);
+        DTensor<T> tStore(nodeStore, 0, m_data.yDim(), m_data.yDim() + numCh - 1);
+        DTensor<T> sStore(nodeStore, 0, m_data.yDim() + m_tree.numEvents(),
+                          m_data.yDim() + m_tree.numEvents() + numCh - 1);
         tStore.reshape(1, 1, numCh);
         sStore.reshape(1, 1, numCh);
         y.deviceCopyTo(yStore);
@@ -344,15 +421,31 @@ void Cache<T>::projectOnKernels() {
         DTensor<T> t(*m_d_t, m_matAxis, chFr, chTo);
         DTensor<T> s(*m_d_s, m_matAxis, chFr, chTo);
         DTensor<T> nodeStore(*m_d_ytsSizeWorkspace, m_matAxis, node, node);
-        DTensor<T> yStore(nodeStore, 0, 0, m_numY - 1);
-        DTensor<T> tStore(nodeStore, 0, m_numY, m_numY + numCh - 1);
-        DTensor<T> sStore(nodeStore, 0, m_numY + m_tree.numEvents(), m_numY + m_tree.numEvents() + numCh - 1);
+        DTensor<T> yStore(nodeStore, 0, 0, m_data.yDim() - 1);
+        DTensor<T> tStore(nodeStore, 0, m_data.yDim(), m_data.yDim() + numCh - 1);
+        DTensor<T> sStore(nodeStore, 0, m_data.yDim() + m_tree.numEvents(),
+                          m_data.yDim() + m_tree.numEvents() + numCh - 1);
         tStore.reshape(1, 1, numCh);
         sStore.reshape(1, 1, numCh);
         yStore.deviceCopyTo(y);
         tStore.deviceCopyTo(t);
         sStore.deviceCopyTo(s);
     }
+}
+
+/**
+ * Compute one (1) iteration of vanilla CP algorithm, nothing more.
+ */
+template<typename T>
+void Cache<T>::cpIter() {
+    projectOnDynamics();
+    projectOnKernels();
+    m_L.op(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
+    m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
+    /** update z_bar */
+    /** update n_bar */
+    /** update z */
+    /** update n */
 }
 
 template<typename T>
@@ -370,19 +463,6 @@ void Cache<T>::vanillaCp(std::vector<T> &initState, std::vector<T> *previousSolu
             break;
         }
     }
-}
-
-/**
- * Compute one (1) iteration of vanilla CP algorithm, nothing more.
- */
-template<typename T>
-void Cache<T>::cpIter() {
-    projectOnDynamics();
-    projectOnKernels();
-    /** update z_bar */
-    /** update n_bar */
-    /** update z */
-    /** update n */
 }
 
 template<typename T>

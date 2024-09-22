@@ -18,6 +18,7 @@ target_sources(spock_tests  # add files
     testProblem.cu
     testProjections.cu
     testCache.cu
+    testOperator.cu
 )
 target_link_libraries(spock_tests
     PRIVATE

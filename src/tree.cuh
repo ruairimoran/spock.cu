@@ -51,7 +51,7 @@ public:
 
         if (doc.HasParseError()) {
             std::cerr << "Error parsing tree JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
-            throw std::invalid_argument("Cannot parse tree JSON file");
+            throw std::invalid_argument("[Tree] Cannot parse tree JSON file");
         }
 
         /* Store single element data from JSON in host memory */
@@ -86,7 +86,7 @@ public:
         m_d_stageTo = std::make_unique<DTensor<size_t>>(m_numStages);
 
         /* Store array data from JSON in host memory */
-        ///< Note that anc[0] and events[0] will be max(size_t) on device because they are -1 on host
+        ///< Note that ancestors[0] and events[0] will be max(size_t) on device because they are -1 on host
         for (rapidjson::SizeType i = 0; i < m_numNodes; i++) {
             if (i < m_numNonleafNodes) {
                 m_childFrom[i] = doc["childrenFrom"][i].GetInt();
@@ -156,7 +156,7 @@ public:
 
     std::vector<size_t> &stageTo() { return m_stageTo; }
 
-    std::vector<size_t> &anc() { return m_ancestors; }
+    std::vector<size_t> &ancestors() { return m_ancestors; }
 
     DTensor<size_t> &d_stages() { return *m_d_stages; }
 

@@ -25,6 +25,10 @@ class Constraint:
     def is_rectangle(self):
         return False
 
+    @property
+    def is_ball(self):
+        return False
+
 
 # --------------------------------------------------------
 # None

@@ -23,6 +23,8 @@ protected:
         m_d_b = std::make_unique<DTensor<T>>(b, 2, nodeIdx, nodeIdx);
     }
 
+    virtual std::ostream &print(std::ostream &out) const { return out; };
+
 public:
     virtual ~CoherentRisk() {}
 
@@ -32,7 +34,7 @@ public:
 
     virtual DTensor<T> &b() { return *m_d_b; }
 
-    virtual void print() = 0;
+    friend std::ostream &operator<<(std::ostream &out, const CoherentRisk<T> &data) { return data.print(out); }
 };
 
 
@@ -45,6 +47,12 @@ class AVaR : public CoherentRisk<T> {
 protected:
     std::unique_ptr<NonnegativeOrthantCone<T>> m_nnoc = nullptr;
     std::unique_ptr<ZeroCone<T>> m_zero = nullptr;
+
+    std::ostream &print(std::ostream &out) const {
+        out << "Risk: AVaR, \n";
+        out << this->m_K;
+        return out;
+    }
 
 public:
     explicit AVaR(size_t nodeIdx, size_t numChildren, DTensor<T> &nullspaceProj, DTensor<T> &b) :
@@ -60,17 +68,6 @@ public:
         this->m_K->addCone(*m_nnoc);
         this->m_K->addCone(*m_zero);
     }
-
-    void print() {
-        std::cout << "Risk: AVaR, \n";
-        std::cout << "K: ";
-        if (this->m_K) {
-            this->m_K->print();
-        } else {
-            std::cout << "NO CONE TO PRINT.\n";
-        }
-    }
-
 };
 
 

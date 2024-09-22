@@ -39,6 +39,24 @@ private:
     std::unique_ptr<DTensor<size_t>> m_d_stageFrom = nullptr;  ///< Ptr to first node of stage at index
     std::unique_ptr<DTensor<size_t>> m_d_stageTo = nullptr;  ///< Ptr to last node of stage at index
 
+    std::ostream &print(std::ostream &out) const {
+        out << "Number of events: " << m_numEvents << "\n";
+        out << "Number of nonleaf nodes: " << m_numNonleafNodes << "\n";
+        out << "Number of nodes: " << m_numNodes << "\n";
+        out << "Number of stages: " << m_numStages << "\n";
+        printIfTensor(out, "Stages (from device): ", m_d_stages);
+        printIfTensor(out, "Ancestors (from device): ", m_d_ancestors);
+        printIfTensor(out, "Probabilities (from device): ", m_d_probabilities);
+        printIfTensor(out, "Conditional probabilities (from device): ", m_d_conditionalProbabilities);
+        printIfTensor(out, "Events (from device): ", m_d_events);
+        printIfTensor(out, "Children::from (from device): ", m_d_childFrom);
+        printIfTensor(out, "Children::to (from device): ", m_d_childTo);
+        printIfTensor(out, "Number children (from device): ", m_d_numChildren);
+        printIfTensor(out, "Stage::from (from device): ", m_d_stageFrom);
+        printIfTensor(out, "Stage::to (from device): ", m_d_stageTo);
+        return out;
+    }
+
 public:
     /**
      * Constructor from JSON file stream
@@ -178,25 +196,7 @@ public:
 
     DTensor<size_t> &d_stageTo() { return *m_d_stageTo; }
 
-    /**
-     * Debugging
-     */
-    void print() {
-        std::cout << "Number of events: " << m_numEvents << "\n";
-        std::cout << "Number of nonleaf nodes: " << m_numNonleafNodes << "\n";
-        std::cout << "Number of nodes: " << m_numNodes << "\n";
-        std::cout << "Number of stages: " << m_numStages << "\n";
-        printIfTensor("Stages (from device): ", m_d_stages);
-        printIfTensor("Ancestors (from device): ", m_d_ancestors);
-        printIfTensor("Probabilities (from device): ", m_d_probabilities);
-        printIfTensor("Conditional probabilities (from device): ", m_d_conditionalProbabilities);
-        printIfTensor("Events (from device): ", m_d_events);
-        printIfTensor("Children::from (from device): ", m_d_childFrom);
-        printIfTensor("Children::to (from device): ", m_d_childTo);
-        printIfTensor("Number children (from device): ", m_d_numChildren);
-        printIfTensor("Stage::from (from device): ", m_d_stageFrom);
-        printIfTensor("Stage::to (from device): ", m_d_stageTo);
-    }
+    friend std::ostream &operator<<(std::ostream &out, const ScenarioTree<T> &data) { return data.print(out); }
 };
 
 #endif

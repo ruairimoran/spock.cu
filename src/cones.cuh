@@ -33,6 +33,8 @@ protected:
         return true;
     }
 
+    virtual std::ostream &print(std::ostream &out) const { return out; };
+
 public:
     virtual ~ConvexCone() {}
 
@@ -44,6 +46,7 @@ public:
 
     virtual void projectOnDual(DTensor<T> &d_vec) = 0;
 
+    friend std::ostream &operator<<(std::ostream &out, const ConvexCone<T> &data) { return data.print(out); }
 };
 
 
@@ -66,7 +69,6 @@ public:
     }
 
     std::string name() { return "Null cone"; }
-
 };
 
 
@@ -92,7 +94,6 @@ public:
     }
 
     std::string name() { return "Universe cone"; }
-
 };
 
 
@@ -118,7 +119,6 @@ public:
     }
 
     std::string name() { return "Zero cone"; }
-
 };
 
 
@@ -143,7 +143,6 @@ public:
     }
 
     std::string name() { return "Nonnegative Orthant cone"; }
-
 };
 
 
@@ -181,7 +180,6 @@ public:
     }
 
     std::string name() { return "Second Order cone"; }
-
 };
 
 
@@ -196,6 +194,15 @@ class Cartesian : public ConvexCone<T> {
 
 private:
     std::vector<ConvexCone<T> *> m_cones;
+
+    std::ostream &print(std::ostream &out) const {
+        out << "Cartesian cone (" << this->m_dimension << ") of: ";
+        for (ConvexCone<T> *cone: m_cones) {
+            out << "+ " << cone->name() << " (" << cone->dimension() << ") ";
+        }
+        out << "\n";
+        return out;
+    }
 
 public:
     explicit Cartesian() : ConvexCone<T>(0) {}
@@ -230,14 +237,6 @@ public:
     }
 
     std::string name() { return "Cartesian cone"; }
-
-    void print() {
-        std::cout << "Cartesian cone (" << this->m_dimension << ") of: ";
-        for (ConvexCone<T> *cone: m_cones) {
-            std::cout << "+ " << cone->name() << " (" << cone->dimension() << ") ";
-        }
-        std::cout << "\n";
-    }
 };
 
 #endif

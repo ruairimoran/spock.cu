@@ -23,9 +23,9 @@ protected:
 
     bool dimensionCheck(DTensor<T> &d_vec) {
         if (d_vec.numRows() != m_dimension || d_vec.numCols() != 1 || d_vec.numMats() != 1) {
-            std::cerr << "DTensor is [" << d_vec.numRows() << " x " << d_vec.numCols() << " x " << d_vec.numMats()
-                      << "], but constraint has dimensions [" << m_dimension << " x " << 1 << " x " << 1 << "]\n";
-            throw std::invalid_argument("DTensor and constraint dimensions mismatch");
+            err << "DTensor is [" << d_vec.numRows() << " x " << d_vec.numCols() << " x " << d_vec.numMats()
+                << "], but constraint has dimensions [" << m_dimension << " x " << 1 << " x " << 1 << "]\n";
+            throw std::invalid_argument(err.str());
         }
         return true;
     }

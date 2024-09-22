@@ -265,7 +265,7 @@ void Cache<T>::initialiseSizes() {
     m_primSize = m_sizeU + m_sizeX + m_sizeY + m_sizeT + m_sizeS;
     m_sizeI = m_tree.numNonleafNodes() * m_data.yDim();
     m_sizeII = m_tree.numNonleafNodes();
-    if (m_data.nonleafConstraint()[0]->isNone()){
+    if (m_data.nonleafConstraint()[0]->isNone()) {
         m_sizeIII = 0;
     } else if (m_data.nonleafConstraint()[0]->isRectangle()) {
         m_sizeIII = m_tree.numNonleafNodes() * m_data.numStatesAndInputs();
@@ -273,7 +273,7 @@ void Cache<T>::initialiseSizes() {
         /* TODO */
     } else { constraintNotSupported(); }
     m_sizeIV = m_tree.numNodes() * (m_data.numStatesAndInputs() + 2);
-    if (m_data.leafConstraint()[0]->isNone()){
+    if (m_data.leafConstraint()[0]->isNone()) {
         m_sizeV = 0;
     } else if (m_data.leafConstraint()[0]->isRectangle()) {
         m_sizeV = m_tree.numLeafNodes() * m_data.numStates();
@@ -352,14 +352,14 @@ void Cache<T>::initialiseProjectable() {
     if (m_data.nonleafConstraint()[0]->isNone()) {
         /* Do nothing */
     } else if (m_data.nonleafConstraint()[0]->isRectangle()) {
-            m_d_loBoundNonleaf = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
-            m_d_hiBoundNonleaf = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
-            for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
-                DTensor<T> lo(*m_d_loBoundNonleaf, m_matAxis, i, i);
-                DTensor<T> hi(*m_d_hiBoundNonleaf, m_matAxis, i, i);
-                m_data.nonleafConstraint()[i]->lo().deviceCopyTo(lo);
-                m_data.nonleafConstraint()[i]->hi().deviceCopyTo(hi);
-            }
+        m_d_loBoundNonleaf = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
+        m_d_hiBoundNonleaf = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
+        for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
+            DTensor<T> lo(*m_d_loBoundNonleaf, m_matAxis, i, i);
+            DTensor<T> hi(*m_d_hiBoundNonleaf, m_matAxis, i, i);
+            m_data.nonleafConstraint()[i]->lo().deviceCopyTo(lo);
+            m_data.nonleafConstraint()[i]->hi().deviceCopyTo(hi);
+        }
     } else if (m_data.nonleafConstraint()[0]->isBall()) {
         /* TODO! */
     } else { constraintNotSupported(); }
@@ -404,9 +404,9 @@ template<typename T>
 void Cache<T>::initialiseState(std::vector<T> &initState) {
     /* Set initial state */
     if (initState.size() != m_data.numStates()) {
-        std::cerr << "Error initialising state: problem setup for " << m_data.numStates()
-                  << " but given " << initState.size() << " states" << "\n";
-        throw std::invalid_argument("[initialiseState] Incorrect dimension of initial state");
+        err << "[initialiseState] Error initialising state: problem setup for " << m_data.numStates()
+            << " but given " << initState.size() << " states" << "\n";
+        throw std::invalid_argument(err.str());
     }
     m_d_initState->upload(initState);
     setRootState();

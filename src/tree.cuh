@@ -50,8 +50,8 @@ public:
         doc.Parse(json.c_str());
 
         if (doc.HasParseError()) {
-            std::cerr << "Error parsing tree JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
-            throw std::invalid_argument("[Tree] Cannot parse tree JSON file");
+            err << "[Tree] Error parsing tree JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
+            throw std::invalid_argument(err.str());
         }
 
         /* Store single element data from JSON in host memory */

@@ -77,8 +77,9 @@ void testDynamicsProjectionOnline(CacheTestData<T> &d, T epsilon) {
     rapidjson::Document doc;
     doc.Parse(json.c_str());
     if (doc.HasParseError()) {
-        std::cerr << "Error parsing problem data JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
-        throw std::invalid_argument("[TestDynamicsProjectionOnline] Cannot parse problem data JSON file");
+        err << "[TestDynamicsProjectionOnline] Error parsing problem data JSON: "
+            << GetParseError_En(doc.GetParseError()) << "\n";
+        throw std::invalid_argument(err.str());
     }
     size_t statesSize = d.m_data->numStates() * d.m_tree->numNodes();
     size_t inputsSize = d.m_data->numInputs() * d.m_tree->numNonleafNodes();
@@ -131,8 +132,9 @@ void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon) {
     rapidjson::Document doc;
     doc.Parse(json.c_str());
     if (doc.HasParseError()) {
-        std::cerr << "Error parsing problem data JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
-        throw std::invalid_argument("[TestKernelProjectionOnline] Cannot parse problem data JSON file");
+        err << "[TestKernelProjectionOnline] Error parsing problem data JSON: "
+            << GetParseError_En(doc.GetParseError()) << "\n";
+        throw std::invalid_argument(err.str());
     }
     /* Create random tensor data to be projected */
     T hi = 100.;
@@ -173,7 +175,8 @@ void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon) {
         DTensor<T> projected(d.m_data->nullDim());
         DTensor<T> projY(projected, 0, 0, actualSizeY - 1);
         DTensor<T> projT(projected, 0, d.m_data->yDim(), d.m_data->yDim() + numCh - 1);
-        DTensor<T> projS(projected, 0, d.m_data->yDim() + d.m_tree->numEvents(), d.m_data->yDim() + d.m_tree->numEvents() + numCh - 1);
+        DTensor<T> projS(projected, 0, d.m_data->yDim() + d.m_tree->numEvents(),
+                         d.m_data->yDim() + d.m_tree->numEvents() + numCh - 1);
         projT.reshape(1, 1, numCh);
         projS.reshape(1, 1, numCh);
         y.deviceCopyTo(projY);

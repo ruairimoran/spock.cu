@@ -177,3 +177,18 @@ __global__ void k_projectionMultiSocStep3(T *data,
 template __global__ void k_projectionMultiSocStep3(float *, size_t, size_t, float *, int *, int *, float *);
 
 template __global__ void k_projectionMultiSocStep3(double *, size_t, size_t, double *, int *, int *, double *);
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_projectionMultiIndexedNnoc(T *data, size_t n, int *idxNnoc, int *idx) {
+    const unsigned int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if (i < n) {
+        idx[i] = idxNnoc[i] && data[i] < 0.;
+        data[i] = (1 - idx[i]) * data[i];
+    }
+}
+
+template __global__ void
+k_projectionMultiIndexedNnoc(float *, size_t, int *, int *);
+
+template __global__ void
+k_projectionMultiIndexedNnoc(double *, size_t, int *, int *);

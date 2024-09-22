@@ -34,6 +34,12 @@ public:
 
     virtual DTensor<T> &b() { return *m_d_b; }
 
+    virtual size_t dimension() { return m_d_b->numEl(); }
+
+    virtual bool isAvar() { return false; }
+
+    virtual size_t sizeNnoc() { return 0; }
+
     friend std::ostream &operator<<(std::ostream &out, const CoherentRisk<T> &data) { return data.print(out); }
 };
 
@@ -47,6 +53,7 @@ class AVaR : public CoherentRisk<T> {
 protected:
     std::unique_ptr<NonnegativeOrthantCone<T>> m_nnoc = nullptr;
     std::unique_ptr<ZeroCone<T>> m_zero = nullptr;
+    size_t m_doubleNumCh = 0;
 
     std::ostream &print(std::ostream &out) const {
         out << "Risk: AVaR, \n";
@@ -57,17 +64,21 @@ protected:
 public:
     explicit AVaR(size_t nodeIdx, size_t numChildren, DTensor<T> &nullspaceProj, DTensor<T> &b) :
         CoherentRisk<T>(nodeIdx, nullspaceProj, b) {
-        size_t doubleNumCh = numChildren * 2;
+        m_doubleNumCh = numChildren * 2;
         /* The zero cone is extended for nodes with fewer children.
          * As we are projecting on the dual, the buffer elements will never be changed.
          */
-        size_t fill = this->m_d_b->numEl() - doubleNumCh;
-        m_nnoc = std::make_unique<NonnegativeOrthantCone<T>>(doubleNumCh);
+        size_t fill = this->m_d_b->numEl() - m_doubleNumCh;
+        m_nnoc = std::make_unique<NonnegativeOrthantCone<T>>(m_doubleNumCh);
         m_zero = std::make_unique<ZeroCone<T>>(fill);
         this->m_K = std::make_unique<Cartesian<T>>();
         this->m_K->addCone(*m_nnoc);
         this->m_K->addCone(*m_zero);
     }
+
+    bool isAvar() { return true; }
+
+    size_t sizeNnoc() { return m_doubleNumCh; }
 };
 
 

@@ -87,6 +87,7 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_opPrim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_opPrimPrev = nullptr;
     std::unique_ptr<DTensor<T>> m_d_i = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_iNnoc = nullptr;
     std::unique_ptr<DTensor<T>> m_d_ii = nullptr;
     std::unique_ptr<DTensor<T>> m_d_iii = nullptr;
     std::unique_ptr<DTensor<T>> m_d_iv = nullptr;
@@ -110,7 +111,7 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_socsNonleafHalves = nullptr;
     std::unique_ptr<DTensor<T>> m_d_socsLeafHalves = nullptr;
     std::unique_ptr<NonnegativeOrthantCone<T>> m_nnocNonleaf = nullptr;
-    std::unique_ptr<Cartesian<T>> m_cartRisk = nullptr;
+    std::unique_ptr<IndexedNnocProjection<T>> m_cartRiskDual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_loBoundNonleaf = nullptr;
     std::unique_ptr<DTensor<T>> m_d_hiBoundNonleaf = nullptr;
     std::unique_ptr<DTensor<T>> m_d_loBoundLeaf = nullptr;
@@ -310,6 +311,10 @@ void Cache<T>::reshapeDualWorkspace() {
     size_t start = 0;
     m_d_i = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeI - 1);
     m_d_i->reshape(m_data.yDim(), 1, m_tree.numNonleafNodes());
+    /*
+     * IndexedNnocProjection requires [n x 1 x 1] tensor.
+     */
+    m_d_iNnoc = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeI - 1);
     start += m_sizeI;
     m_d_ii = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeII - 1);
     m_d_ii->reshape(1, 1, m_tree.numNonleafNodes());
@@ -344,8 +349,9 @@ void Cache<T>::reshapeDualWorkspace() {
 template<typename T>
 void Cache<T>::initialiseProjectable() {
     /* I */
-    m_cartRisk = std::make_unique<Cartesian<T>>();
-    for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) { m_cartRisk->addCone(m_data.risk()[i]->cone()); }
+    m_cartRiskDual = std::make_unique<IndexedNnocProjection<T>>();
+    for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) { m_cartRiskDual->addRisk(*(m_data.risk()[i])); }
+    m_cartRiskDual->offline();
     /* II */
     m_nnocNonleaf = std::make_unique<NonnegativeOrthantCone<T>>(m_tree.numNonleafNodes());
     /* III */
@@ -626,7 +632,7 @@ void Cache<T>::translateSocs() {
 template<typename T>
 void Cache<T>::projectDualWorkspaceOnConstraints() {
     /* I */
-    m_cartRisk->projectOnDual(*m_d_i);
+    m_cartRiskDual->project(*m_d_iNnoc);
     /* II */
     m_nnocNonleaf->project(*m_d_ii);
     /* III */

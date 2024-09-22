@@ -2,6 +2,7 @@
 #include <numeric>
 #include "../src/projections.cuh"
 #include "../src/tree.cuh"
+#include "../src/risks.cuh"
 
 
 class ProjectionsTest : public testing::Test {
@@ -173,4 +174,25 @@ TEST_F(ProjectionsTest, CartesianWithMultipleBlocksPerCone) {
     std::vector<DEFAULT_FPX> notExpected(coneDim, 0.);
     EXPECT_NE(test1, notExpected);
     EXPECT_NE(test2, notExpected);
+}
+
+TEST_F(ProjectionsTest, MultiIndexedNnoc) {
+    size_t s = 20;
+    IndexedNnocProjection<DEFAULT_FPX> d_multiNnoc;
+    size_t node = 0;
+    DTensor<DEFAULT_FPX> dud(10, 1, 1, true);
+    std::vector<DEFAULT_FPX> v(s, -10.);
+    DTensor<DEFAULT_FPX> d_v(v, s, 1, 1);
+    AVaR<DEFAULT_FPX> d_a1(node, 3, dud, dud);
+    AVaR<DEFAULT_FPX> d_a2(node, 1, dud, dud);
+    d_multiNnoc.addRisk(d_a1);
+    d_multiNnoc.addRisk(d_a2);
+    d_multiNnoc.offline();
+    d_multiNnoc.project(d_v);
+    std::vector<DEFAULT_FPX> test(s);
+    d_v.download(test);
+    std::vector<DEFAULT_FPX> expected(s, -10.);
+    for (size_t i = 0; i < 6; i++) { expected[i] = 0.; }
+    for (size_t i = 10; i < 12; i++) { expected[i] = 0.; }
+    EXPECT_EQ(test, expected);
 }

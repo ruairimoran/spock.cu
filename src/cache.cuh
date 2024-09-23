@@ -60,7 +60,9 @@ protected:
     T m_err = 0;
     size_t m_warmupIters = 0;
     size_t m_matAxis = 2;
+    size_t m_pdSize = 0;
     size_t m_primSize = 0;
+    size_t m_dualSize = 0;
     size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
     size_t m_sizeX = 0;  ///< States of all nodes
     size_t m_sizeY = 0;  ///< Y for all nonleaf nodes
@@ -81,7 +83,6 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_y = nullptr;
     std::unique_ptr<DTensor<T>> m_d_t = nullptr;
     std::unique_ptr<DTensor<T>> m_d_s = nullptr;
-    size_t m_dualSize = 0;
     std::unique_ptr<DTensor<T>> m_d_dual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_dualPrev = nullptr;
     std::unique_ptr<DTensor<T>> m_d_opPrim = nullptr;
@@ -97,6 +98,7 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_viSoc = nullptr;
     /* Workspaces */
     std::unique_ptr<DTensor<T>> m_d_initState = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_pdWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_primWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_dualWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_q = nullptr;
@@ -190,11 +192,10 @@ public:
         /* Allocate memory on device */
         m_d_prim = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
         m_d_primPrev = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
-        m_d_primWorkspace = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
         m_d_dual = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
         m_d_dualPrev = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
-        m_d_dualWorkspace = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
         m_d_initState = std::make_unique<DTensor<T>>(m_data.numStates(), 1, 1, true);
+        m_d_pdWorkspace = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_q = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
         m_d_d = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNonleafNodes(), true);
         m_d_xSizeWorkspace = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
@@ -283,11 +284,13 @@ void Cache<T>::initialiseSizes() {
     } else { constraintNotSupported(); }
     m_sizeVI = m_tree.numLeafNodes() * (m_data.numStates() + 2);
     m_dualSize = m_sizeI + m_sizeII + m_sizeIII + m_sizeIV + m_sizeV + m_sizeVI;
+    m_pdSize = m_primSize + m_dualSize;
 }
 
 template<typename T>
 void Cache<T>::reshapePrimalWorkspace() {
     size_t rowAxis = 0;
+    m_d_primWorkspace = std::make_unique<DTensor<T>>(*m_d_pdWorkspace, rowAxis, 0, m_primSize - 1);
     size_t start = 0;
     m_d_u = std::make_unique<DTensor<T>>(*m_d_primWorkspace, rowAxis, start, start + m_sizeU - 1);
     m_d_u->reshape(m_data.numInputs(), 1, m_tree.numNonleafNodes());
@@ -308,6 +311,7 @@ void Cache<T>::reshapePrimalWorkspace() {
 template<typename T>
 void Cache<T>::reshapeDualWorkspace() {
     size_t rowAxis = 0;
+    m_d_dualWorkspace = std::make_unique<DTensor<T>>(*m_d_pdWorkspace, rowAxis, m_primSize, m_pdSize - 1);
     size_t start = 0;
     m_d_i = std::make_unique<DTensor<T>>(*m_d_dualWorkspace, rowAxis, start, start + m_sizeI - 1);
     m_d_i->reshape(m_data.yDim(), 1, m_tree.numNonleafNodes());

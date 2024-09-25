@@ -20,6 +20,8 @@ public:
     std::unique_ptr<ScenarioTree<T>> m_tree;
     std::unique_ptr<ProblemData<T>> m_data;
     std::unique_ptr<Cache<T>> m_cache;
+    std::vector<T> m_dotVector;
+    T expected;
 
     /** Prepare some host and device data */
     T m_tol = 1e-4;
@@ -304,4 +306,36 @@ TEST_F(CacheTest, computeErrors) {
     testComputeErrors<float>(df, TEST_PRECISION_LOW);
     CacheTestData<double> dd;
     testComputeErrors<double>(dd, TEST_PRECISION_HIGH);
+}
+
+/* ---------------------------------------
+ * Test dotM operator
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void testDotM(CacheTestData<T> &d, T epsilon) {
+    std::ifstream problemData(d.m_problemFileLoc);
+    std::string json((std::istreambuf_iterator<char>(problemData)),
+                     std::istreambuf_iterator<char>());
+    rapidjson::Document doc;
+    doc.Parse(json.c_str());
+    if (doc.HasParseError()) {
+        err << "[testCache] Cannot parse problem data JSON file: "
+            << std::string(GetParseError_En(doc.GetParseError()));
+        throw std::invalid_argument(err.str());
+    }
+    parseVec(doc["dotVector"], d.m_dotVector);
+    d.expected = doc["dotResult"].GetDouble();
+    Cache<T> &c = *d.m_cache;
+    DTensor<T> d_vec(d.m_dotVector, c.m_pdSize);
+    T dot = c.dotM(d_vec, d_vec);
+    std::cout << "dot: " << d_vec.dotF(d_vec) << "\n";
+    EXPECT_NEAR(dot, d.expected, epsilon);
+}
+
+TEST_F(CacheTest, dotM) {
+    CacheTestData<float> df;
+    testDotM<float>(df, TEST_PRECISION_LOW);
+    CacheTestData<double> dd;
+    testDotM<double>(dd, TEST_PRECISION_HIGH);
 }

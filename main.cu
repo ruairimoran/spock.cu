@@ -24,14 +24,19 @@ int main() {
 
     /** CACHE */
     double tol = 1e-5;
-    size_t maxIters = 2000;
-    bool detectInfeasibility = false;
-    Cache cache(tree, problem, tol, maxIters, detectInfeasibility);
+    size_t maxOuterIters = 500;
+    size_t maxInnerIters = 8;
+    bool detectInfeas = false;
+    Cache cacheA(tree, problem, detectInfeas, tol, maxOuterIters);
+    Cache cacheB(tree, problem, detectInfeas, tol, maxOuterIters, maxInnerIters);
 
-    /** VANILLA CP */
+    /** ALGORITHM */
+    size_t exit_status;
     std::vector<double> initState(problem.numStates(), .1);
-    size_t exit_status = cache.cpTime(initState);
-    std::cout << "exit status: " << exit_status << std::endl;
+//    exit_status = cacheA.cpTime(initState);
+//    std::cout << "cp exit status: " << exit_status << std::endl;
+    exit_status = cacheB.spTime(initState);
+    std::cout << "spock exit status: " << exit_status << std::endl;
 
     return 0;
 }

@@ -768,22 +768,16 @@ void Cache<T>::Ltr() {
  */
 template<typename T>
 T Cache<T>::dotM(DTensor<T> &x, DTensor<T> &y) {
-    std::cout << "y: " << y.tr();
     DTensor<T> yPrim(y, m_rowAxis, 0, m_primSize - 1);
     DTensor<T> yDual(y, m_rowAxis, m_primSize, m_pdSize - 1);
     yDual.deviceCopyTo(*m_d_dualWorkspace);
     Ltr();
     m_d_primWorkspace->deviceCopyTo(*m_d_primDot);
-    std::cout << "L'd: " << m_d_primDot->tr();
     yPrim.deviceCopyTo(*m_d_primWorkspace);
     L();
     m_d_dualWorkspace->deviceCopyTo(*m_d_dualDot);
-    std::cout << "Lp:  " << m_d_dualDot->tr();
-    std::cout << "L'd(2): " << m_d_primDot->tr();
     *m_d_pdDot *= -m_data.stepSize();
     *m_d_pdDot += y;
-    std::cout << "My: " << m_d_pdDot->tr();
-    std::cout << "step: " << m_data.stepSize();
     return x.dotF(*m_d_pdDot);
 }
 
@@ -1063,12 +1057,12 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         /* Line search on tau */
         tau = 1.;
         for (size_t iIn = 0; iIn < m_maxInnerIters; iIn++) {
-            std::cout << "1: " << (*m_d_pdPrev - *m_d_pd).maxAbs() << "\n";
+//            std::cout << "1: " << (*m_d_pdPrev - *m_d_pd).maxAbs() << "\n";
             m_d_pdPrev->deviceCopyTo(*m_d_pd);  // is this correct ?
             m_d_direction->deviceCopyTo(scaledDirection);
             scaledDirection *= tau;
             *m_d_pd += scaledDirection;
-            std::cout << "2: " << (*m_d_pdPrev - *m_d_pd).maxAbs() << "\n";
+//            std::cout << "2: " << (*m_d_pdPrev - *m_d_pd).maxAbs() << "\n";
             cpIter();
             m_d_pd->deviceCopyTo(*m_d_residual);
             *m_d_residual -= *m_d_pdCandidate;

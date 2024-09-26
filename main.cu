@@ -25,7 +25,7 @@ int main() {
 
     /** CACHE */
     T tol = 1e-5;
-    size_t maxOuterIters = 2000;
+    size_t maxOuterIters = 1;
     size_t maxInnerIters = 8;
     bool detectInfeas = false;
     Cache<T> cacheA(tree, problem, detectInfeas, tol, maxOuterIters);
@@ -34,8 +34,8 @@ int main() {
     /** ALGORITHM */
     size_t exit_status;
     std::vector<T> initState(problem.numStates(), .1);
-    exit_status = cacheA.cpTime(initState);
-    std::cout << "cp exit status: " << exit_status << std::endl;
+//    exit_status = cacheA.cpTime(initState);
+//    std::cout << "cp exit status: " << exit_status << std::endl;
     exit_status = cacheB.spTime(initState);
     std::cout << "spock exit status: " << exit_status << std::endl;
 

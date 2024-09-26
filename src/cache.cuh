@@ -72,6 +72,7 @@ protected:
     size_t m_maxOuterIters = 0;
     size_t m_countIterations = 0;
     size_t m_rowAxis = 0;
+    size_t m_colAxis = 1;
     size_t m_matAxis = 2;
     size_t m_period = 100;
     size_t m_callsToL = 0;
@@ -173,11 +174,24 @@ protected:
     T m_beta = 0.5;
     T m_sigma = 0.1;
     T m_lambda = 1.0;
+    /* Anderson */
+    size_t m_andSize = 10;
+    std::unique_ptr<DTensor<T>> m_d_andP = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andPLeft = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andPRight = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andPCol0 = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andPCol1 = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andR = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andRLeft = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andRRight = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andRCol0 = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andPR = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_residualTop = nullptr;
 
     /**
      * Protected methods
      */
-    void reshapePrimalDual();
+    void reshape();
 
     void reshapePrimalWorkspace();
 
@@ -223,6 +237,8 @@ protected:
 
     void saveCandidate();
 
+    void updateAndersonDirection();
+
     bool computeError(size_t);
 
     bool computeErrorFromPd(size_t);
@@ -259,6 +275,9 @@ public:
         m_d_pdCandidate = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_ellCandidate = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_residual = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
+        m_d_andP = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
+        m_d_andR = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
+        m_d_andPR = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
         m_d_direction = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_pdWorkspace = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_pdDot = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
@@ -273,10 +292,8 @@ public:
         m_d_dualErr = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
         m_d_deltaPrim = std::make_unique<DTensor<T>>(m_primSize, 1, 1, true);
         m_d_deltaDual = std::make_unique<DTensor<T>>(m_dualSize, 1, 1, true);
-        /* Slice and reshape primal and dual workspaces */
-        reshapePrimalDual();
-        reshapePrimalWorkspace();
-        reshapeDualWorkspace();
+        /* Slice and reshape tensors */
+        reshape();
         /* Initialise projectable objects */
         initialiseProjectable();
     }
@@ -356,7 +373,7 @@ void Cache<T>::initialiseSizes() {
 }
 
 template<typename T>
-void Cache<T>::reshapePrimalDual() {
+void Cache<T>::reshape() {
     m_d_prim = std::make_unique<DTensor<T>>(*m_d_pd, m_rowAxis, 0, m_primSize - 1);
     m_d_dual = std::make_unique<DTensor<T>>(*m_d_pd, m_rowAxis, m_primSize, m_pdSize - 1);
     m_d_primPrev = std::make_unique<DTensor<T>>(*m_d_pdPrev, m_rowAxis, 0, m_primSize - 1);
@@ -371,6 +388,16 @@ void Cache<T>::reshapePrimalDual() {
     m_d_opPrimCandidate = std::make_unique<DTensor<T>>(*m_d_ellCandidate, m_rowAxis, m_primSize, m_pdSize - 1);
     m_d_primDot = std::make_unique<DTensor<T>>(*m_d_pdDot, m_rowAxis, 0, m_primSize - 1);
     m_d_dualDot = std::make_unique<DTensor<T>>(*m_d_pdDot, m_rowAxis, m_primSize, m_pdSize - 1);
+    m_d_andPLeft = std::make_unique<DTensor<T>>(*m_d_andP, m_colAxis, 0, m_andSize - 2);
+    m_d_andPRight = std::make_unique<DTensor<T>>(*m_d_andP, m_colAxis, 1, m_andSize - 1);
+    m_d_andPCol0 = std::make_unique<DTensor<T>>(*m_d_andP, m_colAxis, 0, 0);
+    m_d_andPCol1 = std::make_unique<DTensor<T>>(*m_d_andP, m_colAxis, 1, 1);
+    m_d_andRLeft = std::make_unique<DTensor<T>>(*m_d_andR, m_colAxis, 0, m_andSize - 2);
+    m_d_andRRight = std::make_unique<DTensor<T>>(*m_d_andR, m_colAxis, 1, m_andSize - 1);
+    m_d_andRCol0 = std::make_unique<DTensor<T>>(*m_d_andR, m_colAxis, 0, 0);
+    m_d_residualTop = std::make_unique<DTensor<T>>(*m_d_residual, m_rowAxis, 0, m_andSize - 1);
+    reshapePrimalWorkspace();
+    reshapeDualWorkspace();
 }
 
 template<typename T>
@@ -869,6 +896,32 @@ void Cache<T>::saveCandidate() {
 }
 
 /**
+ * Compute Anderson's direction.
+ */
+template<typename T>
+void Cache<T>::updateAndersonDirection() {
+    /* Shift P and R matrices one column left */
+    m_d_andPLeft->deviceCopyTo(*m_d_andPRight);
+    m_d_andRLeft->deviceCopyTo(*m_d_andRRight);
+    /* Update first column of P */
+    m_d_pd->deviceCopyTo(*m_d_residual);
+    *m_d_residual -= *m_d_pdPrev;
+    m_d_residual->deviceCopyTo(*m_d_andPCol0);
+    /* Update first column of R */
+    *m_d_residual -= *m_d_andPCol1;
+    m_d_residual->deviceCopyTo(*m_d_andRCol0);
+    /* Solve least squares */
+    m_d_andPCol0->deviceCopyTo(*m_d_residual);
+    m_d_andR->leastSquares(*m_d_residual);
+    std::cout << "c: " << m_d_residualTop->tr();
+    /* Compute direction */
+    m_d_andP->deviceCopyTo(*m_d_andPR);
+    *m_d_andPR -= *m_d_andR;
+    m_d_andPCol0->deviceCopyTo(*m_d_direction);
+    m_d_direction->addAB(*m_d_andPR, *m_d_residualTop, -1., -1.);
+}
+
+/**
  * Compute errors for termination check.
  */
 template<typename T>
@@ -1036,14 +1089,13 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             m_countIterations = iOut;
             break;
         }
+        /* Get direction */
+        updateAndersonDirection();
         /* Get residual */
         savePrevious();
         cpIter();
         m_d_pdPrev->deviceCopyTo(*m_d_residual);
         *m_d_residual -= *m_d_pdCandidate;
-        /* Get direction */
-        m_d_residual->deviceCopyTo(*m_d_direction);
-        *m_d_direction *= -1.;
         /* Compute M-norm */
         w = normM(*m_d_residual, *m_d_residual);  // could be reused from compute errors ?
         /* Blind update */

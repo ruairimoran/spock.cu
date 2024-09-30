@@ -113,7 +113,10 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_ellCandidate = nullptr;
     std::unique_ptr<DTensor<T>> m_d_adjDualCandidate = nullptr;
     std::unique_ptr<DTensor<T>> m_d_opPrimCandidate = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_deltaPd = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_deltaDeltaPd = nullptr;
     std::unique_ptr<DTensor<T>> m_d_residual = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_residualPrev = nullptr;
     std::unique_ptr<DTensor<T>> m_d_direction = nullptr;
     /* Workspaces */
     std::unique_ptr<DTensor<T>> m_d_initState = nullptr;
@@ -178,7 +181,7 @@ protected:
     T m_sigma = 0.1;
     T m_lambda = 1.0;
     /* Anderson */
-    size_t m_andSize = 10;  // MUST BE <= 32
+    size_t m_andSize = 5;  // MUST BE <= 32
     std::unique_ptr<DTensor<T>> m_d_andDelta = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andDeltaLeft = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andDeltaRight = nullptr;
@@ -245,6 +248,12 @@ protected:
 
     void saveCandidate();
 
+    T computeResidual();
+
+    void computeDelta();
+
+    void computeDeltaDelta();
+
     void updateAndersonDirection(size_t);
 
     bool computeError(size_t);
@@ -282,7 +291,11 @@ public:
         m_d_ellPrev = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_pdCandidate = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_ellCandidate = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
+        m_d_deltaPd = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
+        m_d_deltaDeltaPd = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_residual = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
+        m_d_residual = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
+        m_d_residualPrev = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_andDelta = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
         m_d_andDeltaDelta = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
         m_d_andQ = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
@@ -897,6 +910,7 @@ template<typename T>
 void Cache<T>::savePrevious() {
     m_d_pd->deviceCopyTo(*m_d_pdPrev);
     m_d_ell->deviceCopyTo(*m_d_ellPrev);
+    m_d_residual->deviceCopyTo(*m_d_residualPrev);
 }
 
 /**
@@ -909,28 +923,49 @@ void Cache<T>::saveCandidate() {
 }
 
 /**
+ * Compute residual.
+ */
+template<typename T>
+T Cache<T>::computeResidual() {
+    m_d_pdPrev->deviceCopyTo(*m_d_residual);
+    *m_d_residual -= *m_d_pdCandidate;
+    return normM(*m_d_residual, *m_d_residual);
+}
+
+/**
+ * Compute change of iterates.
+ */
+template<typename T>
+void Cache<T>::computeDelta() {
+    m_d_pd->deviceCopyTo(*m_d_deltaPd);
+    *m_d_deltaPd -= *m_d_pdPrev;
+}
+
+/**
+ * Compute change of change of iterates.
+ */
+template<typename T>
+void Cache<T>::computeDeltaDelta() {
+    m_d_residual->deviceCopyTo(*m_d_deltaDeltaPd);
+    *m_d_deltaDeltaPd -= *m_d_residualPrev;
+}
+
+/**
  * Compute Anderson's direction.
  */
 template<typename T>
 void Cache<T>::updateAndersonDirection(size_t idx) {
-    /* Shift P and R matrices d_one column right */
+    /* Shift delta and deltaDelta matrices 1 column right */
     m_d_andDeltaLeft->deviceCopyTo(*m_d_andDeltaRight);
     m_d_andDeltaDeltaLeft->deviceCopyTo(*m_d_andDeltaDeltaRight);
 
-    /* Update first column of P */
-    m_d_pd->deviceCopyTo(*m_d_residual);
-    *m_d_residual -= *m_d_pdPrev;
-    m_d_residual->deviceCopyTo(*m_d_andDeltaCol0);
+    /* Update first column of delta */
+    m_d_deltaPd->deviceCopyTo(*m_d_andDeltaCol0);
+    std::cout << "a: " << m_d_andDeltaCol0->tr();
 
-    /* Update first column of R */
-    *m_d_residual -= *m_d_andDeltaCol1;
-    m_d_residual->deviceCopyTo(*m_d_andDeltaDeltaCol0);
-
-    /* Update workspace */
-    DTensor<T> aa_wsp(m_pdSize);
-    m_d_pdPrev->deviceCopyTo(*m_d_residual);
-    *m_d_residual -= *m_d_pdCandidate;
-    m_d_residual->deviceCopyTo(aa_wsp);
+    /* Update first column of deltaDelta */
+    m_d_deltaDeltaPd->deviceCopyTo(*m_d_andDeltaDeltaCol0);
+    std::cout << "b: " << m_d_andDeltaDeltaCol0->tr();
 
     /**
      * QR update to solve least-squares problem.
@@ -953,26 +988,37 @@ void Cache<T>::updateAndersonDirection(size_t idx) {
     /* Modified Gram-Schmidt (orthogonalize against all columns j != 0 of Q, modified for numerical stability) */
     std::vector<T> RtrCol0(m_andSize, 0.);
     DTensor<T> d_one(std::vector<T>(1, 1.), 1);
-    T r = 0.;
+    size_t minSize = std::min(m_andSize, idx + 1);
+    T r;
     if (idx != 0) {
-        for (size_t col = 1; col <= std::min(m_andSize - 1, idx); col++) {
+        std::cout << "before ortho Q: " << *m_d_andQ;
+        for (size_t col = 1; col < minSize; col++) {
+            std::cout << "col: " << col << "\n";
             DTensor<T> QCol(*m_d_andQ, m_colAxis, col, col);
             r = QCol.dotF(*m_d_andQCol0);
             r /= QCol.normF();
-            /* Update R */
+            /* Update first row of R */
             RtrCol0[col] = r;
             /* Update the first column of Q */
+            std::cout << "1 r: " << r << "\n";
             m_d_andQCol0->addAB(QCol, d_one, -r, 1.);
         }
     }
+    std::cout << "before normo Q: " << *m_d_andQ;
     /* Normalize */
     r = m_d_andQCol0->normF();
-    *m_d_andQCol0 *= 1/r;
+    std::cout << "2 r: " << r << "\n";
+    if (r) {
+        *m_d_andQCol0 *= 1 / r;
+    } else {
+        err << "[updateAndersonDirection] Attempt to divide by 0.\n";
+        throw std::invalid_argument(err.str());
+    }
     RtrCol0[0] = r;
     m_d_andRtrCol0->upload(RtrCol0);
 
-    std::cout << "deltaDelta: " << *m_d_andDeltaDelta;
-    std::cout << "Q: " << m_d_andQ;
+
+    std::cout << "Q: " << *m_d_andQ;
     std::cout << "R: " << m_d_andRtr->tr();
     DTensor<T> QR(m_pdSize, m_andSize);
     QR.addAB(*m_d_andQ, m_d_andRtr->tr());
@@ -983,9 +1029,9 @@ void Cache<T>::updateAndersonDirection(size_t idx) {
      * 1. Compute `b = Q' * aa_wsp`.
      * 2. Use back substitution to solve `R \ b`.
      */
-    DTensor<T> leastSquaresSolution(m_pdSize);
+    DTensor<T> leastSquaresSolution(m_andSize);
     /* b = Q' * aa_wsp */
-    leastSquaresSolution.addAB(m_d_andQ->tr(), aa_wsp);
+    leastSquaresSolution.addAB(m_d_andQ->tr(), *m_d_deltaPd);
     /* gamma = backSub(m_d_andR, gamma) */
     const float alpha = 1.;
     gpuErrChk(cublasStrsm(Session::getInstance().cuBlasHandle(),
@@ -993,17 +1039,19 @@ void Cache<T>::updateAndersonDirection(size_t idx) {
                           CUBLAS_FILL_MODE_UPPER,
                           CUBLAS_OP_T,
                           CUBLAS_DIAG_NON_UNIT,
-                          m_andSize,
+                          minSize,
                           1,
                           &alpha,
                           m_d_andRtr->raw(),
                           m_andSize,
                           leastSquaresSolution.raw(),
-                          m_andSize));
+                          minSize));
+    std::cout << "ls: " << leastSquaresSolution.tr();
     /* aa_wsp = m_d_andDelta * gamma */
     m_d_direction->addAB(*m_d_andDelta, leastSquaresSolution, -1.);
     /* Compute new direction */
     *m_d_direction -= *m_d_residual;
+    std::cout << "direction: " << m_d_direction->tr();
 }
 
 /**
@@ -1155,9 +1203,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     size_t countK1 = 0;
     size_t countK2 = 0;
     cpIter();
-    m_d_pdPrev->deviceCopyTo(*m_d_residual);
-    *m_d_residual -= *m_d_pdCandidate;
-    T zeta = normM(*m_d_residual, *m_d_residual);
+    T zeta = computeResidual();
     T wSafe = zeta;
     T w = 0;
     T w_tilde = 0;
@@ -1169,20 +1215,20 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         if (iOut % m_period == 0) { std::cout << "." << std::flush; }
         /* Check error */
         saveCandidate();
+        computeDelta();
         m_status = computeErrorFromPd(iOut);
         if (m_status) {
             m_countIterations = iOut;
             break;
         }
-        /* Get direction */
-        updateAndersonDirection(iOut);
         /* Get residual */
-        savePrevious();
         cpIter();
-        m_d_pdPrev->deviceCopyTo(*m_d_residual);
-        *m_d_residual -= *m_d_pdCandidate;
         /* Compute M-norm */
-        w = normM(*m_d_residual, *m_d_residual);  // could be reused from compute errors ?
+        w = computeResidual();
+        /* Compute direction */
+        computeDeltaDelta();
+        savePrevious();
+        updateAndersonDirection(iOut);
         /* Blind update */
         if (w <= m_c0 * zeta) {
             m_d_pdPrev->deviceCopyTo(*m_d_pdCandidate);
@@ -1201,9 +1247,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             *m_d_pd += scaledDirection;
 //            std::cout << "2: " << (*m_d_pdPrev - *m_d_pd).maxAbs() << "\n";
             cpIter();
-            m_d_pd->deviceCopyTo(*m_d_residual);
-            *m_d_residual -= *m_d_pdCandidate;
-            w_tilde = normM(*m_d_residual, *m_d_residual);
+            w_tilde = computeResidual();
             /* Educated update */
             if (w <= wSafe && w_tilde <= m_c1 * w) {
                 m_d_pd->deviceCopyTo(*m_d_pdCandidate);

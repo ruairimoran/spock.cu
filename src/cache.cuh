@@ -21,7 +21,10 @@ static void parseVec(const rapidjson::Value &value, std::vector<T> &vec) {
 }
 
 template<typename T>
-__global__ void k_setToZero(T *vec, size_t n);
+__global__ void k_setToZero(T *, size_t);
+
+template<typename T>
+__global__ void k_shiftDiagonal(T *, T *, size_t, size_t = 0);
 
 template<typename T>
 class CacheTestData;
@@ -175,18 +178,23 @@ protected:
     T m_sigma = 0.1;
     T m_lambda = 1.0;
     /* Anderson */
-    size_t m_andSize = 10;
-    std::unique_ptr<DTensor<T>> m_d_andP = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andPLeft = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andPRight = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andPCol0 = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andPCol1 = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andR = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andRLeft = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andRRight = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andRCol0 = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andPR = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_residualTop = nullptr;
+    size_t m_andSize = 10;  // MUST BE <= 32
+    std::unique_ptr<DTensor<T>> m_d_andDelta = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andDeltaLeft = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andDeltaRight = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andDeltaCol0 = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andDeltaCol1 = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andDeltaDelta = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andDeltaDeltaLeft = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andDeltaDeltaRight = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andDeltaDeltaCol0 = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andQ = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andQLeft = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andQRight = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andQCol0 = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andRtr = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andRtrCopy = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andRtrCol0 = nullptr;
 
     /**
      * Protected methods
@@ -237,7 +245,7 @@ protected:
 
     void saveCandidate();
 
-    void updateAndersonDirection();
+    void updateAndersonDirection(size_t);
 
     bool computeError(size_t);
 
@@ -275,9 +283,11 @@ public:
         m_d_pdCandidate = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_ellCandidate = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_residual = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
-        m_d_andP = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
-        m_d_andR = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
-        m_d_andPR = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
+        m_d_andDelta = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
+        m_d_andDeltaDelta = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
+        m_d_andQ = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
+        m_d_andRtr = std::make_unique<DTensor<T>>(m_andSize, m_andSize, 1, true);
+        m_d_andRtrCopy = std::make_unique<DTensor<T>>(m_andSize, m_andSize, 1, true);
         m_d_direction = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_pdWorkspace = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_pdDot = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
@@ -388,14 +398,17 @@ void Cache<T>::reshape() {
     m_d_opPrimCandidate = std::make_unique<DTensor<T>>(*m_d_ellCandidate, m_rowAxis, m_primSize, m_pdSize - 1);
     m_d_primDot = std::make_unique<DTensor<T>>(*m_d_pdDot, m_rowAxis, 0, m_primSize - 1);
     m_d_dualDot = std::make_unique<DTensor<T>>(*m_d_pdDot, m_rowAxis, m_primSize, m_pdSize - 1);
-    m_d_andPLeft = std::make_unique<DTensor<T>>(*m_d_andP, m_colAxis, 0, m_andSize - 2);
-    m_d_andPRight = std::make_unique<DTensor<T>>(*m_d_andP, m_colAxis, 1, m_andSize - 1);
-    m_d_andPCol0 = std::make_unique<DTensor<T>>(*m_d_andP, m_colAxis, 0, 0);
-    m_d_andPCol1 = std::make_unique<DTensor<T>>(*m_d_andP, m_colAxis, 1, 1);
-    m_d_andRLeft = std::make_unique<DTensor<T>>(*m_d_andR, m_colAxis, 0, m_andSize - 2);
-    m_d_andRRight = std::make_unique<DTensor<T>>(*m_d_andR, m_colAxis, 1, m_andSize - 1);
-    m_d_andRCol0 = std::make_unique<DTensor<T>>(*m_d_andR, m_colAxis, 0, 0);
-    m_d_residualTop = std::make_unique<DTensor<T>>(*m_d_residual, m_rowAxis, 0, m_andSize - 1);
+    m_d_andDeltaLeft = std::make_unique<DTensor<T>>(*m_d_andDelta, m_colAxis, 0, m_andSize - 2);
+    m_d_andDeltaRight = std::make_unique<DTensor<T>>(*m_d_andDelta, m_colAxis, 1, m_andSize - 1);
+    m_d_andDeltaCol0 = std::make_unique<DTensor<T>>(*m_d_andDelta, m_colAxis, 0, 0);
+    m_d_andDeltaCol1 = std::make_unique<DTensor<T>>(*m_d_andDelta, m_colAxis, 1, 1);
+    m_d_andDeltaDeltaLeft = std::make_unique<DTensor<T>>(*m_d_andDeltaDelta, m_colAxis, 0, m_andSize - 2);
+    m_d_andDeltaDeltaRight = std::make_unique<DTensor<T>>(*m_d_andDeltaDelta, m_colAxis, 1, m_andSize - 1);
+    m_d_andDeltaDeltaCol0 = std::make_unique<DTensor<T>>(*m_d_andDeltaDelta, m_colAxis, 0, 0);
+    m_d_andQLeft = std::make_unique<DTensor<T>>(*m_d_andQ, m_colAxis, 0, m_andSize - 2);
+    m_d_andQRight = std::make_unique<DTensor<T>>(*m_d_andQ, m_colAxis, 1, m_andSize - 1);
+    m_d_andQCol0 = std::make_unique<DTensor<T>>(*m_d_andQ, m_colAxis, 0, 0);
+    m_d_andRtrCol0 = std::make_unique<DTensor<T>>(*m_d_andRtr, m_colAxis, 0, 0);
     reshapePrimalWorkspace();
     reshapeDualWorkspace();
 }
@@ -899,26 +912,98 @@ void Cache<T>::saveCandidate() {
  * Compute Anderson's direction.
  */
 template<typename T>
-void Cache<T>::updateAndersonDirection() {
-    /* Shift P and R matrices one column left */
-    m_d_andPLeft->deviceCopyTo(*m_d_andPRight);
-    m_d_andRLeft->deviceCopyTo(*m_d_andRRight);
+void Cache<T>::updateAndersonDirection(size_t idx) {
+    /* Shift P and R matrices d_one column right */
+    m_d_andDeltaLeft->deviceCopyTo(*m_d_andDeltaRight);
+    m_d_andDeltaDeltaLeft->deviceCopyTo(*m_d_andDeltaDeltaRight);
+
     /* Update first column of P */
     m_d_pd->deviceCopyTo(*m_d_residual);
     *m_d_residual -= *m_d_pdPrev;
-    m_d_residual->deviceCopyTo(*m_d_andPCol0);
+    m_d_residual->deviceCopyTo(*m_d_andDeltaCol0);
+
     /* Update first column of R */
-    *m_d_residual -= *m_d_andPCol1;
-    m_d_residual->deviceCopyTo(*m_d_andRCol0);
-    /* Solve least squares */
-    m_d_andPCol0->deviceCopyTo(*m_d_residual);
-    m_d_andR->leastSquares(*m_d_residual);
-    std::cout << "c: " << m_d_residualTop->tr();
-    /* Compute direction */
-    m_d_andP->deviceCopyTo(*m_d_andPR);
-    *m_d_andPR -= *m_d_andR;
-    m_d_andPCol0->deviceCopyTo(*m_d_direction);
-    m_d_direction->addAB(*m_d_andPR, *m_d_residualTop, -1., -1.);
+    *m_d_residual -= *m_d_andDeltaCol1;
+    m_d_residual->deviceCopyTo(*m_d_andDeltaDeltaCol0);
+
+    /* Update workspace */
+    DTensor<T> aa_wsp(m_pdSize);
+    m_d_pdPrev->deviceCopyTo(*m_d_residual);
+    *m_d_residual -= *m_d_pdCandidate;
+    m_d_residual->deviceCopyTo(aa_wsp);
+
+    /**
+     * QR update to solve least-squares problem.
+     * 1. Shift Q right by 1.
+     * 2. Shift R right and down by 1.
+     * 3. Update first column of Q.
+     * 3. Modified Gram-Schmidt (for numerical stability).
+     * 4. Backward substitution.
+     */
+
+    /* Shift Q right by 1 */
+    m_d_andQLeft->deviceCopyTo(*m_d_andQRight);
+    /* Shift R right and down by 1 */
+    m_d_andRtr->deviceCopyTo(*m_d_andRtrCopy);
+    k_shiftDiagonal<<<1, dim3(32, 32)>>>(m_d_andRtr->raw(), m_d_andRtrCopy->raw(), m_andSize);
+
+    /* Store the new first column of m_d_andDeltaDelta as the first column of Q. */
+    m_d_andDeltaDeltaCol0->deviceCopyTo(*m_d_andQCol0);
+
+    /* Modified Gram-Schmidt (orthogonalize against all columns j != 0 of Q, modified for numerical stability) */
+    std::vector<T> RtrCol0(m_andSize, 0.);
+    DTensor<T> d_one(std::vector<T>(1, 1.), 1);
+    T r = 0.;
+    if (idx != 0) {
+        for (size_t col = 1; col <= std::min(m_andSize - 1, idx); col++) {
+            DTensor<T> QCol(*m_d_andQ, m_colAxis, col, col);
+            r = QCol.dotF(*m_d_andQCol0);
+            r /= QCol.normF();
+            /* Update R */
+            RtrCol0[col] = r;
+            /* Update the first column of Q */
+            m_d_andQCol0->addAB(QCol, d_one, -r, 1.);
+        }
+    }
+    /* Normalize */
+    r = m_d_andQCol0->normF();
+    *m_d_andQCol0 *= 1/r;
+    RtrCol0[0] = r;
+    m_d_andRtrCol0->upload(RtrCol0);
+
+    std::cout << "deltaDelta: " << *m_d_andDeltaDelta;
+    std::cout << "Q: " << m_d_andQ;
+    std::cout << "R: " << m_d_andRtr->tr();
+    DTensor<T> QR(m_pdSize, m_andSize);
+    QR.addAB(*m_d_andQ, m_d_andRtr->tr());
+    std::cout << "norm(A - QR): " << (*m_d_andDeltaDelta - QR).normF() << "\n";
+
+    /**
+     * We have QR-factorised `m_d_andDeltaDelta`. Then:
+     * 1. Compute `b = Q' * aa_wsp`.
+     * 2. Use back substitution to solve `R \ b`.
+     */
+    DTensor<T> leastSquaresSolution(m_pdSize);
+    /* b = Q' * aa_wsp */
+    leastSquaresSolution.addAB(m_d_andQ->tr(), aa_wsp);
+    /* gamma = backSub(m_d_andR, gamma) */
+    const float alpha = 1.;
+    gpuErrChk(cublasStrsm(Session::getInstance().cuBlasHandle(),
+                          CUBLAS_SIDE_LEFT,
+                          CUBLAS_FILL_MODE_UPPER,
+                          CUBLAS_OP_T,
+                          CUBLAS_DIAG_NON_UNIT,
+                          m_andSize,
+                          1,
+                          &alpha,
+                          m_d_andRtr->raw(),
+                          m_andSize,
+                          leastSquaresSolution.raw(),
+                          m_andSize));
+    /* aa_wsp = m_d_andDelta * gamma */
+    m_d_direction->addAB(*m_d_andDelta, leastSquaresSolution, -1.);
+    /* Compute new direction */
+    *m_d_direction -= *m_d_residual;
 }
 
 /**
@@ -1090,7 +1175,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             break;
         }
         /* Get direction */
-        updateAndersonDirection();
+        updateAndersonDirection(iOut);
         /* Get residual */
         savePrevious();
         cpIter();

@@ -117,10 +117,12 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_ellCandidate = nullptr;
     std::unique_ptr<DTensor<T>> m_d_adjDualCandidate = nullptr;
     std::unique_ptr<DTensor<T>> m_d_opPrimCandidate = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_deltaPd = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_deltaDeltaPd = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_deltaIterate = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_deltaResidual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_residual = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_residualPrev = nullptr;
     std::unique_ptr<DTensor<T>> m_d_direction = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_scaledDirection = nullptr;
     /* Workspaces */
     std::unique_ptr<DTensor<T>> m_d_initState = nullptr;
     std::unique_ptr<DTensor<T>> m_d_pdWorkspace = nullptr;
@@ -184,28 +186,19 @@ protected:
     T m_sigma = 0.1;
     T m_lambda = 1.0;
     /* Anderson */
-    std::unique_ptr<DTensor<T>> m_d_andDelta = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andDeltaLeft = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andDeltaRight = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andDeltaCol0 = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andDeltaCol1 = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andDeltaDelta = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andDeltaDeltaLeft = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andDeltaDeltaRight = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andDeltaDeltaCol0 = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andDeltaMinusDeltaDelta = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andQ = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andQLeft = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andQRight = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andQCol0 = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andRtr = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andRtrCopy = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andRtrCol0 = nullptr;
-    std::vector<std::unique_ptr<QRFactoriser<T>>> m_andQR;
-    std::unique_ptr<DTensor<T>> m_d_andQRTemp = nullptr;
-    std::vector<std::unique_ptr<DTensor<T>>> m_andQRTempMats;
-    std::unique_ptr<DTensor<T>> m_d_andXTemp = nullptr;
-    std::vector<std::unique_ptr<DTensor<T>>> m_andXTempVecs;
+    std::unique_ptr<DTensor<T>> m_d_andIterateMatrix = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andIterateMatrixLeft = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andIterateMatrixRight = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andIterateMatrixEndCol = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andResidualMatrix = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andResidualMatrixLeft = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andResidualMatrixRight = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andResidualMatrixEndCol = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andIterateMinusResidual = nullptr;
+    std::unique_ptr<QRFactoriser<T>> m_andQRFactor = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andQR = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andQRGammaFull = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andQRGamma = nullptr;
 
     /**
      * Protected methods
@@ -252,9 +245,9 @@ protected:
 
     void cpIter();
 
-    void savePreviousCp();
+    void saveIterate();
 
-    void savePreviousSp();
+    void saveResidual();
 
     void saveCandidate();
 
@@ -262,11 +255,13 @@ protected:
 
     T computeResidualNorm();
 
-    void computeDeltas();
+    void computeDeltaIterate();
+
+    void computeDeltaResidual();
 
     size_t updateQR(size_t);
 
-    void updateAndersonDirection(size_t);
+    void updateDirection(size_t);
 
     bool computeError(size_t);
 
@@ -293,11 +288,6 @@ public:
         /* Sizes */
         initialiseSizes();
         /* Allocate memory on host */
-        m_andQR = std::vector<std::unique_ptr<QRFactoriser<T>>>(m_andSize);
-        m_d_andQRTemp = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
-        m_andQRTempMats = std::vector<std::unique_ptr<DTensor<T>>>(m_andSize);
-        m_d_andXTemp = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
-        m_andXTempVecs = std::vector<std::unique_ptr<DTensor<T>>>(m_andSize);
         m_cacheCallsToL = std::vector<size_t>(m_maxOuterIters);
         m_cacheError0 = std::vector<T>(m_maxOuterIters);
         m_cacheError1 = std::vector<T>(m_maxOuterIters);
@@ -314,17 +304,17 @@ public:
         m_d_ellPrev = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_pdCandidate = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_ellCandidate = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
-        m_d_deltaPd = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
-        m_d_deltaDeltaPd = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
+        m_d_deltaIterate = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
+        m_d_deltaResidual = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_residual = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
-        m_d_residual = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
-        m_d_andDelta = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
-        m_d_andDeltaDelta = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
-        m_d_andDeltaMinusDeltaDelta = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
-        m_d_andQ = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
-        m_d_andRtr = std::make_unique<DTensor<T>>(m_andSize, m_andSize, 1, true);
-        m_d_andRtrCopy = std::make_unique<DTensor<T>>(m_andSize, m_andSize, 1, true);
+        m_d_residualPrev = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
+        m_d_andIterateMatrix = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
+        m_d_andResidualMatrix = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
+        m_d_andIterateMinusResidual = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
+        m_d_andQR = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
+        m_d_andQRGammaFull = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_direction = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
+        m_d_scaledDirection = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_pdWorkspace = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_pdDot = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_initState = std::make_unique<DTensor<T>>(m_data.numStates(), 1, 1, true);
@@ -436,17 +426,13 @@ void Cache<T>::reshape() {
     m_d_opPrimCandidate = std::make_unique<DTensor<T>>(*m_d_ellCandidate, m_rowAxis, m_primSize, m_pdSize - 1);
     m_d_primDot = std::make_unique<DTensor<T>>(*m_d_pdDot, m_rowAxis, 0, m_primSize - 1);
     m_d_dualDot = std::make_unique<DTensor<T>>(*m_d_pdDot, m_rowAxis, m_primSize, m_pdSize - 1);
-    m_d_andDeltaLeft = std::make_unique<DTensor<T>>(*m_d_andDelta, m_colAxis, 0, m_andSize - 2);
-    m_d_andDeltaRight = std::make_unique<DTensor<T>>(*m_d_andDelta, m_colAxis, 1, m_andSize - 1);
-    m_d_andDeltaCol0 = std::make_unique<DTensor<T>>(*m_d_andDelta, m_colAxis, 0, 0);
-    m_d_andDeltaCol1 = std::make_unique<DTensor<T>>(*m_d_andDelta, m_colAxis, 1, 1);
-    m_d_andDeltaDeltaLeft = std::make_unique<DTensor<T>>(*m_d_andDeltaDelta, m_colAxis, 0, m_andSize - 2);
-    m_d_andDeltaDeltaRight = std::make_unique<DTensor<T>>(*m_d_andDeltaDelta, m_colAxis, 1, m_andSize - 1);
-    m_d_andDeltaDeltaCol0 = std::make_unique<DTensor<T>>(*m_d_andDeltaDelta, m_colAxis, 0, 0);
-    m_d_andQLeft = std::make_unique<DTensor<T>>(*m_d_andQ, m_colAxis, 0, m_andSize - 2);
-    m_d_andQRight = std::make_unique<DTensor<T>>(*m_d_andQ, m_colAxis, 1, m_andSize - 1);
-    m_d_andQCol0 = std::make_unique<DTensor<T>>(*m_d_andQ, m_colAxis, 0, 0);
-    m_d_andRtrCol0 = std::make_unique<DTensor<T>>(*m_d_andRtr, m_colAxis, 0, 0);
+    m_d_andIterateMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 0, m_andSize - 2);
+    m_d_andIterateMatrixRight = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 1, m_andSize - 1);
+    m_d_andIterateMatrixEndCol = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, m_andSize - 1, m_andSize - 1);
+    m_d_andResidualMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 0, m_andSize - 2);
+    m_d_andResidualMatrixRight = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 1, m_andSize - 1);
+    m_d_andResidualMatrixEndCol = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, m_andSize - 1, m_andSize - 1);
+    m_d_andQRGamma = std::make_unique<DTensor<T>>(*m_d_andQRGammaFull, m_rowAxis, 0, m_andSize - 1);
     reshapePrimalWorkspace();
     reshapeDualWorkspace();
 }
@@ -572,11 +558,7 @@ void Cache<T>::initialiseProjectable() {
         node.upload(leafHalves);
     }
     /* QR */
-    for (size_t i = 0; i < m_andSize; i++) {
-        m_andQRTempMats[i] = std::make_unique<DTensor<T>>(*m_d_andQRTemp, m_colAxis, 0, i);
-        m_andXTempVecs[i] = std::make_unique<DTensor<T>>(*m_d_andXTemp, m_rowAxis, 0, i);
-        m_andQR[i] = std::make_unique<QRFactoriser<T>>(*m_andQRTempMats[i]);
-    }
+    m_andQRFactor = std::make_unique<QRFactoriser<T>>(*m_d_andQR);
 }
 
 template<typename T>
@@ -953,32 +935,38 @@ T Cache<T>::computeResidualNorm() {
 }
 
 /**
- * Compute change of iterates.
+ * Compute change of iterate.
  */
 template<typename T>
-void Cache<T>::computeDeltas() {
-    m_d_pd->deviceCopyTo(*m_d_deltaPd);
-    *m_d_deltaPd -= *m_d_pdPrev;
-    m_d_deltaPd->deviceCopyTo(*m_d_deltaDeltaPd);
-    *m_d_deltaDeltaPd -= *m_d_andDeltaCol0;
+void Cache<T>::computeDeltaIterate() {
+    m_d_pd->deviceCopyTo(*m_d_deltaIterate);
+    *m_d_deltaIterate -= *m_d_pdPrev;
 }
 
 /**
- * Save current iterates to prev (for CP algo).
+ * Compute change of residual.
  */
 template<typename T>
-void Cache<T>::savePreviousCp() {
+void Cache<T>::computeDeltaResidual() {
+    m_d_residual->deviceCopyTo(*m_d_deltaResidual);
+    *m_d_deltaResidual -= *m_d_residualPrev;
+}
+
+/**
+ * Save current iterates to prev.
+ */
+template<typename T>
+void Cache<T>::saveIterate() {
     m_d_pd->deviceCopyTo(*m_d_pdPrev);
     m_d_ell->deviceCopyTo(*m_d_ellPrev);
 }
 
 /**
- * Save current iterates to prev (for SPOCK algo).
+ * Save current residual to prev.
  */
 template<typename T>
-void Cache<T>::savePreviousSp() {
-    m_d_pd->deviceCopyTo(*m_d_pdPrev);
-    m_d_ell->deviceCopyTo(*m_d_ellPrev);
+void Cache<T>::saveResidual() {
+    m_d_residual->deviceCopyTo(*m_d_residualPrev);
 }
 
 /**
@@ -1010,9 +998,9 @@ size_t Cache<T>::updateQR(size_t idx) {
 //    m_d_andRtr->deviceCopyTo(*m_d_andRtrCopy);
 //    k_shiftDiagonal<<<1, dim3(32, 32)>>>(m_d_andRtr->raw(), m_d_andRtrCopy->raw(), m_andSize);
 //
-//    /* Store the new first column of m_d_andDeltaDelta as the first column of Q. */
-//    m_d_andDeltaDeltaCol0->deviceCopyTo(*m_d_andQCol0);
-//    std::cout << "norm of new first column: " << m_d_andDeltaDeltaCol0->normF() << "\n";
+//    /* Store the new first column of m_d_andResidualMatrix as the first column of Q. */
+//    m_d_andResidualMatrixEndCol->deviceCopyTo(*m_d_andQCol0);
+//    std::cout << "norm of new first column: " << m_d_andResidualMatrixEndCol->normF() << "\n";
 //
 //    /* Modified Gram-Schmidt (orthogonalize against all columns j != 0 of Q, modified for numerical stability) */
 //    std::vector<T> RtrCol0(m_andSize, 0.);
@@ -1035,7 +1023,7 @@ size_t Cache<T>::updateQR(size_t idx) {
 //    if (r) {
 //        *m_d_andQCol0 *= 1 / r;
 //    } else {
-//        err << "[updateAndersonDirection] Attempt to divide by 0.\n";
+//        err << "[updateDirection] Attempt to divide by 0.\n";
 //        throw std::invalid_argument(err.str());
 //    }
 //    /* Update first element of R and upload first row */
@@ -1049,34 +1037,43 @@ size_t Cache<T>::updateQR(size_t idx) {
  * Compute Anderson's direction.
  */
 template<typename T>
-void Cache<T>::updateAndersonDirection(size_t idx) {
-    /* Shift delta and deltaDelta matrices 1 column right */
-    m_d_andDeltaLeft->deviceCopyTo(*m_d_andDeltaRight);
-    m_d_andDeltaDeltaLeft->deviceCopyTo(*m_d_andDeltaDeltaRight);
-    /* Update first column of delta and deltaDelta */
-    m_d_deltaPd->deviceCopyTo(*m_d_andDeltaCol0);
-    m_d_deltaDeltaPd->deviceCopyTo(*m_d_andDeltaDeltaCol0);
-    /* Compute difference matrix */
-    m_d_andDelta->deviceCopyTo(*m_d_andDeltaMinusDeltaDelta);
-    *m_d_andDeltaMinusDeltaDelta -= *m_d_andDeltaDelta;
+void Cache<T>::updateDirection(size_t idx) {
+    /* Shift iterate and residual matrices 1 column left */
+    m_d_andIterateMatrixRight->deviceCopyTo(*m_d_andIterateMatrixLeft);
+    m_d_andResidualMatrixRight->deviceCopyTo(*m_d_andResidualMatrixLeft);
+    /* Update last column of iterate and residual matrices */
+    m_d_deltaIterate->deviceCopyTo(*m_d_andIterateMatrixEndCol);
+    m_d_deltaResidual->deviceCopyTo(*m_d_andResidualMatrixEndCol);
 
     /**
-     * 1. QR factorise `m_d_andDeltaDelta`.
-     * 2. Compute least squares `m_d_deltaDeltaPd \ m_d_andDeltaCol0`.
+     * 1. QR factorise `m_d_andResidualMatrix`.
+     * 2. Compute least squares `m_d_andResidualMatrix \ m_d_residual`.
      * 4. Compute Anderson's direction.
      */
-    std::cout << "delta: " << *m_d_andDelta;
-    std::cout << "deltaDelta: " << *m_d_andDeltaDelta;
-    size_t minSize = std::min(m_andSize, idx);
-    m_d_deltaDeltaPd->deviceCopyTo(*m_d_andQRTemp);
-    m_d_andDeltaCol0->deviceCopyTo(*m_d_andXTemp);
-    m_andQR[minSize]->factorise();
-    m_andQR[minSize]->leastSquares(*m_andXTempVecs[minSize]);
-    std::cout << "sol: " << m_andXTempVecs[minSize]->tr();
-    /* Compute new direction */
-    m_d_direction->addAB(*m_d_andDeltaMinusDeltaDelta, *m_andXTempVecs[minSize], -1.);
-    *m_d_direction -= *m_d_andDeltaCol0;
-    std::cout << "direction: " << m_d_direction->tr();
+    if (idx >= m_andSize) {
+        /* QR decomposition */
+        m_d_andResidualMatrix->deviceCopyTo(*m_d_andQR);
+        m_d_residual->deviceCopyTo(*m_d_andQRGammaFull);
+        int status = 0;
+        status = m_andQRFactor->factorise();
+        if (status != 0) {
+            err << "[updateDirection] QR factorisation returned status code: " << status << "\n";
+            throw std::invalid_argument(err.str());
+        }
+        /* Least squares */
+        status = m_andQRFactor->leastSquares(*m_d_andQRGammaFull);
+        if (status != 0) {
+            err << "[updateDirection] QR least squares returned status code: " << status << "\n";
+            throw std::invalid_argument(err.str());
+        }
+        /* Compute new direction */
+        m_d_direction->addAB(*m_d_andIterateMatrix, *m_d_andQRGamma, -1.);
+        *m_d_direction -= *m_d_residual;
+    } else {
+        /* Use negative residual direction */
+        m_d_residual->deviceCopyTo(*m_d_direction);
+        *m_d_direction *= -1.;
+    }
 }
 
 /**
@@ -1086,7 +1083,6 @@ template<typename T>
 bool Cache<T>::computeError(size_t idx) {
     cudaDeviceSynchronize();  // DO NOT REMOVE !!!
     /* Residuals */
-    computeResidual();
     m_d_residual->deviceCopyTo(*m_d_pdWorkspace);
     *m_d_pdWorkspace *= -m_data.stepSizeRecip();
     *m_d_pdWorkspace -= *m_d_ellPrev;
@@ -1185,7 +1181,7 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
     initialiseState(initState);
     /* Load previous solution if given */
     if (previousSolution) m_d_pd->upload(*previousSolution);
-    savePreviousCp();
+    saveIterate();
     /* Run algorithm */
     for (size_t i = 0; i < m_maxOuterIters; i++) {
         if (i % m_period == 0) { std::cout << "." << std::flush; }
@@ -1201,7 +1197,7 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
             m_countIterations = i;
             break;
         }
-        savePreviousCp();
+        saveIterate();
     }
     /* Return status */
     if (m_status) {
@@ -1221,7 +1217,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     initialiseState(initState);
     /* Load previous solution if given */
     if (previousSolution) m_d_pd->upload(*previousSolution);
-    savePreviousSp();
+    saveIterate();
 
     /* Initialise */
     size_t countK0 = 0;
@@ -1229,20 +1225,16 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     size_t countK2 = 0;
     cpIter();
     T zeta = computeResidualNorm();
-    saveCandidate();
-    computeDeltas();
-    savePreviousSp();
     T wSafe = zeta;
     T w = 0;
     T w_tilde = 0;
     T tau = 0;
     T rho = 0;
-    DTensor<T> scaledDirection(m_pdSize);
     for (size_t iOut = 0; iOut < m_maxOuterIters; iOut++) {
         if (iOut % m_period == 0) { std::cout << "." << std::flush; }
         saveCandidate();
-        computeDeltas();
-        savePreviousSp();
+        computeDeltaIterate();
+        saveIterate();
         /* Compute residual and check error */
         cpIter();
         computeResidual();
@@ -1251,12 +1243,12 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             m_countIterations = iOut;
             break;
         }
+        computeDeltaResidual();
+        saveResidual();
         /* Compute residual norm */
         w = normM(*m_d_residual, *m_d_residual);
         /* Compute direction */
-        m_d_residual->deviceCopyTo(*m_d_direction);
-        *m_d_direction *= -1.;
-//        updateAndersonDirection(iOut);
+        updateDirection(iOut);
         /* Blind update */
         if (w <= m_c0 * zeta) {
             m_d_pdPrev->deviceCopyTo(*m_d_pdCandidate);
@@ -1269,9 +1261,9 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         tau = 1.;
         for (size_t iIn = 0; iIn < m_maxInnerIters; iIn++) {
             m_d_pdPrev->deviceCopyTo(*m_d_pd);
-            m_d_direction->deviceCopyTo(scaledDirection);
-            scaledDirection *= tau;
-            *m_d_pd += scaledDirection;
+            m_d_direction->deviceCopyTo(*m_d_scaledDirection);
+            *m_d_scaledDirection *= tau;
+            *m_d_pd += *m_d_scaledDirection;
             cpIter();
             w_tilde = computeResidualNorm();
             /* Educated update */
@@ -1281,7 +1273,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
                 countK1 += 1;
                 break;  // K1
             }
-            rho = pow(w_tilde, 2) - 2 * m_data.stepSize() * dotM(*m_d_residual, scaledDirection);
+            rho = pow(w_tilde, 2) - 2 * m_data.stepSize() * dotM(*m_d_residual, *m_d_scaledDirection);
             /* Safeguard update */
             if (rho >= m_sigma * w_tilde * w) {
                 *m_d_residual *= (m_lambda * rho / pow(w_tilde, 2));

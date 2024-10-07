@@ -194,7 +194,7 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_andResidualMatrixLeft = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andResidualMatrixRight = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andResidualMatrixEndCol = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andIterateMinusResidual = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andSum = nullptr;
     std::unique_ptr<QRFactoriser<T>> m_andQRFactor = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andQR = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andQRGammaFull = nullptr;
@@ -249,7 +249,7 @@ protected:
 
     void saveResidual();
 
-    void saveCandidate();
+    void acceptCandidate();
 
     void computeResidual();
 
@@ -264,8 +264,6 @@ protected:
     void updateDirection(size_t);
 
     bool computeError(size_t);
-
-    bool computeErrorExplicit(size_t);
 
     bool infeasibilityDetection(size_t);
 
@@ -310,7 +308,7 @@ public:
         m_d_residualPrev = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_andIterateMatrix = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
         m_d_andResidualMatrix = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
-        m_d_andIterateMinusResidual = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
+        m_d_andSum = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
         m_d_andQR = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
         m_d_andQRGammaFull = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_direction = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
@@ -921,8 +919,8 @@ void Cache<T>::cpIter() {
  */
 template<typename T>
 void Cache<T>::computeResidual() {
-    m_d_pd->deviceCopyTo(*m_d_residual);
-    *m_d_residual -= *m_d_pdCandidate;
+    m_d_pdCandidate->deviceCopyTo(*m_d_residual);
+    *m_d_residual -= *m_d_pd;
 }
 
 /**
@@ -973,7 +971,7 @@ void Cache<T>::saveResidual() {
  * Save candidates as accepted iterates.
  */
 template<typename T>
-void Cache<T>::saveCandidate() {
+void Cache<T>::acceptCandidate() {
     m_d_pdCandidate->deviceCopyTo(*m_d_pd);
     m_d_ellCandidate->deviceCopyTo(*m_d_ell);
 }
@@ -1043,6 +1041,7 @@ void Cache<T>::updateDirection(size_t idx) {
     m_d_andResidualMatrixRight->deviceCopyTo(*m_d_andResidualMatrixLeft);
     /* Update last column of iterate and residual matrices */
     m_d_deltaIterate->deviceCopyTo(*m_d_andIterateMatrixEndCol);
+    *m_d_andIterateMatrixEndCol += *m_d_deltaResidual;
     m_d_deltaResidual->deviceCopyTo(*m_d_andResidualMatrixEndCol);
 
     /**
@@ -1067,12 +1066,11 @@ void Cache<T>::updateDirection(size_t idx) {
             throw std::invalid_argument(err.str());
         }
         /* Compute new direction */
-        m_d_direction->addAB(*m_d_andIterateMatrix, *m_d_andQRGamma, -1.);
-        *m_d_direction -= *m_d_residual;
-    } else {
-        /* Use negative residual direction */
         m_d_residual->deviceCopyTo(*m_d_direction);
-        *m_d_direction *= -1.;
+        m_d_direction->addAB(*m_d_andIterateMatrix, *m_d_andQRGamma, -1., 1.);
+    } else {
+        /* Use residual direction */
+        m_d_residual->deviceCopyTo(*m_d_direction);
     }
 }
 
@@ -1084,54 +1082,9 @@ bool Cache<T>::computeError(size_t idx) {
     cudaDeviceSynchronize();  // DO NOT REMOVE !!!
     /* Residuals */
     m_d_residual->deviceCopyTo(*m_d_pdWorkspace);
-    *m_d_pdWorkspace *= -m_data.stepSizeRecip();
-    *m_d_pdWorkspace -= *m_d_ellPrev;
+    *m_d_pdWorkspace *= m_data.stepSizeRecip();
     *m_d_pdWorkspace += *m_d_ell;
-    m_d_primWorkspace->deviceCopyTo(*m_d_primErr);
-    m_d_dualWorkspace->deviceCopyTo(*m_d_dualErr);
-    /* Inf-norm of errors */
-    T primErr = m_d_primErr->maxAbs();
-    T dualErr = m_d_dualErr->maxAbs();
-    m_cacheError1[idx] = primErr;
-    m_cacheError2[idx] = dualErr;
-    /* Primal-dual error (avoid extra adj until prim and dual errors pass relaxed tol) */
-//    T relaxTol = m_tol * 10;
-//    if (primErr <= relaxTol && dualErr <= relaxTol) {
-    Ltr();
-    *m_d_primWorkspace += *m_d_primErr;
-    m_err = m_d_primWorkspace->maxAbs();
-    m_cacheError0[idx] = m_err;
-    m_cacheCallsToL[idx] = m_callsToL;
-    if (m_err <= m_tol) { return true; }
-//    } else {
-//        m_cacheError0[idx] = max(primErr, dualErr);
-//    }
-    return false;
-}
-
-/**
- * Compute errors for termination check.
- */
-template<typename T>
-bool Cache<T>::computeErrorExplicit(size_t idx) {
-    cudaDeviceSynchronize();  // DO NOT REMOVE !!!
-    /* Residuals */
-    m_d_residual->deviceCopyTo(*m_d_pdWorkspace);
-    *m_d_pdWorkspace *= -m_data.stepSizeRecip();
-    *m_d_pdWorkspace -= *m_d_ellPrev;
-    /* ---- Explicitly compute ell(pd) */
-    DTensor<T> primEll(*m_d_ell, m_rowAxis, 0, m_primSize - 1);
-    DTensor<T> dualEll(*m_d_ell, m_rowAxis, m_primSize, m_pdSize - 1);
-    m_d_pdWorkspace->deviceCopyTo(*m_d_pdDot);
-    m_d_pd->deviceCopyTo(*m_d_pdWorkspace);
-    Ltr();
-    m_d_primWorkspace->deviceCopyTo(primEll);
-    m_d_pd->deviceCopyTo(*m_d_pdWorkspace);
-    L(true);
-    m_d_dualWorkspace->deviceCopyTo(dualEll);
-    m_d_pdDot->deviceCopyTo(*m_d_pdWorkspace);
-    /* ---- */
-    *m_d_pdWorkspace += *m_d_ell;
+    *m_d_pdWorkspace -= *m_d_ellCandidate;
     m_d_primWorkspace->deviceCopyTo(*m_d_primErr);
     m_d_dualWorkspace->deviceCopyTo(*m_d_dualErr);
     /* Inf-norm of errors */
@@ -1190,7 +1143,7 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
         /* Compute residual */
         computeResidual();
         /* Save candidate to accepted iterate */
-        saveCandidate();
+        acceptCandidate();
         /* Compute, store, and check error */
         m_status = computeError(i);
         if (m_status) {
@@ -1232,13 +1185,13 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     T rho = 0;
     for (size_t iOut = 0; iOut < m_maxOuterIters; iOut++) {
         if (iOut % m_period == 0) { std::cout << "." << std::flush; }
-        saveCandidate();
+        acceptCandidate();
         computeDeltaIterate();
         saveIterate();
         /* Compute residual and check error */
         cpIter();
         computeResidual();
-        m_status = computeErrorExplicit(iOut);
+        m_status = computeError(iOut);
         if (m_status) {
             m_countIterations = iOut;
             break;
@@ -1273,12 +1226,12 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
                 countK1 += 1;
                 break;  // K1
             }
-            rho = pow(w_tilde, 2) - 2 * m_data.stepSize() * dotM(*m_d_residual, *m_d_scaledDirection);
+            rho = pow(w_tilde, 2) + 2 * m_data.stepSize() * dotM(*m_d_residual, *m_d_scaledDirection);
             /* Safeguard update */
             if (rho >= m_sigma * w_tilde * w) {
                 *m_d_residual *= (m_lambda * rho / pow(w_tilde, 2));
-                m_d_pdPrev->deviceCopyTo(*m_d_pdCandidate);  // is this correct ?
-                *m_d_pdCandidate -= *m_d_residual;
+                m_d_pdPrev->deviceCopyTo(*m_d_pdCandidate);
+                *m_d_pdCandidate += *m_d_residual;
                 countK2 += 1;
                 break;  // K2
             } else {

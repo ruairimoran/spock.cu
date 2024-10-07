@@ -56,6 +56,9 @@ void testComputeErrors(CacheTestData<T> &, T);
 template<typename T>
 void testDotM(CacheTestData<T> &, T);
 
+template<typename T>
+void testAndersonDirection(CacheTestData<T> &, T);
+
 
 /**
  * Cache of methods for proximal algorithms
@@ -73,6 +76,7 @@ protected:
     T m_tol = 0;
     T m_err = 0;
     size_t m_maxOuterIters = 0;
+    size_t m_andSize = 0;  // MUST BE <= 32
     size_t m_countIterations = 0;
     size_t m_rowAxis = 0;
     size_t m_colAxis = 1;
@@ -116,7 +120,6 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_deltaPd = nullptr;
     std::unique_ptr<DTensor<T>> m_d_deltaDeltaPd = nullptr;
     std::unique_ptr<DTensor<T>> m_d_residual = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_residualPrev = nullptr;
     std::unique_ptr<DTensor<T>> m_d_direction = nullptr;
     /* Workspaces */
     std::unique_ptr<DTensor<T>> m_d_initState = nullptr;
@@ -181,7 +184,6 @@ protected:
     T m_sigma = 0.1;
     T m_lambda = 1.0;
     /* Anderson */
-    size_t m_andSize = 5;  // MUST BE <= 32
     std::unique_ptr<DTensor<T>> m_d_andDelta = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andDeltaLeft = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andDeltaRight = nullptr;
@@ -191,6 +193,7 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_andDeltaDeltaLeft = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andDeltaDeltaRight = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andDeltaDeltaCol0 = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_andDeltaMinusDeltaDelta = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andQ = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andQLeft = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andQRight = nullptr;
@@ -198,6 +201,11 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_andRtr = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andRtrCopy = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andRtrCol0 = nullptr;
+    std::vector<std::unique_ptr<QRFactoriser<T>>> m_andQR;
+    std::unique_ptr<DTensor<T>> m_d_andQRTemp = nullptr;
+    std::vector<std::unique_ptr<DTensor<T>>> m_andQRTempMats;
+    std::unique_ptr<DTensor<T>> m_d_andXTemp = nullptr;
+    std::vector<std::unique_ptr<DTensor<T>>> m_andXTempVecs;
 
     /**
      * Protected methods
@@ -244,21 +252,25 @@ protected:
 
     void cpIter();
 
-    void savePrevious();
+    void savePreviousCp();
+
+    void savePreviousSp();
 
     void saveCandidate();
 
-    T computeResidual();
+    void computeResidual();
 
-    void computeDelta();
+    T computeResidualNorm();
 
-    void computeDeltaDelta();
+    void computeDeltas();
+
+    size_t updateQR(size_t);
 
     void updateAndersonDirection(size_t);
 
     bool computeError(size_t);
 
-    bool computeErrorFromPd(size_t);
+    bool computeErrorExplicit(size_t);
 
     bool infeasibilityDetection(size_t);
 
@@ -269,10 +281,23 @@ public:
      * Constructor
      */
     Cache(ScenarioTree<T> &tree, ProblemData<T> &data, bool detectInfeas = false,
-          T tol = 1e-3, size_t maxOuterIters = 1000, size_t maxInnerIters = 8) :
+          T tol = 1e-3, size_t maxOuterIters = 1000, size_t maxInnerIters = 8, size_t andBuff = 3) :
         m_tree(tree), m_data(data), m_detectInfeas(detectInfeas),
         m_tol(tol), m_maxOuterIters(maxOuterIters), m_maxInnerIters(maxInnerIters) {
+        if (andBuff <= 32) {
+            m_andSize = andBuff;
+        } else {
+            err << "[Cache] Anderson buffer size must be <= 32.\n";
+            throw std::invalid_argument(err.str());
+        }
+        /* Sizes */
+        initialiseSizes();
         /* Allocate memory on host */
+        m_andQR = std::vector<std::unique_ptr<QRFactoriser<T>>>(m_andSize);
+        m_d_andQRTemp = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
+        m_andQRTempMats = std::vector<std::unique_ptr<DTensor<T>>>(m_andSize);
+        m_d_andXTemp = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
+        m_andXTempVecs = std::vector<std::unique_ptr<DTensor<T>>>(m_andSize);
         m_cacheCallsToL = std::vector<size_t>(m_maxOuterIters);
         m_cacheError0 = std::vector<T>(m_maxOuterIters);
         m_cacheError1 = std::vector<T>(m_maxOuterIters);
@@ -282,8 +307,6 @@ public:
         m_cacheNrmLtrDeltaDual = std::vector<T>(m_maxOuterIters);
         m_cacheDistDeltaDual = std::vector<T>(m_maxOuterIters);
         m_cacheSuppDeltaDual = std::vector<T>(m_maxOuterIters);
-        /* Sizes */
-        initialiseSizes();
         /* Allocate memory on device */
         m_d_pd = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_pdPrev = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
@@ -295,9 +318,9 @@ public:
         m_d_deltaDeltaPd = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_residual = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_residual = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
-        m_d_residualPrev = std::make_unique<DTensor<T>>(m_pdSize, 1, 1, true);
         m_d_andDelta = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
         m_d_andDeltaDelta = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
+        m_d_andDeltaMinusDeltaDelta = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
         m_d_andQ = std::make_unique<DTensor<T>>(m_pdSize, m_andSize, 1, true);
         m_d_andRtr = std::make_unique<DTensor<T>>(m_andSize, m_andSize, 1, true);
         m_d_andRtrCopy = std::make_unique<DTensor<T>>(m_andSize, m_andSize, 1, true);
@@ -363,6 +386,8 @@ public:
     friend void testComputeErrors<>(CacheTestData<T> &, T);
 
     friend void testDotM<>(CacheTestData<T> &, T);
+
+    friend void testAndersonDirection<>(CacheTestData<T> &, T);
 };
 
 template<typename T>
@@ -545,6 +570,12 @@ void Cache<T>::initialiseProjectable() {
     for (size_t i = 0; i < m_tree.numLeafNodes(); i++) {
         DTensor<T> node(*m_d_socsLeafHalves, m_matAxis, i, i);
         node.upload(leafHalves);
+    }
+    /* QR */
+    for (size_t i = 0; i < m_andSize; i++) {
+        m_andQRTempMats[i] = std::make_unique<DTensor<T>>(*m_d_andQRTemp, m_colAxis, 0, i);
+        m_andXTempVecs[i] = std::make_unique<DTensor<T>>(*m_d_andXTemp, m_rowAxis, 0, i);
+        m_andQR[i] = std::make_unique<QRFactoriser<T>>(*m_andQRTempMats[i]);
     }
 }
 
@@ -892,7 +923,7 @@ void Cache<T>::proximalDual() {
 }
 
 /**
- * Compute one iteration of T operator, nothing more.
+ * Compute one iteration of T(pd) operator, nothing more.
  * Write results to `candidates`.
  */
 template<typename T>
@@ -904,13 +935,50 @@ void Cache<T>::cpIter() {
 }
 
 /**
- * Save current iterates to prev.
+ * Compute residual.
  */
 template<typename T>
-void Cache<T>::savePrevious() {
+void Cache<T>::computeResidual() {
+    m_d_pd->deviceCopyTo(*m_d_residual);
+    *m_d_residual -= *m_d_pdCandidate;
+}
+
+/**
+ * Compute residual norm.
+ */
+template<typename T>
+T Cache<T>::computeResidualNorm() {
+    computeResidual();
+    return normM(*m_d_residual, *m_d_residual);
+}
+
+/**
+ * Compute change of iterates.
+ */
+template<typename T>
+void Cache<T>::computeDeltas() {
+    m_d_pd->deviceCopyTo(*m_d_deltaPd);
+    *m_d_deltaPd -= *m_d_pdPrev;
+    m_d_deltaPd->deviceCopyTo(*m_d_deltaDeltaPd);
+    *m_d_deltaDeltaPd -= *m_d_andDeltaCol0;
+}
+
+/**
+ * Save current iterates to prev (for CP algo).
+ */
+template<typename T>
+void Cache<T>::savePreviousCp() {
     m_d_pd->deviceCopyTo(*m_d_pdPrev);
     m_d_ell->deviceCopyTo(*m_d_ellPrev);
-    m_d_residual->deviceCopyTo(*m_d_residualPrev);
+}
+
+/**
+ * Save current iterates to prev (for SPOCK algo).
+ */
+template<typename T>
+void Cache<T>::savePreviousSp() {
+    m_d_pd->deviceCopyTo(*m_d_pdPrev);
+    m_d_ell->deviceCopyTo(*m_d_ellPrev);
 }
 
 /**
@@ -923,31 +991,58 @@ void Cache<T>::saveCandidate() {
 }
 
 /**
- * Compute residual.
+ * Update QR decomposition.
  */
 template<typename T>
-T Cache<T>::computeResidual() {
-    m_d_pdPrev->deviceCopyTo(*m_d_residual);
-    *m_d_residual -= *m_d_pdCandidate;
-    return normM(*m_d_residual, *m_d_residual);
-}
-
-/**
- * Compute change of iterates.
- */
-template<typename T>
-void Cache<T>::computeDelta() {
-    m_d_pd->deviceCopyTo(*m_d_deltaPd);
-    *m_d_deltaPd -= *m_d_pdPrev;
-}
-
-/**
- * Compute change of change of iterates.
- */
-template<typename T>
-void Cache<T>::computeDeltaDelta() {
-    m_d_residual->deviceCopyTo(*m_d_deltaDeltaPd);
-    *m_d_deltaDeltaPd -= *m_d_residualPrev;
+size_t Cache<T>::updateQR(size_t idx) {
+//    /**
+//     * QR update to solve least-squares problem.
+//     * 1. Shift Q right by 1.
+//     * 2. Shift R right and down by 1.
+//     * 3. Update first column of Q.
+//     * 3. Modified Gram-Schmidt (for numerical stability).
+//     * 4. Backward substitution.
+//     */
+//
+//    /* Shift Q right by 1 */
+//    m_d_andQLeft->deviceCopyTo(*m_d_andQRight);
+//    /* Shift R right and down by 1 */
+//    m_d_andRtr->deviceCopyTo(*m_d_andRtrCopy);
+//    k_shiftDiagonal<<<1, dim3(32, 32)>>>(m_d_andRtr->raw(), m_d_andRtrCopy->raw(), m_andSize);
+//
+//    /* Store the new first column of m_d_andDeltaDelta as the first column of Q. */
+//    m_d_andDeltaDeltaCol0->deviceCopyTo(*m_d_andQCol0);
+//    std::cout << "norm of new first column: " << m_d_andDeltaDeltaCol0->normF() << "\n";
+//
+//    /* Modified Gram-Schmidt (orthogonalize against all columns j != 0 of Q, modified for numerical stability) */
+//    std::vector<T> RtrCol0(m_andSize, 0.);
+//    DTensor<T> d_one(std::vector<T>(1, 1.), 1);
+//    size_t minSize = std::min(m_andSize, idx + 1);
+//    T r;
+//    if (idx != 0) {
+//        for (size_t col = 1; col < minSize; col++) {
+//            DTensor<T> QCol(*m_d_andQ, m_colAxis, col, col);
+//            r = QCol.dotF(*m_d_andQCol0);
+//            r *= 1 / QCol.normF();
+//            /* Update first row of R */
+//            RtrCol0[col] = r;
+//            /* Update first column of Q */
+//            m_d_andQCol0->addAB(QCol, d_one, -r, 1.);
+//        }
+//    }
+//    /* Normalize first column of Q */
+//    r = m_d_andQCol0->normF();
+//    if (r) {
+//        *m_d_andQCol0 *= 1 / r;
+//    } else {
+//        err << "[updateAndersonDirection] Attempt to divide by 0.\n";
+//        throw std::invalid_argument(err.str());
+//    }
+//    /* Update first element of R and upload first row */
+//    RtrCol0[0] = r;
+//    m_d_andRtrCol0->upload(RtrCol0);
+//    return minSize;
+    return -1;
 }
 
 /**
@@ -958,99 +1053,29 @@ void Cache<T>::updateAndersonDirection(size_t idx) {
     /* Shift delta and deltaDelta matrices 1 column right */
     m_d_andDeltaLeft->deviceCopyTo(*m_d_andDeltaRight);
     m_d_andDeltaDeltaLeft->deviceCopyTo(*m_d_andDeltaDeltaRight);
-
-    /* Update first column of delta */
+    /* Update first column of delta and deltaDelta */
     m_d_deltaPd->deviceCopyTo(*m_d_andDeltaCol0);
-    std::cout << "a: " << m_d_andDeltaCol0->tr();
-
-    /* Update first column of deltaDelta */
     m_d_deltaDeltaPd->deviceCopyTo(*m_d_andDeltaDeltaCol0);
-    std::cout << "b: " << m_d_andDeltaDeltaCol0->tr();
+    /* Compute difference matrix */
+    m_d_andDelta->deviceCopyTo(*m_d_andDeltaMinusDeltaDelta);
+    *m_d_andDeltaMinusDeltaDelta -= *m_d_andDeltaDelta;
 
     /**
-     * QR update to solve least-squares problem.
-     * 1. Shift Q right by 1.
-     * 2. Shift R right and down by 1.
-     * 3. Update first column of Q.
-     * 3. Modified Gram-Schmidt (for numerical stability).
-     * 4. Backward substitution.
+     * 1. QR factorise `m_d_andDeltaDelta`.
+     * 2. Compute least squares `m_d_deltaDeltaPd \ m_d_andDeltaCol0`.
+     * 4. Compute Anderson's direction.
      */
-
-    /* Shift Q right by 1 */
-    m_d_andQLeft->deviceCopyTo(*m_d_andQRight);
-    /* Shift R right and down by 1 */
-    m_d_andRtr->deviceCopyTo(*m_d_andRtrCopy);
-    k_shiftDiagonal<<<1, dim3(32, 32)>>>(m_d_andRtr->raw(), m_d_andRtrCopy->raw(), m_andSize);
-
-    /* Store the new first column of m_d_andDeltaDelta as the first column of Q. */
-    m_d_andDeltaDeltaCol0->deviceCopyTo(*m_d_andQCol0);
-
-    /* Modified Gram-Schmidt (orthogonalize against all columns j != 0 of Q, modified for numerical stability) */
-    std::vector<T> RtrCol0(m_andSize, 0.);
-    DTensor<T> d_one(std::vector<T>(1, 1.), 1);
-    size_t minSize = std::min(m_andSize, idx + 1);
-    T r;
-    if (idx != 0) {
-        std::cout << "before ortho Q: " << *m_d_andQ;
-        for (size_t col = 1; col < minSize; col++) {
-            std::cout << "col: " << col << "\n";
-            DTensor<T> QCol(*m_d_andQ, m_colAxis, col, col);
-            r = QCol.dotF(*m_d_andQCol0);
-            r /= QCol.normF();
-            /* Update first row of R */
-            RtrCol0[col] = r;
-            /* Update the first column of Q */
-            std::cout << "1 r: " << r << "\n";
-            m_d_andQCol0->addAB(QCol, d_one, -r, 1.);
-        }
-    }
-    std::cout << "before normo Q: " << *m_d_andQ;
-    /* Normalize */
-    r = m_d_andQCol0->normF();
-    std::cout << "2 r: " << r << "\n";
-    if (r) {
-        *m_d_andQCol0 *= 1 / r;
-    } else {
-        err << "[updateAndersonDirection] Attempt to divide by 0.\n";
-        throw std::invalid_argument(err.str());
-    }
-    RtrCol0[0] = r;
-    m_d_andRtrCol0->upload(RtrCol0);
-
-
-    std::cout << "Q: " << *m_d_andQ;
-    std::cout << "R: " << m_d_andRtr->tr();
-    DTensor<T> QR(m_pdSize, m_andSize);
-    QR.addAB(*m_d_andQ, m_d_andRtr->tr());
-    std::cout << "norm(A - QR): " << (*m_d_andDeltaDelta - QR).normF() << "\n";
-
-    /**
-     * We have QR-factorised `m_d_andDeltaDelta`. Then:
-     * 1. Compute `b = Q' * aa_wsp`.
-     * 2. Use back substitution to solve `R \ b`.
-     */
-    DTensor<T> leastSquaresSolution(m_andSize);
-    /* b = Q' * aa_wsp */
-    leastSquaresSolution.addAB(m_d_andQ->tr(), *m_d_deltaPd);
-    /* gamma = backSub(m_d_andR, gamma) */
-    const float alpha = 1.;
-    gpuErrChk(cublasStrsm(Session::getInstance().cuBlasHandle(),
-                          CUBLAS_SIDE_LEFT,
-                          CUBLAS_FILL_MODE_UPPER,
-                          CUBLAS_OP_T,
-                          CUBLAS_DIAG_NON_UNIT,
-                          minSize,
-                          1,
-                          &alpha,
-                          m_d_andRtr->raw(),
-                          m_andSize,
-                          leastSquaresSolution.raw(),
-                          minSize));
-    std::cout << "ls: " << leastSquaresSolution.tr();
-    /* aa_wsp = m_d_andDelta * gamma */
-    m_d_direction->addAB(*m_d_andDelta, leastSquaresSolution, -1.);
+    std::cout << "delta: " << *m_d_andDelta;
+    std::cout << "deltaDelta: " << *m_d_andDeltaDelta;
+    size_t minSize = std::min(m_andSize, idx);
+    m_d_deltaDeltaPd->deviceCopyTo(*m_d_andQRTemp);
+    m_d_andDeltaCol0->deviceCopyTo(*m_d_andXTemp);
+    m_andQR[minSize]->factorise();
+    m_andQR[minSize]->leastSquares(*m_andXTempVecs[minSize]);
+    std::cout << "sol: " << m_andXTempVecs[minSize]->tr();
     /* Compute new direction */
-    *m_d_direction -= *m_d_residual;
+    m_d_direction->addAB(*m_d_andDeltaMinusDeltaDelta, *m_andXTempVecs[minSize], -1.);
+    *m_d_direction -= *m_d_andDeltaCol0;
     std::cout << "direction: " << m_d_direction->tr();
 }
 
@@ -1061,10 +1086,9 @@ template<typename T>
 bool Cache<T>::computeError(size_t idx) {
     cudaDeviceSynchronize();  // DO NOT REMOVE !!!
     /* Residuals */
-    m_d_pdPrev->deviceCopyTo(*m_d_residual);
-    *m_d_residual -= *m_d_pd;
+    computeResidual();
     m_d_residual->deviceCopyTo(*m_d_pdWorkspace);
-    *m_d_pdWorkspace *= m_data.stepSizeRecip();
+    *m_d_pdWorkspace *= -m_data.stepSizeRecip();
     *m_d_pdWorkspace -= *m_d_ellPrev;
     *m_d_pdWorkspace += *m_d_ell;
     m_d_primWorkspace->deviceCopyTo(*m_d_primErr);
@@ -1093,13 +1117,11 @@ bool Cache<T>::computeError(size_t idx) {
  * Compute errors for termination check.
  */
 template<typename T>
-bool Cache<T>::computeErrorFromPd(size_t idx) {
+bool Cache<T>::computeErrorExplicit(size_t idx) {
     cudaDeviceSynchronize();  // DO NOT REMOVE !!!
     /* Residuals */
-    m_d_pdPrev->deviceCopyTo(*m_d_residual);
-    *m_d_residual -= *m_d_pd;
     m_d_residual->deviceCopyTo(*m_d_pdWorkspace);
-    *m_d_pdWorkspace *= m_data.stepSizeRecip();
+    *m_d_pdWorkspace *= -m_data.stepSizeRecip();
     *m_d_pdWorkspace -= *m_d_ellPrev;
     /* ---- Explicitly compute ell(pd) */
     DTensor<T> primEll(*m_d_ell, m_rowAxis, 0, m_primSize - 1);
@@ -1163,13 +1185,15 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
     initialiseState(initState);
     /* Load previous solution if given */
     if (previousSolution) m_d_pd->upload(*previousSolution);
-    savePrevious();
+    savePreviousCp();
     /* Run algorithm */
     for (size_t i = 0; i < m_maxOuterIters; i++) {
         if (i % m_period == 0) { std::cout << "." << std::flush; }
-        /* Compute CP iteration and save result */
-        savePrevious();
+        /* Compute CP iteration */
         cpIter();
+        /* Compute residual */
+        computeResidual();
+        /* Save candidate to accepted iterate */
         saveCandidate();
         /* Compute, store, and check error */
         m_status = computeError(i);
@@ -1177,6 +1201,7 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
             m_countIterations = i;
             break;
         }
+        savePreviousCp();
     }
     /* Return status */
     if (m_status) {
@@ -1196,39 +1221,42 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     initialiseState(initState);
     /* Load previous solution if given */
     if (previousSolution) m_d_pd->upload(*previousSolution);
-    savePrevious();
+    savePreviousSp();
 
     /* Initialise */
     size_t countK0 = 0;
     size_t countK1 = 0;
     size_t countK2 = 0;
     cpIter();
-    T zeta = computeResidual();
+    T zeta = computeResidualNorm();
+    saveCandidate();
+    computeDeltas();
+    savePreviousSp();
     T wSafe = zeta;
     T w = 0;
     T w_tilde = 0;
     T tau = 0;
     T rho = 0;
     DTensor<T> scaledDirection(m_pdSize);
-    DTensor<T> diff(m_pdSize);
     for (size_t iOut = 0; iOut < m_maxOuterIters; iOut++) {
         if (iOut % m_period == 0) { std::cout << "." << std::flush; }
-        /* Check error */
         saveCandidate();
-        computeDelta();
-        m_status = computeErrorFromPd(iOut);
+        computeDeltas();
+        savePreviousSp();
+        /* Compute residual and check error */
+        cpIter();
+        computeResidual();
+        m_status = computeErrorExplicit(iOut);
         if (m_status) {
             m_countIterations = iOut;
             break;
         }
-        /* Get residual */
-        cpIter();
-        /* Compute M-norm */
-        w = computeResidual();
+        /* Compute residual norm */
+        w = normM(*m_d_residual, *m_d_residual);
         /* Compute direction */
-        computeDeltaDelta();
-        savePrevious();
-        updateAndersonDirection(iOut);
+        m_d_residual->deviceCopyTo(*m_d_direction);
+        *m_d_direction *= -1.;
+//        updateAndersonDirection(iOut);
         /* Blind update */
         if (w <= m_c0 * zeta) {
             m_d_pdPrev->deviceCopyTo(*m_d_pdCandidate);
@@ -1240,14 +1268,12 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         /* Line search on tau */
         tau = 1.;
         for (size_t iIn = 0; iIn < m_maxInnerIters; iIn++) {
-//            std::cout << "1: " << (*m_d_pdPrev - *m_d_pd).maxAbs() << "\n";
-            m_d_pdPrev->deviceCopyTo(*m_d_pd);  // is this correct ?
+            m_d_pdPrev->deviceCopyTo(*m_d_pd);
             m_d_direction->deviceCopyTo(scaledDirection);
             scaledDirection *= tau;
             *m_d_pd += scaledDirection;
-//            std::cout << "2: " << (*m_d_pdPrev - *m_d_pd).maxAbs() << "\n";
             cpIter();
-            w_tilde = computeResidual();
+            w_tilde = computeResidualNorm();
             /* Educated update */
             if (w <= wSafe && w_tilde <= m_c1 * w) {
                 m_d_pd->deviceCopyTo(*m_d_pdCandidate);

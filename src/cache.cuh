@@ -838,7 +838,7 @@ T Cache<T>::dotM(DTensor<T> &x, DTensor<T> &y) {
     Ltr();
     m_d_primWorkspace->deviceCopyTo(*m_d_primDot);
     yPrim.deviceCopyTo(*m_d_primWorkspace);
-    L();
+    L(true);
     m_d_dualWorkspace->deviceCopyTo(*m_d_dualDot);
     *m_d_pdDot *= -m_data.stepSize();
     *m_d_pdDot += y;
@@ -919,8 +919,8 @@ void Cache<T>::cpIter() {
  */
 template<typename T>
 void Cache<T>::computeResidual() {
-    m_d_pdCandidate->deviceCopyTo(*m_d_residual);
-    *m_d_residual -= *m_d_pd;
+    m_d_pd->deviceCopyTo(*m_d_residual);
+    *m_d_residual -= *m_d_pdCandidate;
 }
 
 /**
@@ -1040,9 +1040,9 @@ void Cache<T>::updateDirection(size_t idx) {
     m_d_andIterateMatrixRight->deviceCopyTo(*m_d_andIterateMatrixLeft);
     m_d_andResidualMatrixRight->deviceCopyTo(*m_d_andResidualMatrixLeft);
     /* Update last column of iterate and residual matrices */
-    m_d_deltaIterate->deviceCopyTo(*m_d_andIterateMatrixEndCol);
-    *m_d_andIterateMatrixEndCol += *m_d_deltaResidual;
     m_d_deltaResidual->deviceCopyTo(*m_d_andResidualMatrixEndCol);
+    m_d_deltaIterate->deviceCopyTo(*m_d_andIterateMatrixEndCol);
+    *m_d_andIterateMatrixEndCol -= *m_d_deltaResidual;
 
     /**
      * 1. QR factorise `m_d_andResidualMatrix`.
@@ -1066,11 +1066,12 @@ void Cache<T>::updateDirection(size_t idx) {
             throw std::invalid_argument(err.str());
         }
         /* Compute new direction */
-        m_d_residual->deviceCopyTo(*m_d_direction);
-        m_d_direction->addAB(*m_d_andIterateMatrix, *m_d_andQRGamma, -1., 1.);
+        m_d_direction->addAB(*m_d_andIterateMatrix, *m_d_andQRGamma, -1.);
+        *m_d_direction -= *m_d_residual;
     } else {
         /* Use residual direction */
         m_d_residual->deviceCopyTo(*m_d_direction);
+        *m_d_direction *= -1.;
     }
 }
 
@@ -1082,7 +1083,7 @@ bool Cache<T>::computeError(size_t idx) {
     cudaDeviceSynchronize();  // DO NOT REMOVE !!!
     /* Residuals */
     m_d_residual->deviceCopyTo(*m_d_pdWorkspace);
-    *m_d_pdWorkspace *= m_data.stepSizeRecip();
+    *m_d_pdWorkspace *= -m_data.stepSizeRecip();
     *m_d_pdWorkspace += *m_d_ell;
     *m_d_pdWorkspace -= *m_d_ellCandidate;
     m_d_primWorkspace->deviceCopyTo(*m_d_primErr);
@@ -1095,9 +1096,10 @@ bool Cache<T>::computeError(size_t idx) {
     /* Primal-dual error (avoid extra adj until prim and dual errors pass relaxed tol) */
 //    T relaxTol = m_tol * 10;
 //    if (primErr <= relaxTol && dualErr <= relaxTol) {
-    Ltr();
-    *m_d_primWorkspace += *m_d_primErr;
-    m_err = m_d_primWorkspace->maxAbs();
+//    Ltr();
+//    *m_d_primWorkspace += *m_d_primErr;
+//    m_err = m_d_primWorkspace->maxAbs();
+    m_err = std::max(primErr, dualErr);
     m_cacheError0[idx] = m_err;
     m_cacheCallsToL[idx] = m_callsToL;
     if (m_err <= m_tol) { return true; }
@@ -1226,12 +1228,12 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
                 countK1 += 1;
                 break;  // K1
             }
-            rho = pow(w_tilde, 2) + 2 * m_data.stepSize() * dotM(*m_d_residual, *m_d_scaledDirection);
+            rho = pow(w_tilde, 2) - 2 * m_data.stepSize() * dotM(*m_d_residual, *m_d_scaledDirection);
             /* Safeguard update */
             if (rho >= m_sigma * w_tilde * w) {
                 *m_d_residual *= (m_lambda * rho / pow(w_tilde, 2));
                 m_d_pdPrev->deviceCopyTo(*m_d_pdCandidate);
-                *m_d_pdCandidate += *m_d_residual;
+                *m_d_pdCandidate -= *m_d_residual;
                 countK2 += 1;
                 break;  // K2
             } else {

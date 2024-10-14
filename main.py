@@ -10,7 +10,7 @@ p = np.array([[0.5, 0.5], [0.5, 0.5]])
 
 v = np.array([0.3, 0.7])
 
-(final_stage, stop_branching_stage) = (7, 7)
+(final_stage, stop_branching_stage) = (6, 6)
 tree = py.treeFactory.TreeFactoryMarkovChain(
     transition_prob=p,
     initial_distribution=v,

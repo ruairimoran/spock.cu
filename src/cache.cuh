@@ -107,6 +107,8 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_ellCandidatePrim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_ellCandidateDual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_residual = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_residualPrim = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_residualDual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_residualPrev = nullptr;
     std::unique_ptr<DTensor<T>> m_d_direction = nullptr;
     std::unique_ptr<DTensor<T>> m_d_directionScaled = nullptr;
@@ -402,6 +404,8 @@ void Cache<T>::reshape() {
     m_d_iterateCandidateDual = std::make_unique<DTensor<T>>(*m_d_iterateCandidate, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
     m_d_ellCandidatePrim = std::make_unique<DTensor<T>>(*m_d_ellCandidate, m_rowAxis, 0, m_sizePrim - 1);
     m_d_ellCandidateDual = std::make_unique<DTensor<T>>(*m_d_ellCandidate, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
+    m_d_residualPrim = std::make_unique<DTensor<T>>(*m_d_residual, m_rowAxis, 0, m_sizePrim - 1);
+    m_d_residualDual = std::make_unique<DTensor<T>>(*m_d_residual, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
     m_d_workDotPrim = std::make_unique<DTensor<T>>(*m_d_workDot, m_rowAxis, 0, m_sizePrim - 1);
     m_d_workDotDual = std::make_unique<DTensor<T>>(*m_d_workDot, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
     m_d_andIterateMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 0, m_andSize - 2);
@@ -850,7 +854,6 @@ template<typename T>
 void Cache<T>::modifyPrimal() {
     m_d_iterateDual->deviceCopyTo(*m_d_workIterateDual);
     Ltr();
-    m_d_workIteratePrim->deviceCopyTo(*m_d_ellCandidatePrim);  // Store adjoint of dual
     *m_d_workIteratePrim *= -m_data.stepSize();
     *m_d_workIteratePrim += *m_d_iteratePrim;
 }
@@ -871,10 +874,9 @@ void Cache<T>::proximalPrimal() {
  */
 template<typename T>
 void Cache<T>::modifyDual() {
+    *m_d_workIteratePrim *= 2.;
+    *m_d_workIteratePrim -= *m_d_iteratePrim;
     L();
-    m_d_workIterateDual->deviceCopyTo(*m_d_ellCandidateDual);  // Store op of primal for error computation
-    *m_d_workIterateDual *= 2.;
-    *m_d_workIterateDual -= *m_d_ellPrevDual;
     *m_d_workIterateDual *= m_data.stepSize();
     *m_d_workIterateDual += *m_d_iterateDual;
 }
@@ -893,7 +895,7 @@ void Cache<T>::proximalDual() {
 }
 
 /**
- * Compute one iteration of T(pd) operator, nothing more.
+ * Compute one iteration of T(iterate) operator, nothing more.
  * Write results to `candidates`.
  */
 template<typename T>
@@ -923,15 +925,6 @@ template<typename T>
 void Cache<T>::computeResidual() {
     m_d_iterate->deviceCopyTo(*m_d_residual);
     *m_d_residual -= *m_d_iterateCandidate;
-}
-
-/**
- * Compute residual norm.
- */
-template<typename T>
-T Cache<T>::computeResidualNorm() {
-    computeResidual();
-    return normM(*m_d_residual, *m_d_residual);
 }
 
 /**
@@ -1010,6 +1003,7 @@ void Cache<T>::updateDirection(size_t idx) {
         /* QR decomposition */
         m_d_andResidualMatrix->deviceCopyTo(*m_d_andQR);
         m_d_residual->deviceCopyTo(*m_d_andQRGammaFull);
+//        std::cout << "aa_wsp: " << m_d_residual->tr();
         m_status = m_andQRFactor->factorise();
         if (m_status != 0) {
             err << "[updateDirection] QR factorisation returned status code: " << m_status << "\n";
@@ -1021,14 +1015,16 @@ void Cache<T>::updateDirection(size_t idx) {
             err << "[updateDirection] QR least squares returned status code: " << m_status << "\n";
             throw std::invalid_argument(err.str());
         }
+//        std::cout << "gamma: " << m_d_andQRGamma->tr();
         /* Compute new direction */
-        m_d_direction->addAB(*m_d_andIterateMatrix, *m_d_andQRGamma, -1.);
+        m_d_direction->addAB(*m_d_andIterateMatrix, *m_d_andQRGamma);
         *m_d_direction -= *m_d_residual;
     } else {
         /* Use residual direction */
         m_d_residual->deviceCopyTo(*m_d_direction);
         *m_d_direction *= -1.;
     }
+//    std::cout << "direction: " << m_d_direction->tr();
 }
 
 /**
@@ -1158,13 +1154,13 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         /* Compute direction */
         updateDirection(iOut);
         /* Blind update */
-        if (w <= m_c0 * zeta && m_allowK0) {
-            m_d_iteratePrev->deviceCopyTo(*m_d_iterateCandidate);
-            *m_d_iterateCandidate += *m_d_direction;
-            zeta = w;
-            countK0 += 1;
-            continue;  // K0
-        }
+//        if (w <= m_c0 * zeta && m_allowK0) {
+//            m_d_iteratePrev->deviceCopyTo(*m_d_iterateCandidate);
+//            *m_d_iterateCandidate += *m_d_direction;
+//            zeta = w;
+//            countK0 += 1;
+//            continue;  // K0
+//        }
         /* Line search on tau */
         tau = 1.;
         for (size_t iIn = 0; iIn < m_maxInnerIters; iIn++) {
@@ -1173,7 +1169,16 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             *m_d_directionScaled *= tau;
             *m_d_iterate += *m_d_directionScaled;
             cpIter();
-            wTilde = computeResidualNorm();
+            computeResidual();
+
+//            std::cout << "nrm_wbar: " << m_d_iterateCandidatePrim->normF() << "\n";
+//            std::cout << "nrm_ubar: " << m_d_iterateCandidateDual->normF() << "\n";
+//            std::cout << "nrm_rw: " << m_d_residualPrim->normF() << "\n";
+//            std::cout << "nrm_ru: " << m_d_residualDual->normF() << "\n";
+
+            wTilde = normM(*m_d_residual, *m_d_residual);
+//            std::cout << "r: " << w << "\n";
+//            std::cout << "rTilde: " << wTilde << "\n";
             /* Educated update */
             if (w <= wSafe && wTilde <= m_c1 * w) {
                 m_d_iterate->deviceCopyTo(*m_d_iterateCandidate);
@@ -1185,6 +1190,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             *m_d_directionScaled *= -1.;
             *m_d_directionScaled += *m_d_residual;
             rho = dotM(*m_d_residual, *m_d_directionScaled);
+//            rho = pow(wTilde, 2) - 2 * m_data.stepSize() * dotM(*m_d_residual, *m_d_directionScaled);
             /* Safeguard update */
             if (rho >= m_sigma * wTilde * w) {
                 *m_d_residual *= (m_lambda * rho / pow(wTilde, 2));

@@ -475,7 +475,7 @@ class Problem:
         eigen, _ = eigs(adj_op)
         max_eigen = np.real(max(eigen))
         nrm = np.sqrt(max_eigen)
-        nrm_recip = 0.999 / nrm
+        nrm_recip = .99 / nrm
         self.__step_size = nrm_recip
 
         # Compute result of x'My

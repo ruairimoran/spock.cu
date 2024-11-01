@@ -157,7 +157,7 @@ public:
         m_nullDim = doc["rowsNNtr"].GetInt();
         m_numY = m_nullDim - (m_tree.numEvents() * 2);
         m_stepSize = doc["stepSize"].GetDouble();
-        m_stepSizeRecip = 1 / m_stepSize;
+        m_stepSizeRecip = 1. / m_stepSize;
 
         /** Allocate memory on host */
         m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>>(m_tree.numStages() - 1);

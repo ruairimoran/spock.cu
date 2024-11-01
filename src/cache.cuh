@@ -241,8 +241,6 @@ protected:
 
     void computeResidual();
 
-    T computeResidualNorm();
-
     void computeDeltaIterate();
 
     void computeDeltaResidual();
@@ -989,11 +987,10 @@ void Cache<T>::updateDirection(size_t idx) {
      * 2. Compute least squares `m_d_andResidualMatrix \ m_d_residual`.
      * 4. Compute Anderson's direction.
      */
-    if (idx >= m_andSize && false) {
+    if (idx >= m_andSize) {
         /* QR decomposition */
         m_d_andResidualMatrix->deviceCopyTo(*m_d_andQR);
         m_d_residual->deviceCopyTo(*m_d_andQRGammaFull);
-//        std::cout << "aa_wsp: " << m_d_residual->tr();
         m_status = m_andQRFactor->factorise();
         if (m_status != 0) {
             err << "[updateDirection] QR factorisation returned status code: " << m_status << "\n";
@@ -1005,16 +1002,14 @@ void Cache<T>::updateDirection(size_t idx) {
             err << "[updateDirection] QR least squares returned status code: " << m_status << "\n";
             throw std::invalid_argument(err.str());
         }
-//        std::cout << "gamma: " << m_d_andQRGamma->tr();
         /* Compute new direction */
-        m_d_direction->addAB(*m_d_andIterateMatrix, *m_d_andQRGamma);
+        m_d_direction->addAB(*m_d_andIterateMatrix, *m_d_andQRGamma, -1.);
         *m_d_direction -= *m_d_residual;
     } else {
         /* Use residual direction */
         m_d_residual->deviceCopyTo(*m_d_direction);
         *m_d_direction *= -1.;
     }
-//    std::cout << "direction: " << m_d_direction->tr();
 }
 
 /**
@@ -1036,19 +1031,17 @@ bool Cache<T>::computeError(size_t idx) {
     *m_d_workIterate += *m_d_ellDeltaIterate;
     bool result = false;
     if (m_log) {
-        /* errPrim - L'(errDual) */
+        /* errPrim + L'(errDual) */
         m_d_workIteratePrim->deviceCopyTo(*m_d_err);
         Ltr();
         *m_d_err += *m_d_workIteratePrim;
         m_err = m_d_err->maxAbs();
-        if (m_err < m_tol) result = true;
+        if (m_err <= m_tol) result = true;
     } else {
         m_err = m_d_workIterate->maxAbs();
-        if (m_err < m_tol) result = true;
+        if (m_err <= m_tol) result = true;
 //        if (m_err < std::max(m_tol * m_cacheError0[1], m_tol)) result = true;
     }
-//    T xi_1 = m_d_workIteratePrim->maxAbs();
-//    T xi_2 = m_d_workIterateDual->maxAbs();
     m_cacheError0[idx] = m_err;
     m_cacheCallsToL[idx] = m_callsToL;
     return result;
@@ -1085,6 +1078,8 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
     /* Run algorithm */
     for (size_t i = 0; i < m_maxOuterIters; i++) {
         if (i % m_period == 0) { std::cout << "." << std::flush; }
+        /* Save iterate to prev */
+        saveIterate();
         /* Compute CP iteration */
         cpIter();
         /* Save candidate to accepted iterate */
@@ -1097,8 +1092,6 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
             m_countIterations = i;
             break;
         }
-        /* Save iterate to prev */
-        saveIterate();
     }
     /* Return status */
     if (m_status) {
@@ -1161,13 +1154,13 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         /* Compute direction */
         updateDirection(iOut);
         /* Blind update */
-//        if (w <= m_c0 * zeta && m_allowK0) {
-//            m_d_iteratePrev->deviceCopyTo(*m_d_iterateCandidate);
-//            *m_d_iterateCandidate += *m_d_direction;
-//            zeta = w;
-//            countK0 += 1;
-//            continue;  // K0
-//        }
+        if (w <= m_c0 * zeta && m_allowK0) {
+            m_d_iteratePrev->deviceCopyTo(*m_d_iterateCandidate);
+            *m_d_iterateCandidate += *m_d_direction;
+            zeta = w;
+            countK0 += 1;
+            continue;  // K0
+        }
         /* Line search on tau */
         tau = 1.;
         for (size_t iIn = 0; iIn < m_maxInnerIters; iIn++) {
@@ -1177,22 +1170,14 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             *m_d_iterate += *m_d_directionScaled;
             cpIter();
             computeResidual();
-
-//            std::cout << "nrm_wbar: " << m_d_iterateCandidatePrim->normF() << "\n";
-//            std::cout << "nrm_ubar: " << m_d_iterateCandidateDual->normF() << "\n";
-//            std::cout << "nrm_rw: " << m_d_residualPrim->normF() << "\n";
-//            std::cout << "nrm_ru: " << m_d_residualDual->normF() << "\n";
-
             wTilde = normM(*m_d_residual, *m_d_residual);
-//            std::cout << "r: " << w << "\n";
-//            std::cout << "rTilde: " << wTilde << "\n";
             /* Educated update */
-//            if (w <= wSafe && wTilde <= m_c1 * w) {
-//                m_d_iterate->deviceCopyTo(*m_d_iterateCandidate);
-//                wSafe = wTilde + pow(m_c2, iOut);
-//                countK1 += 1;
-//                break;  // K1
-//            }
+            if (w <= wSafe && wTilde <= m_c1 * w) {
+                m_d_iterate->deviceCopyTo(*m_d_iterateCandidate);
+                wSafe = wTilde + pow(m_c2, iOut);
+                countK1 += 1;
+                break;  // K1
+            }
             /* Compute rho */
             *m_d_directionScaled *= -1.;
             *m_d_directionScaled += *m_d_residual;

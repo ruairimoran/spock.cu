@@ -233,9 +233,7 @@ protected:
 
     void restore();
 
-    void saveIterate();
-
-    void saveResidual();
+    void saveToPrev();
 
     void acceptCandidate();
 
@@ -557,7 +555,7 @@ template<typename T>
 void Cache<T>::initialisePrev(std::vector<T> *previousSolution) {
     if (previousSolution) {
         m_d_iterate->upload(*previousSolution);
-        saveIterate();
+        saveToPrev();
     } else {
         m_d_iteratePrev->upload(std::vector<T>(m_sizeIterate, 1.));
         m_d_residualPrev->upload(std::vector<T>(m_sizeIterate, 1.));
@@ -941,15 +939,8 @@ void Cache<T>::computeDeltaResidual() {
  * Save current iterates to prev.
  */
 template<typename T>
-void Cache<T>::saveIterate() {
+void Cache<T>::saveToPrev() {
     m_d_iterate->deviceCopyTo(*m_d_iteratePrev);
-}
-
-/**
- * Save current residual to prev.
- */
-template<typename T>
-void Cache<T>::saveResidual() {
     m_d_residual->deviceCopyTo(*m_d_residualPrev);
 }
 
@@ -1079,7 +1070,7 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
     for (size_t i = 0; i < m_maxOuterIters; i++) {
         if (i % m_period == 0) { std::cout << "." << std::flush; }
         /* Save iterate to prev */
-        saveIterate();
+        saveToPrev();
         /* Compute CP iteration */
         cpIter();
         /* Save candidate to accepted iterate */
@@ -1147,10 +1138,8 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         w = normM(*m_d_residual, *m_d_residual);
         /* Compute change of residual */
         computeDeltaResidual();
-        /* Save iterate to prev */
-        saveIterate();
-        /* Save residual to prev */
-        saveResidual();
+        /* Save iterate and residual to prev */
+        saveToPrev();
         /* Compute direction */
         updateDirection(iOut);
         /* Blind update */
@@ -1182,7 +1171,6 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             *m_d_directionScaled *= -1.;
             *m_d_directionScaled += *m_d_residual;
             rho = dotM(*m_d_residual, *m_d_directionScaled);
-//            rho = pow(wTilde, 2) - 2 * m_data.stepSize() * dotM(*m_d_residual, *m_d_directionScaled);
             /* Safeguard update */
             if (rho >= m_sigma * wTilde * w) {
                 *m_d_residual *= (m_lambda * rho / pow(wTilde, 2));

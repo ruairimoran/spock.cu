@@ -1068,7 +1068,6 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
     initialisePrev(previousSolution);
     /* Run algorithm */
     for (size_t i = 0; i < m_maxOuterIters; i++) {
-        if (i % m_period == 0) { std::cout << "." << std::flush; }
         /* Save iterate to prev */
         saveToPrev();
         /* Compute CP iteration */
@@ -1116,7 +1115,6 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     T tau = 0;
     /* Run */
     for (size_t iOut = 0; iOut < m_maxOuterIters; iOut++) {
-        if (iOut % m_period == 0) { std::cout << "." << std::flush; }
         if (iOut != 0) {
             /* Accept new iterate */
             acceptCandidate();

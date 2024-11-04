@@ -37,12 +37,12 @@ int main() {
     /** ALGORITHM */
     size_t exit_status;
     std::vector<T> initState(problem.numStates(), 1.);
+    /* CP */
+//    exit_status = cacheA.timeCp(initState);
+//    std::cout << "cp exit status: " << exit_status << std::endl;
     /* SP */
     exit_status = cacheB.timeSp(initState);
     std::cout << "spock exit status: " << exit_status << std::endl;
-    /* CP */
-    exit_status = cacheA.timeCp(initState);
-    std::cout << "cp exit status: " << exit_status << std::endl;
 
     return 0;
 }

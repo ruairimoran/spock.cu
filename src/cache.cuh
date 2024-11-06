@@ -1306,7 +1306,7 @@ int Cache<T>::timeSp(std::vector<T> &initialState) {
     auto durationMilli = std::chrono::duration<double, std::milli>(tock - tick).count();
     std::cout << "spock timer stopped: " << durationMilli << " ms" << "\n";
     std::string n = "Sp";
-    printToJson(n);
+//    printToJson(n);
     return status;
 }
 

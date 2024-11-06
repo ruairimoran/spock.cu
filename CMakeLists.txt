@@ -46,12 +46,12 @@ FetchContent_GetProperties(
 add_subdirectory(src)
 add_subdirectory(tests)  # comment out to not build tests
 # ----
-add_executable(main_spock)
-target_sources(main_spock  # add files
+add_executable(spock_main)
+target_sources(spock_main  # add files
     PRIVATE
     main.cu
 )
-target_link_libraries(main_spock
+target_link_libraries(spock_main
     PRIVATE
     spock_compiler_flags
     spock_src
@@ -59,19 +59,19 @@ target_link_libraries(main_spock
     cusolver
     cudadevrt
 )
-target_include_directories(main_spock
+target_include_directories(spock_main
     PRIVATE
     "${GPUTILS_SOURCE_DIR}/include"  # includes GPUtils directory
     "${PROJECT_SOURCE_DIR}/src"
     "${PROJECT_BINARY_DIR}"
 )
 # ----
-add_executable(play)
-target_sources(play
+add_executable(spock_play)
+target_sources(spock_play
     PRIVATE
     playground/play.cu
 )
-target_link_libraries(play
+target_link_libraries(spock_play
     PRIVATE
     spock_compiler_flags
     spock_src
@@ -79,7 +79,7 @@ target_link_libraries(play
     cusolver
     cudadevrt
 )
-target_include_directories(play
+target_include_directories(spock_play
     PRIVATE
     "${GPUTILS_SOURCE_DIR}/include"  # includes GPUtils directory
     "${PROJECT_SOURCE_DIR}/src"

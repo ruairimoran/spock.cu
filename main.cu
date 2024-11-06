@@ -24,8 +24,8 @@ int main() {
 //  	std::cout << problem;
 
     /** CACHE */
-    T tol = 1e-5;
-    size_t maxOuterIters = 2000;
+    T tol = 1e-20;
+    size_t maxOuterIters = 100;
     size_t maxInnerIters = 8;
     size_t andersonBuffer = 3;
     bool log = true;

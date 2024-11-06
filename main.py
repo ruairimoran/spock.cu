@@ -10,7 +10,7 @@ p = np.array([[0.5, 0.5], [0.5, 0.5]])
 
 v = np.array([0.3, 0.7])
 
-(final_stage, stop_branching_stage) = (7, 7)
+(final_stage, stop_branching_stage) = (4, 4)
 tree = py.treeFactory.TreeFactoryMarkovChain(
     transition_prob=p,
     initial_distribution=v,
@@ -26,7 +26,7 @@ print(tree)
 # --------------------------------------------------------
 
 # Sizes
-num_states = 5
+num_states = 10
 num_inputs = num_states
 num_events = 2
 
@@ -36,7 +36,7 @@ As = [None] * num_events
 for w in range(num_events):
     As[w] = np.diag(off_diag, -1) + np.diag(off_diag, 1)
     for j in range(num_states):
-        diag = 1 + (w/num_events) * (1 + (j-1)/num_states)
+        diag = 1 + (1 + j / num_states) * w / num_events
         As[w][j][j] = diag
 
 # Input dynamics

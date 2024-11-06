@@ -20,17 +20,24 @@ public:
     std::unique_ptr<ScenarioTree<T>> m_tree;
     std::unique_ptr<ProblemData<T>> m_data;
     std::unique_ptr<Cache<T>> m_cache;
+    std::vector<T> m_dotVector;
+    T expected;
 
     /** Prepare some host and device data */
+    bool m_detectInfeas = false;
     T m_tol = 1e-4;
     size_t m_maxIters = 20;
+    size_t m_maxInnerIters = 8;
+    size_t m_andersonBuff = 5;
+    bool m_allowK0 = false;
 
     CacheTestData() {
         std::ifstream tree_data(m_treeFileLoc);
         std::ifstream problem_data(m_problemFileLoc);
         m_tree = std::make_unique<ScenarioTree<T>>(tree_data);
         m_data = std::make_unique<ProblemData<T>>(*m_tree, problem_data);
-        m_cache = std::make_unique<Cache<T>>(*m_tree, *m_data, m_tol, m_maxIters);
+        m_cache = std::make_unique<Cache<T>>(*m_tree, *m_data, m_detectInfeas, m_tol, m_maxIters,
+                                             m_maxInnerIters, m_andersonBuff, m_allowK0);
     };
 
     virtual ~CacheTestData() = default;
@@ -53,8 +60,7 @@ void testInitialisingState(CacheTestData<T> &d) {
     std::vector<T> initialState = {3., 5., 4.};
     d.m_cache->initialiseState(initialState);
     std::vector<T> x(initialState.size());
-    DTensor<T> firstState(d.m_cache->states(), 0, 0, d.m_data->numStates() - 1);
-    firstState.download(x);
+    d.m_cache->m_d_initState->download(x);
     EXPECT_EQ(x, initialState);
 }
 
@@ -102,7 +108,7 @@ void testDynamicsProjectionOnline(CacheTestData<T> &d, T epsilon) {
     d.m_cache->states().upload(originalStates);
     d.m_cache->inputs().upload(originalInputs);
     d.m_cache->projectPrimalWorkspaceOnDynamics();
-    /* Compare spockStates */
+    /* Compare states */
     std::vector<T> spockStates(statesSize);
     d.m_cache->states().download(spockStates);
     for (size_t i = 0; i < statesSize; i++) { EXPECT_NEAR(spockStates[i], cvxStates[i], epsilon); }
@@ -276,32 +282,32 @@ TEST_F(CacheTest, kernelProjectionOnlineOrthogonality) {
 }
 
 /* ---------------------------------------
- * Test how primal and dual errors
- * are computed
+ * Test dotM operator
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
-void testComputeErrors(CacheTestData<T> &d, T epsilon) {
-    std::vector<T> v = {2., -3., 4., -5., 6., -7., 8., -9.};
+void testDotM(CacheTestData<T> &d, T epsilon) {
+    std::ifstream problemData(d.m_problemFileLoc);
+    std::string json((std::istreambuf_iterator<char>(problemData)),
+                     std::istreambuf_iterator<char>());
+    rapidjson::Document doc;
+    doc.Parse(json.c_str());
+    if (doc.HasParseError()) {
+        err << "[testCache] Cannot parse problem data JSON file: "
+            << std::string(GetParseError_En(doc.GetParseError()));
+        throw std::invalid_argument(err.str());
+    }
+    parseVec(doc["dotVector"], d.m_dotVector);
+    d.expected = doc["dotResult"].GetDouble();
     Cache<T> &c = *d.m_cache;
-    c.m_d_prim->upload(std::vector<T>(c.m_primSize, v[0]));
-    c.m_d_primPrev->upload(std::vector<T>(c.m_primSize, v[1]));
-    c.m_d_adjDual->upload(std::vector<T>(c.m_primSize, v[2]));
-    c.m_d_adjDualPrev->upload(std::vector<T>(c.m_primSize, v[3]));
-    c.m_d_dual->upload(std::vector<T>(c.m_dualSize, v[4]));
-    c.m_d_dualPrev->upload(std::vector<T>(c.m_dualSize, v[5]));
-    c.m_d_opPrim->upload(std::vector<T>(c.m_dualSize, v[6]));
-    c.m_d_opPrimPrev->upload(std::vector<T>(c.m_dualSize, v[7]));
-    bool status = c.computeError(0);
-    T primErr = d.m_data->stepSizeRecip() * (v[1] - v[0]) - (v[3] - v[2]);
-    T dualErr = d.m_data->stepSizeRecip() * (v[5] - v[4]) - (v[7] - v[6]);
-    EXPECT_NEAR(primErr, (*c.m_d_primErr)(0), epsilon);
-    EXPECT_NEAR(dualErr, (*c.m_d_dualErr)(0), epsilon);
+    DTensor<T> d_vec(d.m_dotVector, c.m_sizeIterate);
+    T dot = c.dotM(d_vec, d_vec);
+    EXPECT_NEAR(dot, d.expected, epsilon);
 }
 
-TEST_F(CacheTest, computeErrors) {
+TEST_F(CacheTest, dotM) {
     CacheTestData<float> df;
-    testComputeErrors<float>(df, TEST_PRECISION_LOW);
+    testDotM<float>(df, TEST_PRECISION_LOW);
     CacheTestData<double> dd;
-    testComputeErrors<double>(dd, TEST_PRECISION_HIGH);
+    testDotM<double>(dd, TEST_PRECISION_HIGH);
 }

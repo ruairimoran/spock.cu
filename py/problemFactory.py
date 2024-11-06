@@ -68,6 +68,8 @@ class Problem:
         self.__prim_before_op = None
         self.__dual_after_op_before_adj = None
         self.__prim_after_adj = None
+        self.__dot_vector = None
+        self.__dot_result = None
         # Other
         self.__y_size = 2 * self.__tree.num_events + 1
         self.__step_size = 0
@@ -146,7 +148,9 @@ class Problem:
                                  step_size=self.__step_size,
                                  prim_before_op=self.__prim_before_op,
                                  dual_after_op_before_adj=self.__dual_after_op_before_adj,
-                                 prim_after_adj=self.__prim_after_adj)
+                                 prim_after_adj=self.__prim_after_adj,
+                                 dot_vector=self.__dot_vector,
+                                 dot_result=self.__dot_result)
         path = os.path.join(os.getcwd(), self.__tree.folder)
         os.makedirs(path, exist_ok=True)
         output_file = os.path.join(path, "problemData.json")
@@ -471,8 +475,25 @@ class Problem:
         eigen, _ = eigs(adj_op)
         max_eigen = np.real(max(eigen))
         nrm = np.sqrt(max_eigen)
-        nrm_recip = 0.999 / nrm
+        nrm_recip = .99 / nrm
         self.__step_size = nrm_recip
+
+        # Compute result of x'My
+        p = deepcopy(np.asarray(self.__prim_before_op).reshape(1, -1))[0]
+        d = deepcopy(np.asarray(self.__dual_after_op_before_adj).reshape(1, -1))[0]
+        for i in range(len(p)):
+            p[i] = -3. if p[i] else 0.
+        for i in range(len(d)):
+            d[i] = 2. if d[i] else 0.
+        x = np.hstack((p, d))
+        op_p = np.asarray(self.__op(p)).reshape(1, -1)[0]
+        adj_d = np.asarray(self.__adj(d)).reshape(1, -1)[0]
+        m_y_p = p - self.__step_size * adj_d
+        m_y_d = d - self.__step_size * op_p
+        m_y = np.hstack((m_y_p, m_y_d))
+        res = x @ m_y.T
+        self.__dot_vector = x.tolist()
+        self.__dot_result = res
 
 
 class ProblemFactory:

@@ -60,6 +60,22 @@ template __global__ void k_setToZero(float *, size_t);
 template __global__ void k_setToZero(double *, size_t);
 
 TEMPLATE_WITH_TYPE_T
+__global__ void k_shiftDiagonal(T *dst, T *src, size_t rows, size_t cols = 0) {
+    if (cols == 0) cols = rows;
+    size_t r = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t c = blockIdx.y * blockDim.y + threadIdx.y;
+    size_t srcIdx = c * rows + r;
+    size_t dstIdx = (c + 1) * rows + (r + 1);
+    if (r < rows - 1 && c < cols - 1) {
+        dst[dstIdx] = src[srcIdx];
+    }
+}
+
+template __global__ void k_shiftDiagonal(float *, float *, size_t, size_t);
+
+template __global__ void k_shiftDiagonal(double *, double *, size_t, size_t);
+
+TEMPLATE_WITH_TYPE_T
 __global__ void k_projectOnSoc(T *vec, size_t n, T nrm, T scaling) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n - 1) vec[i] *= scaling;

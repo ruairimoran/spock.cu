@@ -9,29 +9,40 @@
 #include "src/problem.cuh"
 #include "src/cache.cuh"
 
+#define T double
 
 
 int main() {
     /** SCENARIO TREE */
     std::ifstream fileTree("json/treeData.json");
-    ScenarioTree tree(fileTree);
+    ScenarioTree<T> tree(fileTree);
 //  	std::cout << tree;
 
     /** PROBLEM DATA */
     std::ifstream fileProblem("json/problemData.json");
-    ProblemData problem(tree, fileProblem);
+    ProblemData<T> problem(tree, fileProblem);
 //  	std::cout << problem;
 
     /** CACHE */
-    double tol = 1e-5;
-    size_t maxIters = 2000;
-    bool detectInfeasibility = false;
-    Cache cache(tree, problem, tol, maxIters, detectInfeasibility);
+    T tol = 1e-5;
+    size_t maxOuterIters = 2000;
+    size_t maxInnerIters = 8;
+    size_t andersonBuffer = 3;
+    bool log = true;
+    bool detectInfeas = false;
+    bool allowK0Updates = true;
+    Cache<T> cacheA(tree, problem, tol, maxOuterIters, log);
+    Cache<T> cacheB(tree, problem, tol, maxOuterIters, false, detectInfeas, maxInnerIters, andersonBuffer, allowK0Updates);
 
-    /** VANILLA CP */
-    std::vector<double> initState(problem.numStates(), .1);
-    size_t exit_status = cache.cpTime(initState);
-    std::cout << "exit status: " << exit_status << std::endl;
+    /** ALGORITHM */
+    size_t exit_status;
+    std::vector<T> initState(problem.numStates(), 1.);
+    /* CP */
+//    exit_status = cacheA.timeCp(initState);
+//    std::cout << "cp exit status: " << exit_status << std::endl;
+    /* SP */
+    exit_status = cacheB.timeSp(initState);
+    std::cout << "spock exit status: " << exit_status << std::endl;
 
     return 0;
 }

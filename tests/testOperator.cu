@@ -37,15 +37,6 @@ public:
     virtual ~OperatorTestData() = default;
 };
 
-TEMPLATE_WITH_TYPE_T
-static void parseVec(const rapidjson::Value &value, std::vector<T> &vec) {
-    size_t numElements = value.Capacity();
-    if (vec.capacity() != numElements) vec.resize(numElements);
-    for (rapidjson::SizeType i = 0; i < numElements; i++) {
-        vec[i] = value[i].GetDouble();
-    }
-}
-
 /* ---------------------------------------
  * Operator L
  * --------------------------------------- */
@@ -67,12 +58,12 @@ void testOperator(OperatorTestData<T> &d, T epsilon) {
     parseVec(doc["dualAfterOpBeforeAdj"], d.m_dualAfterOpBeforeAdj);
     /* Load primal and test resulting dual */
     Cache<T> &c = *d.m_cache;
-    d.m_cache->m_d_primWorkspace->upload(d.m_primBeforeOp);
+    d.m_cache->m_d_workIteratePrim->upload(d.m_primBeforeOp);
     c.m_L.op(*c.m_d_u, *c.m_d_x, *c.m_d_y, *c.m_d_t, *c.m_d_s,
              *c.m_d_i, *c.m_d_ii, *c.m_d_iii, *c.m_d_iv, *c.m_d_v, *c.m_d_vi);
-    std::vector<T> test(c.m_dualSize);
-    c.m_d_dualWorkspace->download(test);
-    for (size_t i = 0; i < c.m_dualSize; i++) { EXPECT_NEAR(test[i], d.m_dualAfterOpBeforeAdj[i], epsilon); }
+    std::vector<T> test(c.m_sizeDual);
+    c.m_d_workIterateDual->download(test);
+    for (size_t i = 0; i < c.m_sizeDual; i++) { EXPECT_NEAR(test[i], d.m_dualAfterOpBeforeAdj[i], epsilon); }
 }
 
 TEST_F(OperatorTest, op) {
@@ -103,12 +94,12 @@ void testAdjoint(OperatorTestData<T> &d, T epsilon) {
     parseVec(doc["primAfterAdj"], d.m_primAfterAdj);
     /* Load dual and test resulting primal */
     Cache<T> &c = *d.m_cache;
-    d.m_cache->m_d_dualWorkspace->upload(d.m_dualAfterOpBeforeAdj);
+    d.m_cache->m_d_workIterateDual->upload(d.m_dualAfterOpBeforeAdj);
     c.m_L.adj(*c.m_d_u, *c.m_d_x, *c.m_d_y, *c.m_d_t, *c.m_d_s,
               *c.m_d_i, *c.m_d_ii, *c.m_d_iii, *c.m_d_iv, *c.m_d_v, *c.m_d_vi);
-    std::vector<T> test(c.m_primSize);
-    c.m_d_primWorkspace->download(test);
-    for (size_t i = 0; i < c.m_primSize; i++) { EXPECT_NEAR(test[i], d.m_primAfterAdj[i], epsilon); }
+    std::vector<T> test(c.m_sizePrim);
+    c.m_d_workIteratePrim->download(test);
+    for (size_t i = 0; i < c.m_sizePrim; i++) { EXPECT_NEAR(test[i], d.m_primAfterAdj[i], epsilon); }
 }
 
 TEST_F(OperatorTest, adj) {

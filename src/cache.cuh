@@ -2,8 +2,6 @@
 #define CACHE_CUH
 
 #include "../include/gpu.cuh"
-#include "tree.cuh"
-#include "problem.cuh"
 #include "cones.cuh"
 #include "risks.cuh"
 #include "operator.cuh"

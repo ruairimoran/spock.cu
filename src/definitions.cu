@@ -75,6 +75,63 @@ template __global__ void k_shiftDiagonal(float *, float *, size_t, size_t);
 
 template __global__ void k_shiftDiagonal(double *, double *, size_t, size_t);
 
+/**
+ * Copy node-to-node (or anc-to-node, if ancestors given) data.
+ * Must be launched with <<<[>=nodeTo+1], [>=max(nodeSizeDst, nodeSizeSrc)]>>>().
+ *
+ * @param dst memory destination
+ * @param src memory source
+ * @param nodeFrom first node to copy data to
+ * @param nodeTo last node to copy data to (inclusive)
+ * @param numEl number of elements per node of data to copy
+ * @param nodeSizeDst number of elements per node in destination data
+ * @param nodeSizeSrc number of elements per node in source data
+ * @param elFromDst first element in node data to copy to (0-indexed)
+ * @param elFromSrc first element in node data to copy from (0-indexed)
+ * @param ancestors array of ancestors of each node
+ */
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpy(T *dst, T *src,
+                         size_t nodeFrom, size_t nodeTo, size_t numEl,
+                         size_t nodeSizeDst, size_t nodeSizeSrc,
+                         size_t elFromDst, size_t elFromSrc) {
+    size_t element = threadIdx.x;
+    size_t node = blockIdx.x;
+    if (node >= nodeFrom && node <= nodeTo) {
+        size_t dstIdx = node * nodeSizeDst + elFromDst + element;
+        size_t srcIdx = node * nodeSizeSrc + elFromSrc + element;
+        if (element < numEl) dst[dstIdx] = src[srcIdx];
+    }
+}
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpy(T *dst, T *src,
+                         size_t nodeFrom, size_t nodeTo, size_t numEl,
+                         size_t nodeSizeDst, size_t nodeSizeSrc,
+                         size_t elFromDst, size_t elFromSrc,
+                         size_t *ancestors) {
+    size_t element = threadIdx.x;
+    size_t node = blockIdx.x;
+    if (node >= nodeFrom && node <= nodeTo) {
+        size_t anc = ancestors[node];
+        size_t dstIdx = node * nodeSizeDst + elFromDst + element;
+        size_t srcIdx = anc * nodeSizeSrc + elFromSrc + element;
+        if (element < numEl) dst[dstIdx] = src[srcIdx];
+    }
+}
+
+template __global__ void
+k_memCpy(float *, float *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+
+template __global__ void
+k_memCpy(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+
+template __global__ void
+k_memCpy(float *, float *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t *);
+
+template __global__ void
+k_memCpy(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t *);
+
 TEMPLATE_WITH_TYPE_T
 __global__ void k_projectOnSoc(T *vec, size_t n, T nrm, T scaling) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;

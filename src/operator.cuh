@@ -2,10 +2,37 @@
 #define OPERATOR_CUH
 
 #include "../include/gpu.cuh"
+#include "tree.cuh"
+#include "problem.cuh"
 
 
 template<typename T>
-__global__ void k_setToZero(T *vec, size_t n);
+__global__ void k_setToZero(T *, size_t);
+
+template<typename T>
+__global__ void k_memCpy(T *, T *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t *);
+
+template<typename T>
+__global__ void k_memCpy(T *, T *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+
+TEMPLATE_WITH_TYPE_T
+void memCpy(T *dst, T *src,
+            size_t nodeFrom, size_t nodeTo, size_t numEl,
+            size_t nodeSizeDst = 0, size_t nodeSizeSrc = 0,
+            size_t elFromDst = 0, size_t elFromSrc = 0,
+            size_t *ancestors = nullptr) {
+    if (std::max(nodeSizeDst, nodeSizeSrc) > TPB) throw std::invalid_argument("[memCpy] Node data too large.");
+    if (ancestors && nodeFrom < 1) throw std::invalid_argument("[memCpy] Root node has no ancestor.");
+    if (nodeSizeDst == 0) nodeSizeDst = numEl;
+    if (nodeSizeSrc == 0) nodeSizeSrc = numEl;
+    if (ancestors) {
+        k_memCpy<<<nodeTo + 1, TPB>>>(dst, src, nodeFrom, nodeTo, numEl, nodeSizeDst, nodeSizeSrc,
+                                      elFromDst, elFromSrc, ancestors);
+    } else {
+        k_memCpy<<<nodeTo + 1, TPB>>>(dst, src, nodeFrom, nodeTo, numEl, nodeSizeDst, nodeSizeSrc,
+                                      elFromDst, elFromSrc);
+    }
+}
 
 static void constraintNotSupported() {
     throw std::invalid_argument("Constraint not supported.");

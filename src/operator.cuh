@@ -50,6 +50,8 @@ protected:
     ScenarioTree<T> &m_tree;  ///< Previously created scenario tree
     ProblemData<T> &m_data;  ///< Previously created problem
     size_t m_matAxis = 2;
+    size_t numNonleafNodesMinusOne = 0;
+    size_t numNodesMinusOne = 0;
     std::unique_ptr<DTensor<T>> m_d_uNonleafWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xNonleafWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_uNonleafAdd = nullptr;
@@ -63,6 +65,8 @@ public:
      */
     LinearOperator(ScenarioTree<T> &tree, ProblemData<T> &data) :
         m_tree(tree), m_data(data) {
+        numNonleafNodesMinusOne = m_tree.numNonleafNodes() - 1;
+        numNodesMinusOne = m_tree.numNodes() - 1;
         m_d_uNonleafWorkspace = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNodes(), true);
         m_d_xNonleafWorkspace = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
         m_d_uNonleafAdd = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNonleafNodes(), true);
@@ -90,57 +94,37 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
     /* I */
     y.deviceCopyTo(i);
     /* II */
-    DTensor<T> sNonleaf(s, m_matAxis, 0, m_tree.numNonleafNodes() - 1);
+    DTensor<T> sNonleaf(s, m_matAxis, 0, numNonleafNodesMinusOne);
     sNonleaf.deviceCopyTo(ii);
     ii.addAB(m_data.bTr(), y, -1., 1.);
     /* III */
     if (m_data.nonleafConstraint()[0]->isNone()) {
         /* Do nothing */
     } else if (m_data.nonleafConstraint()[0]->isRectangle()) {
-        memCpy(&iii, &x, 0, m_tree.numNonleafNodes() - 1, m_data.numStates());
-        memCpy(&iii, &u, 0, m_tree.numNonleafNodes() - 1, m_data.numInputs(), m_data.numStates());
+        memCpy(&iii, &x, 0, numNonleafNodesMinusOne, m_data.numStates());
+        memCpy(&iii, &u, 0, numNonleafNodesMinusOne, m_data.numInputs(), m_data.numStates());
     } else if (m_data.nonleafConstraint()[0]->isBall()) {
         /* TODO! Pre-multiply xuNonleaf by Gamma_{xu} */
     } else { constraintNotSupported(); }
     /* IV:1 */
-    for (size_t node = 1; node < m_tree.numNodes(); node++) {
-        size_t anc = m_tree.ancestors()[node];
-        DTensor<T> xAnc(x, m_matAxis, anc, anc);
-        DTensor<T> xNode(*m_d_xNonleafWorkspace, m_matAxis, node, node);
-        xAnc.deviceCopyTo(xNode);
-    }
+    memCpy(m_d_xNonleafWorkspace.get(), &x, 1, numNodesMinusOne, m_data.numStates(), 0, 0, &m_tree.d_ancestors());
     m_d_xNonleafWorkspace->addAB(m_data.sqrtStateWeight(), *m_d_xNonleafWorkspace);
     /* IV:2 */
-    for (size_t node = 1; node < m_tree.numNodes(); node++) {
-        size_t anc = m_tree.ancestors()[node];
-        DTensor<T> uAnc(u, m_matAxis, anc, anc);
-        DTensor<T> uNode(*m_d_uNonleafWorkspace, m_matAxis, node, node);
-        uAnc.deviceCopyTo(uNode);
-    }
+    memCpy(m_d_uNonleafWorkspace.get(), &u, 1, numNodesMinusOne, m_data.numInputs(), 0, 0, &m_tree.d_ancestors());
     m_d_uNonleafWorkspace->addAB(m_data.sqrtInputWeight(), *m_d_uNonleafWorkspace);
     /* IV:3,4 */
     t *= 0.5;  // This affects the current 't'!!! But it shouldn't matter...
     /* IV (organise IV:1-4) */
-    for (size_t node = 1; node < m_tree.numNodes(); node++) {
-        DTensor<T> ivNode(iv, m_matAxis, node, node);
-        DTensor<T> tNode(t, m_matAxis, node, node);
-        /* :1 */
-        DTensor<T> xNode(*m_d_xNonleafWorkspace, m_matAxis, node, node);
-        DTensor<T> iv1(ivNode, 0, 0, m_data.numStates() - 1);
-        xNode.deviceCopyTo(iv1);
-        /* :2 */
-        DTensor<T> uNode(*m_d_uNonleafWorkspace, m_matAxis, node, node);
-        DTensor<T> iv2(ivNode, 0, m_data.numStates(), m_data.numStatesAndInputs() - 1);
-        uNode.deviceCopyTo(iv2);
-        /* :3 */
-        DTensor<T> iv3(ivNode, 0, m_data.numStatesAndInputs(), m_data.numStatesAndInputs());
-        tNode.deviceCopyTo(iv3);
-        /* :4 */
-        DTensor<T> iv4(ivNode, 0, m_data.numStatesAndInputs() + 1, m_data.numStatesAndInputs() + 1);
-        tNode.deviceCopyTo(iv4);
-    }
+    /* :1 */
+    memCpy(&iv, m_d_xNonleafWorkspace.get(), 1, numNodesMinusOne, m_data.numStates());
+    /* :2 */
+    memCpy(&iv, m_d_uNonleafWorkspace.get(), 1, numNodesMinusOne, m_data.numInputs(), m_data.numStates());
+    /* :3 */
+    memCpy(&iv, &t, 1, numNodesMinusOne, 1, m_data.numStatesAndInputs());
+    /* :4 */
+    memCpy(&iv, &t, 1, numNodesMinusOne, 1, m_data.numStatesAndInputs()+1);
     /* V */
-    DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
+    DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), numNodesMinusOne);
     if (m_data.leafConstraint()[0]->isNone()) {
         /* Do nothing */
     } else if (m_data.leafConstraint()[0]->isRectangle()) {
@@ -175,7 +159,7 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
                             DTensor<T> &i, DTensor<T> &ii, DTensor<T> &iii, DTensor<T> &iv,
                             DTensor<T> &v, DTensor<T> &vi) {
     /* s (nonleaf) */
-    DTensor<T> sNonleaf(s, m_matAxis, 0, m_tree.numNonleafNodes() - 1);
+    DTensor<T> sNonleaf(s, m_matAxis, 0, numNonleafNodesMinusOne);
     ii.deviceCopyTo(sNonleaf);
     /* y */
     i.deviceCopyTo(y);
@@ -206,7 +190,7 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     }
     m_d_xNonleafWorkspace->addAB(m_data.sqrtStateWeight(), *m_d_xNonleafWorkspace);
     /* -> Add to `x` all children `Qiv1` of each nonleaf node (zeros added if child does not exist) */
-    DTensor<T> x_Nonleaf(x, m_matAxis, 0, m_tree.numNonleafNodes() - 1);
+    DTensor<T> x_Nonleaf(x, m_matAxis, 0, numNonleafNodesMinusOne);
     for (size_t chIdx = 0; chIdx < m_tree.numEvents(); chIdx++) {  // Index of child of every nonleaf node
         for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
             size_t ch = m_tree.childFrom()[node] + chIdx;
@@ -256,7 +240,7 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     t += *m_d_scalarWorkspace;
     t *= 0.5;
     /* x (leaf):Gamma */
-    DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
+    DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), numNodesMinusOne);
     if (m_data.leafConstraint()[0]->isNone()) {
         /* Do nothing */
     } else if (m_data.leafConstraint()[0]->isRectangle()) {
@@ -283,8 +267,8 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
         DTensor<T> vi3(viNode, 0, m_data.numStates() + 1, m_data.numStates() + 1);
         vi3.deviceCopyTo(wsNode);
     }
-    DTensor<T> sLeaf(*m_d_scalarWorkspace, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
-    DTensor<T> wsLeaf(*m_d_scalarWorkspace, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
+    DTensor<T> sLeaf(*m_d_scalarWorkspace, m_matAxis, m_tree.numNonleafNodes(), numNodesMinusOne);
+    DTensor<T> wsLeaf(*m_d_scalarWorkspace, m_matAxis, m_tree.numNonleafNodes(), numNodesMinusOne);
     sLeaf += wsLeaf;
     sLeaf *= 0.5;
 }

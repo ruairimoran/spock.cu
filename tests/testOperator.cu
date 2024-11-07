@@ -108,3 +108,80 @@ TEST_F(OperatorTest, adj) {
     OperatorTestData<double> dd;
     testAdjoint<double>(dd, TEST_PRECISION_HIGH);
 }
+
+/* ---------------------------------------
+ * Node-to-node data transfer
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void testMemCpyNodeToNode(OperatorTestData<T> &d) {
+    size_t nR = 9, nC = 1, nM = 7;
+    size_t nCopy = 3;
+    size_t srcStart = 6;
+    size_t dstStart = 3;
+    DTensor<T> src = DTensor<T>::createRandomTensor(nR, nC, nM, -10, 10);
+    DTensor<T> dst(6, nC, nM, true);
+    memCpy(&dst, &src, 0, nM-1, nCopy, dstStart, srcStart);
+    for (size_t mat = 0; mat < nM; mat++) {
+        for (size_t ele = 0; ele < nCopy; ele++) {
+            EXPECT_EQ(src(srcStart+ele, 0, mat), dst(dstStart+ele, 0, mat));
+        }
+    }
+}
+
+TEST_F(OperatorTest, memCpyNodeToNode) {
+    OperatorTestData<float> df;
+    testMemCpyNodeToNode<float>(df);
+    OperatorTestData<double> dd;
+    testMemCpyNodeToNode<double>(dd);
+}
+
+/* ---------------------------------------
+ * Anc-to-node data transfer
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void testMemCpyAncToNode(OperatorTestData<T> &d) {
+    size_t nR = 23, nC = 1, nM = 7;
+    size_t nCopy = 7;
+    size_t srcStart = 6;
+    size_t dstStart = 3;
+    DTensor<T> src = DTensor<T>::createRandomTensor(nR, nC, nM, -10, 10);
+    DTensor<T> dst(20, nC, nM, true);
+    std::vector<size_t> anc = {0, 0, 0, 1, 1, 2, 2};
+    DTensor<size_t> d_anc(anc, nM);
+    memCpy(&dst, &src, 1, nM-1, nCopy, dstStart, srcStart, &d_anc);
+    for (size_t mat = 1; mat < nM; mat++) {
+        for (size_t ele = 0; ele < nCopy; ele++) {
+            EXPECT_EQ(src(srcStart+ele, 0, anc[mat]), dst(dstStart+ele, 0, mat));
+        }
+    }
+}
+
+TEST_F(OperatorTest, memCpyAncToNode) {
+    OperatorTestData<float> df;
+    testMemCpyAncToNode<float>(df);
+    OperatorTestData<double> dd;
+    testMemCpyAncToNode<double>(dd);
+}
+
+/* ---------------------------------------
+ * Anc-to-node data transfer
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void testMemCpyFailAncZero(OperatorTestData<T> &d) {
+    DTensor<T> dummyT(1);
+    DTensor<size_t> dummyU(1);
+    ASSERT_ANY_THROW(memCpy(&dummyT, &dummyT, 0, 0, 0, 0, 0, &dummyU));
+}
+
+TEST_F(OperatorTest, memCpyFailAncZero) {
+    OperatorTestData<float> df;
+    testMemCpyFailAncZero<float>(df);
+    OperatorTestData<double> dd;
+    testMemCpyFailAncZero<double>(dd);
+}
+
+
+

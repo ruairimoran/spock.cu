@@ -4,33 +4,35 @@
 #include "../include/gpu.cuh"
 #include "tree.cuh"
 #include "problem.cuh"
+#include <chrono>
 
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 __global__ void k_setToZero(T *, size_t);
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 __global__ void k_memCpy(T *, T *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t *);
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 __global__ void k_memCpy(T *, T *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
 
 TEMPLATE_WITH_TYPE_T
-void memCpy(T *dst, T *src,
+void memCpy(DTensor<T> *dst, DTensor<T> *src,
             size_t nodeFrom, size_t nodeTo, size_t numEl,
-            size_t nodeSizeDst = 0, size_t nodeSizeSrc = 0,
             size_t elFromDst = 0, size_t elFromSrc = 0,
-            size_t *ancestors = nullptr) {
+            DTensor<size_t> *ancestors = nullptr) {
+    size_t nodeSizeDst = dst->numRows();
+    size_t nodeSizeSrc = src->numRows();
+    if (dst->numCols() != 1 || src->numCols() != 1) throw std::invalid_argument("[memCpy] numCols must be 1.");
     if (std::max(nodeSizeDst, nodeSizeSrc) > TPB) throw std::invalid_argument("[memCpy] Node data too large.");
     if (ancestors && nodeFrom < 1) throw std::invalid_argument("[memCpy] Root node has no ancestor.");
-    if (nodeSizeDst == 0) nodeSizeDst = numEl;
-    if (nodeSizeSrc == 0) nodeSizeSrc = numEl;
+    size_t nBlocks = nodeTo + 1;
     if (ancestors) {
-        k_memCpy<<<nodeTo + 1, TPB>>>(dst, src, nodeFrom, nodeTo, numEl, nodeSizeDst, nodeSizeSrc,
-                                      elFromDst, elFromSrc, ancestors);
+        k_memCpy<<<nBlocks, TPB>>>(dst->raw(), src->raw(), nodeFrom, nodeTo, numEl, nodeSizeDst, nodeSizeSrc,
+                                   elFromDst, elFromSrc, ancestors->raw());
     } else {
-        k_memCpy<<<nodeTo + 1, TPB>>>(dst, src, nodeFrom, nodeTo, numEl, nodeSizeDst, nodeSizeSrc,
-                                      elFromDst, elFromSrc);
+        k_memCpy<<<nBlocks, TPB>>>(dst->raw(), src->raw(), nodeFrom, nodeTo, numEl, nodeSizeDst, nodeSizeSrc,
+                                   elFromDst, elFromSrc);
     }
 }
 
@@ -95,15 +97,8 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
     if (m_data.nonleafConstraint()[0]->isNone()) {
         /* Do nothing */
     } else if (m_data.nonleafConstraint()[0]->isRectangle()) {
-        for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
-            DTensor<T> iiiNode(iii, m_matAxis, node, node);
-            DTensor<T> iiiX(iiiNode, 0, 0, m_data.numStates() - 1);
-            DTensor<T> iiiU(iiiNode, 0, m_data.numStates(), m_data.numStatesAndInputs() - 1);
-            DTensor<T> xNode(x, m_matAxis, node, node);
-            DTensor<T> uNode(u, m_matAxis, node, node);
-            xNode.deviceCopyTo(iiiX);
-            uNode.deviceCopyTo(iiiU);
-        }
+        memCpy(&iii, &x, 0, m_tree.numNonleafNodes() - 1, m_data.numStates());
+        memCpy(&iii, &u, 0, m_tree.numNonleafNodes() - 1, m_data.numInputs(), m_data.numStates());
     } else if (m_data.nonleafConstraint()[0]->isBall()) {
         /* TODO! Pre-multiply xuNonleaf by Gamma_{xu} */
     } else { constraintNotSupported(); }

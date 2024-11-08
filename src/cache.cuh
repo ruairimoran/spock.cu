@@ -774,10 +774,9 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
     m_nnocNonleaf->project(*m_d_ii);
     /* III */
     if (m_data.nonleafConstraint()[0]->isRectangle()) {
-        size_t s = m_d_iii->numEl() - m_data.numStates();
-        k_projectRectangle<<<numBlocks(s, TPB), TPB>>>(s, m_d_iii->raw() + m_data.numStates(),
-                                                       m_d_loBoundNonleaf->raw() + m_data.numStates(),
-                                                       m_d_hiBoundNonleaf->raw() + m_data.numStates());
+        k_projectRectangle<<<numBlocks(m_d_iii->numEl(), TPB), TPB>>>(m_d_iii->numEl(), m_d_iii->raw(),
+                                                                      m_d_loBoundNonleaf->raw(),
+                                                                      m_d_hiBoundNonleaf->raw());
     } else if (m_data.nonleafConstraint()[0]->isBall()) {
         /* TODO!  */
     }
@@ -1304,7 +1303,7 @@ int Cache<T>::timeSp(std::vector<T> &initialState) {
     auto durationMilli = std::chrono::duration<double, std::milli>(tock - tick).count();
     std::cout << "spock timer stopped: " << durationMilli << " ms" << "\n";
     std::string n = "Sp";
-//    printToJson(n);
+    printToJson(n);
     return status;
 }
 

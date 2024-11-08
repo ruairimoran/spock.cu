@@ -25,7 +25,7 @@ int main() {
 
     /** CACHE */
     T tol = 1e-5;
-    size_t maxOuterIters = 1000;
+    size_t maxOuterIters = 2000;
     size_t maxInnerIters = 8;
     size_t andersonBuffer = 3;
     bool log = true;

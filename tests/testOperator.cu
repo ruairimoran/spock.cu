@@ -212,5 +212,34 @@ TEST_F(OperatorTest, memCpyLeafToZeroLeaf) {
     testMemCpyLeafToZeroLeaf<double>(dd);
 }
 
+/* ---------------------------------------
+ * ZeroLeaf-to-Leaf data transfer
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void testMemCpyZeroLeafToLeaf(OperatorTestData<T> &d) {
+    size_t nR = 9, nC = 1, nM = 7;
+    size_t nCopy = 3;
+    size_t srcStart = 3;
+    size_t dstStart = 6;
+    size_t numNonleafNodes = 3;
+    size_t numLeafNodes = 4;
+    DTensor<T> src = DTensor<T>::createRandomTensor(6, nC, numLeafNodes, -10, 10);
+    DTensor<T> dst(nR, nC, nM, true);
+    memCpy(&dst, &src, numNonleafNodes, nM-1, nCopy, dstStart, srcStart, zeroLeaf2Leaf);
+    for (size_t mat = 0; mat < numLeafNodes; mat++) {
+        for (size_t ele = 0; ele < nCopy; ele++) {
+            EXPECT_EQ(src(srcStart+ele, 0, mat), dst(dstStart+ele, 0, mat+numNonleafNodes));
+        }
+    }
+}
+
+TEST_F(OperatorTest, memCpyZeroLeafToLeaf) {
+    OperatorTestData<float> df;
+    testMemCpyZeroLeafToLeaf<float>(df);
+    OperatorTestData<double> dd;
+    testMemCpyZeroLeafToLeaf<double>(dd);
+}
+
 
 

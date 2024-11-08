@@ -135,6 +135,21 @@ __global__ void k_memCpyLeaf2ZeroLeaf(T *dst, T *src,
     }
 }
 
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyZeroLeaf2Leaf(T *dst, T *src,
+                                      size_t nodeFrom, size_t nodeTo, size_t numEl,
+                                      size_t nodeSizeDst, size_t nodeSizeSrc,
+                                      size_t elFromDst, size_t elFromSrc) {
+    size_t element = threadIdx.x;
+    size_t node = blockIdx.x;
+    if (node >= nodeFrom && node <= nodeTo) {
+        size_t idx = node - nodeFrom;
+        size_t dstIdx = node * nodeSizeDst + elFromDst + element;
+        size_t srcIdx = idx * nodeSizeSrc + elFromSrc + element;
+        if (element < numEl) dst[dstIdx] = src[srcIdx];
+    }
+}
+
 template __global__ void
 k_memCpyNode2Node(float *, float *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
 
@@ -152,6 +167,12 @@ k_memCpyLeaf2ZeroLeaf(float *, float *, size_t, size_t, size_t, size_t, size_t, 
 
 template __global__ void
 k_memCpyLeaf2ZeroLeaf(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+
+template __global__ void
+k_memCpyZeroLeaf2Leaf(float *, float *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+
+template __global__ void
+k_memCpyZeroLeaf2Leaf(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
 
 TEMPLATE_WITH_TYPE_T
 __global__ void k_projectOnSoc(T *vec, size_t n, T nrm, T scaling) {

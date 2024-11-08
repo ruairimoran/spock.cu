@@ -389,7 +389,8 @@ void Cache<T>::reshape() {
     m_d_iteratePrevPrim = std::make_unique<DTensor<T>>(*m_d_iteratePrev, m_rowAxis, 0, m_sizePrim - 1);
     m_d_iteratePrevDual = std::make_unique<DTensor<T>>(*m_d_iteratePrev, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
     m_d_iterateCandidatePrim = std::make_unique<DTensor<T>>(*m_d_iterateCandidate, m_rowAxis, 0, m_sizePrim - 1);
-    m_d_iterateCandidateDual = std::make_unique<DTensor<T>>(*m_d_iterateCandidate, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
+    m_d_iterateCandidateDual = std::make_unique<DTensor<T>>(*m_d_iterateCandidate, m_rowAxis, m_sizePrim,
+                                                            m_sizeIterate - 1);
     m_d_residualPrim = std::make_unique<DTensor<T>>(*m_d_residual, m_rowAxis, 0, m_sizePrim - 1);
     m_d_residualDual = std::make_unique<DTensor<T>>(*m_d_residual, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
     m_d_workDotPrim = std::make_unique<DTensor<T>>(*m_d_workDot, m_rowAxis, 0, m_sizePrim - 1);
@@ -397,7 +398,8 @@ void Cache<T>::reshape() {
     m_d_deltaIteratePrim = std::make_unique<DTensor<T>>(*m_d_deltaIterate, m_rowAxis, 0, m_sizePrim - 1);
     m_d_deltaIterateDual = std::make_unique<DTensor<T>>(*m_d_deltaIterate, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
     m_d_ellDeltaIteratePrim = std::make_unique<DTensor<T>>(*m_d_ellDeltaIterate, m_rowAxis, 0, m_sizePrim - 1);
-    m_d_ellDeltaIterateDual = std::make_unique<DTensor<T>>(*m_d_ellDeltaIterate, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
+    m_d_ellDeltaIterateDual = std::make_unique<DTensor<T>>(*m_d_ellDeltaIterate, m_rowAxis, m_sizePrim,
+                                                           m_sizeIterate - 1);
     m_d_andIterateMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 0, m_andSize - 2);
     m_d_andIterateMatrixRight = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 1, m_andSize - 1);
     m_d_andIterateMatrixCol0 = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 0, 0);
@@ -694,17 +696,10 @@ void Cache<T>::projectPrimalWorkspaceOnDynamics() {
          * Compute child states
          */
         /* Fill `xu` */
-        for (size_t node = stageFr; node <= stageTo; node++) {
-            DTensor<T> x_Node(*m_d_x, m_matAxis, node, node);
-            DTensor<T> u_Node(*m_d_u, m_matAxis, node, node);
-            for (size_t ch = m_tree.childFrom()[node]; ch <= m_tree.childTo()[node]; ch++) {
-                DTensor<T> xu_ChNode(*m_d_workXU, m_matAxis, ch, ch);
-                DTensor<T> xu_sliceX(xu_ChNode, 0, 0, m_data.numStates() - 1);
-                DTensor<T> xu_sliceU(xu_ChNode, 0, m_data.numStates(), m_data.numStatesAndInputs() - 1);
-                x_Node.deviceCopyTo(xu_sliceX);
-                u_Node.deviceCopyTo(xu_sliceU);
-            }
-        }
+        memCpy(m_d_workXU.get(), m_d_x.get(), chStageFr, chStageTo, m_data.numStates(), 0, 0,
+               anc2Node, &m_tree.d_ancestors());
+        memCpy(m_d_workXU.get(), m_d_u.get(), chStageFr, chStageTo, m_data.numInputs(), m_data.numStates(), 0,
+               anc2Node, &m_tree.d_ancestors());
         DTensor<T> x_ChStage(*m_d_x, m_matAxis, chStageFr, chStageTo);
         DTensor<T> AB_ChStage(m_data.stateInputDynamics(), m_matAxis, chStageFr, chStageTo);
         DTensor<T> xu_ChStage(*m_d_workXU, m_matAxis, chStageFr, chStageTo);

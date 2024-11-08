@@ -150,7 +150,7 @@ void testMemCpyAncToNode(OperatorTestData<T> &d) {
     DTensor<T> dst(20, nC, nM, true);
     std::vector<size_t> anc = {0, 0, 0, 1, 1, 2, 2};
     DTensor<size_t> d_anc(anc, nM);
-    memCpy(&dst, &src, 1, nM-1, nCopy, dstStart, srcStart, &d_anc);
+    memCpy(&dst, &src, 1, nM-1, nCopy, dstStart, srcStart, anc2Node, &d_anc);
     for (size_t mat = 1; mat < nM; mat++) {
         for (size_t ele = 0; ele < nCopy; ele++) {
             EXPECT_EQ(src(srcStart+ele, 0, anc[mat]), dst(dstStart+ele, 0, mat));
@@ -166,14 +166,14 @@ TEST_F(OperatorTest, memCpyAncToNode) {
 }
 
 /* ---------------------------------------
- * Anc-to-node data transfer
+ * Anc-to-node data transfer fail
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
 void testMemCpyFailAncZero(OperatorTestData<T> &d) {
     DTensor<T> dummyT(1);
     DTensor<size_t> dummyU(1);
-    ASSERT_ANY_THROW(memCpy(&dummyT, &dummyT, 0, 0, 0, 0, 0, &dummyU));
+    ASSERT_ANY_THROW(memCpy(&dummyT, &dummyT, 0, 0, 0, 0, 0, anc2Node, &dummyU));
 }
 
 TEST_F(OperatorTest, memCpyFailAncZero) {
@@ -181,6 +181,35 @@ TEST_F(OperatorTest, memCpyFailAncZero) {
     testMemCpyFailAncZero<float>(df);
     OperatorTestData<double> dd;
     testMemCpyFailAncZero<double>(dd);
+}
+
+/* ---------------------------------------
+ * Leaf-to-zeroLeaf data transfer
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void testMemCpyLeafToZeroLeaf(OperatorTestData<T> &d) {
+    size_t nR = 9, nC = 1, nM = 7;
+    size_t nCopy = 3;
+    size_t srcStart = 6;
+    size_t dstStart = 3;
+    size_t numNonleafNodes = 3;
+    size_t numLeafNodes = 4;
+    DTensor<T> src = DTensor<T>::createRandomTensor(nR, nC, nM, -10, 10);
+    DTensor<T> dst(6, nC, numLeafNodes, true);
+    memCpy(&dst, &src, numNonleafNodes, nM-1, nCopy, dstStart, srcStart, leaf2ZeroLeaf);
+    for (size_t mat = 0; mat < numLeafNodes; mat++) {
+        for (size_t ele = 0; ele < nCopy; ele++) {
+            EXPECT_EQ(src(srcStart+ele, 0, mat+numNonleafNodes), dst(dstStart+ele, 0, mat));
+        }
+    }
+}
+
+TEST_F(OperatorTest, memCpyLeafToZeroLeaf) {
+    OperatorTestData<float> df;
+    testMemCpyLeafToZeroLeaf<float>(df);
+    OperatorTestData<double> dd;
+    testMemCpyLeafToZeroLeaf<double>(dd);
 }
 
 

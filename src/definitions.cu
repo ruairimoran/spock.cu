@@ -89,6 +89,8 @@ template __global__ void k_shiftDiagonal(double *, double *, size_t, size_t);
  * @param elFromDst first element in node data to copy to (0-indexed)
  * @param elFromSrc first element in node data to copy from (0-indexed)
  * @param ancestors array of ancestors of each node
+ * @param chFrom array of first child of each node
+ * @param chTo array of last child of each node
  */
 TEMPLATE_WITH_TYPE_T
 __global__ void k_memCpyNode2Node(T *dst, T *src,
@@ -119,6 +121,22 @@ __global__ void k_memCpyAnc2Node(T *dst, T *src,
         if (element < numEl) dst[dstIdx] = src[srcIdx];
     }
 }
+
+//TEMPLATE_WITH_TYPE_T
+//__global__ void k_memCpyCh2Node(T *dst, T *src,
+//                                 size_t childFrom, size_t childTo, size_t numEl,
+//                                 size_t nodeSizeDst, size_t nodeSizeSrc,
+//                                 size_t elFromDst, size_t elFromSrc,
+//                                 size_t *chFrom, size_t *chTo) {
+//    size_t element = threadIdx.x;
+//    size_t child = blockIdx.x;
+//    if (child >= childFrom && child <= childTo) {
+//        size_t anc = ancestors[child];
+//        size_t dstIdx = anc * nodeSizeDst + elFromDst + element;
+//        size_t srcIdx = node * nodeSizeSrc + elFromSrc + element;
+//        if (element < numEl) dst[dstIdx] = src[srcIdx];
+//    }
+//}
 
 TEMPLATE_WITH_TYPE_T
 __global__ void k_memCpyLeaf2ZeroLeaf(T *dst, T *src,
@@ -162,6 +180,12 @@ k_memCpyAnc2Node(float *, float *, size_t, size_t, size_t, size_t, size_t, size_
 template __global__ void
 k_memCpyAnc2Node(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t *);
 
+//template __global__ void
+//k_memCpyCh2Node(float *, float *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t *, size_t *);
+//
+//template __global__ void
+//k_memCpyCh2Node(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t *, size_t *);
+
 template __global__ void
 k_memCpyLeaf2ZeroLeaf(float *, float *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
 
@@ -173,6 +197,44 @@ k_memCpyZeroLeaf2Leaf(float *, float *, size_t, size_t, size_t, size_t, size_t, 
 
 template __global__ void
 k_memCpyZeroLeaf2Leaf(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyInTS(T *dst, T *src, size_t numNodes, size_t sizeDst, size_t elFrom,
+                             size_t *ancestors, size_t *chFrom) {
+    size_t child = blockIdx.x * blockDim.x + threadIdx.x;
+    if (child > 0 && child < numNodes) {
+        size_t anc = ancestors[child];
+        size_t firstChild = chFrom[anc];
+        size_t chIdx = child - firstChild;
+        size_t dstIdx = anc * sizeDst + elFrom + chIdx;
+        dst[dstIdx] = src[child];
+    }
+}
+
+template __global__ void
+k_memCpyInTS(float *, float *, size_t, size_t, size_t, size_t *, size_t *);
+
+template __global__ void
+k_memCpyInTS(double *, double *, size_t, size_t, size_t, size_t *, size_t *);
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyOutTS(T *dst, T *src, size_t numNodes, size_t sizeDst, size_t elFrom,
+                              size_t *ancestors, size_t *chFrom) {
+    size_t child = blockIdx.x * blockDim.x + threadIdx.x;
+    if (child > 0 && child < numNodes) {
+        size_t anc = ancestors[child];
+        size_t firstChild = chFrom[anc];
+        size_t chIdx = child - firstChild;
+        size_t srcIdx = anc * sizeDst + elFrom + chIdx;
+        dst[child] = src[srcIdx];
+    }
+}
+
+template __global__ void
+k_memCpyOutTS(float *, float *, size_t, size_t, size_t, size_t *, size_t *);
+
+template __global__ void
+k_memCpyOutTS(double *, double *, size_t, size_t, size_t, size_t *, size_t *);
 
 TEMPLATE_WITH_TYPE_T
 __global__ void k_projectOnSoc(T *vec, size_t n, T nrm, T scaling) {

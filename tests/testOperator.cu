@@ -183,6 +183,35 @@ TEST_F(OperatorTest, memCpyFailAncZero) {
     testMemCpyFailAncZero<double>(dd);
 }
 
+///* ---------------------------------------
+// * Child-to-node data transfer
+// * --------------------------------------- */
+//
+//TEMPLATE_WITH_TYPE_T
+//void testMemCpyChToNode(OperatorTestData<T> &d) {
+//    size_t nR = 23, nC = 1, nM = 7;
+//    size_t nCopy = 7;
+//    size_t srcStart = 6;
+//    size_t dstStart = 3;
+//    DTensor<T> src = DTensor<T>::createRandomTensor(nR, nC, nM, -10, 10);
+//    DTensor<T> dst(20, nC, nM, true);
+//    std::vector<size_t> chFrom = {0, 0, 0, 1, 1, 2, 2};
+//    DTensor<size_t> d_anc(anc, nM);
+//    memCpy(&dst, &src, 1, nM-1, nCopy, dstStart, srcStart, anc2Node, &d_anc);
+//    for (size_t mat = 1; mat < nM; mat++) {
+//        for (size_t ele = 0; ele < nCopy; ele++) {
+//            EXPECT_EQ(src(srcStart+ele, 0, anc[mat]), dst(dstStart+ele, 0, mat));
+//        }
+//    }
+//}
+//
+//TEST_F(OperatorTest, memCpyChToNode) {
+//    OperatorTestData<float> df;
+//    testMemCpyChToNode<float>(df);
+//    OperatorTestData<double> dd;
+//    testMemCpyChToNode<double>(dd);
+//}
+
 /* ---------------------------------------
  * Leaf-to-zeroLeaf data transfer
  * --------------------------------------- */

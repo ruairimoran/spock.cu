@@ -16,6 +16,9 @@ __global__ void k_memCpyNode2Node(T *, T *, size_t, size_t, size_t, size_t, size
 TEMPLATE_WITH_TYPE_T
 __global__ void k_memCpyAnc2Node(T *, T *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t *);
 
+//TEMPLATE_WITH_TYPE_T
+//__global__ void k_memCpyCh2Node(T *, T *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t *, size_t *);
+
 TEMPLATE_WITH_TYPE_T
 __global__ void k_memCpyLeaf2ZeroLeaf(T *, T *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
 
@@ -28,6 +31,7 @@ __global__ void k_memCpyZeroLeaf2Leaf(T *, T *, size_t, size_t, size_t, size_t, 
 enum MemCpyMode {
     node2Node,  ///< transfer node data to same node index
     anc2Node,  ///< transfer ancestor data to node index
+    ch2Node,  ///< transfer child data to node index
     leaf2ZeroLeaf,  ///< transfer leaf data to zero-indexed leaf nodes
     zeroLeaf2Leaf,  ///< transfer zero-indexed leaf data to leaf nodes
     defaultMode = node2Node
@@ -38,7 +42,8 @@ void memCpy(DTensor<T> *dst, DTensor<T> *src,
             size_t nodeFrom, size_t nodeTo, size_t numEl,
             size_t elFromDst = 0, size_t elFromSrc = 0,
             MemCpyMode mode = MemCpyMode::defaultMode,
-            DTensor<size_t> *ancestors = nullptr) {
+            DTensor<size_t> *ancestors = nullptr,
+            DTensor<size_t> *chFrom = nullptr, DTensor<size_t> *chTo = nullptr) {
     size_t nodeSizeDst = dst->numRows();
     size_t nodeSizeSrc = src->numRows();
     if (dst->numCols() != 1 || src->numCols() != 1) throw std::invalid_argument("[memCpy] numCols must be 1.");
@@ -53,6 +58,10 @@ void memCpy(DTensor<T> *dst, DTensor<T> *src,
         k_memCpyAnc2Node<<<nBlocks, TPB>>>(dst->raw(), src->raw(), nodeFrom, nodeTo, numEl, nodeSizeDst, nodeSizeSrc,
                                            elFromDst, elFromSrc, ancestors->raw());
     }
+//    if (mode == ch2Node) {
+//        k_memCpyCh2Node<<<nBlocks, TPB>>>(dst->raw(), src->raw(), nodeFrom, nodeTo, numEl, nodeSizeDst, nodeSizeSrc,
+//                                           elFromDst, elFromSrc, chFrom->raw(), chTo->raw());
+//    }
     /**
      * For leaf transfers, you must transfer all leaf nodes! So `nodeFrom` == numNonleafNodes.
      * The `nodeFrom/To` requires the actual node numbers (not zero-indexed).

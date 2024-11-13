@@ -10,6 +10,12 @@
 
 
 TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyInTS(T *, T *, size_t, size_t, size_t, size_t *, size_t *);
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyOutTS(T *, T *, size_t, size_t, size_t, size_t *, size_t *);
+
+TEMPLATE_WITH_TYPE_T
 static void parseVec(const rapidjson::Value &value, std::vector<T> &vec) {
     size_t numElements = value.Capacity();
     if (vec.capacity() != numElements) vec.resize(numElements);
@@ -713,46 +719,27 @@ void Cache<T>::projectPrimalWorkspaceOnKernels() {
      * Project on kernel of every node of tree at once
      */
     /* Gather vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
-    for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
-        size_t chFr = m_tree.childFrom()[node];
-        size_t chTo = m_tree.childTo()[node];
-        size_t numCh = m_tree.numChildren()[node];
-        DTensor<T> y(*m_d_y, m_matAxis, node, node);
-        DTensor<T> t(*m_d_t, m_matAxis, chFr, chTo);
-        DTensor<T> s(*m_d_s, m_matAxis, chFr, chTo);
-        DTensor<T> nodeStore(*m_d_workYTS, m_matAxis, node, node);
-        DTensor<T> yStore(nodeStore, 0, 0, m_data.yDim() - 1);
-        DTensor<T> tStore(nodeStore, 0, m_data.yDim(), m_data.yDim() + numCh - 1);
-        DTensor<T> sStore(nodeStore, 0, m_data.yDim() + m_tree.numEvents(),
-                          m_data.yDim() + m_tree.numEvents() + numCh - 1);
-        tStore.reshape(1, 1, numCh);
-        sStore.reshape(1, 1, numCh);
-        y.deviceCopyTo(yStore);
-        t.deviceCopyTo(tStore);
-        s.deviceCopyTo(sStore);
-    }
+    memCpy(m_d_workYTS.get(), m_d_y.get(), 0, m_tree.numNonleafNodes() - 1, m_data.yDim());
+    k_memCpyInTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_workYTS->raw(), m_d_t->raw(),
+                                                             m_tree.numNodes(), m_d_workYTS->numRows(),
+                                                             m_data.yDim(),
+                                                             m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
+    k_memCpyInTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_workYTS->raw(), m_d_s->raw(),
+                                                             m_tree.numNodes(), m_d_workYTS->numRows(),
+                                                             m_data.yDim() + m_tree.numEvents(),
+                                                             m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
     /* Project onto nullspace in place */
     m_d_workYTS->addAB(m_data.nullspaceProj(), *m_d_workYTS);
-
     /* Disperse vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
-    for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
-        size_t chFr = m_tree.childFrom()[node];
-        size_t chTo = m_tree.childTo()[node];
-        size_t numCh = m_tree.numChildren()[node];
-        DTensor<T> y(*m_d_y, m_matAxis, node, node);
-        DTensor<T> t(*m_d_t, m_matAxis, chFr, chTo);
-        DTensor<T> s(*m_d_s, m_matAxis, chFr, chTo);
-        DTensor<T> nodeStore(*m_d_workYTS, m_matAxis, node, node);
-        DTensor<T> yStore(nodeStore, 0, 0, m_data.yDim() - 1);
-        DTensor<T> tStore(nodeStore, 0, m_data.yDim(), m_data.yDim() + numCh - 1);
-        DTensor<T> sStore(nodeStore, 0, m_data.yDim() + m_tree.numEvents(),
-                          m_data.yDim() + m_tree.numEvents() + numCh - 1);
-        tStore.reshape(1, 1, numCh);
-        sStore.reshape(1, 1, numCh);
-        yStore.deviceCopyTo(y);
-        tStore.deviceCopyTo(t);
-        sStore.deviceCopyTo(s);
-    }
+    memCpy(m_d_y.get(), m_d_workYTS.get(), 0, m_tree.numNonleafNodes() - 1, m_data.yDim());
+    k_memCpyOutTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_t->raw(), m_d_workYTS->raw(),
+                                                              m_tree.numNodes(), m_d_workYTS->numRows(),
+                                                              m_data.yDim(),
+                                                              m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
+    k_memCpyOutTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_s->raw(), m_d_workYTS->raw(),
+                                                              m_tree.numNodes(), m_d_workYTS->numRows(),
+                                                              m_data.yDim() + m_tree.numEvents(),
+                                                              m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
 }
 
 template<typename T>

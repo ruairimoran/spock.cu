@@ -1054,6 +1054,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     size_t countK0 = 0;
     size_t countK1 = 0;
     size_t countK2 = 0;
+    size_t countK2bt = 0;
     size_t countK3 = 0;
     T zeta = INFINITY;
     T w = INFINITY;
@@ -1126,6 +1127,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
                 break;  // K2
             } else {
                 tau *= m_beta;
+                countK2bt += 1;
             }
             if (iIn >= m_maxInnerIters - 1) {
                 restore();
@@ -1139,6 +1141,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
                   << ", [K0: " << countK0
                   << ", K1: " << countK1
                   << ", K2: " << countK2
+                  << ", bt: " << countK2bt
                   << ", K3: " << countK3
                   << "].\n";
         return 0;
@@ -1146,6 +1149,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         std::cout << "\nMax iterations (" << m_maxOuterIters << ") reached [K0: " << countK0
                   << ", K1: " << countK1
                   << ", K2: " << countK2
+                  << ", bt: " << countK2bt
                   << ", K3: " << countK3
                   << "].\n";
         return 1;

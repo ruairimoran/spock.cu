@@ -14,18 +14,20 @@
 
 int main() {
     /** SCENARIO TREE */
+    std::cout << "Reading tree file...\n";
     std::ifstream fileTree("json/treeData.json");
     ScenarioTree<T> tree(fileTree);
 //  	std::cout << tree;
 
     /** PROBLEM DATA */
+    std::cout << "Reading problem file...\n";
     std::ifstream fileProblem("json/problemData.json");
     ProblemData<T> problem(tree, fileProblem);
 //  	std::cout << problem;
 
     /** CACHE */
-    T tol = 1e-5;
-    size_t maxOuterIters = 2000;
+    T tol = 1e-3;
+    size_t maxOuterIters = 1000;
     size_t maxInnerIters = 8;
     size_t andersonBuffer = 3;
     bool log = true;
@@ -36,7 +38,7 @@ int main() {
 
     /** ALGORITHM */
     size_t exit_status;
-    std::vector<T> initState(problem.numStates(), 1.);
+    std::vector<T> initState(problem.numStates(), .1);
     /* CP */
 //    exit_status = cacheA.timeCp(initState);
 //    std::cout << "cp exit status: " << exit_status << std::endl;

@@ -16,7 +16,7 @@ class Problem:
     """
 
     def __init__(self, scenario_tree: treeFactory.Tree, num_states, num_inputs, state_dyn, input_dyn, state_cost,
-                 input_cost, terminal_cost, nonleaf_constraint, leaf_constraint, risk):
+                 input_cost, terminal_cost, nonleaf_constraint, leaf_constraint, risk, test):
         """
         :param scenario_tree: instance of ScenarioTree
         :param num_states: number of system states
@@ -29,6 +29,7 @@ class Problem:
         :param nonleaf_constraint: list of state-input constraint classes (size: num_nonleaf_nodes)
         :param leaf_constraint: list of input constraint classes (size: num_nodes, used: num_nonleaf_nodes to num_nodes)
         :param risk: list of risk classes (size: num_nonleaf_nodes, used: all)
+        :param test: whether to compute test data
 
         Note: avoid using this constructor directly; use a factory instead
         """
@@ -44,6 +45,7 @@ class Problem:
         self.__list_of_nonleaf_constraints = nonleaf_constraint
         self.__list_of_leaf_constraints = leaf_constraint
         self.__list_of_risks = risk
+        self.__test = test
         # Dynamics projection
         self.__P = [np.zeros((self.__num_states, self.__num_states))] * self.__tree.num_nodes
         self.__q = [np.zeros((self.__num_states, 1))] * self.__tree.num_nodes
@@ -53,23 +55,23 @@ class Problem:
         self.__cholesky_lower = [None] * self.__tree.num_nonleaf_nodes
         self.__sum_of_dynamics_tr = [np.zeros((0, 0))] * self.__tree.num_nodes  # A+B@K
         self.__At_P_B = [np.zeros((0, 0))] * self.__tree.num_nodes  # At@P@B
-        self.__dp_test_init_state = None
-        self.__dp_test_states = None
-        self.__dp_test_inputs = None
-        self.__dp_projected_states = None
-        self.__dp_projected_inputs = None
+        self.__dp_test_init_state = []
+        self.__dp_test_states = []
+        self.__dp_test_inputs = []
+        self.__dp_projected_states = []
+        self.__dp_projected_inputs = []
         # Kernel projection
         self.__kernel_constraint_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
         self.__nullspace_projection_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
-        self.__kernel_constraint_matrix_rows = None
+        self.__kernel_constraint_matrix_rows = []
         self.__max_nullspace_dim = self.__tree.num_events * 4 + 1
         self.__projected_ns = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
         # L operator and adjoint testing
-        self.__prim_before_op = None
-        self.__dual_after_op_before_adj = None
-        self.__prim_after_adj = None
-        self.__dot_vector = None
-        self.__dot_result = None
+        self.__prim_before_op = []
+        self.__dual_after_op_before_adj = []
+        self.__prim_after_adj = []
+        self.__dot_vector = []
+        self.__dot_result = []
         # Other
         self.__y_size = 2 * self.__tree.num_events + 1
         self.__step_size = 0
@@ -165,11 +167,13 @@ class Problem:
     def generate_offline(self):
         self.__offline_projection_dynamics()
         self.__offline_projection_kernel()
-        self.__test_dynamic_programming()
         self.__pad_b()
         self.__sqrt_costs()
-        self.__test_op_and_adj()
         self.__get_step_size()
+        if self.__test:
+            self.__test_dynamic_programming()
+            self.__test_op_and_adj()
+            self.__test_dot()  # Must be after `get_step_size()`
 
     def __offline_projection_dynamics(self):
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
@@ -211,12 +215,6 @@ class Problem:
             n = sp.linalg.null_space(self.__kernel_constraint_matrix[i])
             self.__nullspace_projection_matrix[i] = n @ n.T
             self.__kernel_constraint_matrix_rows = self.__kernel_constraint_matrix[i].shape[0]
-
-    # def __pad_nullspace(self, nullspace):
-    #     row_pad = self.__max_nullspace_dim - nullspace.shape[0]
-    #     col_pad = self.__max_nullspace_dim - nullspace.shape[1]
-    #     padded_nullspace = np.pad(nullspace, [(0, row_pad), (0, col_pad)], mode="constant", constant_values=0.)
-    #     return padded_nullspace
 
     def __test_dynamic_programming(self):
         # Solve with cvxpy
@@ -380,7 +378,7 @@ class Problem:
         vi_size = self.__num_states + 2
         vi = [np.array(dual[idx + i * vi_size:idx + i * vi_size + vi_size]).reshape(
             vi_size, 1) for i in range(self.__tree.num_leaf_nodes)]
-        
+
         # -> s (nonleaf)
         s = [None] * self.__tree.num_nodes
         s[:self.__tree.num_nonleaf_nodes] = ii[:self.__tree.num_nonleaf_nodes]
@@ -467,8 +465,13 @@ class Problem:
         self.__prim_after_adj = deepcopy(prim)
 
     def __get_step_size(self):
-        prim_size = len(self.__prim_before_op)
-        dual_size = len(self.__dual_after_op_before_adj)
+        prim_size = (
+                (self.__num_inputs + self.__y_size) * self.__tree.num_nonleaf_nodes +  # u, y
+                (self.__num_states + 2) * self.__tree.num_nodes  # x, t, s
+        )
+        p = np.zeros(prim_size)
+        d = self.__op(p)
+        dual_size = len(d)
         op = LinearOperator(dtype=None, shape=(dual_size, prim_size), matvec=self.__op)
         adj = LinearOperator(dtype=None, shape=(prim_size, dual_size), matvec=self.__adj)
         adj_op = adj * op
@@ -478,6 +481,7 @@ class Problem:
         nrm_recip = .99 / nrm
         self.__step_size = nrm_recip
 
+    def __test_dot(self):
         # Compute result of x'My
         p = deepcopy(np.asarray(self.__prim_before_op).reshape(1, -1))[0]
         d = deepcopy(np.asarray(self.__dual_after_op_before_adj).reshape(1, -1))[0]
@@ -494,6 +498,11 @@ class Problem:
         res = x @ m_y.T
         self.__dot_vector = x.tolist()
         self.__dot_result = res
+
+    def print(self):
+        print("Problem Data:\n"
+              "+ Step size: ", self.__step_size, "\n")
+        return self
 
 
 class ProblemFactory:
@@ -516,6 +525,7 @@ class ProblemFactory:
         self.__list_of_nonleaf_constraints = [None] * self.__tree.num_nonleaf_nodes
         self.__list_of_leaf_constraints = [None] * self.__tree.num_nodes
         self.__list_of_risks = [None] * self.__tree.num_nonleaf_nodes
+        self.__test = False
         self.__preload_constraints()
 
     def __check_markovian(self, section):
@@ -597,6 +607,13 @@ class ProblemFactory:
         return self
 
     # --------------------------------------------------------
+    # Tests
+    # --------------------------------------------------------
+    def with_tests(self):
+        self.__test = True
+        return self
+
+    # --------------------------------------------------------
     # Generate
     # --------------------------------------------------------
     def generate_problem(self):
@@ -613,7 +630,11 @@ class ProblemFactory:
                           self.__list_of_leaf_state_costs,
                           self.__list_of_nonleaf_constraints,
                           self.__list_of_leaf_constraints,
-                          self.__list_of_risks)
+                          self.__list_of_risks,
+                          self.__test)
+        print("Generating offline data...")
         problem.generate_offline()
+        print("Generating json files...")
         problem.generate_problem_json()
+        problem.print()
         return problem

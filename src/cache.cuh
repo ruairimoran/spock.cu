@@ -604,28 +604,15 @@ void Cache<T>::projectPrimalWorkspaceOnDynamics() {
         DTensor<T> q_ChStage(*m_d_q, m_matAxis, chStageFr, chStageTo);
         DTensor<T> Bq_ChStage(*m_d_workU, m_matAxis, chStageFr, chStageTo);
         Bq_ChStage.addAB(Btr_ChStage, q_ChStage);
-        /* Copy into `d` the first child `Bq` of each node (every nonleaf node has at least one child) */
-        for (size_t node = stageFr; node <= stageTo; node++) {
-            size_t ch = m_tree.childFrom()[node];
-            DTensor<T> Bq_ChNode(*m_d_workU, m_matAxis, ch, ch);
-            DTensor<T> Bq_Node(*m_d_d, m_matAxis, node, node);
-            Bq_ChNode.deviceCopyTo(Bq_Node);
-        }
-        /* Add to `d` remaining child `Bq` of each node (zeros added if child does not exist) */
-        DTensor<T> d_Stage(*m_d_d, m_matAxis, stageFr, stageTo);
-        for (size_t chIdx = 1; chIdx < maxCh; chIdx++) {  // Index of child of every node at current stage
-            for (size_t node = stageFr; node <= stageTo; node++) {
-                size_t ch = m_tree.childFrom()[node] + chIdx;
-                if (ch <= m_tree.childTo()[node]) {  // If more children exist, copy in their `Bq_ChStage`
-                    DTensor<T> Bq_ChNode(*m_d_workU, m_matAxis, ch, ch);
-                    DTensor<T> Bq_Node(*m_d_workU, m_matAxis, node, node);
-                    Bq_ChNode.deviceCopyTo(Bq_Node);
-                }
-            }
-            DTensor<T> d_Add(*m_d_workU, m_matAxis, stageFr, stageTo);
-            d_Stage += d_Add;
+        /* Sum `Bq` children of each node into `d` at current stage */
+        for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
+            k_memCpyCh2Node<<<stageTo + 1, TPB>>>(m_d_d->raw(), m_d_workU->raw(),
+                                                  stageFr, stageTo, m_data.numInputs(), chIdx,
+                                                  m_tree.d_childFrom().raw(), m_tree.d_numChildren().raw(),
+                                                  chIdx);
         }
         /* Subtract d from u in place */
+        DTensor<T> d_Stage(*m_d_d, m_matAxis, stageFr, stageTo);
         DTensor<T> u_Stage(*m_d_u, m_matAxis, stageFr, stageTo);
         d_Stage *= -1.;
         d_Stage += u_Stage;
@@ -643,32 +630,19 @@ void Cache<T>::projectPrimalWorkspaceOnDynamics() {
         DTensor<T> d_ExpandedChStage(*m_d_workU, m_matAxis, chStageFr, chStageTo);
         q_SumChStage.addAB(APB_ChStage, d_ExpandedChStage);
         q_SumChStage.addAB(ABKtr_ChStage, q_ChStage, 1., 1.);
-        /* Copy into `q` the first child `APBdAq` of each node (every nonleaf node has at least one child) */
-        for (size_t node = stageFr; node <= stageTo; node++) {
-            size_t ch = m_tree.childFrom()[node];
-            DTensor<T> APBdAq_ChNode(*m_d_workX, m_matAxis, ch, ch);
-            DTensor<T> APBdAq_Node(*m_d_q, m_matAxis, node, node);
-            APBdAq_ChNode.deviceCopyTo(APBdAq_Node);
-        }
-        /* Add to `q` remaining child `APBdAq` of each node (zeros added if child does not exist) */
-        DTensor<T> q_Stage(*m_d_q, m_matAxis, stageFr, stageTo);
-        for (size_t chOfEachNode = 1; chOfEachNode < maxCh; chOfEachNode++) {
-            for (size_t node = stageFr; node <= stageTo; node++) {
-                size_t ch = m_tree.childFrom()[node] + chOfEachNode;
-                if (ch <= m_tree.childTo()[node]) {  // If more children exist, copy in their `Bq_ChStage`
-                    DTensor<T> APBdAq_ChNode(*m_d_workX, m_matAxis, ch, ch);
-                    DTensor<T> APBdAq_Node(*m_d_workX, m_matAxis, node, node);
-                    APBdAq_ChNode.deviceCopyTo(APBdAq_Node);
-                }
-            }
-            DTensor<T> q_Add(*m_d_workX, m_matAxis, stageFr, stageTo);
-            q_Stage += q_Add;
+        /* Sum `APBdAq` children of each node into `q` at current stage */
+        for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
+            k_memCpyCh2Node<<<stageTo + 1, TPB>>>(m_d_q->raw(), m_d_workX->raw(),
+                                                  stageFr, stageTo, m_data.numStates(), chIdx,
+                                                  m_tree.d_childFrom().raw(), m_tree.d_numChildren().raw(),
+                                                  chIdx);
         }
         /* Compute Kdux = K.tr(d-u)@x for each node at current stage and add to `q` */
         DTensor<T> du_Stage(*m_d_workU, m_matAxis, stageFr, stageTo);
         d_Stage.deviceCopyTo(du_Stage);
         du_Stage -= u_Stage;
         DTensor<T> Ktr_Stage(m_data.KTr(), m_matAxis, stageFr, stageTo);
+        DTensor<T> q_Stage(*m_d_q, m_matAxis, stageFr, stageTo);
         q_Stage.addAB(Ktr_Stage, du_Stage, 1., 1.);
         DTensor<T> x_Stage(*m_d_x, m_matAxis, stageFr, stageTo);
         q_Stage -= x_Stage;

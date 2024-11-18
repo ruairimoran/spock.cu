@@ -637,13 +637,8 @@ void Cache<T>::projectPrimalWorkspaceOnDynamics() {
         /* Compute APBdAq_ChStage = A(PBd+q) for each node at child stage. A = (A+B@K).tr */
         DTensor<T> APB_ChStage(m_data.APB(), m_matAxis, chStageFr, chStageTo);
         DTensor<T> ABKtr_ChStage(m_data.dynamicsSumTr(), m_matAxis, chStageFr, chStageTo);
-        for (size_t node = stageFr; node <= stageTo; node++) {
-            DTensor<T> d_Node(*m_d_d, m_matAxis, node, node);
-            for (size_t ch = m_tree.childFrom()[node]; ch <= m_tree.childTo()[node]; ch++) {
-                DTensor<T> d_ExpandedChNode(*m_d_workU, m_matAxis, ch, ch);
-                d_Node.deviceCopyTo(d_ExpandedChNode);
-            }
-        }
+        memCpy(m_d_workU.get(), m_d_d.get(), chStageFr, chStageTo, m_d_d->numRows(),
+               0, 0, anc2Node, &m_tree.d_ancestors());
         DTensor<T> q_SumChStage(*m_d_workX, m_matAxis, chStageFr, chStageTo);
         DTensor<T> d_ExpandedChStage(*m_d_workU, m_matAxis, chStageFr, chStageTo);
         q_SumChStage.addAB(APB_ChStage, d_ExpandedChStage);
@@ -1147,7 +1142,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             /* Compute rho */
             *m_d_directionScaled *= -1.;
             *m_d_directionScaled += *m_d_residual;
-            rho = dotM(*m_d_residual, *m_d_directionScaled);
+            rho = dotM(*m_d_residual, *m_d_directionScaled);  // This is not the algo equation, but performs better.
             /* Safeguard update */
             if (rho >= m_sigma * wTilde * w) {
                 *m_d_residual *= (m_lambda * rho / pow(wTilde, 2));

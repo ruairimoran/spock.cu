@@ -27,24 +27,32 @@ int main() {
 
     /** CACHE */
     T tol = 1e-3;
-    size_t maxOuterIters = 1000;
+    size_t maxOuterIters = 5000;
     size_t maxInnerIters = 8;
     size_t andersonBuffer = 3;
-    bool log = true;
     bool detectInfeas = false;
     bool allowK0Updates = true;
-    Cache<T> cacheA(tree, problem, tol, maxOuterIters, log);
-    Cache<T> cacheB(tree, problem, tol, maxOuterIters, false, detectInfeas, maxInnerIters, andersonBuffer, allowK0Updates);
 
-    /** ALGORITHM */
-    size_t exit_status;
+    /** TIMING ALGORITHM */
     std::vector<T> initState(problem.numStates(), .1);
-    /* CP */
-//    exit_status = cacheA.timeCp(initState);
-//    std::cout << "cp exit status: " << exit_status << std::endl;
-    /* SP */
-    exit_status = cacheB.timeSp(initState);
-    std::cout << "spock exit status: " << exit_status << std::endl;
+    size_t runs = 10;
+    std::vector<T> runTimes(runs);
+
+    std::cout << "Computing average solve time...\n";
+    for (size_t i = 0; i < runs; i++) {
+        Cache<T> cacheSp(tree, problem,
+                         tol, maxOuterIters, false, detectInfeas, maxInnerIters, andersonBuffer, allowK0Updates);
+        runTimes[i] = cacheSp.timeSp(initState);
+    }
+    T total = std::reduce(runTimes.begin(), runTimes.end());
+    T avg = total / runs;
+
+    /** SAVE */
+    std::ofstream timeScaling;
+    timeScaling.open("json/timeScaling.csv", std::ios::app);
+    timeScaling << tree.numStages()-1 << ", " << problem.numStates() << ", " << avg << std::endl;
+    timeScaling.close();
+    std::cout << "Saved." << std::endl;
 
     return 0;
 }

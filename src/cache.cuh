@@ -323,11 +323,11 @@ public:
      */
     int runCp(std::vector<T> &, std::vector<T> * = nullptr);
 
-    int runSpock(std::vector<T> &, std::vector<T> * = nullptr);
+    int runSpock(std::vector<T> &, std::vector<T> * = nullptr, bool = false);
 
     int timeCp(std::vector<T> &);
 
-    int timeSp(std::vector<T> &);
+    T timeSp(std::vector<T> &);
 
     /**
      * Getters
@@ -1045,7 +1045,7 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
  * SPOCK algorithm.
  */
 template<typename T>
-int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSolution) {
+int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSolution, bool print) {
     /* Load initial state */
     initialiseState(initState);
     /* Load previous solution if given */
@@ -1135,23 +1135,29 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             }
         }
     }
+    //    std::string n = "Sp";
+    //    printToJson(n);
     /* Return status */
     if (m_status) {
-        std::cout << "\nConverged in " << m_countIterations << " outer iterations, to a tolerance of " << m_tol
-                  << ", [K0: " << countK0
-                  << ", K1: " << countK1
-                  << ", K2: " << countK2
-                  << ", bt: " << countK2bt
-                  << ", K3: " << countK3
-                  << "].\n";
+        if (print) {
+            std::cout << "\nConverged in " << m_countIterations << " outer iterations, to a tolerance of " << m_tol
+                      << ", [K0: " << countK0
+                      << ", K1: " << countK1
+                      << ", K2: " << countK2
+                      << ", bt: " << countK2bt
+                      << ", K3: " << countK3
+                      << "].\n";
+        }
         return 0;
     } else {
-        std::cout << "\nMax iterations (" << m_maxOuterIters << ") reached [K0: " << countK0
-                  << ", K1: " << countK1
-                  << ", K2: " << countK2
-                  << ", bt: " << countK2bt
-                  << ", K3: " << countK3
-                  << "].\n";
+        if (print) {
+            std::cout << "\nMax iterations (" << m_maxOuterIters << ") reached [K0: " << countK0
+                      << ", K1: " << countK1
+                      << ", K2: " << countK2
+                      << ", bt: " << countK2bt
+                      << ", K3: " << countK3
+                      << "].\n";
+        }
         return 1;
     }
 }
@@ -1249,17 +1255,16 @@ int Cache<T>::timeCp(std::vector<T> &initialState) {
  * Time SPOCK algorithm with a parallelised cache
  */
 template<typename T>
-int Cache<T>::timeSp(std::vector<T> &initialState) {
-    std::cout << "spock timer started" << "\n";
+T Cache<T>::timeSp(std::vector<T> &initialState) {
     const auto tick = std::chrono::high_resolution_clock::now();
-    /* Run SPOCK algorithm */
     int status = runSpock(initialState);
     const auto tock = std::chrono::high_resolution_clock::now();
-    auto durationMilli = std::chrono::duration<double, std::milli>(tock - tick).count();
-    std::cout << "spock timer stopped: " << durationMilli << " ms" << "\n";
-    std::string n = "Sp";
-    printToJson(n);
-    return status;
+    if (status) {
+        err << "Status error, not converged. [N=" << m_tree.numStages()-1 << ", nx=nu=" << m_data.numStates() << "].\n";
+        throw std::runtime_error(err.str());
+    }
+    T durationMilli = std::chrono::duration<T, std::milli>(tock - tick).count();
+    return durationMilli;
 }
 
 

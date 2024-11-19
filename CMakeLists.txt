@@ -43,8 +43,11 @@ FetchContent_GetProperties(
     SOURCE_DIR GPUTILS_SOURCE_DIR
 )
 # ----
+set(SPOCK_BUILD_TESTING OFF)
 add_subdirectory(src)
-add_subdirectory(tests)  # comment out to not build tests
+if (SPOCK_BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
 # ----
 add_executable(spock_main)
 target_sources(spock_main  # add files

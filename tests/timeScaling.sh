@@ -10,7 +10,7 @@ main() {
     pip install --upgrade pip
     pip install .
 
-    for N in {1..17}
+    for N in {3..17}
     do
         nx=50
         python main.py --N="$N" --nx="$nx"

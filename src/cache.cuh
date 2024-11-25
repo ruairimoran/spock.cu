@@ -63,6 +63,7 @@ protected:
     ScenarioTree<T> &m_tree;  ///< Previously created scenario tree
     ProblemData<T> &m_data;  ///< Previously created problem
     LinearOperator<T> m_L = LinearOperator<T>(m_tree, m_data);  ///< Linear operator and its adjoint
+    bool m_debug = false;
     bool m_status = false;
     bool m_detectInfeas = false;
     bool m_allowK0 = false;
@@ -269,9 +270,10 @@ public:
           bool detectInfeas = false,
           size_t maxInnerIters = 8,
           size_t andBuff = 3,
-          bool allowK0 = false) :
+          bool allowK0 = false,
+          bool debug = false) :
         m_tree(tree), m_data(data), m_detectInfeas(detectInfeas), m_tol(tol), m_maxOuterIters(maxOuterIters),
-        m_maxInnerIters(maxInnerIters), m_andSize(andBuff), m_log(log), m_allowK0(allowK0) {
+        m_maxInnerIters(maxInnerIters), m_andSize(andBuff), m_log(log), m_allowK0(allowK0), m_debug(debug) {
         /* Sizes */
         initialiseSizes();
         /* Allocate memory on host */
@@ -930,16 +932,22 @@ void Cache<T>::updateDirection(size_t idx) {
         /* QR decomposition */
         m_d_andResidualMatrix->deviceCopyTo(*m_d_andQR);
         m_d_residual->deviceCopyTo(*m_d_andQRGammaFull);
-        m_status = m_andQRFactor->factorise();
-        if (m_status != 0) {
-            err << "[updateDirection] QR factorisation returned status code: " << m_status << "\n";
-            throw std::invalid_argument(err.str());
+        m_andQRFactor->factorise();
+        if (m_debug) {
+            DTensor<int> status = m_andQRFactor->info();
+            if (status(0, 0, 0) != 0) {
+                err << "[updateDirection] QR factorisation returned status code: " << m_status << "\n";
+                throw std::invalid_argument(err.str());
+            }
         }
         /* Least squares */
-        m_status = m_andQRFactor->leastSquares(*m_d_andQRGammaFull);
-        if (m_status != 0) {
-            err << "[updateDirection] QR least squares returned status code: " << m_status << "\n";
-            throw std::invalid_argument(err.str());
+        m_andQRFactor->leastSquares(*m_d_andQRGammaFull);
+        if (m_debug) {
+            DTensor<int> status = m_andQRFactor->info();
+            if (status(0, 0, 0) != 0) {
+                err << "[updateDirection] QR least squares returned status code: " << m_status << "\n";
+                throw std::invalid_argument(err.str());
+            }
         }
         /* Compute new direction */
         m_d_direction->addAB(*m_d_andIterateMatrix, *m_d_andQRGamma, -1.);

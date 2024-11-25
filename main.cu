@@ -27,11 +27,12 @@ int main() {
 
     /** CACHE */
     T tol = 1e-3;
-    size_t maxOuterIters = 1000;
+    size_t maxOuterIters = 5000;
     size_t maxInnerIters = 8;
     size_t andersonBuffer = 3;
     bool detectInfeas = false;
     bool allowK0Updates = true;
+    bool debug = false;
 
     /** TIMING ALGORITHM */
     std::vector<T> initState(problem.numStates(), .1);
@@ -41,7 +42,7 @@ int main() {
     std::cout << "Computing average solve time over (" << runs << ") runs...\n";
     for (size_t i = 0; i < runs; i++) {
         caches[i] = std::make_unique<Cache<T>>(tree, problem, tol, maxOuterIters, false, detectInfeas,
-                                               maxInnerIters, andersonBuffer, allowK0Updates);
+                                               maxInnerIters, andersonBuffer, allowK0Updates, debug);
         runTimes[i] = caches[i]->timeSp(initState);
         std::cout << "Run (" << i << ") = " << runTimes[i] << " ms.\n";
     }

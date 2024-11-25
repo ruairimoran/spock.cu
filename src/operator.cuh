@@ -112,7 +112,7 @@ public:
         m_d_scalarWorkspace = std::make_unique<DTensor<T>>(1, 1, m_tree.numNodes(), true);
     }
 
-    ~LinearOperator() {}
+    ~LinearOperator() = default;
 
     /**
      * Public methods

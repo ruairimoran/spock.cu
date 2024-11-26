@@ -33,17 +33,17 @@ int main() {
     bool detectInfeas = false;
     bool allowK0Updates = true;
     bool debug = false;
+    Cache<T> cache(tree, problem, tol, maxOuterIters, false, detectInfeas, maxInnerIters, andersonBuffer,
+                   allowK0Updates, debug);
 
     /** TIMING ALGORITHM */
     std::vector<T> initState(problem.numStates(), .1);
     size_t runs = 10;
     std::vector<T> runTimes(runs, 0.);
-    std::vector<std::unique_ptr<Cache<T>>> caches(runs);
     std::cout << "Computing average solve time over (" << runs << ") runs...\n";
     for (size_t i = 0; i < runs; i++) {
-        caches[i] = std::make_unique<Cache<T>>(tree, problem, tol, maxOuterIters, false, detectInfeas,
-                                               maxInnerIters, andersonBuffer, allowK0Updates, debug);
-        runTimes[i] = caches[i]->timeSp(initState);
+        runTimes[i] = cache.timeSp(initState);
+        cache.reset();
         std::cout << "Run (" << i << ") = " << runTimes[i] << " ms.\n";
     }
     T total = std::reduce(runTimes.begin(), runTimes.end());

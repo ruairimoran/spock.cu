@@ -90,8 +90,6 @@ protected:
     size_t m_numLeafNodesMinusOne = 0;
     std::unique_ptr<DTensor<T>> m_d_uNonleafWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xNonleafWorkspace = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_uNonleafAdd = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_xNonleafAdd = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xLeafWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_scalarWorkspace = nullptr;
 
@@ -106,8 +104,6 @@ public:
         m_numLeafNodesMinusOne = m_tree.numLeafNodes() - 1;
         m_d_uNonleafWorkspace = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNodes(), true);
         m_d_xNonleafWorkspace = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
-        m_d_uNonleafAdd = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNonleafNodes(), true);
-        m_d_xNonleafAdd = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNonleafNodes(), true);
         m_d_xLeafWorkspace = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numLeafNodes(), true);
         m_d_scalarWorkspace = std::make_unique<DTensor<T>>(1, 1, m_tree.numNodes(), true);
     }
@@ -117,12 +113,22 @@ public:
     /**
      * Public methods
      */
+    void reset();  // For testing.
+
     void op(DTensor<T> &, DTensor<T> &, DTensor<T> &, DTensor<T> &, DTensor<T> &,
             DTensor<T> &, DTensor<T> &, DTensor<T> &, DTensor<T> &, DTensor<T> &, DTensor<T> &);
 
     void adj(DTensor<T> &, DTensor<T> &, DTensor<T> &, DTensor<T> &, DTensor<T> &,
              DTensor<T> &, DTensor<T> &, DTensor<T> &, DTensor<T> &, DTensor<T> &, DTensor<T> &);
 };
+
+template<typename T>
+void LinearOperator<T>::reset() {
+    m_d_uNonleafWorkspace->upload(std::vector<T>(m_data.numInputs() * m_tree.numNodes(), 0));
+    m_d_xNonleafWorkspace->upload(std::vector<T>(m_data.numStates() * m_tree.numNodes(), 0));
+    m_d_xLeafWorkspace->upload(std::vector<T>(m_data.numStates() * m_tree.numLeafNodes(), 0));
+    m_d_scalarWorkspace->upload(std::vector<T>(m_tree.numNodes(), 0));
+}
 
 template<typename T>
 void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<T> &t, DTensor<T> &s,

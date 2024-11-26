@@ -323,6 +323,8 @@ public:
     /**
      * Public methods
      */
+    void reset();  // For testing.
+
     int runCp(std::vector<T> &, std::vector<T> * = nullptr);
 
     int runSpock(std::vector<T> &, std::vector<T> * = nullptr, bool = false);
@@ -359,6 +361,56 @@ public:
 
     friend void testDotM<>(CacheTestData<T> &, T);
 };
+
+template<typename T>
+void Cache<T>::reset() {
+    m_L.reset();
+    /* Create zero vectors */
+    std::vector<T> numStates(m_data.numStates(), 0);
+    std::vector<T> sizeIterate(m_sizeIterate, 0);
+    std::vector<T> sizePrim(m_sizePrim, 0);
+    std::vector<T> sizeIterateSizeAnd(m_sizeIterate * m_andSize, 0);
+    std::vector<T> numStatesNumNodes(m_data.numStates() * m_tree.numNodes(), 0);
+    std::vector<T> numInputsNumNodes(m_data.numInputs() * m_tree.numNodes(), 0);
+    std::vector<T> numStatesAndInputsNumNodes(m_data.numStatesAndInputs() * m_tree.numNodes(), 0);
+    std::vector<T> nullDimNumNonleafNodes(m_data.nullDim() * m_tree.numNonleafNodes(), 0);
+    std::vector<T> numInputsNumNonleafNodes(m_data.numInputs() * m_tree.numNonleafNodes(), 0);
+    /* Zero all cached data */
+    std::fill(m_cacheCallsToL.begin(), m_cacheCallsToL.end(), 0);
+    std::fill(m_cacheError0.begin(), m_cacheError0.end(), 0);
+    std::fill(m_cacheError1.begin(), m_cacheError1.end(), 0);
+    std::fill(m_cacheError2.begin(), m_cacheError2.end(), 0);
+    std::fill(m_cacheDeltaPrim.begin(), m_cacheDeltaPrim.end(), 0);
+    std::fill(m_cacheDeltaDual.begin(), m_cacheDeltaDual.end(), 0);
+    std::fill(m_cacheNrmLtrDeltaDual.begin(), m_cacheNrmLtrDeltaDual.end(), 0);
+    std::fill(m_cacheDistDeltaDual.begin(), m_cacheDistDeltaDual.end(), 0);
+    std::fill(m_cacheSuppDeltaDual.begin(), m_cacheSuppDeltaDual.end(), 0);
+    m_d_initState->upload(numStates);
+    m_d_iterate->upload(sizeIterate);
+    m_d_iteratePrev->upload(sizeIterate);
+    m_d_iterateCandidate->upload(sizeIterate);
+    m_d_deltaIterate->upload(sizeIterate);
+    m_d_ellDeltaIterate->upload(sizeIterate);
+    m_d_deltaResidual->upload(sizeIterate);
+    m_d_residual->upload(sizeIterate);
+    m_d_residualPrev->upload(sizeIterate);
+    m_d_iterateBackup->upload(sizeIterate);
+    m_d_err->upload(sizePrim);
+    m_d_andIterateMatrix->upload(sizeIterateSizeAnd);
+    m_d_andResidualMatrix->upload(sizeIterateSizeAnd);
+    m_d_andQR->upload(sizeIterateSizeAnd);
+    m_d_andQRGammaFull->upload(sizeIterate);
+    m_d_direction->upload(sizeIterate);
+    m_d_directionScaled->upload(sizeIterate);
+    m_d_workIterate->upload(sizeIterate);
+    m_d_workX->upload(numStatesNumNodes);
+    m_d_workU->upload(numInputsNumNodes);
+    m_d_workXU->upload(numStatesAndInputsNumNodes);
+    m_d_workYTS->upload(nullDimNumNonleafNodes);
+    m_d_workDot->upload(sizeIterate);
+    m_d_q->upload(numStatesNumNodes);
+    m_d_d->upload(numInputsNumNonleafNodes);
+}
 
 template<typename T>
 void Cache<T>::initialiseSizes() {

@@ -1,0 +1,25 @@
+{
+\# TEMPLATE FILE FOR JSON DATA #\
+\# total number of events #\
+"numEvents": \~num_events~\,
+\# total number of nonleaf nodes #\
+"numNonleafNodes": \~num_nonleaf_nodes~\,
+\# total number of nodes #\
+"numNodes": \~num_nodes~\,
+\# total number of stages (N+1) #\
+"numStages": \~num_stages~\,
+\# NUMBER OF STATES #\
+"numStates": \~num_states~\,
+\# NUMBER OF INPUTS #\
+"numInputs": \~num_inputs~\,
+\# NONLEAF CONSTRAINTS #\
+"nonleafConstraint": \% if nonleaf_constraint.is_no %\"no"\% elif nonleaf_constraint.is_rectangle %\"rectangle"\% endif %\,
+\# LEAF CONSTRAINTS #\
+"leafConstraint": \% if leaf_constraint.is_no %\"no"\% elif leaf_constraint.is_rectangle %\"rectangle"\% endif %\,
+\# RISKS #\
+"risk": {"type": \% if risk.is_avar %\"avar", "alpha": \~risk.alpha~\\% elif risk.is_evar %\"evar"\% endif %\
+},
+"rowsS2": \~ker_con_rows~\,
+"rowsNNtr": \~null_dim~\,
+"stepSize": \~step_size~\
+}

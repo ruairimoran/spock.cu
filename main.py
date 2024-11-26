@@ -2,7 +2,6 @@ import py
 import numpy as np
 import argparse
 
-
 parser = argparse.ArgumentParser(description='Problem data generator.')
 parser.add_argument("--N", type=int, default=3)
 parser.add_argument("--nx", type=int, default=2)
@@ -94,5 +93,6 @@ problem = (
     .with_nonleaf_constraint(nonleaf_constraint)
     .with_leaf_constraint(leaf_constraint)
     .with_risk(risk)
+    .with_tests()
     .generate_problem()
 )

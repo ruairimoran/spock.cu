@@ -167,118 +167,124 @@ class Tree:
         return f"Scenario tree with {self.num_nodes} nodes, {self.num_stages} stages " \
                f"and {len(self.nodes_of_stage(self.num_stages - 1))} scenarios"
 
-    def generate_tree_json(self):
-        # Setup jinja environment
-        file_loader = j2.FileSystemLoader(searchpath=["py/"])
-        env = j2.Environment(loader=file_loader,
-                             trim_blocks=True,
-                             lstrip_blocks=True,
-                             block_start_string="\% ",
-                             block_end_string="%\\",
-                             variable_start_string="\~",
-                             variable_end_string="~\\",
-                             comment_start_string="\#",
-                             comment_end_string="#\\")
-        # Generate "treeData.json" from template "treeTemplate.json.jinja2"
-        template = env.get_template("treeTemplate.json.jinja2")
-        output = template.render(num_events=self.num_events,
-                                 num_nonleaf_nodes=self.num_nonleaf_nodes,
-                                 num_nodes=self.num_nodes,
-                                 num_stages=self.num_stages,
-                                 stages=self.__stages,
-                                 ancestors=self.__ancestors,
-                                 probabilities=self.__probability,
-                                 events=self.__w_idx,
-                                 children=self.__children,
-                                 cond_prob=self.__conditional_probability,
-                                 num_children=self.__num_children,
-                                 nodes_of_stage=self.__nodes_of_stage
-                                 )
-        path = os.path.join(os.getcwd(), self.__folder)
-        os.makedirs(path, exist_ok=True)
-        output_file = os.path.join(path, "treeData.json")
-        fh = open(output_file, "w")
-        fh.write(output)
-        fh.close()
+    def generate_tree_files(self):
+        # Generate extra lists
+        child_from = [arr[0] for arr in self.__children]
+        child_to = [arr[-1] for arr in self.__children]
+        stage_from = [arr[0] for arr in self.__nodes_of_stage]
+        stage_to = [arr[-1] for arr in self.__nodes_of_stage]
+        # Create tensor dict
+        tensors = {
+            "stages": self.__stages,
+            "ancestors": self.__ancestors,
+            "probabilities": self.__probability,
+            "conditionalProbabilities": self.__conditional_probability,
+            "events": self.__w_idx,
+            "childrenFrom": child_from,
+            "childrenTo": child_to,
+            "numChildren": self.__num_children,
+            "stageFrom": stage_from,
+            "stageTo": stage_to
+        }
+        # Generate tensor files
+        for name, tensor in tensors.items():
+            path = os.path.join(os.getcwd(), self.__folder)
+            os.makedirs(path, exist_ok=True)
+            output_file = os.path.join(path, name + ".txt")
+            np.savetxt(output_file,
+                       X=tensor,
+                       fmt='%-.15f',
+                       delimiter='\n',
+                       newline='\n',
+                       header=f"{len(tensor)}\n"
+                              f"{1}\n"
+                              f"{1}",
+                       comments='')
 
-    # Visualisation
 
-    @staticmethod
-    def __circle_coord(rad, arc):
-        return rad * np.cos(np.deg2rad(arc)), rad * np.sin(np.deg2rad(arc))
+# Visualisation
 
-    @staticmethod
-    def __goto_circle_coord(trt, rad, arc):
-        trt.penup()
-        trt.goto(Tree.__circle_coord(rad, arc))
-        trt.pendown()
+@staticmethod
+def __circle_coord(rad, arc):
+    return rad * np.cos(np.deg2rad(arc)), rad * np.sin(np.deg2rad(arc))
 
-    @staticmethod
-    def __draw_circle(trt, rad):
-        trt.penup()
-        trt.home()
-        trt.goto(0, -rad)
-        trt.pendown()
-        trt.circle(rad)
 
-    def __draw_leaf_nodes_on_circle(self, trt, radius, dot_size=6):
-        trt.pencolor('gray')
-        Tree.__draw_circle(trt, radius)
-        leaf_nodes = self.nodes_of_stage(self.num_stages - 1)
-        num_leaf_nodes = len(leaf_nodes)
-        dv = 360 / num_leaf_nodes
-        arcs = np.zeros(self.num_nodes)
-        for i in range(num_leaf_nodes):
-            Tree.__goto_circle_coord(trt, radius, i * dv)
-            trt.pencolor('black')
-            trt.dot(dot_size)
-            trt.pencolor('gray')
-            arcs[leaf_nodes[i]] = i * dv
+@staticmethod
+def __goto_circle_coord(trt, rad, arc):
+    trt.penup()
+    trt.goto(Tree.__circle_coord(rad, arc))
+    trt.pendown()
 
+
+@staticmethod
+def __draw_circle(trt, rad):
+    trt.penup()
+    trt.home()
+    trt.goto(0, -rad)
+    trt.pendown()
+    trt.circle(rad)
+
+
+def __draw_leaf_nodes_on_circle(self, trt, radius, dot_size=6):
+    trt.pencolor('gray')
+    Tree.__draw_circle(trt, radius)
+    leaf_nodes = self.nodes_of_stage(self.num_stages - 1)
+    num_leaf_nodes = len(leaf_nodes)
+    dv = 360 / num_leaf_nodes
+    arcs = np.zeros(self.num_nodes)
+    for i in range(num_leaf_nodes):
+        Tree.__goto_circle_coord(trt, radius, i * dv)
         trt.pencolor('black')
-        return arcs
-
-    def __draw_nonleaf_nodes_on_circle(self, trt, radius, larger_radius, stage, arcs, dot_size=6):
+        trt.dot(dot_size)
         trt.pencolor('gray')
-        Tree.__draw_circle(trt, radius)
-        nodes = self.nodes_of_stage(stage)
-        for n in nodes:
-            mean_arc = np.mean(arcs[self.children_of_node(n)])
-            arcs[n] = mean_arc
-            Tree.__goto_circle_coord(trt, radius, mean_arc)
-            trt.pencolor('black')
-            trt.dot(dot_size)
-            for nc in self.children_of_node(n):
-                current_pos = trt.pos()
-                trt.goto(Tree.__circle_coord(larger_radius, arcs[nc]))
-                trt.goto(current_pos)
-            trt.pencolor('gray')
-        return arcs
+        arcs[leaf_nodes[i]] = i * dv
 
-    def bulls_eye_plot(self, dot_size=5, radius=300, filename=None):
-        """
-        Bull's eye plot of scenario tree
+    trt.pencolor('black')
+    return arcs
 
-        :param dot_size: size of node [default: 5]
-        :param radius: radius of largest circle [default: 300]
-        :param filename: name of file, with .eps extension, to save the plot [default: None]
-        """
-        wn = turtle.Screen()
-        wn.tracer(0)
-        t = turtle.Turtle(visible=False)
-        t.speed(0)
 
-        arcs = self.__draw_leaf_nodes_on_circle(t, radius, dot_size)
-        radius_step = radius / (self.num_stages - 1)
-        for n in range(self.num_stages - 2, -1, -1):
-            radius -= radius_step
-            arcs = self.__draw_nonleaf_nodes_on_circle(t, radius, radius + radius_step, n, arcs, dot_size)
+def __draw_nonleaf_nodes_on_circle(self, trt, radius, larger_radius, stage, arcs, dot_size=6):
+    trt.pencolor('gray')
+    Tree.__draw_circle(trt, radius)
+    nodes = self.nodes_of_stage(stage)
+    for n in nodes:
+        mean_arc = np.mean(arcs[self.children_of_node(n)])
+        arcs[n] = mean_arc
+        Tree.__goto_circle_coord(trt, radius, mean_arc)
+        trt.pencolor('black')
+        trt.dot(dot_size)
+        for nc in self.children_of_node(n):
+            current_pos = trt.pos()
+            trt.goto(Tree.__circle_coord(larger_radius, arcs[nc]))
+            trt.goto(current_pos)
+        trt.pencolor('gray')
+    return arcs
 
-        wn.update()
 
-        if filename is not None:
-            wn.getcanvas().postscript(file=filename)
-        wn.mainloop()
+def bulls_eye_plot(self, dot_size=5, radius=300, filename=None):
+    """
+    Bull's eye plot of scenario tree
+
+    :param dot_size: size of node [default: 5]
+    :param radius: radius of largest circle [default: 300]
+    :param filename: name of file, with .eps extension, to save the plot [default: None]
+    """
+    wn = turtle.Screen()
+    wn.tracer(0)
+    t = turtle.Turtle(visible=False)
+    t.speed(0)
+
+    arcs = self.__draw_leaf_nodes_on_circle(t, radius, dot_size)
+    radius_step = radius / (self.num_stages - 1)
+    for n in range(self.num_stages - 2, -1, -1):
+        radius -= radius_step
+        arcs = self.__draw_nonleaf_nodes_on_circle(t, radius, radius + radius_step, n, arcs, dot_size)
+
+    wn.update()
+
+    if filename is not None:
+        wn.getcanvas().postscript(file=filename)
+    wn.mainloop()
 
 
 class TreeFactoryMarkovChain:
@@ -404,5 +410,6 @@ class TreeFactoryMarkovChain:
         ancestors, values, stages = self.__make_ancestors_values_stages()
         probs = self.__make_probability_values(ancestors, values, stages)
         tree = Tree(stages, ancestors, probs, values, is_markovian=True)
-        tree.generate_tree_json()
+        print("Generating tree files...")
+        tree.generate_tree_files()
         return tree

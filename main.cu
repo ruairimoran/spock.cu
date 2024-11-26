@@ -27,7 +27,7 @@ int main() {
 
     /** CACHE */
     T tol = 1e-3;
-    size_t maxOuterIters = 5000;
+    size_t maxOuterIters = 20000;
     size_t maxInnerIters = 8;
     size_t andersonBuffer = 3;
     bool detectInfeas = false;

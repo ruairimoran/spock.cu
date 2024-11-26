@@ -190,7 +190,7 @@ class Tree:
         for name, tensor in tensors.items():
             path = os.path.join(os.getcwd(), self.__folder)
             os.makedirs(path, exist_ok=True)
-            output_file = os.path.join(path, name + ".txt")
+            output_file = os.path.join(path, name)
             np.savetxt(output_file,
                        X=tensor,
                        fmt='%-.15f',

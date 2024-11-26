@@ -15,13 +15,13 @@
 int main() {
     /** SCENARIO TREE */
     std::cout << "Reading tree file...\n";
-    std::ifstream fileTree("json/treeData.json");
+    std::ifstream fileTree("data/treeData.json");
     ScenarioTree<T> tree(fileTree);
 //  	std::cout << tree;
 
     /** PROBLEM DATA */
     std::cout << "Reading problem file...\n";
-    std::ifstream fileProblem("json/problemData.json");
+    std::ifstream fileProblem("data/problemData.json");
     ProblemData<T> problem(tree, fileProblem);
 //  	std::cout << problem;
 

@@ -18,7 +18,7 @@ class Tree:
 
         Note: avoid using this constructor directly; use a factory instead
         """
-        self.__folder = "json"
+        self.__folder = "data"
         self.__is_markovian = is_markovian
         self.__is_iid = is_iid
         self.__stages = stages

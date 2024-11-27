@@ -92,38 +92,29 @@ class TestProblem(unittest.TestCase):
     def test_markovian_dynamics_list(self):
         tree = TestProblem.__tree_from_markov
         problem = TestProblem.__problem_from_markov_with_markov
-        self.assertTrue(problem.state_dynamics_at_node(0) is None)
-        self.assertTrue(problem.input_dynamics_at_node(0) is None)
-        for i in range(1, tree.num_nodes):
+        for i in range(0, tree.num_nodes):
             self.assertTrue(problem.state_dynamics_at_node(i) is not None)
             self.assertTrue(problem.input_dynamics_at_node(i) is not None)
 
     def test_markovian_nonleaf_costs_list(self):
         tree = TestProblem.__tree_from_markov
         problem = TestProblem.__problem_from_markov_with_markov
-        self.assertTrue(problem.nonleaf_state_cost_at_node(0) is None)
-        self.assertTrue(problem.nonleaf_input_cost_at_node(0) is None)
-        for i in range(1, tree.num_nodes):
+        for i in range(tree.num_nodes):
             self.assertTrue(problem.nonleaf_state_cost_at_node(i) is not None)
             self.assertTrue(problem.nonleaf_input_cost_at_node(i) is not None)
 
     def test_all_nonleaf_costs_list(self):
         tree = TestProblem.__tree_from_markov
         problem = TestProblem.__problem_from_markov
-        self.assertTrue(problem.nonleaf_state_cost_at_node(0) is None)
-        self.assertTrue(problem.nonleaf_input_cost_at_node(0) is None)
-        for i in range(1, tree.num_nodes):
+        for i in range(tree.num_nodes):
             self.assertTrue(problem.nonleaf_state_cost_at_node(i) is not None)
             self.assertTrue(problem.nonleaf_input_cost_at_node(i) is not None)
 
     def test_leaf_costs_list(self):
         tree = TestProblem.__tree_from_markov
         problem = TestProblem.__problem_from_markov
-        for i in range(tree.num_nodes):
-            if i < tree.num_nonleaf_nodes:
-                self.assertTrue(problem.leaf_state_cost_at_node(i) is None)
-            else:
-                self.assertTrue(problem.leaf_state_cost_at_node(i) is not None)
+        for i in range(tree.num_leaf_nodes):
+            self.assertTrue(problem.leaf_state_cost_at_node(i) is not None)
 
     def test_no_constraints_loaded(self):
         tree = TestProblem.__tree_from_markov
@@ -131,7 +122,7 @@ class TestProblem(unittest.TestCase):
         for i in range(tree.num_nodes):
             if i < tree.num_nonleaf_nodes:
                 self.assertTrue(problem.nonleaf_constraint_at_node(i) is not None)
-            else:
+            if i < tree.num_leaf_nodes:
                 self.assertTrue(problem.leaf_constraint_at_node(i) is not None)
 
     def test_risks_list(self):

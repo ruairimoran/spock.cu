@@ -26,6 +26,9 @@ test_python() {
     # -- run the python tests
     python -W ignore tests/testTreeFactory.py -v
     python -W ignore tests/testProblemFactory.py -v
+
+    # -- run the test file to create data for c++ testing
+    python test.py
 }
 
 # ------------------------------------

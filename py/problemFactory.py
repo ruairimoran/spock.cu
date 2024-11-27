@@ -374,15 +374,15 @@ class Problem:
 
         # -> v
         v = None
-        if self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_no:
+        if self.__list_of_leaf_constraints[0].is_no:
             v = np.array([]).reshape(1, 0)
-        elif self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_rectangle:
+        elif self.__list_of_leaf_constraints[0].is_rectangle:
             # Gamma_{x} and Gamma{u} do not change x and u
             v = [np.zeros((num_si, 1))] * self.__tree.num_leaf_nodes
             for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
                 idx = i - self.__tree.num_nonleaf_nodes
                 v[idx] = x[i]
-        elif self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_ball:
+        elif self.__list_of_leaf_constraints[0].is_ball:
             pass  # TODO!
         else:
             raise ValueError("Constraint not supported.")
@@ -424,13 +424,13 @@ class Problem:
         iv = [np.array(dual[idx + i * iv_size:idx + i * iv_size + iv_size]).reshape(
             iv_size, 1) for i in range(self.__tree.num_nodes)]
         idx += iv_size * self.__tree.num_nodes
-        if self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_no:
+        if self.__list_of_leaf_constraints[0].is_no:
             v = np.array([]).reshape(1, 0)
-        elif self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_rectangle:
+        elif self.__list_of_leaf_constraints[0].is_rectangle:
             v = [np.array(dual[idx + i * self.__num_states:idx + i * self.__num_states + self.__num_states]).reshape(
                 self.__num_states, 1) for i in range(self.__tree.num_leaf_nodes)]
             idx += self.__num_states * self.__tree.num_leaf_nodes
-        elif self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_ball:
+        elif self.__list_of_leaf_constraints[0].is_ball:
             pass  # TODO!
         else:
             raise ValueError("Constraint not supported.")
@@ -474,13 +474,13 @@ class Problem:
             t[i] = 0.5 * (iv[i][num_si] + iv[i][num_si + 1])
 
         # -> x (leaf):Gamma
-        if self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_no:
+        if self.__list_of_leaf_constraints[0].is_no:
             pass
-        elif self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_rectangle:
+        elif self.__list_of_leaf_constraints[0].is_rectangle:
             for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
                 idx = i - self.__tree.num_nonleaf_nodes
                 x[i] = v[idx]
-        elif self.__list_of_leaf_constraints[self.__tree.num_nonleaf_nodes].is_ball:
+        elif self.__list_of_leaf_constraints[0].is_ball:
             pass  # TODO!
         else:
             raise ValueError("Constraint not supported.")
@@ -606,8 +606,8 @@ class ProblemFactory:
             # check all control dynamics have same shape
             if input_dynamics[i].shape != input_dynamics[0].shape:
                 raise ValueError("Markovian input dynamics matrices are different shapes")
-        self.__list_of_state_dynamics[0] = np.zeros(state_dynamics[0].shape)
-        self.__list_of_input_dynamics[0] = np.zeros(input_dynamics[0].shape)
+        self.__list_of_state_dynamics[0] = np.zeros((state_dynamics[0].shape[0], state_dynamics[0].shape[1]))
+        self.__list_of_input_dynamics[0] = np.zeros((input_dynamics[0].shape[0], input_dynamics[0].shape[1]))
         for i in range(1, self.__tree.num_nodes):
             event = self.__tree.event_of_node(i)
             self.__list_of_state_dynamics[i] = deepcopy(state_dynamics[event])
@@ -619,8 +619,8 @@ class ProblemFactory:
     # --------------------------------------------------------
     def with_markovian_nonleaf_costs(self, state_costs, input_costs):
         self.__check_markovian("costs")
-        self.__list_of_nonleaf_state_costs[0] = np.zeros(state_costs[0].shape)
-        self.__list_of_nonleaf_input_costs[0] = np.zeros(input_costs[0].shape)
+        self.__list_of_nonleaf_state_costs[0] = np.zeros((state_costs[0].shape[0], state_costs[0].shape[1]))
+        self.__list_of_nonleaf_input_costs[0] = np.zeros((input_costs[0].shape[0], input_costs[0].shape[1]))
         for i in range(1, self.__tree.num_nodes):
             event = self.__tree.event_of_node(i)
             self.__list_of_nonleaf_state_costs[i] = deepcopy(state_costs[event])
@@ -628,8 +628,12 @@ class ProblemFactory:
         return self
 
     def with_nonleaf_cost(self, state_cost, input_cost):
-        self.__list_of_nonleaf_state_costs[0] = np.zeros(state_costs[0].shape)
-        self.__list_of_nonleaf_input_costs[0] = np.zeros(input_costs[0].shape)
+        try:
+            self.__list_of_nonleaf_state_costs[0] = np.zeros((state_cost[0].shape[0], state_cost[0].shape[1]))
+            self.__list_of_nonleaf_input_costs[0] = np.zeros((input_cost[0].shape[0], input_cost[0].shape[1]))
+        except:
+            self.__list_of_nonleaf_state_costs[0] = np.zeros((state_cost[0].shape[0], state_cost[0].shape[0]))
+            self.__list_of_nonleaf_input_costs[0] = np.zeros((input_cost[0].shape[0], input_cost[0].shape[0]))
         for i in range(1, self.__tree.num_nodes):
             self.__list_of_nonleaf_state_costs[i] = deepcopy(state_cost)
             self.__list_of_nonleaf_input_costs[i] = deepcopy(input_cost)

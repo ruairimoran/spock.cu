@@ -3,6 +3,7 @@
 
 #include "../include/gpu.cuh"
 #include <fstream>
+#include <utility>
 
 
 /**
@@ -15,6 +16,8 @@ TEMPLATE_WITH_TYPE_T
 class ScenarioTree {
 
 private:
+    std::string m_pathToDataFolder;
+    std::string m_jsonFile = "data.json";
     /* Host data */
     size_t m_numEvents = 0;  ///< Total number of possible events
     size_t m_numNodes = 0;  ///< Total number of nodes (incl. root)
@@ -61,7 +64,8 @@ public:
     /**
      * Constructor from JSON file stream
      */
-    ScenarioTree(std::ifstream &file) {
+    ScenarioTree(std::string pathToDataFolder = "./data/") : m_pathToDataFolder(std::move(pathToDataFolder)) {
+        std::ifstream file(m_pathToDataFolder + m_jsonFile);
         std::string json((std::istreambuf_iterator<char>(file)),
                          std::istreambuf_iterator<char>());
         rapidjson::Document doc;
@@ -152,6 +156,10 @@ public:
     /**
      * Getters
      */
+    std::string path() { return m_pathToDataFolder; }
+
+    std::string json() { return m_jsonFile; }
+
     size_t numEvents() { return m_numEvents; }
 
     size_t numNonleafNodes() { return m_numNonleafNodes; }

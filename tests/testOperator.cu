@@ -15,8 +15,7 @@ protected:
 TEMPLATE_WITH_TYPE_T
 class OperatorTestData {
 public:
-    std::string m_treeFileLoc = std::string("../../tests/testTreeData.json");
-    std::string m_problemFileLoc = std::string("../../tests/testProblemData.json");
+    std::string m_dataFile;
     std::unique_ptr<ScenarioTree<T>> m_tree;
     std::unique_ptr<ProblemData<T>> m_data;
     std::unique_ptr<Cache<T>> m_cache;
@@ -27,11 +26,10 @@ public:
     std::vector<T> m_primAfterAdj;
 
     OperatorTestData() {
-        std::ifstream treeData(m_treeFileLoc);
-        std::ifstream problemData(m_problemFileLoc);
-        m_tree = std::make_unique<ScenarioTree<T>>(treeData);
-        m_data = std::make_unique<ProblemData<T>>(*m_tree, problemData);
+        m_tree = std::make_unique<ScenarioTree<T>>("../../data/");
+        m_data = std::make_unique<ProblemData<T>>(*m_tree);
         m_cache = std::make_unique<Cache<T>>(*m_tree, *m_data, m_tol, m_maxIters);
+        m_dataFile = m_tree->path() + m_tree->json();
     };
 
     virtual ~OperatorTestData() = default;
@@ -44,7 +42,7 @@ public:
 TEMPLATE_WITH_TYPE_T
 void testOperator(OperatorTestData<T> &d, T epsilon) {
     /* Get primal before and dual after operator */
-    std::ifstream problemData(d.m_problemFileLoc);
+    std::ifstream problemData(d.m_dataFile);
     std::string json((std::istreambuf_iterator<char>(problemData)),
                      std::istreambuf_iterator<char>());
     rapidjson::Document doc;
@@ -80,7 +78,7 @@ TEST_F(OperatorTest, op) {
 TEMPLATE_WITH_TYPE_T
 void testAdjoint(OperatorTestData<T> &d, T epsilon) {
     /* Get dual before and primal after adjoint */
-    std::ifstream problemData(d.m_problemFileLoc);
+    std::ifstream problemData(d.m_dataFile);
     std::string json((std::istreambuf_iterator<char>(problemData)),
                      std::istreambuf_iterator<char>());
     rapidjson::Document doc;

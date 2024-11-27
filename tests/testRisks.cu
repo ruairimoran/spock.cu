@@ -16,8 +16,7 @@ protected:
     std::unique_ptr<DTensor<DEFAULT_FPX>> m_d_b = nullptr;
 
     RisksTest() {
-        std::ifstream tree_data("../../tests/testTreeData.json");
-        m_tree = std::make_unique<ScenarioTree<DEFAULT_FPX>>(tree_data);
+        m_tree = std::make_unique<ScenarioTree<DEFAULT_FPX>>("../../data/");
         m_nProj = m_tree->numChildren()[m_node] * 2 + 1;
         m_nB = m_tree->numChildren()[m_node] * 2 + 1;
         DTensor<DEFAULT_FPX> proj = DTensor<DEFAULT_FPX>::createRandomTensor(m_nProj, m_nProj, 1, -10, 10);

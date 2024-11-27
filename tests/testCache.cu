@@ -15,8 +15,7 @@ protected:
 TEMPLATE_WITH_TYPE_T
 class CacheTestData {
 public:
-    std::string m_treeFileLoc = "../../tests/testTreeData.json";
-    std::string m_problemFileLoc = "../../tests/testProblemData.json";
+    std::string m_dataFile;
     std::unique_ptr<ScenarioTree<T>> m_tree;
     std::unique_ptr<ProblemData<T>> m_data;
     std::unique_ptr<Cache<T>> m_cache;
@@ -32,12 +31,11 @@ public:
     bool m_allowK0 = false;
 
     CacheTestData() {
-        std::ifstream tree_data(m_treeFileLoc);
-        std::ifstream problem_data(m_problemFileLoc);
-        m_tree = std::make_unique<ScenarioTree<T>>(tree_data);
-        m_data = std::make_unique<ProblemData<T>>(*m_tree, problem_data);
+        m_tree = std::make_unique<ScenarioTree<T>>("../../data/");
+        m_data = std::make_unique<ProblemData<T>>(*m_tree);
         m_cache = std::make_unique<Cache<T>>(*m_tree, *m_data, m_detectInfeas, m_tol, m_maxIters,
                                              m_maxInnerIters, m_andersonBuff, m_allowK0);
+        m_dataFile = m_tree->path() + m_tree->json();
     };
 
     virtual ~CacheTestData() = default;
@@ -77,7 +75,7 @@ TEST_F(CacheTest, initialisingState) {
 
 TEMPLATE_WITH_TYPE_T
 void testDynamicsProjectionOnline(CacheTestData<T> &d, T epsilon) {
-    std::ifstream problem_data(d.m_problemFileLoc);
+    std::ifstream problem_data(d.m_tree->path());
     std::string json((std::istreambuf_iterator<char>(problem_data)),
                      std::istreambuf_iterator<char>());
     rapidjson::Document doc;
@@ -132,7 +130,7 @@ TEST_F(CacheTest, dynamicsProjectionOnline) {
 TEMPLATE_WITH_TYPE_T
 void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon) {
     /* Parse data for testing */
-    std::ifstream problem_data(d.m_problemFileLoc);
+    std::ifstream problem_data(d.m_dataFile);
     std::string json((std::istreambuf_iterator<char>(problem_data)),
                      std::istreambuf_iterator<char>());
     rapidjson::Document doc;
@@ -287,7 +285,7 @@ TEST_F(CacheTest, kernelProjectionOnlineOrthogonality) {
 
 TEMPLATE_WITH_TYPE_T
 void testDotM(CacheTestData<T> &d, T epsilon) {
-    std::ifstream problemData(d.m_problemFileLoc);
+    std::ifstream problemData(d.m_dataFile);
     std::string json((std::istreambuf_iterator<char>(problemData)),
                      std::istreambuf_iterator<char>());
     rapidjson::Document doc;

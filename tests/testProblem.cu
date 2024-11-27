@@ -10,10 +10,8 @@ protected:
     std::unique_ptr<ProblemData<DEFAULT_FPX>> m_data;
 
     ProblemDataTest() {
-        std::ifstream tree_data("../../tests/testTreeData.json");
-        m_tree = std::make_unique<ScenarioTree<DEFAULT_FPX>>(tree_data);
-        std::ifstream problem_data("../../tests/testProblemData.json");
-        m_data = std::make_unique<ProblemData<DEFAULT_FPX>>(*m_tree, problem_data);
+        m_tree = std::make_unique<ScenarioTree<DEFAULT_FPX>>("../../data/");
+        m_data = std::make_unique<ProblemData<DEFAULT_FPX>>(*m_tree);
     };
 
     virtual ~ProblemDataTest() {}

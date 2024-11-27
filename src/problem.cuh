@@ -31,7 +31,6 @@ TEMPLATE_WITH_TYPE_T
 class ProblemData {
 
 private:
-    std::ifstream &m_file;
     ScenarioTree<T> &m_tree;  ///< Previously created scenario tree of problem
     size_t m_numStates = 0;  ///< Total number system states
     size_t m_numInputs = 0;  ///< Total number control inputs
@@ -138,8 +137,8 @@ public:
     /**
      * Constructor from JSON file stream
      */
-    ProblemData(ScenarioTree<T> &tree, std::ifstream &file) :
-        m_tree(tree), m_file(file) {
+    ProblemData(ScenarioTree<T> &tree) : m_tree(tree) {
+        std::ifstream file(tree.path() + tree.json());
         std::string json((std::istreambuf_iterator<char>(file)),
                          std::istreambuf_iterator<char>());
         rapidjson::Document doc;
@@ -247,8 +246,6 @@ public:
     /**
      * Getters
      */
-    std::ifstream &file() { return m_file; }
-
     size_t numStates() { return m_numStates; }
 
     size_t numInputs() { return m_numInputs; }

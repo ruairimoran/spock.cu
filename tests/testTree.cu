@@ -15,8 +15,7 @@ protected:
     std::vector<size_t> m_intNumStages;
 
     MarkovTreeTest() {
-        std::ifstream tree_data("../../tests/testTreeData.json");
-        m_mockTree = std::make_unique<ScenarioTree<DEFAULT_FPX>>(tree_data);
+        m_mockTree = std::make_unique<ScenarioTree<DEFAULT_FPX>>("../../data/");
         m_numNonleafNodes = m_mockTree->numNonleafNodes();
         m_numNodes = m_mockTree->numNodes();
         m_numStages = m_mockTree->numStages();

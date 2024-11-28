@@ -82,61 +82,45 @@ public:
         m_numNodes = doc["numNodes"].GetInt();
         m_numStages = doc["numStages"].GetInt();
 
-        /* Allocate memory on host for JSON data */
-        std::vector<size_t> hostStages(m_numNodes);
-        std::vector<T> hostProbabilities(m_numNodes);
-        std::vector<T> hostConditionalProbabilities(m_numNodes);
-        std::vector<size_t> hostEvents(m_numNodes);
+        /* Read tensors onto device */
+        // Note that ancestors[0] and events[0] will be max(size_t) on device because they are -1 on host
+        m_d_stages = std::make_unique<DTensor<size_t>>(
+            DTensor<size_t>::parseFromTextFile(m_pathToDataFolder + "stages", rowMajor));
+        m_d_ancestors = std::make_unique<DTensor<size_t>>(
+            DTensor<size_t>::parseFromTextFile(m_pathToDataFolder + "ancestors", rowMajor));
+        m_d_probabilities = std::make_unique<DTensor<T>>(
+            DTensor<T>::parseFromTextFile(m_pathToDataFolder + "probabilities", rowMajor));
+        m_d_conditionalProbabilities = std::make_unique<DTensor<T>>(
+            DTensor<T>::parseFromTextFile(m_pathToDataFolder + "conditionalProbabilities", rowMajor));
+        m_d_events = std::make_unique<DTensor<size_t>>(
+            DTensor<size_t>::parseFromTextFile(m_pathToDataFolder + "events", rowMajor));
+        m_d_childFrom = std::make_unique<DTensor<size_t>>(
+            DTensor<size_t>::parseFromTextFile(m_pathToDataFolder + "childrenFrom", rowMajor));
+        m_d_childTo = std::make_unique<DTensor<size_t>>(
+            DTensor<size_t>::parseFromTextFile(m_pathToDataFolder + "childrenTo", rowMajor));
+        m_d_numChildren = std::make_unique<DTensor<size_t>>(
+            DTensor<size_t>::parseFromTextFile(m_pathToDataFolder + "numChildren", rowMajor));
+        m_d_stageFrom = std::make_unique<DTensor<size_t>>(
+            DTensor<size_t>::parseFromTextFile(m_pathToDataFolder + "stageFrom", rowMajor));
+        m_d_stageTo = std::make_unique<DTensor<size_t>>(
+            DTensor<size_t>::parseFromTextFile(m_pathToDataFolder + "stageTo", rowMajor));
+
+        /* Allocate memory on host for data */
+        m_ancestors = std::vector<size_t>(m_numNodes);
         m_childFrom = std::vector<size_t>(m_numNonleafNodes);
         m_childTo = std::vector<size_t>(m_numNonleafNodes);
         m_numChildren = std::vector<size_t>(m_numNonleafNodes);
         m_stageFrom = std::vector<size_t>(m_numStages);
         m_stageTo = std::vector<size_t>(m_numStages);
         m_maxCh = std::vector<size_t>(m_numStages);
-        m_ancestors = std::vector<size_t>(m_numNodes);
 
-        /* Allocate memory on device */
-        m_d_stages = std::make_unique<DTensor<size_t>>(m_numNodes);
-        m_d_ancestors = std::make_unique<DTensor<size_t>>(m_numNodes);
-        m_d_probabilities = std::make_unique<DTensor<T>>(m_numNodes);
-        m_d_conditionalProbabilities = std::make_unique<DTensor<T>>(m_numNodes);
-        m_d_events = std::make_unique<DTensor<size_t>>(m_numNodes);
-        m_d_childFrom = std::make_unique<DTensor<size_t>>(m_numNonleafNodes);
-        m_d_childTo = std::make_unique<DTensor<size_t>>(m_numNonleafNodes);
-        m_d_numChildren = std::make_unique<DTensor<size_t>>(m_numNonleafNodes);
-        m_d_stageFrom = std::make_unique<DTensor<size_t>>(m_numStages);
-        m_d_stageTo = std::make_unique<DTensor<size_t>>(m_numStages);
-
-        /* Store array data from JSON in host memory */
-        ///< Note that ancestors[0] and events[0] will be max(size_t) on device because they are -1 on host
-        for (rapidjson::SizeType i = 0; i < m_numNodes; i++) {
-            if (i < m_numNonleafNodes) {
-                m_childFrom[i] = doc["childrenFrom"][i].GetInt();
-                m_childTo[i] = doc["childrenTo"][i].GetInt();
-                m_numChildren[i] = doc["numChildren"][i].GetInt();
-            }
-            hostStages[i] = doc["stages"][i].GetInt();
-            m_ancestors[i] = doc["ancestors"][i].GetInt();
-            hostProbabilities[i] = doc["probabilities"][i].GetDouble();
-            hostConditionalProbabilities[i] = doc["conditionalProbabilities"][i].GetDouble();
-            hostEvents[i] = doc["events"][i].GetInt();
-        }
-        for (rapidjson::SizeType i = 0; i < m_numStages; i++) {
-            m_stageFrom[i] = doc["stageFrom"][i].GetInt();
-            m_stageTo[i] = doc["stageTo"][i].GetInt();
-        }
-
-        /* Transfer JSON array data to device */
-        m_d_stages->upload(hostStages);
-        m_d_ancestors->upload(m_ancestors);
-        m_d_probabilities->upload(hostProbabilities);
-        m_d_conditionalProbabilities->upload(hostConditionalProbabilities);
-        m_d_events->upload(hostEvents);
-        m_d_childFrom->upload(m_childFrom);
-        m_d_childTo->upload(m_childTo);
-        m_d_numChildren->upload(m_numChildren);
-        m_d_stageFrom->upload(m_stageFrom);
-        m_d_stageTo->upload(m_stageTo);
+        /* Download data to host */
+        m_d_ancestors->download(m_ancestors);
+        m_d_childFrom->download(m_childFrom);
+        m_d_childTo->download(m_childTo);
+        m_d_numChildren->download(m_numChildren);
+        m_d_stageFrom->download(m_stageFrom);
+        m_d_stageTo->download(m_stageTo);
 
         /* Update remaining fields */
         for (size_t stage = 0; stage < m_numStages - 1; stage++) {

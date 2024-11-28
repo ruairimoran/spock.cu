@@ -7,75 +7,6 @@
 #include <chrono>
 
 
-TEMPLATE_WITH_TYPE_T
-__global__ void k_setToZero(T *, size_t);
-
-TEMPLATE_WITH_TYPE_T
-__global__ void k_memCpyNode2Node(T *, T *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
-
-TEMPLATE_WITH_TYPE_T
-__global__ void k_memCpyAnc2Node(T *, T *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t *);
-
-TEMPLATE_WITH_TYPE_T
-__global__ void k_memCpyLeaf2ZeroLeaf(T *, T *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
-
-TEMPLATE_WITH_TYPE_T
-__global__ void k_memCpyZeroLeaf2Leaf(T *, T *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
-
-TEMPLATE_WITH_TYPE_T
-__global__ void k_memCpyCh2Node(T *, T *, size_t, size_t, size_t, size_t, size_t *, size_t *, bool);
-
-/**
- * Memory copy mode for trees
- */
-enum MemCpyMode {
-    node2Node,  ///< transfer node data to same node index
-    anc2Node,  ///< transfer ancestor data to node index
-    leaf2ZeroLeaf,  ///< transfer leaf data to zero-indexed leaf nodes
-    zeroLeaf2Leaf,  ///< transfer zero-indexed leaf data to leaf nodes
-    defaultMode = node2Node
-};
-
-TEMPLATE_WITH_TYPE_T
-void memCpy(DTensor<T> *dst, DTensor<T> *src,
-            size_t nodeFrom, size_t nodeTo, size_t numEl,
-            size_t elFromDst = 0, size_t elFromSrc = 0,
-            MemCpyMode mode = MemCpyMode::defaultMode,
-            DTensor<size_t> *ancestors = nullptr,
-            DTensor<size_t> *chFrom = nullptr, DTensor<size_t> *chTo = nullptr) {
-    size_t nodeSizeDst = dst->numRows();
-    size_t nodeSizeSrc = src->numRows();
-    if (dst->numCols() != 1 || src->numCols() != 1) throw std::invalid_argument("[memCpy] numCols must be 1.");
-    if (std::max(nodeSizeDst, nodeSizeSrc) > TPB) throw std::invalid_argument("[memCpy] Node data too large.");
-    if (mode == anc2Node && nodeFrom < 1) throw std::invalid_argument("[memCpy] Root node has no ancestor.");
-    size_t nBlocks = nodeTo + 1;
-    if (mode == node2Node) {
-        k_memCpyNode2Node<<<nBlocks, TPB>>>(dst->raw(), src->raw(), nodeFrom, nodeTo, numEl, nodeSizeDst, nodeSizeSrc,
-                                            elFromDst, elFromSrc);
-    }
-    if (mode == anc2Node) {
-        k_memCpyAnc2Node<<<nBlocks, TPB>>>(dst->raw(), src->raw(), nodeFrom, nodeTo, numEl, nodeSizeDst, nodeSizeSrc,
-                                           elFromDst, elFromSrc, ancestors->raw());
-    }
-    /**
-     * For leaf transfers, you must transfer all leaf nodes! So `nodeFrom` == numNonleafNodes.
-     * The `nodeFrom/To` requires the actual node numbers (not zero-indexed).
-     */
-    if (mode == leaf2ZeroLeaf) {
-        k_memCpyLeaf2ZeroLeaf<<<nBlocks, TPB>>>(dst->raw(), src->raw(), nodeFrom, nodeTo, numEl, nodeSizeDst,
-                                                nodeSizeSrc, elFromDst, elFromSrc);
-    }
-    if (mode == zeroLeaf2Leaf) {
-        k_memCpyZeroLeaf2Leaf<<<nBlocks, TPB>>>(dst->raw(), src->raw(), nodeFrom, nodeTo, numEl, nodeSizeDst,
-                                                nodeSizeSrc, elFromDst, elFromSrc);
-    }
-}
-
-static void constraintNotSupported() {
-    throw std::invalid_argument("Constraint not supported.");
-}
-
-
 /**
  * Linear operator 'L' and its adjoint
  */
@@ -139,16 +70,9 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
     /* II */
     DTensor<T> sNonleaf(s, m_matAxis, 0, m_numNonleafNodesMinusOne);
     sNonleaf.deviceCopyTo(ii);
-    ii.addAB(m_data.bTr(), y, -1., 1.);
+    ii.addAB(m_data.risk()->bTr(), y, -1., 1.);
     /* III */
-    if (m_data.nonleafConstraint()[0]->isNone()) {
-        /* Do nothing */
-    } else if (m_data.nonleafConstraint()[0]->isRectangle()) {
-        memCpy(&iii, &x, 0, m_numNonleafNodesMinusOne, m_data.numStates());
-        memCpy(&iii, &u, 0, m_numNonleafNodesMinusOne, m_data.numInputs(), m_data.numStates());
-    } else if (m_data.nonleafConstraint()[0]->isBall()) {
-        /* TODO! Pre-multiply xuNonleaf by Gamma_{xu} */
-    } else { constraintNotSupported(); }
+    m_data.nonleafConstraint()->op(iii, x, m_numNonleafNodesMinusOne, m_data.numStates(), u, m_data.numInputs());
     /* IV:1 */
     memCpy(m_d_xNonleafWorkspace.get(), &x, 1, m_numNodesMinusOne, m_data.numStates(), 0, 0,
            anc2Node, &m_tree.d_ancestors());
@@ -170,13 +94,7 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
     memCpy(&iv, &t, 1, m_numNodesMinusOne, 1, m_data.numStatesAndInputs() + 1);
     /* V */
     DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_numNodesMinusOne);
-    if (m_data.leafConstraint()[0]->isNone()) {
-        /* Do nothing */
-    } else if (m_data.leafConstraint()[0]->isRectangle()) {
-        xLeaf.deviceCopyTo(v);
-    } else if (m_data.leafConstraint()[0]->isBall()) {
-        /* TODO! Pre-multiply xLeaf by Gamma_{xN} */
-    } else { constraintNotSupported(); }
+    m_data.leafConstraint()->op(v, xLeaf, m_numLeafNodesMinusOne, m_data.numStates());
     /* VI:1 */
     m_d_xLeafWorkspace->addAB(m_data.sqrtStateWeightLeaf(), xLeaf);
     /* VI:2,3 */
@@ -199,18 +117,9 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     ii.deviceCopyTo(sNonleaf);
     /* y */
     i.deviceCopyTo(y);
-    y.addAB(m_data.b(), ii, -1., 1.);
+    y.addAB(m_data.risk()->b(), ii, -1., 1.);
     /* x (nonleaf) and u:Gamma */
-    if (m_data.nonleafConstraint()[0]->isNone()) {
-        DTensor<T> xNonleaf(x, m_matAxis, 0, m_numNonleafNodesMinusOne);
-        k_setToZero<<<numBlocks(xNonleaf.numEl(), TPB), TPB>>>(xNonleaf.raw(), xNonleaf.numEl());
-        k_setToZero<<<numBlocks(u.numEl(), TPB), TPB>>>(u.raw(), u.numEl());
-    } else if (m_data.nonleafConstraint()[0]->isRectangle()) {
-        memCpy(&x, &iii, 0, m_numNonleafNodesMinusOne, m_data.numStates());
-        memCpy(&u, &iii, 0, m_numNonleafNodesMinusOne, m_data.numInputs(), 0, m_data.numStates());
-    } else if (m_data.nonleafConstraint()[0]->isBall()) {
-        /* TODO! Pre-multiply iii by Gamma^{T}_{x} and Gamma^{T}_{u} */
-    } else { constraintNotSupported(); }
+    m_data.nonleafConstraint()->adj(iii, x, m_numNonleafNodesMinusOne, m_data.numStates(), u, m_data.numInputs());
     /* x (nonleaf) and u:Weights */
     /* -> Compute `Qiv1` at every nonroot node */
     memCpy(m_d_xNonleafWorkspace.get(), &iv, 1, m_numNodesMinusOne, m_data.numStates());
@@ -238,13 +147,7 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     t *= 0.5;
     /* x (leaf):Gamma */
     DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_numNodesMinusOne);
-    if (m_data.leafConstraint()[0]->isNone()) {
-        k_setToZero<<<numBlocks(xLeaf.numEl(), TPB), TPB>>>(xLeaf.raw(), xLeaf.numEl());
-    } else if (m_data.leafConstraint()[0]->isRectangle()) {
-        v.deviceCopyTo(xLeaf);
-    } else if (m_data.leafConstraint()[0]->isBall()) {
-        /* TODO! Pre-multiply v by Gamma^{T}_{xN} */
-    } else { constraintNotSupported(); }
+    m_data.leafConstraint()->adj(v, xLeaf, m_numLeafNodesMinusOne, m_data.numStates());
     /* x (leaf) */
     memCpy(m_d_xLeafWorkspace.get(), &vi, 0, m_numLeafNodesMinusOne, m_data.numStates());
     xLeaf.addAB(m_data.sqrtStateWeightLeaf(), *m_d_xLeafWorkspace, 1., 1.);

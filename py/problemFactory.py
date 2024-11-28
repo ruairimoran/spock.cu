@@ -138,21 +138,21 @@ class Problem:
         fh = open(output_file, "w")
         fh.write(output)
         fh.close()
-        # Generate extra lists
-        stack_state_dyn = np.vstack(self.__list_of_state_dynamics)
-        stack_input_dyn = np.vstack(self.__list_of_input_dynamics)
-        stack_AB_dyn = np.vstack(self.__list_of_state_input_dynamics)
-        stack_state_cost = np.vstack(self.__list_of_nonleaf_state_costs)
-        stack_input_cost = np.vstack(self.__list_of_nonleaf_input_costs)
-        stack_terminal_cost = np.vstack(self.__list_of_leaf_state_costs)
-        stack_sqrt_state_cost = np.vstack(self.__sqrt_nonleaf_state_costs)
-        stack_sqrt_input_cost = np.vstack(self.__sqrt_nonleaf_input_costs)
-        stack_sqrt_terminal_cost = np.vstack(self.__sqrt_leaf_state_costs)
-        stack_P = np.vstack(self.__P)
-        stack_K = np.vstack(self.__K)
-        stack_low_chol = np.vstack(self.__cholesky_lower)
-        stack_dyn_tr = np.vstack(self.__sum_of_dynamics_tr)
-        stack_APB = np.vstack(self.__At_P_B)
+        # Generate stacks
+        stack_state_dyn = np.array(self.__list_of_state_dynamics)
+        stack_input_dyn = np.array(self.__list_of_input_dynamics)
+        stack_AB_dyn = np.array(self.__list_of_state_input_dynamics)
+        stack_state_cost = np.array(self.__list_of_nonleaf_state_costs)
+        stack_input_cost = np.array(self.__list_of_nonleaf_input_costs)
+        stack_terminal_cost = np.array(self.__list_of_leaf_state_costs)
+        stack_sqrt_state_cost = np.array(self.__sqrt_nonleaf_state_costs)
+        stack_sqrt_input_cost = np.array(self.__sqrt_nonleaf_input_costs)
+        stack_sqrt_terminal_cost = np.array(self.__sqrt_leaf_state_costs)
+        stack_P = np.array(self.__P)
+        stack_K = np.array(self.__K)
+        stack_low_chol = np.array(self.__cholesky_lower)
+        stack_dyn_tr = np.array(self.__sum_of_dynamics_tr)
+        stack_APB = np.array(self.__At_P_B)
         # Create tensor dict
         tensors = {
             "stateDyn": stack_state_dyn,
@@ -171,30 +171,44 @@ class Problem:
             "APB": stack_APB
         }
         if self.__list_of_nonleaf_constraints[0].is_rectangle:
-            stack_lb = np.vstack([con.lower_bound for con in self.__list_of_nonleaf_constraints])
-            stack_ub = np.vstack([con.upper_bound for con in self.__list_of_nonleaf_constraints])
+            stack_lb = np.array([con.lower_bound for con in self.__list_of_nonleaf_constraints])
+            stack_ub = np.array([con.upper_bound for con in self.__list_of_nonleaf_constraints])
             tensors.update({
                 "nonleafConstraintLB": stack_lb,
                 "nonleafConstraintUB": stack_ub
             })
         if self.__list_of_leaf_constraints[-1].is_rectangle:
-            stack_lb = np.vstack([con.lower_bound for con in self.__list_of_leaf_constraints])
-            stack_ub = np.vstack([con.upper_bound for con in self.__list_of_leaf_constraints])
+            stack_lb = np.array([con.lower_bound for con in self.__list_of_leaf_constraints])
+            stack_ub = np.array([con.upper_bound for con in self.__list_of_leaf_constraints])
             tensors.update({
                 "leafConstraintLB": stack_lb,
                 "leafConstraintUB": stack_ub
             })
         if self.__list_of_risks[0].is_avar:
-            stack_ker_con = np.vstack(self.__kernel_constraint_matrix)
-            stack_null = np.vstack(self.__nullspace_projection_matrix)
-            stack_b = np.vstack([risk.b for risk in self.__list_of_risks])
+            stack_ker_con = np.array(self.__kernel_constraint_matrix)
+            stack_null = np.array(self.__nullspace_projection_matrix)
+            stack_b = np.array([risk.b for risk in self.__list_of_risks])
             tensors.update({
                 "S2": stack_ker_con,
                 "NNtr": stack_null,
                 "b": stack_b
             })
+        # Generate tensor files
+        for name, tensor in tensors.items():
+            path = os.path.join(os.getcwd(), self.__tree.folder)
+            os.makedirs(path, exist_ok=True)
+            output_file = os.path.join(path, name)
+            np.savetxt(output_file,
+                       X=tensor.reshape(-1),
+                       fmt='%-.15f',
+                       delimiter='\n',
+                       newline='\n',
+                       header=f"{tensor.shape[1]}\n"
+                              f"{tensor.shape[2]}\n"
+                              f"{tensor.shape[0]}",
+                       comments='')
         if self.__test:
-            tensors.update({
+            test_tensors = {
                 "dpTestStates": self.__dp_test_states,
                 "dpTestInputs": self.__dp_test_inputs,
                 "dpProjectedStates": self.__dp_projected_states,
@@ -204,21 +218,20 @@ class Problem:
                 "primAfterAdj": self.__prim_after_adj,
                 "dotVector": self.__dot_vector,
                 "dotResult": [self.__dot_result]
-            })
-        # Generate tensor files
-        for name, tensor in tensors.items():
-            path = os.path.join(os.getcwd(), self.__tree.folder)
-            os.makedirs(path, exist_ok=True)
-            output_file = os.path.join(path, name)
-            np.savetxt(output_file,
-                       X=tensor,
-                       fmt='%-.15f',
-                       delimiter='\n',
-                       newline='\n',
-                       header=f"{len(tensor)}\n"
-                              f"{1}\n"
-                              f"{1}",
-                       comments='')
+            }
+            for name, tensor in test_tensors.items():
+                path = os.path.join(os.getcwd(), self.__tree.folder)
+                os.makedirs(path, exist_ok=True)
+                output_file = os.path.join(path, name)
+                np.savetxt(output_file,
+                           X=tensor,
+                           fmt='%-.15f',
+                           delimiter='\n',
+                           newline='\n',
+                           header=f"{len(tensor)}\n"
+                                  f"{1}\n"
+                                  f"{1}",
+                           comments='')
 
     # --------------------------------------------------------
     # Cache

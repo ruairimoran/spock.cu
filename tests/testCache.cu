@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 #include "../src/cache.cuh"
-#include <fstream>
 #include <filesystem>
 #include <iostream>
 
@@ -15,12 +14,11 @@ protected:
 TEMPLATE_WITH_TYPE_T
 class CacheTestData {
 public:
-    std::string m_dataFile;
+    std::string m_path = "../../data/";
+    std::string m_file;
     std::unique_ptr<ScenarioTree<T>> m_tree;
     std::unique_ptr<ProblemData<T>> m_data;
     std::unique_ptr<Cache<T>> m_cache;
-    std::vector<T> m_dotVector;
-    T expected;
 
     /** Prepare some host and device data */
     bool m_detectInfeas = false;
@@ -31,11 +29,11 @@ public:
     bool m_allowK0 = false;
 
     CacheTestData() {
-        m_tree = std::make_unique<ScenarioTree<T>>("../../data/");
+        m_tree = std::make_unique<ScenarioTree<T>>(m_path);
         m_data = std::make_unique<ProblemData<T>>(*m_tree);
         m_cache = std::make_unique<Cache<T>>(*m_tree, *m_data, m_detectInfeas, m_tol, m_maxIters,
                                              m_maxInnerIters, m_andersonBuff, m_allowK0);
-        m_dataFile = m_tree->path() + m_tree->json();
+        m_file = m_tree->path() + m_tree->json();
     };
 
     virtual ~CacheTestData() = default;
@@ -75,36 +73,22 @@ TEST_F(CacheTest, initialisingState) {
 
 TEMPLATE_WITH_TYPE_T
 void testDynamicsProjectionOnline(CacheTestData<T> &d, T epsilon) {
-    std::ifstream problem_data(d.m_tree->path());
-    std::string json((std::istreambuf_iterator<char>(problem_data)),
-                     std::istreambuf_iterator<char>());
-    rapidjson::Document doc;
-    doc.Parse(json.c_str());
-    if (doc.HasParseError()) {
-        err << "[TestDynamicsProjectionOnline] Error parsing problem data JSON: "
-            << GetParseError_En(doc.GetParseError()) << "\n";
-        throw std::invalid_argument(err.str());
-    }
     size_t statesSize = d.m_data->numStates() * d.m_tree->numNodes();
     size_t inputsSize = d.m_data->numInputs() * d.m_tree->numNonleafNodes();
-    std::vector<T> originalStates(statesSize);
-    std::vector<T> originalInputs(inputsSize);
     std::vector<T> cvxStates(statesSize);
     std::vector<T> cvxInputs(inputsSize);
-    const char *nodeString = nullptr;
-    for (size_t i = 0; i < d.m_tree->numNodes(); i++) {
-        nodeString = std::to_string(i).c_str();
-        parseNode(i, doc["dpStates"][nodeString], originalStates);
-        parseNode(i, doc["dpProjectedStates"][nodeString], cvxStates);
-        if (i < d.m_tree->numNonleafNodes()) {
-            parseNode(i, doc["dpInputs"][nodeString], originalInputs);
-            parseNode(i, doc["dpProjectedInputs"][nodeString], cvxInputs);
-        }
-    }
-    std::vector<T> x0(originalStates.begin(), originalStates.begin() + d.m_data->numStates());
+    DTensor<T> dpStates = DTensor<T>::parseFromTextFile(d.m_path + "dpTestStates", rowMajor);
+    DTensor<T> dpInputs = DTensor<T>::parseFromTextFile(d.m_path + "dpTestInputs", rowMajor);
+    DTensor<T> dpProjectedStates = DTensor<T>::parseFromTextFile(d.m_path + "dpProjectedStates", rowMajor);
+    DTensor<T> dpProjectedInputs = DTensor<T>::parseFromTextFile(d.m_path + "dpProjectedInputs", rowMajor);
+    dpProjectedStates.download(cvxStates);
+    dpProjectedInputs.download(cvxInputs);
+    DTensor<T> d_x0(dpStates, 0, 0, d.m_data->numStates() - 1);
+    std::vector<T> x0(d.m_data->numStates());
+    d_x0.download(x0);
     d.m_cache->initialiseState(x0);
-    d.m_cache->states().upload(originalStates);
-    d.m_cache->inputs().upload(originalInputs);
+    dpStates.deviceCopyTo(d.m_cache->states());
+    dpInputs.deviceCopyTo(d.m_cache->inputs());
     d.m_cache->projectPrimalWorkspaceOnDynamics();
     /* Compare states */
     std::vector<T> spockStates(statesSize);
@@ -129,22 +113,10 @@ TEST_F(CacheTest, dynamicsProjectionOnline) {
 
 TEMPLATE_WITH_TYPE_T
 void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon) {
-    /* Parse data for testing */
-    std::ifstream problem_data(d.m_dataFile);
-    std::string json((std::istreambuf_iterator<char>(problem_data)),
-                     std::istreambuf_iterator<char>());
-    rapidjson::Document doc;
-    doc.Parse(json.c_str());
-    if (doc.HasParseError()) {
-        err << "[TestKernelProjectionOnline] Error parsing problem data JSON: "
-            << GetParseError_En(doc.GetParseError()) << "\n";
-        throw std::invalid_argument(err.str());
-    }
     /* Create random tensor data to be projected */
     T hi = 100.;
     T lo = -hi;
     size_t matAxis = 2;
-    const char *nodeString = nullptr;
     for (size_t node = 0; node < d.m_tree->numNonleafNodes(); node++) {
         size_t chFr = d.m_tree->childFrom()[node];
         size_t chTo = d.m_tree->childTo()[node];
@@ -186,15 +158,8 @@ void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon) {
         y.deviceCopyTo(projY);
         t.deviceCopyTo(projT);
         s.deviceCopyTo(projS);
-        /* Get kernel constraint matrix from parsed doc */
-        nodeString = std::to_string(node).c_str();
-        rapidjson::Value &risk = doc["risks"][nodeString];
-        rapidjson::Value &s2 = risk["S2"];
-        size_t numEl = s2.Capacity();
-        std::vector<T> s2Vec(numEl);
-        parseNode(0, s2, s2Vec);
-        size_t nR = doc["rowsS2"].GetInt();
-        DTensor<T> kerConMat(s2Vec, nR, d.m_data->nullDim(), 1, rowMajor);
+        /* Get kernel constraint matrix from file */
+        DTensor<T> kerConMat = DTensor<T>::parseFromTextFile(d.m_path + "S2", rowMajor);
         /* Compute kernel matrix * projected vector */
         DTensor<T> shouldBeZeros = kerConMat * projected;
         std::vector<T> result(shouldBeZeros.numEl());
@@ -285,22 +250,13 @@ TEST_F(CacheTest, kernelProjectionOnlineOrthogonality) {
 
 TEMPLATE_WITH_TYPE_T
 void testDotM(CacheTestData<T> &d, T epsilon) {
-    std::ifstream problemData(d.m_dataFile);
-    std::string json((std::istreambuf_iterator<char>(problemData)),
-                     std::istreambuf_iterator<char>());
-    rapidjson::Document doc;
-    doc.Parse(json.c_str());
-    if (doc.HasParseError()) {
-        err << "[testCache] Cannot parse problem data JSON file: "
-            << std::string(GetParseError_En(doc.GetParseError()));
-        throw std::invalid_argument(err.str());
-    }
-    parseVec(doc["dotVector"], d.m_dotVector);
-    d.expected = doc["dotResult"].GetDouble();
+    DTensor<T> dotVector = DTensor<T>::parseFromTextFile(d.m_path + "dotVector", rowMajor);
+    DTensor<T> dotResult = DTensor<T>::parseFromTextFile(d.m_path + "dotResult", rowMajor);
     Cache<T> &c = *d.m_cache;
-    DTensor<T> d_vec(d.m_dotVector, c.m_sizeIterate);
-    T dot = c.dotM(d_vec, d_vec);
-    EXPECT_NEAR(dot, d.expected, epsilon);
+    T dot = c.dotM(dotVector, dotVector);
+    std::vector<T> expected(1);
+    dotResult.download(expected);
+    EXPECT_NEAR(dot, expected[0], epsilon);
 }
 
 TEST_F(CacheTest, dotM) {

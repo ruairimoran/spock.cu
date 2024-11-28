@@ -105,6 +105,35 @@ class Problem:
     def risk_at_node(self, idx):
         return self.__list_of_risks[idx]
 
+    def get_file(self, name):
+        path = os.path.join(os.getcwd(), self.__tree.folder)
+        os.makedirs(path, exist_ok=True)
+        return os.path.join(path, name)
+
+    @staticmethod
+    def save_tensor(file, tensor):
+        np.savetxt(file,
+                   X=tensor.reshape(-1),
+                   fmt='%-.15f',
+                   delimiter='\n',
+                   newline='\n',
+                   header=f"{tensor.shape[1]}\n"
+                          f"{tensor.shape[2]}\n"
+                          f"{tensor.shape[0]}",
+                   comments='')
+
+    @staticmethod
+    def save_vector(file, vector):
+        np.savetxt(file,
+                   X=vector,
+                   fmt='%-.15f',
+                   delimiter='\n',
+                   newline='\n',
+                   header=f"{len(vector)}\n"
+                          f"{1}\n"
+                          f"{1}",
+                   comments='')
+
     def generate_problem_files(self):
         # Setup jinja environment
         file_loader = j2.FileSystemLoader(searchpath=["py/"])
@@ -153,6 +182,8 @@ class Problem:
         stack_low_chol = np.array(self.__cholesky_lower)
         stack_dyn_tr = np.array(self.__sum_of_dynamics_tr)
         stack_APB = np.array(self.__At_P_B)
+        stack_null = np.array(self.__nullspace_projection_matrix)
+        stack_b = np.array(self.__padded_b)
         # Create tensor dict
         tensors = {
             "stateDyn": stack_state_dyn,
@@ -168,7 +199,9 @@ class Problem:
             "K": stack_K,
             "lowChol": stack_low_chol,
             "dynTr": stack_dyn_tr,
-            "APB": stack_APB
+            "APB": stack_APB,
+            "NNtr": stack_null,
+            "b": stack_b
         }
         if self.__list_of_nonleaf_constraints[0].is_rectangle:
             stack_lb = np.array([con.lower_bound for con in self.__list_of_nonleaf_constraints])
@@ -177,38 +210,22 @@ class Problem:
                 "nonleafConstraintLB": stack_lb,
                 "nonleafConstraintUB": stack_ub
             })
-        if self.__list_of_leaf_constraints[-1].is_rectangle:
+        if self.__list_of_leaf_constraints[0].is_rectangle:
             stack_lb = np.array([con.lower_bound for con in self.__list_of_leaf_constraints])
             stack_ub = np.array([con.upper_bound for con in self.__list_of_leaf_constraints])
             tensors.update({
                 "leafConstraintLB": stack_lb,
                 "leafConstraintUB": stack_ub
             })
-        if self.__list_of_risks[0].is_avar:
-            stack_ker_con = np.array(self.__kernel_constraint_matrix)
-            stack_null = np.array(self.__nullspace_projection_matrix)
-            stack_b = np.array([risk.b for risk in self.__list_of_risks])
-            tensors.update({
-                "S2": stack_ker_con,
-                "NNtr": stack_null,
-                "b": stack_b
-            })
         # Generate tensor files
         for name, tensor in tensors.items():
-            path = os.path.join(os.getcwd(), self.__tree.folder)
-            os.makedirs(path, exist_ok=True)
-            output_file = os.path.join(path, name)
-            np.savetxt(output_file,
-                       X=tensor.reshape(-1),
-                       fmt='%-.15f',
-                       delimiter='\n',
-                       newline='\n',
-                       header=f"{tensor.shape[1]}\n"
-                              f"{tensor.shape[2]}\n"
-                              f"{tensor.shape[0]}",
-                       comments='')
+            self.save_tensor(self.get_file(name), tensor)
         if self.__test:
+            stack_ker_con = np.array(self.__kernel_constraint_matrix)
             test_tensors = {
+                "S2": stack_ker_con
+            }
+            test_vectors = {
                 "dpTestStates": self.__dp_test_states,
                 "dpTestInputs": self.__dp_test_inputs,
                 "dpProjectedStates": self.__dp_projected_states,
@@ -219,19 +236,11 @@ class Problem:
                 "dotVector": self.__dot_vector,
                 "dotResult": [self.__dot_result]
             }
+            print(self.__prim_before_op)
             for name, tensor in test_tensors.items():
-                path = os.path.join(os.getcwd(), self.__tree.folder)
-                os.makedirs(path, exist_ok=True)
-                output_file = os.path.join(path, name)
-                np.savetxt(output_file,
-                           X=tensor,
-                           fmt='%-.15f',
-                           delimiter='\n',
-                           newline='\n',
-                           header=f"{len(tensor)}\n"
-                                  f"{1}\n"
-                                  f"{1}",
-                           comments='')
+                self.save_tensor(self.get_file(name), tensor)
+            for name, vector in test_vectors.items():
+                self.save_vector(self.get_file(name), vector)
 
     # --------------------------------------------------------
     # Cache
@@ -390,11 +399,10 @@ class Problem:
         if self.__list_of_leaf_constraints[0].is_no:
             v = np.array([]).reshape(1, 0)
         elif self.__list_of_leaf_constraints[0].is_rectangle:
-            # Gamma_{x} and Gamma{u} do not change x and u
-            v = [np.zeros((num_si, 1))] * self.__tree.num_leaf_nodes
-            for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
-                idx = i - self.__tree.num_nonleaf_nodes
-                v[idx] = x[i]
+            # Gamma_{x} does not change x
+            v = [np.zeros((self.__num_states, 1))] * self.__tree.num_leaf_nodes
+            for i in range(self.__tree.num_leaf_nodes):
+                v[i] = x[i + self.__tree.num_nonleaf_nodes]
         elif self.__list_of_leaf_constraints[0].is_ball:
             pass  # TODO!
         else:
@@ -490,9 +498,8 @@ class Problem:
         if self.__list_of_leaf_constraints[0].is_no:
             pass
         elif self.__list_of_leaf_constraints[0].is_rectangle:
-            for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
-                idx = i - self.__tree.num_nonleaf_nodes
-                x[i] = v[idx]
+            for i in range(self.__tree.num_leaf_nodes):
+                x[i + self.__tree.num_nonleaf_nodes] = v[i]
         elif self.__list_of_leaf_constraints[0].is_ball:
             pass  # TODO!
         else:

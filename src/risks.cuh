@@ -19,15 +19,11 @@ class CoherentRisk {
 
 protected:
     size_t m_dim;
-    std::unique_ptr<DTensor<T>> m_d_constraintMatrix = nullptr;
     std::unique_ptr<DTensor<T>> m_d_nullspaceProjectionMatrix = nullptr;
-    std::unique_ptr<Cartesian<T>> m_K = nullptr;
     std::unique_ptr<DTensor<T>> m_d_b = nullptr;
     std::unique_ptr<DTensor<T>> m_d_bTr = nullptr;
 
     explicit CoherentRisk(std::string path) {
-        m_d_constraintMatrix = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromTextFile(path + "S2", rowMajor));
         m_d_nullspaceProjectionMatrix = std::make_unique<DTensor<T>>(
             DTensor<T>::parseFromTextFile(path + "NNtr", rowMajor));
         m_d_b = std::make_unique<DTensor<T>>(
@@ -51,8 +47,6 @@ public:
     virtual ~CoherentRisk() {}
 
     virtual size_t dimension() { return m_dim; }
-
-    virtual DTensor<T> &constraintMatrix() { return *m_d_constraintMatrix; }
 
     virtual DTensor<T> &nullspaceProj() { return *m_d_nullspaceProjectionMatrix; }
 

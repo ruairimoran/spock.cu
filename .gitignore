@@ -1,5 +1,5 @@
 # Custom
-*.json
+data/
 .vscode
 venv*
 __pycache__

@@ -15,14 +15,12 @@
 int main() {
     /** SCENARIO TREE */
     std::cout << "Reading tree file...\n";
-    std::ifstream fileTree("json/treeData.json");
-    ScenarioTree<T> tree(fileTree);
+    ScenarioTree<T> tree;
 //  	std::cout << tree;
 
     /** PROBLEM DATA */
     std::cout << "Reading problem file...\n";
-    std::ifstream fileProblem("json/problemData.json");
-    ProblemData<T> problem(tree, fileProblem);
+    ProblemData<T> problem(tree);
 //  	std::cout << problem;
 
     /** CACHE */
@@ -51,7 +49,7 @@ int main() {
 
     /** SAVE */
     std::ofstream timeScaling;
-    timeScaling.open("json/timeScaling.csv", std::ios::app);
+    timeScaling.open("misc/timeScaling.csv", std::ios::app);
     timeScaling << tree.numStages() - 1 << ", " << problem.numStates() << ", " << avg << std::endl;
     timeScaling.close();
     std::cout << "Saved (avg = " << avg << " ms)." << std::endl;

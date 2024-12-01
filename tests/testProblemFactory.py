@@ -70,7 +70,10 @@ class TestProblem(unittest.TestCase):
                 .with_markovian_dynamics(set_system, set_control)
                 .with_nonleaf_cost(nonleaf_state_weight, control_weight)
                 .with_leaf_cost(leaf_state_weight)
+                .with_nonleaf_constraint(state_input_constraint)
+                .with_leaf_constraint(leaf_state_constraint)
                 .with_risk(risks)
+                .with_tests()
             ).generate_problem()
 
             TestProblem.__problem_from_markov_with_markov = (
@@ -81,6 +84,7 @@ class TestProblem(unittest.TestCase):
                 .with_nonleaf_constraint(state_input_constraint)
                 .with_leaf_constraint(leaf_state_constraint)
                 .with_risk(risks)
+                .with_tests()
             ).generate_problem()
 
     @classmethod
@@ -121,9 +125,9 @@ class TestProblem(unittest.TestCase):
         problem = TestProblem.__problem_from_markov_with_markov
         for i in range(tree.num_nodes):
             if i < tree.num_nonleaf_nodes:
-                self.assertTrue(problem.nonleaf_constraint_at_node(i) is not None)
+                self.assertTrue(problem.constraint_at_node(i) is not None)
             if i < tree.num_leaf_nodes:
-                self.assertTrue(problem.leaf_constraint_at_node(i) is not None)
+                self.assertTrue(problem.constraint_at_node(i) is not None)
 
     def test_risks_list(self):
         tree = TestProblem.__tree_from_markov

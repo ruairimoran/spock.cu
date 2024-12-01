@@ -168,12 +168,8 @@ class Problem:
         fh.write(output)
         fh.close()
         # Generate stacks
-        stack_state_dyn = np.array(self.__list_of_state_dynamics)
-        stack_input_dyn = np.array(self.__list_of_input_dynamics)
+        stack_input_dyn_tr = np.array([a.T for a in self.__list_of_input_dynamics])
         stack_AB_dyn = np.array(self.__list_of_state_input_dynamics)
-        stack_state_cost = np.array(self.__list_of_nonleaf_state_costs)
-        stack_input_cost = np.array(self.__list_of_nonleaf_input_costs)
-        stack_terminal_cost = np.array(self.__list_of_leaf_state_costs)
         stack_sqrt_state_cost = np.array(self.__sqrt_nonleaf_state_costs)
         stack_sqrt_input_cost = np.array(self.__sqrt_nonleaf_input_costs)
         stack_sqrt_terminal_cost = np.array(self.__sqrt_leaf_state_costs)
@@ -186,12 +182,8 @@ class Problem:
         stack_b = np.array(self.__padded_b)
         # Create tensor dict
         tensors = {
-            "stateDyn": stack_state_dyn,
-            "inputDyn": stack_input_dyn,
+            "inputDynTr": stack_input_dyn_tr,
             "AB_dyn": stack_AB_dyn,
-            "stateCost": stack_state_cost,
-            "inputCost": stack_input_cost,
-            "terminalCost": stack_terminal_cost,
             "sqrtStateCost": stack_sqrt_state_cost,
             "sqrtInputCost": stack_sqrt_input_cost,
             "sqrtTerminalCost": stack_sqrt_terminal_cost,

@@ -26,14 +26,9 @@ private:
     size_t m_numY = 0;  ///< Size of primal vector 'y'
     T m_stepSize = 0;  ///< Step size of CP operator T
     T m_stepSizeRecip = 0;  ///< Reciprocal of step size of CP operator T
-    std::unique_ptr<DTensor<T>> m_d_alpha = nullptr;  ///< Step size of CP operator T
-    std::unique_ptr<DTensor<T>> m_d_stateDynamics = nullptr;  ///< Ptr to
-    std::unique_ptr<DTensor<T>> m_d_inputDynamics = nullptr;  ///< Ptr to
+    std::unique_ptr<DTensor<T>> m_d_stepSize = nullptr;  ///< Step size of CP operator T
     std::unique_ptr<DTensor<T>> m_d_inputDynamicsTr = nullptr;  ///< Ptr to
     std::unique_ptr<DTensor<T>> m_d_stateInputDynamics = nullptr;  ///< Ptr to
-    std::unique_ptr<DTensor<T>> m_d_stateWeight = nullptr;  ///< Ptr to
-    std::unique_ptr<DTensor<T>> m_d_inputWeight = nullptr;  ///< Ptr to
-    std::unique_ptr<DTensor<T>> m_d_stateWeightLeaf = nullptr;  ///< Ptr to
     std::unique_ptr<DTensor<T>> m_d_sqrtStateWeight = nullptr;
     std::unique_ptr<DTensor<T>> m_d_sqrtInputWeight = nullptr;
     std::unique_ptr<DTensor<T>> m_d_sqrtStateWeightLeaf = nullptr;
@@ -50,7 +45,6 @@ private:
     std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>> m_choleskyBatch;
     std::vector<std::unique_ptr<DTensor<T>>> m_choleskyStage;
     /* Kernel projection */
-    size_t m_s2Rows = 0;  ///< Number of rows of S2
     size_t m_nullDim = 0;  ///<
     std::unique_ptr<DTensor<T>> m_d_nullspaceProj = nullptr;
     std::unique_ptr<DTensor<T>> m_d_constraintMatrix = nullptr;
@@ -89,19 +83,9 @@ private:
     std::ostream &print(std::ostream &out) const {
         out << "Number of states: " << m_numStates << "\n";
         out << "Number of inputs: " << m_numInputs << "\n";
-        printIfTensor(out, "State dynamics (from device): ", m_d_stateDynamics);
-        printIfTensor(out, "Input dynamics (from device): ", m_d_inputDynamics);
-        printIfTensor(out, "State weight (from device): ", m_d_stateWeight);
-        printIfTensor(out, "Input weight (from device): ", m_d_inputWeight);
-        printIfTensor(out, "Terminal state weight (from device): ", m_d_stateWeightLeaf);
         out << "Nonleaf constraint: " << m_nonleafConstraint << "\n";
         out << "Leaf constraint: " << m_leafConstraint << "\n";
         out << "Risk: " << m_risk << "\n";
-        printIfTensor(out, "Lower Cholesky (from device): ", m_d_lowerCholesky);
-        printIfTensor(out, "K (from device): ", m_d_K);
-        printIfTensor(out, "A + BK (from device): ", m_d_dynamicsSumTr);
-        printIfTensor(out, "P (from device): ", m_d_P);
-        printIfTensor(out, "Nullspace projection matrix (from device): ", m_d_nullspaceProj);
         return out;
     }
 
@@ -124,26 +108,17 @@ public:
         m_numStates = doc["numStates"].GetInt();
         m_numInputs = doc["numInputs"].GetInt();
         m_numStatesAndInputs = m_numStates + m_numInputs;
-        m_s2Rows = doc["rowsS2"].GetInt();
         m_nullDim = doc["rowsNNtr"].GetInt();
         m_numY = m_nullDim - (m_tree.numEvents() * 2);
         m_stepSize = doc["stepSize"].GetDouble();
         m_stepSizeRecip = 1. / m_stepSize;
 
         /* Allocate memory on device */
-        m_d_alpha = std::make_unique<DTensor<T>>(1, 1, 1, true);
-        m_d_stateDynamics = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromTextFile(m_tree.path() + "stateDyn", rowMajor));
-        m_d_inputDynamics = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromTextFile(m_tree.path() + "inputDyn", rowMajor));
+        m_d_stepSize = std::make_unique<DTensor<T>>(std::vector(1, m_stepSize), 1);
+        m_d_inputDynamicsTr = std::make_unique<DTensor<T>>(
+            DTensor<T>::parseFromTextFile(m_tree.path() + "inputDynTr", rowMajor));
         m_d_stateInputDynamics = std::make_unique<DTensor<T>>(
             DTensor<T>::parseFromTextFile(m_tree.path() + "AB_dyn", rowMajor));
-        m_d_stateWeight = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromTextFile(m_tree.path() + "stateCost", rowMajor));
-        m_d_inputWeight = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromTextFile(m_tree.path() + "inputCost", rowMajor));
-        m_d_stateWeightLeaf = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromTextFile(m_tree.path() + "terminalCost", rowMajor));
         m_d_sqrtStateWeight = std::make_unique<DTensor<T>>(
             DTensor<T>::parseFromTextFile(m_tree.path() + "sqrtStateCost", rowMajor));
         m_d_sqrtInputWeight = std::make_unique<DTensor<T>>(
@@ -160,7 +135,6 @@ public:
             DTensor<T>::parseFromTextFile(m_tree.path() + "P", rowMajor));
         m_d_APB = std::make_unique<DTensor<T>>(
             DTensor<T>::parseFromTextFile(m_tree.path() + "APB", rowMajor));
-        m_d_inputDynamicsTr = std::make_unique<DTensor<T>>(m_numInputs, m_numStates, m_tree.numNodes(), true);
         m_d_KTr = std::make_unique<DTensor<T>>(m_numStates, m_numInputs, m_tree.numNonleafNodes(), true);
         m_d_bTr = std::make_unique<DTensor<T>>(1, m_numY, m_tree.numNonleafNodes(), true);
 
@@ -178,9 +152,6 @@ public:
         }
 
         /* Update remaining fields */
-        m_d_alpha->upload(std::vector{m_stepSize});
-        DTensor<T> BTr = m_d_inputDynamics->tr();
-        BTr.deviceCopyTo(*m_d_inputDynamicsTr);
         DTensor<T> KTr = m_d_K->tr();
         KTr.deviceCopyTo(*m_d_KTr);
     }
@@ -203,27 +174,15 @@ public:
 
     T stepSizeRecip() { return m_stepSizeRecip; }
 
-    size_t numS2Rows() { return m_s2Rows; }
-
     size_t nullDim() { return m_nullDim; }
 
     size_t yDim() { return m_numY; }
 
-    DTensor<T> &d_stepSize() { return *m_d_alpha; }
-
-    DTensor<T> &stateDynamics() { return *m_d_stateDynamics; }
-
-    DTensor<T> &inputDynamics() { return *m_d_inputDynamics; }
+    DTensor<T> &d_stepSize() { return *m_d_stepSize; }
 
     DTensor<T> &inputDynamicsTr() { return *m_d_inputDynamicsTr; }
 
     DTensor<T> &stateInputDynamics() { return *m_d_stateInputDynamics; }
-
-    DTensor<T> &stateWeight() { return *m_d_stateWeight; }
-
-    DTensor<T> &inputWeight() { return *m_d_inputWeight; }
-
-    DTensor<T> &stateWeightLeaf() { return *m_d_stateWeightLeaf; }
 
     DTensor<T> &sqrtStateWeight() { return *m_d_sqrtStateWeight; }
 

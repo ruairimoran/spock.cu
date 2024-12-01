@@ -29,7 +29,6 @@ private:
     std::vector<size_t> m_stageFrom;
     std::vector<size_t> m_stageTo;
     std::vector<size_t> m_maxCh;  ///< Max number of children of any node of stage at index
-    std::vector<size_t> m_ancestors;
     /* Device data */
     std::unique_ptr<DTensor<size_t>> m_d_stages = nullptr;  ///< Ptr to stage of node at index
     std::unique_ptr<DTensor<size_t>> m_d_ancestors = nullptr;  ///< Ptr to ancestor of node at index
@@ -106,7 +105,6 @@ public:
             DTensor<size_t>::parseFromTextFile(m_pathToDataFolder + "stageTo", rowMajor));
 
         /* Allocate memory on host for data */
-        m_ancestors = std::vector<size_t>(m_numNodes);
         m_childFrom = std::vector<size_t>(m_numNonleafNodes);
         m_childTo = std::vector<size_t>(m_numNonleafNodes);
         m_numChildren = std::vector<size_t>(m_numNonleafNodes);
@@ -115,7 +113,6 @@ public:
         m_maxCh = std::vector<size_t>(m_numStages);
 
         /* Download data to host */
-        m_d_ancestors->download(m_ancestors);
         m_d_childFrom->download(m_childFrom);
         m_d_childTo->download(m_childTo);
         m_d_numChildren->download(m_numChildren);
@@ -165,8 +162,6 @@ public:
     std::vector<size_t> &stageFrom() { return m_stageFrom; }
 
     std::vector<size_t> &stageTo() { return m_stageTo; }
-
-    std::vector<size_t> &ancestors() { return m_ancestors; }
 
     DTensor<size_t> &d_stages() { return *m_d_stages; }
 

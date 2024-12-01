@@ -16,7 +16,7 @@ __host__ __device__ size_t getIdxMat(size_t node, size_t row, size_t col, size_t
 TEMPLATE_WITH_TYPE_T
 __global__ void k_setMatToId(T *mat, size_t numRows, size_t node = 0) {
     if (blockIdx.x == threadIdx.x) {
-        size_t idx = getIdxMat(node, blockIdx.x, threadIdx.x, numRows);
+        const unsigned int idx = getIdxMat(node, blockIdx.x, threadIdx.x, numRows);
         mat[idx] = 1.0;
     }
 }
@@ -27,7 +27,7 @@ template __global__ void k_setMatToId(double *, size_t, size_t);
 
 TEMPLATE_WITH_TYPE_T
 __global__ void k_projectRectangle(size_t dimension, T *vec, T *lowerBound, T *upperBound) {
-    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < dimension) {
         int lower = (vec[i] < lowerBound[i]);
         int upper = (vec[i] > upperBound[i]);
@@ -41,7 +41,7 @@ template __global__ void k_projectRectangle(size_t, double *, double *, double *
 
 TEMPLATE_WITH_TYPE_T
 __global__ void k_maxWithZero(T *vec, size_t n) {
-    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) vec[i] = max(0., vec[i]);
 }
 
@@ -51,7 +51,7 @@ template __global__ void k_maxWithZero(double *, size_t);
 
 TEMPLATE_WITH_TYPE_T
 __global__ void k_setToZero(T *vec, size_t n) {
-    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) vec[i] = 0.;
 }
 
@@ -62,10 +62,10 @@ template __global__ void k_setToZero(double *, size_t);
 TEMPLATE_WITH_TYPE_T
 __global__ void k_shiftDiagonal(T *dst, T *src, size_t rows, size_t cols = 0) {
     if (cols == 0) cols = rows;
-    size_t r = blockIdx.x * blockDim.x + threadIdx.x;
-    size_t c = blockIdx.y * blockDim.y + threadIdx.y;
-    size_t srcIdx = c * rows + r;
-    size_t dstIdx = (c + 1) * rows + (r + 1);
+    const unsigned int r = blockIdx.x * blockDim.x + threadIdx.x;
+    const unsigned int c = blockIdx.y * blockDim.y + threadIdx.y;
+    const unsigned int srcIdx = c * rows + r;
+    const unsigned int dstIdx = (c + 1) * rows + (r + 1);
     if (r < rows - 1 && c < cols - 1) {
         dst[dstIdx] = src[srcIdx];
     }
@@ -75,9 +75,207 @@ template __global__ void k_shiftDiagonal(float *, float *, size_t, size_t);
 
 template __global__ void k_shiftDiagonal(double *, double *, size_t, size_t);
 
+/**
+ * Copy node data to other in parallel.
+ * Must be launched with <<<[>=nodeTo+1], [>=max(nodeSizeDst, nodeSizeSrc)]>>>.
+ *
+ * @param dst memory destination
+ * @param src memory source
+ * @param nodeFrom first node to copy data to
+ * @param nodeTo last node to copy data to (inclusive)
+ * @param numEl number of elements per node of data to copy
+ * @param nodeSizeDst number of elements per node in destination data
+ * @param nodeSizeSrc number of elements per node in source data
+ * @param elFromDst first element in node data to copy to (0-indexed)
+ * @param elFromSrc first element in node data to copy from (0-indexed)
+ * @param ancestors array of ancestors of each node
+ * @param chFrom array of first child of each node
+ * @param chTo array of last child of each node
+ */
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyNode2Node(T *dst, T *src,
+                                  size_t nodeFrom, size_t nodeTo, size_t numEl,
+                                  size_t nodeSizeDst, size_t nodeSizeSrc,
+                                  size_t elFromDst, size_t elFromSrc) {
+    const unsigned int element = threadIdx.x;
+    const unsigned int node = blockIdx.x;
+    if (node >= nodeFrom && node <= nodeTo) {
+        const unsigned int dstIdx = node * nodeSizeDst + elFromDst + element;
+        const unsigned int srcIdx = node * nodeSizeSrc + elFromSrc + element;
+        if (element < numEl) dst[dstIdx] = src[srcIdx];
+    }
+}
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyAnc2Node(T *dst, T *src,
+                                 size_t nodeFrom, size_t nodeTo, size_t numEl,
+                                 size_t nodeSizeDst, size_t nodeSizeSrc,
+                                 size_t elFromDst, size_t elFromSrc,
+                                 size_t *ancestors) {
+    const unsigned int element = threadIdx.x;
+    const unsigned int node = blockIdx.x;
+    if (node >= nodeFrom && node <= nodeTo) {
+        const unsigned int dstIdx = node * nodeSizeDst + elFromDst + element;
+        const unsigned int srcIdx = ancestors[node] * nodeSizeSrc + elFromSrc + element;
+        if (element < numEl) dst[dstIdx] = src[srcIdx];
+    }
+}
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyLeaf2ZeroLeaf(T *dst, T *src,
+                                      size_t nodeFrom, size_t nodeTo, size_t numEl,
+                                      size_t nodeSizeDst, size_t nodeSizeSrc,
+                                      size_t elFromDst, size_t elFromSrc) {
+    const unsigned int element = threadIdx.x;
+    const unsigned int node = blockIdx.x;
+    if (node >= nodeFrom && node <= nodeTo) {
+        const unsigned int dstIdx = (node - nodeFrom) * nodeSizeDst + elFromDst + element;
+        const unsigned int srcIdx = node * nodeSizeSrc + elFromSrc + element;
+        if (element < numEl) dst[dstIdx] = src[srcIdx];
+    }
+}
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyZeroLeaf2Leaf(T *dst, T *src,
+                                      size_t nodeFrom, size_t nodeTo, size_t numEl,
+                                      size_t nodeSizeDst, size_t nodeSizeSrc,
+                                      size_t elFromDst, size_t elFromSrc) {
+    const unsigned int element = threadIdx.x;
+    const unsigned int node = blockIdx.x;
+    if (node >= nodeFrom && node <= nodeTo) {
+        const unsigned int dstIdx = node * nodeSizeDst + elFromDst + element;
+        const unsigned int srcIdx = (node - nodeFrom) * nodeSizeSrc + elFromSrc + element;
+        if (element < numEl) dst[dstIdx] = src[srcIdx];
+    }
+}
+
+template __global__ void
+k_memCpyNode2Node(float *, float *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+
+template __global__ void
+k_memCpyNode2Node(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+
+template __global__ void
+k_memCpyAnc2Node(float *, float *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t *);
+
+template __global__ void
+k_memCpyAnc2Node(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t *);
+
+template __global__ void
+k_memCpyLeaf2ZeroLeaf(float *, float *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+
+template __global__ void
+k_memCpyLeaf2ZeroLeaf(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+
+template __global__ void
+k_memCpyZeroLeaf2Leaf(float *, float *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+
+template __global__ void
+k_memCpyZeroLeaf2Leaf(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+
+/**
+ * Copies data from a child index.
+ * Must be launched with <<<[>=nodeTo+1], [>=numEl]>>>.
+ * Caution! Dst must not be src.
+ *
+ * @param dst destination data
+ * @param src source data
+ * @param nodeFrom first node to set
+ * @param nodeTo last node to set
+ * @param numEl number of elements in node data
+ * @param chIdx index of child (0-indexed)
+ * @param chFrom first child of each node
+ * @param numCh number of children of each node
+ * @param add choose to add data instead of copy (default=false)
+ */
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyCh2Node(T *dst, T *src,
+                                size_t nodeFrom, size_t nodeTo, size_t numEl, size_t chIdx,
+                                size_t *chFrom, size_t *numCh, bool add = false) {
+    const unsigned int element = threadIdx.x;
+    const unsigned int node = blockIdx.x;
+    if (node >= nodeFrom && node <= nodeTo && chIdx < numCh[node]) {
+        const unsigned int dstIdx = node * numEl + element;
+        const unsigned int srcIdx = (chFrom[node] + chIdx) * numEl + element;
+        if (element < numEl) {
+            dst[dstIdx] = (add == true) ? dst[dstIdx] + src[srcIdx] : src[srcIdx];
+        }
+    }
+}
+
+template __global__ void
+k_memCpyCh2Node(float *, float *, size_t, size_t, size_t, size_t, size_t *, size_t *, bool);
+
+template __global__ void
+k_memCpyCh2Node(double *, double *, size_t, size_t, size_t, size_t, size_t *, size_t *, bool);
+
+/**
+ * To project onto matrices' kernels, we need to gather
+ * `vec[i] <- (y_i, t[ch(i)], s[ch(i)])` for all nonleaf nodes `i`.
+ * The `y` data can be copied by `k_memCpyNode2Node`.
+ * The `t` and `s` data can be copied by this kernel.
+ * Must be launched with <<<numBlocks(numNodes, TPB), TPB>>>.
+ *
+ * @param dst vec tensor [m,1,k]
+ * @param src `t` or `s` data
+ * @param numNodes total number of nodes of tree
+ * @param sizeDst size m of vec
+ * @param elFrom first element in vec to start copying into
+ * @param ancestors ancestor of each node
+ * @param chFrom first child of each node
+ */
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyInTS(T *dst, T *src, size_t numNodes, size_t sizeDst, size_t elFrom,
+                             size_t *ancestors, size_t *chFrom) {
+    const unsigned int child = blockIdx.x * blockDim.x + threadIdx.x;
+    if (child > 0 && child < numNodes) {
+        const unsigned int anc = ancestors[child];
+        const unsigned int dstIdx = anc * sizeDst + elFrom + child - chFrom[anc];
+        dst[dstIdx] = src[child];
+    }
+}
+
+template __global__ void
+k_memCpyInTS(float *, float *, size_t, size_t, size_t, size_t *, size_t *);
+
+template __global__ void
+k_memCpyInTS(double *, double *, size_t, size_t, size_t, size_t *, size_t *);
+
+/**
+ * After projection onto matrices' kernels, we need to disperse
+ * `(y_i, t[ch(i)], s[ch(i)]) <- vec[i]` for all nonleaf nodes `i`.
+ * The `y` data can be copied by `k_memCpyNode2Node`.
+ * The `t` or `s` data can be copied by this kernel.
+ * Must be launched with <<<numBlocks(numNodes, TPB), TPB>>>.
+ *
+ * @param dst `t` or `s` data
+ * @param src vec tensor [m,1,k]
+ * @param numNodes total number of nodes of tree
+ * @param sizeDst size m of vec
+ * @param elFrom first element in vec to start copying from
+ * @param ancestors ancestor of each node
+ * @param chFrom first child of each node
+ */
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyOutTS(T *dst, T *src, size_t numNodes, size_t sizeSrc, size_t elFrom,
+                              size_t *ancestors, size_t *chFrom) {
+    const unsigned int child = blockIdx.x * blockDim.x + threadIdx.x;
+    if (child > 0 && child < numNodes) {
+        const unsigned int anc = ancestors[child];
+        const unsigned int srcIdx = anc * sizeSrc + elFrom + child - chFrom[anc];
+        dst[child] = src[srcIdx];
+    }
+}
+
+template __global__ void
+k_memCpyOutTS(float *, float *, size_t, size_t, size_t, size_t *, size_t *);
+
+template __global__ void
+k_memCpyOutTS(double *, double *, size_t, size_t, size_t, size_t *, size_t *);
+
 TEMPLATE_WITH_TYPE_T
 __global__ void k_projectOnSoc(T *vec, size_t n, T nrm, T scaling) {
-    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n - 1) vec[i] *= scaling;
     if (i == n - 1) vec[i] = scaling * nrm;
 }

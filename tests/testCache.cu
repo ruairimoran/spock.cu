@@ -311,3 +311,63 @@ TEST_F(CacheTest, dotM) {
     CacheTestData<double> dd;
     testDotM<double>(dd, TEST_PRECISION_HIGH);
 }
+
+/* ---------------------------------------
+ * Data transfer T/S in
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void testMemCpyInTS(CacheTestData<T> &d) {
+    size_t nR = 9, nC = 1, nM = 8;
+    size_t dstStart = 6;
+    DTensor<T> src = DTensor<T>::createRandomTensor(1, nC, nM, -10, 10);
+    DTensor<T> dst(nR, nC, nM, true);
+    std::vector<size_t> anc = {0, 0, 0, 1, 1, 2, 2, 2};
+    DTensor<size_t> d_anc(anc, nM);
+    std::vector<size_t> chFrom = {1, 3, 5};
+    DTensor<size_t> d_chFrom(chFrom, 3);
+    k_memCpyInTS<<<numBlocks(nM, TPB), TPB>>>(dst.raw(), src.raw(), nM, nR, dstStart, d_anc.raw(), d_chFrom.raw());
+    std::vector<size_t> numCh = {2, 2, 3};
+    for (size_t mat = 1; mat < nM; mat++) {
+        size_t anc_ = anc[mat];
+        size_t idx = mat - chFrom[anc_];
+        EXPECT_EQ(src(0, 0, mat), dst(dstStart+idx, 0, anc_));
+    }
+}
+
+TEST_F(CacheTest, memCpyInTS) {
+    CacheTestData<float> df;
+    testMemCpyInTS<float>(df);
+    CacheTestData<double> dd;
+    testMemCpyInTS<double>(dd);
+}
+
+/* ---------------------------------------
+ * Data transfer T/S out
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void testMemCpyOutTS(CacheTestData<T> &d) {
+    size_t nR = 9, nC = 1, nM = 8;
+    size_t srcStart = 6;
+    DTensor<T> src = DTensor<T>::createRandomTensor(nR, nC, nM, -10, 10);
+    DTensor<T> dst(1, nC, nM);
+    std::vector<size_t> anc = {0, 0, 0, 1, 1, 2, 2, 2};
+    DTensor<size_t> d_anc(anc, nM);
+    std::vector<size_t> chFrom = {1, 3, 5};
+    DTensor<size_t> d_chFrom(chFrom, 3);
+    k_memCpyOutTS<<<numBlocks(nM, TPB), TPB>>>(dst.raw(), src.raw(), nM, nR, srcStart, d_anc.raw(), d_chFrom.raw());
+    std::vector<size_t> numCh = {2, 2, 3};
+    for (size_t mat = 1; mat < nM; mat++) {
+        size_t anc_ = anc[mat];
+        size_t idx = mat - chFrom[anc_];
+        EXPECT_EQ(dst(0, 0, mat), src(srcStart+idx, 0, anc_));
+    }
+}
+
+TEST_F(CacheTest, memCpyOutTS) {
+    CacheTestData<float> df;
+    testMemCpyOutTS<float>(df);
+    CacheTestData<double> dd;
+    testMemCpyOutTS<double>(dd);
+}

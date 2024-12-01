@@ -2,14 +2,18 @@
 #define CACHE_CUH
 
 #include "../include/gpu.cuh"
-#include "tree.cuh"
-#include "problem.cuh"
 #include "cones.cuh"
 #include "risks.cuh"
 #include "operator.cuh"
 #include "projections.cuh"
 #include <chrono>
 
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyInTS(T *, T *, size_t, size_t, size_t, size_t *, size_t *);
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyOutTS(T *, T *, size_t, size_t, size_t, size_t *, size_t *);
 
 TEMPLATE_WITH_TYPE_T
 static void parseVec(const rapidjson::Value &value, std::vector<T> &vec) {
@@ -391,7 +395,8 @@ void Cache<T>::reshape() {
     m_d_iteratePrevPrim = std::make_unique<DTensor<T>>(*m_d_iteratePrev, m_rowAxis, 0, m_sizePrim - 1);
     m_d_iteratePrevDual = std::make_unique<DTensor<T>>(*m_d_iteratePrev, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
     m_d_iterateCandidatePrim = std::make_unique<DTensor<T>>(*m_d_iterateCandidate, m_rowAxis, 0, m_sizePrim - 1);
-    m_d_iterateCandidateDual = std::make_unique<DTensor<T>>(*m_d_iterateCandidate, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
+    m_d_iterateCandidateDual = std::make_unique<DTensor<T>>(*m_d_iterateCandidate, m_rowAxis, m_sizePrim,
+                                                            m_sizeIterate - 1);
     m_d_residualPrim = std::make_unique<DTensor<T>>(*m_d_residual, m_rowAxis, 0, m_sizePrim - 1);
     m_d_residualDual = std::make_unique<DTensor<T>>(*m_d_residual, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
     m_d_workDotPrim = std::make_unique<DTensor<T>>(*m_d_workDot, m_rowAxis, 0, m_sizePrim - 1);
@@ -399,7 +404,8 @@ void Cache<T>::reshape() {
     m_d_deltaIteratePrim = std::make_unique<DTensor<T>>(*m_d_deltaIterate, m_rowAxis, 0, m_sizePrim - 1);
     m_d_deltaIterateDual = std::make_unique<DTensor<T>>(*m_d_deltaIterate, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
     m_d_ellDeltaIteratePrim = std::make_unique<DTensor<T>>(*m_d_ellDeltaIterate, m_rowAxis, 0, m_sizePrim - 1);
-    m_d_ellDeltaIterateDual = std::make_unique<DTensor<T>>(*m_d_ellDeltaIterate, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
+    m_d_ellDeltaIterateDual = std::make_unique<DTensor<T>>(*m_d_ellDeltaIterate, m_rowAxis, m_sizePrim,
+                                                           m_sizeIterate - 1);
     m_d_andIterateMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 0, m_andSize - 2);
     m_d_andIterateMatrixRight = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 1, m_andSize - 1);
     m_d_andIterateMatrixCol0 = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 0, 0);
@@ -598,28 +604,15 @@ void Cache<T>::projectPrimalWorkspaceOnDynamics() {
         DTensor<T> q_ChStage(*m_d_q, m_matAxis, chStageFr, chStageTo);
         DTensor<T> Bq_ChStage(*m_d_workU, m_matAxis, chStageFr, chStageTo);
         Bq_ChStage.addAB(Btr_ChStage, q_ChStage);
-        /* Copy into `d` the first child `Bq` of each node (every nonleaf node has at least one child) */
-        for (size_t node = stageFr; node <= stageTo; node++) {
-            size_t ch = m_tree.childFrom()[node];
-            DTensor<T> Bq_ChNode(*m_d_workU, m_matAxis, ch, ch);
-            DTensor<T> Bq_Node(*m_d_d, m_matAxis, node, node);
-            Bq_ChNode.deviceCopyTo(Bq_Node);
-        }
-        /* Add to `d` remaining child `Bq` of each node (zeros added if child does not exist) */
-        DTensor<T> d_Stage(*m_d_d, m_matAxis, stageFr, stageTo);
-        for (size_t chIdx = 1; chIdx < maxCh; chIdx++) {  // Index of child of every node at current stage
-            for (size_t node = stageFr; node <= stageTo; node++) {
-                size_t ch = m_tree.childFrom()[node] + chIdx;
-                if (ch <= m_tree.childTo()[node]) {  // If more children exist, copy in their `Bq_ChStage`
-                    DTensor<T> Bq_ChNode(*m_d_workU, m_matAxis, ch, ch);
-                    DTensor<T> Bq_Node(*m_d_workU, m_matAxis, node, node);
-                    Bq_ChNode.deviceCopyTo(Bq_Node);
-                }
-            }
-            DTensor<T> d_Add(*m_d_workU, m_matAxis, stageFr, stageTo);
-            d_Stage += d_Add;
+        /* Sum `Bq` children of each node into `d` at current stage */
+        for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
+            k_memCpyCh2Node<<<stageTo + 1, TPB>>>(m_d_d->raw(), m_d_workU->raw(),
+                                                  stageFr, stageTo, m_data.numInputs(), chIdx,
+                                                  m_tree.d_childFrom().raw(), m_tree.d_numChildren().raw(),
+                                                  chIdx);
         }
         /* Subtract d from u in place */
+        DTensor<T> d_Stage(*m_d_d, m_matAxis, stageFr, stageTo);
         DTensor<T> u_Stage(*m_d_u, m_matAxis, stageFr, stageTo);
         d_Stage *= -1.;
         d_Stage += u_Stage;
@@ -631,43 +624,25 @@ void Cache<T>::projectPrimalWorkspaceOnDynamics() {
         /* Compute APBdAq_ChStage = A(PBd+q) for each node at child stage. A = (A+B@K).tr */
         DTensor<T> APB_ChStage(m_data.APB(), m_matAxis, chStageFr, chStageTo);
         DTensor<T> ABKtr_ChStage(m_data.dynamicsSumTr(), m_matAxis, chStageFr, chStageTo);
-        for (size_t node = stageFr; node <= stageTo; node++) {
-            DTensor<T> d_Node(*m_d_d, m_matAxis, node, node);
-            for (size_t ch = m_tree.childFrom()[node]; ch <= m_tree.childTo()[node]; ch++) {
-                DTensor<T> d_ExpandedChNode(*m_d_workU, m_matAxis, ch, ch);
-                d_Node.deviceCopyTo(d_ExpandedChNode);
-            }
-        }
+        memCpy(m_d_workU.get(), m_d_d.get(), chStageFr, chStageTo, m_d_d->numRows(),
+               0, 0, anc2Node, &m_tree.d_ancestors());
         DTensor<T> q_SumChStage(*m_d_workX, m_matAxis, chStageFr, chStageTo);
         DTensor<T> d_ExpandedChStage(*m_d_workU, m_matAxis, chStageFr, chStageTo);
         q_SumChStage.addAB(APB_ChStage, d_ExpandedChStage);
         q_SumChStage.addAB(ABKtr_ChStage, q_ChStage, 1., 1.);
-        /* Copy into `q` the first child `APBdAq` of each node (every nonleaf node has at least one child) */
-        for (size_t node = stageFr; node <= stageTo; node++) {
-            size_t ch = m_tree.childFrom()[node];
-            DTensor<T> APBdAq_ChNode(*m_d_workX, m_matAxis, ch, ch);
-            DTensor<T> APBdAq_Node(*m_d_q, m_matAxis, node, node);
-            APBdAq_ChNode.deviceCopyTo(APBdAq_Node);
-        }
-        /* Add to `q` remaining child `APBdAq` of each node (zeros added if child does not exist) */
-        DTensor<T> q_Stage(*m_d_q, m_matAxis, stageFr, stageTo);
-        for (size_t chOfEachNode = 1; chOfEachNode < maxCh; chOfEachNode++) {
-            for (size_t node = stageFr; node <= stageTo; node++) {
-                size_t ch = m_tree.childFrom()[node] + chOfEachNode;
-                if (ch <= m_tree.childTo()[node]) {  // If more children exist, copy in their `Bq_ChStage`
-                    DTensor<T> APBdAq_ChNode(*m_d_workX, m_matAxis, ch, ch);
-                    DTensor<T> APBdAq_Node(*m_d_workX, m_matAxis, node, node);
-                    APBdAq_ChNode.deviceCopyTo(APBdAq_Node);
-                }
-            }
-            DTensor<T> q_Add(*m_d_workX, m_matAxis, stageFr, stageTo);
-            q_Stage += q_Add;
+        /* Sum `APBdAq` children of each node into `q` at current stage */
+        for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
+            k_memCpyCh2Node<<<stageTo + 1, TPB>>>(m_d_q->raw(), m_d_workX->raw(),
+                                                  stageFr, stageTo, m_data.numStates(), chIdx,
+                                                  m_tree.d_childFrom().raw(), m_tree.d_numChildren().raw(),
+                                                  chIdx);
         }
         /* Compute Kdux = K.tr(d-u)@x for each node at current stage and add to `q` */
         DTensor<T> du_Stage(*m_d_workU, m_matAxis, stageFr, stageTo);
         d_Stage.deviceCopyTo(du_Stage);
         du_Stage -= u_Stage;
         DTensor<T> Ktr_Stage(m_data.KTr(), m_matAxis, stageFr, stageTo);
+        DTensor<T> q_Stage(*m_d_q, m_matAxis, stageFr, stageTo);
         q_Stage.addAB(Ktr_Stage, du_Stage, 1., 1.);
         DTensor<T> x_Stage(*m_d_x, m_matAxis, stageFr, stageTo);
         q_Stage -= x_Stage;
@@ -696,17 +671,10 @@ void Cache<T>::projectPrimalWorkspaceOnDynamics() {
          * Compute child states
          */
         /* Fill `xu` */
-        for (size_t node = stageFr; node <= stageTo; node++) {
-            DTensor<T> x_Node(*m_d_x, m_matAxis, node, node);
-            DTensor<T> u_Node(*m_d_u, m_matAxis, node, node);
-            for (size_t ch = m_tree.childFrom()[node]; ch <= m_tree.childTo()[node]; ch++) {
-                DTensor<T> xu_ChNode(*m_d_workXU, m_matAxis, ch, ch);
-                DTensor<T> xu_sliceX(xu_ChNode, 0, 0, m_data.numStates() - 1);
-                DTensor<T> xu_sliceU(xu_ChNode, 0, m_data.numStates(), m_data.numStatesAndInputs() - 1);
-                x_Node.deviceCopyTo(xu_sliceX);
-                u_Node.deviceCopyTo(xu_sliceU);
-            }
-        }
+        memCpy(m_d_workXU.get(), m_d_x.get(), chStageFr, chStageTo, m_data.numStates(), 0, 0,
+               anc2Node, &m_tree.d_ancestors());
+        memCpy(m_d_workXU.get(), m_d_u.get(), chStageFr, chStageTo, m_data.numInputs(), m_data.numStates(), 0,
+               anc2Node, &m_tree.d_ancestors());
         DTensor<T> x_ChStage(*m_d_x, m_matAxis, chStageFr, chStageTo);
         DTensor<T> AB_ChStage(m_data.stateInputDynamics(), m_matAxis, chStageFr, chStageTo);
         DTensor<T> xu_ChStage(*m_d_workXU, m_matAxis, chStageFr, chStageTo);
@@ -720,46 +688,27 @@ void Cache<T>::projectPrimalWorkspaceOnKernels() {
      * Project on kernel of every node of tree at once
      */
     /* Gather vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
-    for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
-        size_t chFr = m_tree.childFrom()[node];
-        size_t chTo = m_tree.childTo()[node];
-        size_t numCh = m_tree.numChildren()[node];
-        DTensor<T> y(*m_d_y, m_matAxis, node, node);
-        DTensor<T> t(*m_d_t, m_matAxis, chFr, chTo);
-        DTensor<T> s(*m_d_s, m_matAxis, chFr, chTo);
-        DTensor<T> nodeStore(*m_d_workYTS, m_matAxis, node, node);
-        DTensor<T> yStore(nodeStore, 0, 0, m_data.yDim() - 1);
-        DTensor<T> tStore(nodeStore, 0, m_data.yDim(), m_data.yDim() + numCh - 1);
-        DTensor<T> sStore(nodeStore, 0, m_data.yDim() + m_tree.numEvents(),
-                          m_data.yDim() + m_tree.numEvents() + numCh - 1);
-        tStore.reshape(1, 1, numCh);
-        sStore.reshape(1, 1, numCh);
-        y.deviceCopyTo(yStore);
-        t.deviceCopyTo(tStore);
-        s.deviceCopyTo(sStore);
-    }
+    memCpy(m_d_workYTS.get(), m_d_y.get(), 0, m_tree.numNonleafNodes() - 1, m_data.yDim());
+    k_memCpyInTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_workYTS->raw(), m_d_t->raw(),
+                                                             m_tree.numNodes(), m_d_workYTS->numRows(),
+                                                             m_data.yDim(),
+                                                             m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
+    k_memCpyInTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_workYTS->raw(), m_d_s->raw(),
+                                                             m_tree.numNodes(), m_d_workYTS->numRows(),
+                                                             m_data.yDim() + m_tree.numEvents(),
+                                                             m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
     /* Project onto nullspace in place */
     m_d_workYTS->addAB(m_data.nullspaceProj(), *m_d_workYTS);
-
     /* Disperse vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
-    for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
-        size_t chFr = m_tree.childFrom()[node];
-        size_t chTo = m_tree.childTo()[node];
-        size_t numCh = m_tree.numChildren()[node];
-        DTensor<T> y(*m_d_y, m_matAxis, node, node);
-        DTensor<T> t(*m_d_t, m_matAxis, chFr, chTo);
-        DTensor<T> s(*m_d_s, m_matAxis, chFr, chTo);
-        DTensor<T> nodeStore(*m_d_workYTS, m_matAxis, node, node);
-        DTensor<T> yStore(nodeStore, 0, 0, m_data.yDim() - 1);
-        DTensor<T> tStore(nodeStore, 0, m_data.yDim(), m_data.yDim() + numCh - 1);
-        DTensor<T> sStore(nodeStore, 0, m_data.yDim() + m_tree.numEvents(),
-                          m_data.yDim() + m_tree.numEvents() + numCh - 1);
-        tStore.reshape(1, 1, numCh);
-        sStore.reshape(1, 1, numCh);
-        yStore.deviceCopyTo(y);
-        tStore.deviceCopyTo(t);
-        sStore.deviceCopyTo(s);
-    }
+    memCpy(m_d_y.get(), m_d_workYTS.get(), 0, m_tree.numNonleafNodes() - 1, m_data.yDim());
+    k_memCpyOutTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_t->raw(), m_d_workYTS->raw(),
+                                                              m_tree.numNodes(), m_d_workYTS->numRows(),
+                                                              m_data.yDim(),
+                                                              m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
+    k_memCpyOutTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_s->raw(), m_d_workYTS->raw(),
+                                                              m_tree.numNodes(), m_d_workYTS->numRows(),
+                                                              m_data.yDim() + m_tree.numEvents(),
+                                                              m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
 }
 
 template<typename T>
@@ -776,10 +725,9 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
     m_nnocNonleaf->project(*m_d_ii);
     /* III */
     if (m_data.nonleafConstraint()[0]->isRectangle()) {
-        size_t s = m_d_iii->numEl() - m_data.numStates();
-        k_projectRectangle<<<numBlocks(s, TPB), TPB>>>(s, m_d_iii->raw() + m_data.numStates(),
-                                                       m_d_loBoundNonleaf->raw() + m_data.numStates(),
-                                                       m_d_hiBoundNonleaf->raw() + m_data.numStates());
+        k_projectRectangle<<<numBlocks(m_d_iii->numEl(), TPB), TPB>>>(m_d_iii->numEl(), m_d_iii->raw(),
+                                                                      m_d_loBoundNonleaf->raw(),
+                                                                      m_d_hiBoundNonleaf->raw());
     } else if (m_data.nonleafConstraint()[0]->isBall()) {
         /* TODO!  */
     }
@@ -1106,6 +1054,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     size_t countK0 = 0;
     size_t countK1 = 0;
     size_t countK2 = 0;
+    size_t countK2bt = 0;
     size_t countK3 = 0;
     T zeta = INFINITY;
     T w = INFINITY;
@@ -1168,7 +1117,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             /* Compute rho */
             *m_d_directionScaled *= -1.;
             *m_d_directionScaled += *m_d_residual;
-            rho = dotM(*m_d_residual, *m_d_directionScaled);
+            rho = dotM(*m_d_residual, *m_d_directionScaled);  // This is not the algo equation, but performs better.
             /* Safeguard update */
             if (rho >= m_sigma * wTilde * w) {
                 *m_d_residual *= (m_lambda * rho / pow(wTilde, 2));
@@ -1178,6 +1127,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
                 break;  // K2
             } else {
                 tau *= m_beta;
+                countK2bt += 1;
             }
             if (iIn >= m_maxInnerIters - 1) {
                 restore();
@@ -1191,6 +1141,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
                   << ", [K0: " << countK0
                   << ", K1: " << countK1
                   << ", K2: " << countK2
+                  << ", bt: " << countK2bt
                   << ", K3: " << countK3
                   << "].\n";
         return 0;
@@ -1198,6 +1149,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         std::cout << "\nMax iterations (" << m_maxOuterIters << ") reached [K0: " << countK0
                   << ", K1: " << countK1
                   << ", K2: " << countK2
+                  << ", bt: " << countK2bt
                   << ", K3: " << countK3
                   << "].\n";
         return 1;

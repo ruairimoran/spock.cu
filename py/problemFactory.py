@@ -226,17 +226,16 @@ class Problem:
                 "S2": stack_ker_con
             }
             test_vectors = {
-                "dpTestStates": self.__dp_test_states,
-                "dpTestInputs": self.__dp_test_inputs,
-                "dpProjectedStates": self.__dp_projected_states,
-                "dpProjectedInputs": self.__dp_projected_inputs,
+                "dpTestStates": self.__dp_test_states.reshape(-1),
+                "dpTestInputs": self.__dp_test_inputs.reshape(-1),
+                "dpProjectedStates": self.__dp_projected_states.reshape(-1),
+                "dpProjectedInputs": self.__dp_projected_inputs.reshape(-1),
                 "primBeforeOp": self.__prim_before_op,
                 "dualAfterOpBeforeAdj": self.__dual_after_op_before_adj,
                 "primAfterAdj": self.__prim_after_adj,
                 "dotVector": self.__dot_vector,
                 "dotResult": [self.__dot_result]
             }
-            print(self.__prim_before_op)
             for name, tensor in test_tensors.items():
                 self.save_tensor(self.get_file(name), tensor)
             for name, vector in test_vectors.items():
@@ -373,17 +372,7 @@ class Problem:
 
         # -> iii
         iii = None
-        if self.__list_of_nonleaf_constraints[0].is_no:
-            iii = np.array([]).reshape(1, 0)
-        elif self.__list_of_nonleaf_constraints[0].is_rectangle:
-            # Gamma_{x} and Gamma{u} do not change x and u
-            iii = [None] * self.__tree.num_nonleaf_nodes
-            for i in range(self.__tree.num_nonleaf_nodes):
-                iii[i] = np.vstack((x[i], u[i]))
-        elif self.__list_of_nonleaf_constraints[0].is_ball:
-            pass  # TODO!
-        else:
-            raise ValueError("Constraint not supported.")
+        iii = self.__list_of_nonleaf_constraints[0].op(iii, x, self.__tree.num_nonleaf_nodes, u)
 
         # -> iv
         iv = [np.zeros((num_si + 2, 1))] * self.__tree.num_nodes
@@ -396,22 +385,12 @@ class Problem:
 
         # -> v
         v = None
-        if self.__list_of_leaf_constraints[0].is_no:
-            v = np.array([]).reshape(1, 0)
-        elif self.__list_of_leaf_constraints[0].is_rectangle:
-            # Gamma_{x} does not change x
-            v = [np.zeros((self.__num_states, 1))] * self.__tree.num_leaf_nodes
-            for i in range(self.__tree.num_leaf_nodes):
-                v[i] = x[i + self.__tree.num_nonleaf_nodes]
-        elif self.__list_of_leaf_constraints[0].is_ball:
-            pass  # TODO!
-        else:
-            raise ValueError("Constraint not supported.")
+        v = self.__list_of_leaf_constraints[0].op(v, x[self.__tree.num_nonleaf_nodes:], self.__tree.num_leaf_nodes)
 
         # -> vi
         vi = [np.zeros((self.__num_states + 2, 1))] * self.__tree.num_leaf_nodes
         for i in range(self.__tree.num_leaf_nodes):
-            half_s = s[i] * 0.5
+            half_s = s[i + self.__tree.num_nonleaf_nodes] * 0.5
             vi[i] = np.vstack((self.__sqrt_leaf_state_costs[i] @ x[i + self.__tree.num_nonleaf_nodes],
                                half_s, half_s))
 
@@ -431,30 +410,13 @@ class Problem:
         idx += self.__y_size * self.__tree.num_nonleaf_nodes
         ii = [np.array(dual[idx + i * 1:idx + i * 1 + 1]).reshape(1, 1) for i in range(self.__tree.num_nonleaf_nodes)]
         idx += self.__tree.num_nonleaf_nodes
-        if self.__list_of_nonleaf_constraints[0].is_no:
-            iii = np.array([]).reshape(1, 0)
-        elif self.__list_of_nonleaf_constraints[0].is_rectangle:
-            iii = [np.array(dual[idx + i * num_si:idx + i * num_si + num_si]).reshape(
-                num_si, 1) for i in range(self.__tree.num_nonleaf_nodes)]
-            idx += num_si * self.__tree.num_nonleaf_nodes
-        elif self.__list_of_nonleaf_constraints[0].is_ball:
-            pass  # TODO!
-        else:
-            raise ValueError("Constraint not supported.")
+        iii, idx = self.__list_of_nonleaf_constraints[0].assign_dual(dual, idx, num_si, self.__tree.num_nonleaf_nodes)
         iv_size = num_si + 2
         iv = [np.array(dual[idx + i * iv_size:idx + i * iv_size + iv_size]).reshape(
             iv_size, 1) for i in range(self.__tree.num_nodes)]
         idx += iv_size * self.__tree.num_nodes
-        if self.__list_of_leaf_constraints[0].is_no:
-            v = np.array([]).reshape(1, 0)
-        elif self.__list_of_leaf_constraints[0].is_rectangle:
-            v = [np.array(dual[idx + i * self.__num_states:idx + i * self.__num_states + self.__num_states]).reshape(
-                self.__num_states, 1) for i in range(self.__tree.num_leaf_nodes)]
-            idx += self.__num_states * self.__tree.num_leaf_nodes
-        elif self.__list_of_leaf_constraints[0].is_ball:
-            pass  # TODO!
-        else:
-            raise ValueError("Constraint not supported.")
+        v, idx = self.__list_of_leaf_constraints[0].assign_dual(dual, idx, self.__num_states,
+                                                                self.__tree.num_leaf_nodes)
         vi_size = self.__num_states + 2
         vi = [np.array(dual[idx + i * vi_size:idx + i * vi_size + vi_size]).reshape(
             vi_size, 1) for i in range(self.__tree.num_leaf_nodes)]
@@ -471,18 +433,7 @@ class Problem:
         # -> x (nonleaf) and u:Gamma
         x = [np.zeros((self.__num_states, 1))] * self.__tree.num_nodes
         u = [np.zeros((self.__num_inputs, 1))] * self.__tree.num_nonleaf_nodes
-        if self.__list_of_nonleaf_constraints[0].is_no:
-            pass
-        elif self.__list_of_nonleaf_constraints[0].is_rectangle:
-            # Gamma_{x} and Gamma{u} do not change x and u
-            for i in range(self.__tree.num_nonleaf_nodes):
-                x[i] = iii[i][:self.__num_states]
-                u[i] = iii[i][self.__num_states:num_si]
-        elif self.__list_of_nonleaf_constraints[0].is_ball:
-            pass  # TODO!
-        else:
-            raise ValueError("Constraint not supported.")
-
+        x, u = self.__list_of_nonleaf_constraints[0].adj(iii, x, self.__tree.num_nonleaf_nodes, u)
         # -> x (nonleaf) and u
         for i in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(i)
@@ -495,15 +446,9 @@ class Problem:
             t[i] = 0.5 * (iv[i][num_si] + iv[i][num_si + 1])
 
         # -> x (leaf):Gamma
-        if self.__list_of_leaf_constraints[0].is_no:
-            pass
-        elif self.__list_of_leaf_constraints[0].is_rectangle:
-            for i in range(self.__tree.num_leaf_nodes):
-                x[i + self.__tree.num_nonleaf_nodes] = v[i]
-        elif self.__list_of_leaf_constraints[0].is_ball:
-            pass  # TODO!
-        else:
-            raise ValueError("Constraint not supported.")
+        x[self.__tree.num_nonleaf_nodes:], _ = self.__list_of_leaf_constraints[0].adj(v,
+                                                                                      x[self.__tree.num_nonleaf_nodes:],
+                                                                                      self.__tree.num_leaf_nodes)
 
         # -> x (leaf)
         for i in range(self.__tree.num_leaf_nodes):

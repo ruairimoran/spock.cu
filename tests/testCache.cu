@@ -39,14 +39,6 @@ public:
     virtual ~CacheTestData() = default;
 };
 
-TEMPLATE_WITH_TYPE_T
-static void parseNode(size_t nodeIdx, const rapidjson::Value &value, std::vector<T> &vec) {
-    size_t numElements = value.Capacity();
-    for (rapidjson::SizeType i = 0; i < numElements; i++) {
-        vec[nodeIdx * numElements + i] = value[i].GetDouble();
-    }
-}
-
 /* ---------------------------------------
  * Initialise state
  * --------------------------------------- */
@@ -158,9 +150,9 @@ void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon) {
         y.deviceCopyTo(projY);
         t.deviceCopyTo(projT);
         s.deviceCopyTo(projS);
-        /* Get kernel constraint matrix from file */
-        DTensor<T> kerConMat = DTensor<T>::parseFromTextFile(d.m_path + "S2", rowMajor);
         /* Compute kernel matrix * projected vector */
+        DTensor<T> kerConMats = DTensor<T>::parseFromTextFile(d.m_path + "S2", rowMajor);
+        DTensor<T> kerConMat(kerConMats, 2, node, node);
         DTensor<T> shouldBeZeros = kerConMat * projected;
         std::vector<T> result(shouldBeZeros.numEl());
         shouldBeZeros.download(result);

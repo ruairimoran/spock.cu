@@ -29,6 +29,15 @@ class Constraint:
     def is_ball(self):
         return False
 
+    def assign_dual(self, dual, idx, vec_length, num_vec):
+        return None, 0
+
+    def op(self, dual, x, n, u=0):
+        pass
+
+    def adj(self, dual, x, n, u=0):
+        pass
+
 
 # --------------------------------------------------------
 # None
@@ -44,6 +53,13 @@ class No(Constraint):
     @property
     def is_no(self):
         return True
+
+    def assign_dual(self, dual, idx, vec_length, num_vec):
+        return np.array([]).reshape(1, 0), 0
+
+    def op(self, dual, x, n, u=0):
+        dual = np.array([]).reshape(1, 0)
+        return dual
 
 
 # --------------------------------------------------------
@@ -88,6 +104,25 @@ class Rectangle(Constraint):
             else:
                 if lb[i] > ub[i]:
                     raise Exception("Rectangle constraint - min greater than max")
+
+    def assign_dual(self, dual, idx, vec_length, num_vec):
+        d = [np.array(dual[idx + i * vec_length:idx + i * vec_length + vec_length]).reshape(vec_length, 1) for i in
+             range(num_vec)]
+        idx += vec_length * num_vec
+        return d, idx
+
+    def op(self, dual, x, n, u=0):
+        dual = [None] * n
+        for i in range(n):
+            dual[i] = np.vstack((x[i], u[i])) if u else x[i]
+        return dual
+
+    def adj(self, dual, x, n, u=0):
+        for i in range(n):
+            x[i] = dual[i][:x[0].size]
+            if u:
+                u[i] = dual[i][x[0].size:]
+        return x, u
 
 
 # =====================================================================================================================

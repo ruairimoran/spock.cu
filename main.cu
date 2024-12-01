@@ -49,7 +49,7 @@ int main() {
 
     /** SAVE */
     std::ofstream timeScaling;
-    timeScaling.open("json/timeScaling.csv", std::ios::app);
+    timeScaling.open("misc/timeScaling.csv", std::ios::app);
     timeScaling << tree.numStages() - 1 << ", " << problem.numStates() << ", " << avg << std::endl;
     timeScaling.close();
     std::cout << "Saved (avg = " << avg << " ms)." << std::endl;

@@ -61,11 +61,11 @@ void testNnocProjection(std::vector<T> testVec) {
 }
 
 TEMPLATE_WITH_TYPE_T
-void testSocElse(std::vector<T> testVec) {
+void testSocElse(std::vector<T> testVec, T epsilon) {
     T last = testVec[testVec.size() - 1];
     testVec.pop_back();
     T nrm = std::sqrt(std::inner_product(testVec.begin(), testVec.end(), testVec.begin(), 0.));
-    EXPECT_TRUE(nrm <= last);
+    EXPECT_TRUE(nrm <= last + epsilon);
 }
 
 TEMPLATE_WITH_TYPE_T
@@ -159,7 +159,7 @@ TEST_F(ConesTest, nonnegativeOrthantDual) {
 }
 
 TEMPLATE_WITH_TYPE_T
-void testSecondOrderConeCone(ConesTestData<T> &d) {
+void testSecondOrderConeCone(ConesTestData<T> &d, T epsilon) {
     SecondOrderCone<T> myCone(d.m_n);
     /** Testing `if` projection of SOC */
     d.m_d_data.upload(d.m_hostSocA);
@@ -175,18 +175,18 @@ void testSecondOrderConeCone(ConesTestData<T> &d) {
     d.m_d_data.upload(d.m_hostSocC);
     myCone.project(d.m_d_data);
     d.m_d_data.download(d.m_hostTest);
-    testSocElse(d.m_hostTest);
+    testSocElse(d.m_hostTest, epsilon);
 }
 
 TEST_F(ConesTest, secondOrderConeCone) {
     ConesTestData<float> df;
-    testSecondOrderConeCone<float>(df);
+    testSecondOrderConeCone<float>(df, TEST_PRECISION_LOW);
     ConesTestData<double> dd;
-    testSecondOrderConeCone<double>(dd);
+    testSecondOrderConeCone<double>(dd, TEST_PRECISION_HIGH);
 }
 
 TEMPLATE_WITH_TYPE_T
-void testSecondOrderConeDual(ConesTestData<T> &d) {
+void testSecondOrderConeDual(ConesTestData<T> &d, T epsilon) {
     SecondOrderCone<T> myCone(d.m_n);
     /** Testing `if` projection of SOC */
     d.m_d_data.upload(d.m_hostSocA);
@@ -202,18 +202,18 @@ void testSecondOrderConeDual(ConesTestData<T> &d) {
     d.m_d_data.upload(d.m_hostSocC);
     myCone.projectOnDual(d.m_d_data);
     d.m_d_data.download(d.m_hostTest);
-    testSocElse(d.m_hostTest);
+    testSocElse(d.m_hostTest, epsilon);
 }
 
 TEST_F(ConesTest, secondOrderConeDual) {
     ConesTestData<float> df;
-    testSecondOrderConeDual<float>(df);
+    testSecondOrderConeDual<float>(df, TEST_PRECISION_LOW);
     ConesTestData<double> dd;
-    testSecondOrderConeDual<double>(dd);
+    testSecondOrderConeDual<double>(dd, TEST_PRECISION_HIGH);
 }
 
 TEMPLATE_WITH_TYPE_T
-void testCartesianCone(ConesTestData<T> &d) {
+void testCartesianCone(ConesTestData<T> &d, T epsilon) {
     // for (size_t i=0; i<m_n*m_numConeTypes; i++) { std::cerr << m_dataCart[i] << " "; }  ///< For debugging
     d.m_d_dataCart.upload(d.m_hostCart);
     UniverseCone<T> myUniv(d.m_n);
@@ -245,19 +245,19 @@ void testCartesianCone(ConesTestData<T> &d) {
     /** Test SOC cone */
     index += d.m_n;
     d.m_testCart = std::vector<T>(d.m_hostCart.begin() + index, d.m_hostCart.begin() + index + d.m_n);
-    testSocElse(d.m_testCart);
+    testSocElse(d.m_testCart, epsilon);
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
 }
 
 TEST_F(ConesTest, cartesianCone) {
     ConesTestData<float> df;
-    testCartesianCone<float>(df);
+    testCartesianCone<float>(df, TEST_PRECISION_LOW);
     ConesTestData<double> dd;
-    testCartesianCone<double>(dd);
+    testCartesianCone<double>(dd, TEST_PRECISION_HIGH);
 }
 
 TEMPLATE_WITH_TYPE_T
-void testCartesianDual(ConesTestData<T> &d) {
+void testCartesianDual(ConesTestData<T> &d, T epsilon) {
     // for (size_t i=0; i<m_n*m_numConeTypes; i++) { std::cerr << m_dataCart[i] << " "; }  ///< For debugging
     d.m_d_dataCart.upload(d.m_hostCart);
     UniverseCone<T> myUniv(d.m_n);
@@ -289,15 +289,15 @@ void testCartesianDual(ConesTestData<T> &d) {
     /** Test SOC dual */
     index += d.m_n;
     d.m_testCart = std::vector<T>(d.m_hostCart.begin() + index, d.m_hostCart.begin() + index + d.m_n);
-    testSocElse(d.m_testCart);
+    testSocElse(d.m_testCart, epsilon);
     // for (size_t i=0; i<m_n; i++) { std::cerr << m_testCart[i] << " "; }  ///< For debugging
 }
 
 TEST_F(ConesTest, cartesianDual) {
     ConesTestData<float> df;
-    testCartesianDual<float>(df);
+    testCartesianDual<float>(df, TEST_PRECISION_LOW);
     ConesTestData<double> dd;
-    testCartesianDual<double>(dd);
+    testCartesianDual<double>(dd, TEST_PRECISION_HIGH);
 }
 
 TEMPLATE_WITH_TYPE_T

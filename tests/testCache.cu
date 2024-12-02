@@ -7,8 +7,6 @@
 class CacheTest : public testing::Test {
 protected:
     CacheTest() = default;
-
-    virtual ~CacheTest() = default;
 };
 
 TEMPLATE_WITH_TYPE_T

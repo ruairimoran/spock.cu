@@ -7,8 +7,6 @@
 class OperatorTest : public testing::Test {
 protected:
     OperatorTest() = default;
-
-    virtual ~OperatorTest() {}
 };
 
 TEMPLATE_WITH_TYPE_T

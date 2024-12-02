@@ -132,7 +132,7 @@ public:
     /**
      * Destructor
      */
-    ~ScenarioTree() {}
+    ~ScenarioTree() = default;
 
     /**
      * Getters

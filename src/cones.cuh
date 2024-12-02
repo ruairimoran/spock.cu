@@ -36,7 +36,7 @@ protected:
     virtual std::ostream &print(std::ostream &out) const { return out; };
 
 public:
-    virtual ~ConvexCone() {}
+    virtual ~ConvexCone() = default;
 
     size_t dimension() { return m_dimension; }
 
@@ -85,7 +85,6 @@ public:
 
     void project(DTensor<T> &d_vec) {
         this->dimensionCheck(d_vec);
-        return;  // Do nothing!
     }
 
     void projectOnDual(DTensor<T> &d_vec) {
@@ -115,7 +114,6 @@ public:
 
     void projectOnDual(DTensor<T> &d_vec) {
         this->dimensionCheck(d_vec);
-        return;  // Do nothing!
     }
 
     std::string name() { return "Zero cone"; }

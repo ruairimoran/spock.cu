@@ -5,8 +5,6 @@
 class MemCpyTest : public testing::Test {
 protected:
     MemCpyTest() = default;
-
-    virtual ~MemCpyTest() {}
 };
 
 
@@ -31,8 +29,8 @@ void testMemCpyNodeToNode() {
 }
 
 TEST_F(MemCpyTest, memCpyNodeToNode) {
-testMemCpyNodeToNode<float>();
-testMemCpyNodeToNode<double>();
+    testMemCpyNodeToNode<float>();
+    testMemCpyNodeToNode<double>();
 }
 
 /* ---------------------------------------
@@ -58,8 +56,8 @@ void testMemCpyAncToNode() {
 }
 
 TEST_F(MemCpyTest, memCpyAncToNode) {
-testMemCpyAncToNode<float>();
-testMemCpyAncToNode<double>();
+    testMemCpyAncToNode<float>();
+    testMemCpyAncToNode<double>();
 }
 
 /* ---------------------------------------
@@ -74,8 +72,8 @@ void testMemCpyFailAncZero() {
 }
 
 TEST_F(MemCpyTest, memCpyFailAncZero) {
-testMemCpyFailAncZero<float>();
-testMemCpyFailAncZero<double>();
+    testMemCpyFailAncZero<float>();
+    testMemCpyFailAncZero<double>();
 }
 
 /* ---------------------------------------
@@ -101,8 +99,8 @@ void testMemCpyLeafToZeroLeaf() {
 }
 
 TEST_F(MemCpyTest, memCpyLeafToZeroLeaf) {
-testMemCpyLeafToZeroLeaf<float>();
-testMemCpyLeafToZeroLeaf<double>();
+    testMemCpyLeafToZeroLeaf<float>();
+    testMemCpyLeafToZeroLeaf<double>();
 }
 
 /* ---------------------------------------
@@ -128,8 +126,8 @@ void testMemCpyZeroLeafToLeaf() {
 }
 
 TEST_F(MemCpyTest, memCpyZeroLeafToLeaf) {
-testMemCpyZeroLeafToLeaf<float>();
-testMemCpyZeroLeafToLeaf<double>();
+    testMemCpyZeroLeafToLeaf<float>();
+    testMemCpyZeroLeafToLeaf<double>();
 }
 
 /* ---------------------------------------
@@ -159,8 +157,8 @@ void testMemCpyChToNode() {
 }
 
 TEST_F(MemCpyTest, memCpyChToNode) {
-testMemCpyChToNode<float>();
-testMemCpyChToNode<double>();
+    testMemCpyChToNode<float>();
+    testMemCpyChToNode<double>();
 }
 
 /* ---------------------------------------
@@ -191,8 +189,8 @@ void testAddChToNodeAll() {
 }
 
 TEST_F(MemCpyTest, addChToNodeAll) {
-testAddChToNodeAll<float>();
-testAddChToNodeAll<double>();
+    testAddChToNodeAll<float>();
+    testAddChToNodeAll<double>();
 }
 
 /* ---------------------------------------
@@ -230,6 +228,6 @@ void testAddChToNode() {
 }
 
 TEST_F(MemCpyTest, addChToNode) {
-testAddChToNode<float>();
-testAddChToNode<double>();
+    testAddChToNode<float>();
+    testAddChToNode<double>();
 }

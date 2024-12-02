@@ -43,10 +43,10 @@ FetchContent_GetProperties(
     SOURCE_DIR GPUTILS_SOURCE_DIR
 )
 # ----
+add_subdirectory(src)
 if(NOT SPOCK_BUILD_TESTING)
     set(SPOCK_BUILD_TESTING OFF)
 endif()
-add_subdirectory(src)
 if (SPOCK_BUILD_TESTING)
     add_subdirectory(tests)
 endif()

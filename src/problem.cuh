@@ -159,7 +159,7 @@ public:
     /**
      * Destructor
      */
-    ~ProblemData() {}
+    ~ProblemData() = default;
 
     /**
      * Getters

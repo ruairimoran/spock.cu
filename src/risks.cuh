@@ -44,7 +44,7 @@ protected:
     virtual std::ostream &print(std::ostream &out) const { return out; };
 
 public:
-    virtual ~CoherentRisk() {}
+    virtual ~CoherentRisk() = default;
 
     virtual size_t dimension() { return m_dim; }
 

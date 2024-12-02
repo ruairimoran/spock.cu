@@ -7,8 +7,6 @@
 class OperatorTest : public testing::Test {
 protected:
     OperatorTest() = default;
-
-    virtual ~OperatorTest() {}
 };
 
 TEMPLATE_WITH_TYPE_T
@@ -41,8 +39,8 @@ public:
 
 TEMPLATE_WITH_TYPE_T
 void testOperator(OperatorTestData<T> &d, T epsilon) {
-    DTensor<T> primBeforeOp = DTensor<T>::parseFromTextFile(d.m_path + "primBeforeOp", rowMajor);
-    DTensor<T> dualAfterOpBeforeAdj = DTensor<T>::parseFromTextFile(d.m_path + "dualAfterOpBeforeAdj", rowMajor);
+    DTensor<T> primBeforeOp = DTensor<T>::parseFromFile(d.m_path + "primBeforeOp", rowMajor);
+    DTensor<T> dualAfterOpBeforeAdj = DTensor<T>::parseFromFile(d.m_path + "dualAfterOpBeforeAdj", rowMajor);
     dualAfterOpBeforeAdj.download(d.m_dualAfterOpBeforeAdj);
     /* Load primal and test resulting dual */
     Cache<T> &c = *d.m_cache;
@@ -67,8 +65,8 @@ TEST_F(OperatorTest, op) {
 
 TEMPLATE_WITH_TYPE_T
 void testAdjoint(OperatorTestData<T> &d, T epsilon) {
-    DTensor<T> dualAfterOpBeforeAdj = DTensor<T>::parseFromTextFile(d.m_path + "dualAfterOpBeforeAdj", rowMajor);
-    DTensor<T> primAfterAdj = DTensor<T>::parseFromTextFile(d.m_path + "primAfterAdj", rowMajor);
+    DTensor<T> dualAfterOpBeforeAdj = DTensor<T>::parseFromFile(d.m_path + "dualAfterOpBeforeAdj", rowMajor);
+    DTensor<T> primAfterAdj = DTensor<T>::parseFromFile(d.m_path + "primAfterAdj", rowMajor);
     primAfterAdj.download(d.m_primAfterAdj);
     /* Load dual and test resulting primal */
     Cache<T> &c = *d.m_cache;

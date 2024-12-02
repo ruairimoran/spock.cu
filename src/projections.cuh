@@ -45,7 +45,7 @@ protected:
     }
 
 public:
-    virtual ~Projectable() {}
+    virtual ~Projectable() = default;
 
     virtual void project(DTensor<T> &d_tensor) = 0;
 };

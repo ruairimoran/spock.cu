@@ -63,6 +63,7 @@ protected:
     ScenarioTree<T> &m_tree;  ///< Previously created scenario tree
     ProblemData<T> &m_data;  ///< Previously created problem
     LinearOperator<T> m_L = LinearOperator<T>(m_tree, m_data);  ///< Linear operator and its adjoint
+    bool m_debug = false;
     bool m_status = false;
     bool m_detectInfeas = false;
     bool m_allowK0 = false;
@@ -151,7 +152,6 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_socsNonleafHalves = nullptr;
     std::unique_ptr<DTensor<T>> m_d_socsLeafHalves = nullptr;
     std::unique_ptr<NonnegativeOrthantCone<T>> m_nnocNonleaf = nullptr;
-    std::unique_ptr<IndexedNnocProjection<T>> m_cartRiskDual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_loBoundNonleaf = nullptr;
     std::unique_ptr<DTensor<T>> m_d_hiBoundNonleaf = nullptr;
     std::unique_ptr<DTensor<T>> m_d_loBoundLeaf = nullptr;
@@ -247,13 +247,9 @@ protected:
 
     void computeDeltaResidual();
 
-    size_t updateQR(size_t);
-
     void updateDirection(size_t);
 
     bool computeError(size_t);
-
-    bool infeasibilityDetection(size_t);
 
     void printToJson(std::string &);
 
@@ -269,9 +265,10 @@ public:
           bool detectInfeas = false,
           size_t maxInnerIters = 8,
           size_t andBuff = 3,
-          bool allowK0 = false) :
+          bool allowK0 = false,
+          bool debug = false) :
         m_tree(tree), m_data(data), m_detectInfeas(detectInfeas), m_tol(tol), m_maxOuterIters(maxOuterIters),
-        m_maxInnerIters(maxInnerIters), m_andSize(andBuff), m_log(log), m_allowK0(allowK0) {
+        m_maxInnerIters(maxInnerIters), m_andSize(andBuff), m_log(log), m_allowK0(allowK0), m_debug(debug) {
         /* Sizes */
         initialiseSizes();
         /* Allocate memory on host */
@@ -321,21 +318,19 @@ public:
     /**
      * Public methods
      */
+    void reset();  // For testing.
+
     int runCp(std::vector<T> &, std::vector<T> * = nullptr);
 
-    int runSpock(std::vector<T> &, std::vector<T> * = nullptr);
+    int runSpock(std::vector<T> &, std::vector<T> * = nullptr, bool = false);
 
     int timeCp(std::vector<T> &);
 
-    int timeSp(std::vector<T> &);
+    T timeSp(std::vector<T> &);
 
     /**
      * Getters
      */
-    size_t solutionSize() { return m_sizePrim; }
-
-    DTensor<T> &solution() { return *m_d_iteratePrim; }
-
     DTensor<T> &inputs() { return *m_d_u; }
 
     DTensor<T> &states() { return *m_d_x; }
@@ -359,6 +354,56 @@ public:
 };
 
 template<typename T>
+void Cache<T>::reset() {
+    m_L.reset();
+    /* Create zero vectors */
+    std::vector<T> numStates(m_data.numStates(), 0);
+    std::vector<T> sizeIterate(m_sizeIterate, 0);
+    std::vector<T> sizePrim(m_sizePrim, 0);
+    std::vector<T> sizeIterateSizeAnd(m_sizeIterate * m_andSize, 0);
+    std::vector<T> numStatesNumNodes(m_data.numStates() * m_tree.numNodes(), 0);
+    std::vector<T> numInputsNumNodes(m_data.numInputs() * m_tree.numNodes(), 0);
+    std::vector<T> numStatesAndInputsNumNodes(m_data.numStatesAndInputs() * m_tree.numNodes(), 0);
+    std::vector<T> nullDimNumNonleafNodes(m_data.nullDim() * m_tree.numNonleafNodes(), 0);
+    std::vector<T> numInputsNumNonleafNodes(m_data.numInputs() * m_tree.numNonleafNodes(), 0);
+    /* Zero all cached data */
+    std::fill(m_cacheCallsToL.begin(), m_cacheCallsToL.end(), 0);
+    std::fill(m_cacheError0.begin(), m_cacheError0.end(), 0);
+    std::fill(m_cacheError1.begin(), m_cacheError1.end(), 0);
+    std::fill(m_cacheError2.begin(), m_cacheError2.end(), 0);
+    std::fill(m_cacheDeltaPrim.begin(), m_cacheDeltaPrim.end(), 0);
+    std::fill(m_cacheDeltaDual.begin(), m_cacheDeltaDual.end(), 0);
+    std::fill(m_cacheNrmLtrDeltaDual.begin(), m_cacheNrmLtrDeltaDual.end(), 0);
+    std::fill(m_cacheDistDeltaDual.begin(), m_cacheDistDeltaDual.end(), 0);
+    std::fill(m_cacheSuppDeltaDual.begin(), m_cacheSuppDeltaDual.end(), 0);
+    m_d_initState->upload(numStates);
+    m_d_iterate->upload(sizeIterate);
+    m_d_iteratePrev->upload(sizeIterate);
+    m_d_iterateCandidate->upload(sizeIterate);
+    m_d_deltaIterate->upload(sizeIterate);
+    m_d_ellDeltaIterate->upload(sizeIterate);
+    m_d_deltaResidual->upload(sizeIterate);
+    m_d_residual->upload(sizeIterate);
+    m_d_residualPrev->upload(sizeIterate);
+    m_d_iterateBackup->upload(sizeIterate);
+    m_d_err->upload(sizePrim);
+    m_d_andIterateMatrix->upload(sizeIterateSizeAnd);
+    m_d_andResidualMatrix->upload(sizeIterateSizeAnd);
+    m_d_andQR->upload(sizeIterateSizeAnd);
+    m_d_andQRGammaFull->upload(sizeIterate);
+    m_d_direction->upload(sizeIterate);
+    m_d_directionScaled->upload(sizeIterate);
+    m_d_workIterate->upload(sizeIterate);
+    m_d_workX->upload(numStatesNumNodes);
+    m_d_workU->upload(numInputsNumNodes);
+    m_d_workXU->upload(numStatesAndInputsNumNodes);
+    m_d_workYTS->upload(nullDimNumNonleafNodes);
+    m_d_workDot->upload(sizeIterate);
+    m_d_q->upload(numStatesNumNodes);
+    m_d_d->upload(numInputsNumNonleafNodes);
+}
+
+template<typename T>
 void Cache<T>::initialiseSizes() {
     m_sizeU = m_tree.numNonleafNodes() * m_data.numInputs();  ///< Inputs of all nonleaf nodes
     m_sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
@@ -368,21 +413,9 @@ void Cache<T>::initialiseSizes() {
     m_sizePrim = m_sizeU + m_sizeX + m_sizeY + m_sizeT + m_sizeS;
     m_sizeI = m_tree.numNonleafNodes() * m_data.yDim();
     m_sizeII = m_tree.numNonleafNodes();
-    if (m_data.nonleafConstraint()[0]->isNone()) {
-        m_sizeIII = 0;
-    } else if (m_data.nonleafConstraint()[0]->isRectangle()) {
-        m_sizeIII = m_tree.numNonleafNodes() * m_data.numStatesAndInputs();
-    } else if (m_data.nonleafConstraint()[0]->isBall()) {
-        /* TODO */
-    } else { constraintNotSupported(); }
+    m_sizeIII = m_data.nonleafConstraint()->dimension();
     m_sizeIV = m_tree.numNodes() * (m_data.numStatesAndInputs() + 2);
-    if (m_data.leafConstraint()[0]->isNone()) {
-        m_sizeV = 0;
-    } else if (m_data.leafConstraint()[0]->isRectangle()) {
-        m_sizeV = m_tree.numLeafNodes() * m_data.numStates();
-    } else if (m_data.leafConstraint()[0]->isBall()) {
-        /* TODO */
-    } else { constraintNotSupported(); }
+    m_sizeV = m_data.leafConstraint()->dimension();
     m_sizeVI = m_tree.numLeafNodes() * (m_data.numStates() + 2);
     m_sizeDual = m_sizeI + m_sizeII + m_sizeIII + m_sizeIV + m_sizeV + m_sizeVI;
     m_sizeIterate = m_sizePrim + m_sizeDual;
@@ -481,27 +514,8 @@ void Cache<T>::reshapeDualWorkspace() {
 
 template<typename T>
 void Cache<T>::initialiseProjectable() {
-    /* I */
-    m_cartRiskDual = std::make_unique<IndexedNnocProjection<T>>();
-    for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) { m_cartRiskDual->addRisk(*(m_data.risk()[i])); }
-    m_cartRiskDual->offline();
     /* II */
     m_nnocNonleaf = std::make_unique<NonnegativeOrthantCone<T>>(m_tree.numNonleafNodes());
-    /* III */
-    if (m_data.nonleafConstraint()[0]->isNone()) {
-        /* Do nothing */
-    } else if (m_data.nonleafConstraint()[0]->isRectangle()) {
-        m_d_loBoundNonleaf = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
-        m_d_hiBoundNonleaf = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
-        for (size_t i = 0; i < m_tree.numNonleafNodes(); i++) {
-            DTensor<T> lo(*m_d_loBoundNonleaf, m_matAxis, i, i);
-            DTensor<T> hi(*m_d_hiBoundNonleaf, m_matAxis, i, i);
-            m_data.nonleafConstraint()[i]->lo().deviceCopyTo(lo);
-            m_data.nonleafConstraint()[i]->hi().deviceCopyTo(hi);
-        }
-    } else if (m_data.nonleafConstraint()[0]->isBall()) {
-        /* TODO! */
-    } else { constraintNotSupported(); }
     /* IV */
     m_socsNonleaf = std::make_unique<SocProjection<T>>(*m_d_ivSoc);
     m_d_socsNonleafHalves = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs() + 2, 1, m_tree.numNodes());
@@ -512,21 +526,6 @@ void Cache<T>::initialiseProjectable() {
         DTensor<T> node(*m_d_socsNonleafHalves, m_matAxis, i, i);
         node.upload(nonleafHalves);
     }
-    /* V */
-    if (m_data.leafConstraint()[0]->isNone()) {
-        /* Do nothing */
-    } else if (m_data.leafConstraint()[0]->isRectangle()) {
-        m_d_loBoundLeaf = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numLeafNodes());
-        m_d_hiBoundLeaf = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numLeafNodes());
-        for (size_t i = 0; i < m_tree.numLeafNodes(); i++) {
-            DTensor<T> lo(*m_d_loBoundLeaf, m_matAxis, i, i);
-            DTensor<T> hi(*m_d_hiBoundLeaf, m_matAxis, i, i);
-            m_data.leafConstraint()[i]->lo().deviceCopyTo(lo);
-            m_data.leafConstraint()[i]->hi().deviceCopyTo(hi);
-        }
-    } else if (m_data.leafConstraint()[0]->isBall()) {
-        /* TODO! */
-    } else { constraintNotSupported(); }
     /* VI */
     m_socsLeaf = std::make_unique<SocProjection<T>>(*m_d_viSoc);
     m_d_socsLeafHalves = std::make_unique<DTensor<T>>(m_data.numStates() + 2, 1, m_tree.numLeafNodes());
@@ -698,7 +697,7 @@ void Cache<T>::projectPrimalWorkspaceOnKernels() {
                                                              m_data.yDim() + m_tree.numEvents(),
                                                              m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
     /* Project onto nullspace in place */
-    m_d_workYTS->addAB(m_data.nullspaceProj(), *m_d_workYTS);
+    m_d_workYTS->addAB(m_data.risk()->nullspaceProj(), *m_d_workYTS);
     /* Disperse vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
     memCpy(m_d_y.get(), m_d_workYTS.get(), 0, m_tree.numNonleafNodes() - 1, m_data.yDim());
     k_memCpyOutTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_t->raw(), m_d_workYTS->raw(),
@@ -720,26 +719,15 @@ void Cache<T>::translateSocs() {
 template<typename T>
 void Cache<T>::projectDualWorkspaceOnConstraints() {
     /* I */
-    m_cartRiskDual->project(*m_d_iNnoc);
+    m_data.risk()->projectDual(*m_d_iNnoc);
     /* II */
     m_nnocNonleaf->project(*m_d_ii);
     /* III */
-    if (m_data.nonleafConstraint()[0]->isRectangle()) {
-        k_projectRectangle<<<numBlocks(m_d_iii->numEl(), TPB), TPB>>>(m_d_iii->numEl(), m_d_iii->raw(),
-                                                                      m_d_loBoundNonleaf->raw(),
-                                                                      m_d_hiBoundNonleaf->raw());
-    } else if (m_data.nonleafConstraint()[0]->isBall()) {
-        /* TODO!  */
-    }
+    m_data.nonleafConstraint()->constrain(*m_d_iii);
     /* IV */
     m_socsNonleaf->project(*m_d_ivSoc);
     /* V */
-    if (m_data.leafConstraint()[0]->isRectangle()) {
-        k_projectRectangle<<<numBlocks(m_d_v->numEl(), TPB), TPB>>>(m_d_v->numEl(), m_d_v->raw(),
-                                                                    m_d_loBoundLeaf->raw(), m_d_hiBoundLeaf->raw());
-    } else if (m_data.leafConstraint()[0]->isBall()) {
-        /* TODO!  */
-    }
+    m_data.leafConstraint()->constrain(*m_d_v);
     /* VI */
     m_socsLeaf->project(*m_d_viSoc);
 }
@@ -901,14 +889,6 @@ void Cache<T>::acceptCandidate() {
 }
 
 /**
- * Update QR decomposition.
- */
-template<typename T>
-size_t Cache<T>::updateQR(size_t idx) {
-    return -1;
-}
-
-/**
  * Compute Anderson's direction.
  */
 template<typename T>
@@ -930,16 +910,22 @@ void Cache<T>::updateDirection(size_t idx) {
         /* QR decomposition */
         m_d_andResidualMatrix->deviceCopyTo(*m_d_andQR);
         m_d_residual->deviceCopyTo(*m_d_andQRGammaFull);
-        m_status = m_andQRFactor->factorise();
-        if (m_status != 0) {
-            err << "[updateDirection] QR factorisation returned status code: " << m_status << "\n";
-            throw std::invalid_argument(err.str());
+        m_andQRFactor->factorise();
+        if (m_debug) {
+            DTensor<int> status = m_andQRFactor->info();
+            if (status(0, 0, 0) != 0) {
+                err << "[updateDirection] QR factorisation returned status code: " << m_status << "\n";
+                throw std::invalid_argument(err.str());
+            }
         }
         /* Least squares */
-        m_status = m_andQRFactor->leastSquares(*m_d_andQRGammaFull);
-        if (m_status != 0) {
-            err << "[updateDirection] QR least squares returned status code: " << m_status << "\n";
-            throw std::invalid_argument(err.str());
+        m_andQRFactor->leastSquares(*m_d_andQRGammaFull);
+        if (m_debug) {
+            DTensor<int> status = m_andQRFactor->info();
+            if (status(0, 0, 0) != 0) {
+                err << "[updateDirection] QR least squares returned status code: " << m_status << "\n";
+                throw std::invalid_argument(err.str());
+            }
         }
         /* Compute new direction */
         m_d_direction->addAB(*m_d_andIterateMatrix, *m_d_andQRGamma, -1.);
@@ -987,25 +973,6 @@ bool Cache<T>::computeError(size_t idx) {
 }
 
 /**
- * Infeasibility detection.
- */
-template<typename T>
-bool Cache<T>::infeasibilityDetection(size_t idx) {
-//    /* Primal */
-//    m_d_iteratePrim->deviceCopyTo(*m_d_deltaIteratePrim);
-//    *m_d_deltaIteratePrim -= *m_d_iteratePrevPrim;
-//    m_cacheDeltaPrim[idx] = m_d_deltaIteratePrim->maxAbs();
-//    m_d_deltaIteratePrim->deviceCopyTo(*m_d_workIteratePrim);
-//    Ltr();
-//    m_cacheNrmLtrDeltaDual[idx] = m_d_workIterateDual->normF();
-//    /* Dual */
-//    m_d_iterateDual->deviceCopyTo(*m_d_deltaIterateDual);
-//    *m_d_deltaIterateDual -= *m_d_iteratePrevDual;
-//    m_cacheDeltaDual[idx] = m_d_deltaIterateDual->maxAbs();
-    return false;
-}
-
-/**
  * CP algorithm.
  */
 template<typename T>
@@ -1045,7 +1012,7 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
  * SPOCK algorithm.
  */
 template<typename T>
-int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSolution) {
+int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSolution, bool print) {
     /* Load initial state */
     initialiseState(initState);
     /* Load previous solution if given */
@@ -1135,23 +1102,29 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             }
         }
     }
+    //    std::string n = "Sp";
+    //    printToJson(n);
     /* Return status */
     if (m_status) {
-        std::cout << "\nConverged in " << m_countIterations << " outer iterations, to a tolerance of " << m_tol
-                  << ", [K0: " << countK0
-                  << ", K1: " << countK1
-                  << ", K2: " << countK2
-                  << ", bt: " << countK2bt
-                  << ", K3: " << countK3
-                  << "].\n";
+        if (print) {
+            std::cout << "\nConverged in " << m_countIterations << " outer iterations, to a tolerance of " << m_tol
+                      << ", [K0: " << countK0
+                      << ", K1: " << countK1
+                      << ", K2: " << countK2
+                      << ", bt: " << countK2bt
+                      << ", K3: " << countK3
+                      << "].\n";
+        }
         return 0;
     } else {
-        std::cout << "\nMax iterations (" << m_maxOuterIters << ") reached [K0: " << countK0
-                  << ", K1: " << countK1
-                  << ", K2: " << countK2
-                  << ", bt: " << countK2bt
-                  << ", K3: " << countK3
-                  << "].\n";
+        if (print) {
+            std::cout << "\nMax iterations (" << m_maxOuterIters << ") reached [K0: " << countK0
+                      << ", K1: " << countK1
+                      << ", K2: " << countK2
+                      << ", bt: " << countK2bt
+                      << ", K3: " << countK3
+                      << "].\n";
+        }
         return 1;
     }
 }
@@ -1249,17 +1222,17 @@ int Cache<T>::timeCp(std::vector<T> &initialState) {
  * Time SPOCK algorithm with a parallelised cache
  */
 template<typename T>
-int Cache<T>::timeSp(std::vector<T> &initialState) {
-    std::cout << "spock timer started" << "\n";
+T Cache<T>::timeSp(std::vector<T> &initialState) {
     const auto tick = std::chrono::high_resolution_clock::now();
-    /* Run SPOCK algorithm */
     int status = runSpock(initialState);
     const auto tock = std::chrono::high_resolution_clock::now();
-    auto durationMilli = std::chrono::duration<double, std::milli>(tock - tick).count();
-    std::cout << "spock timer stopped: " << durationMilli << " ms" << "\n";
-    std::string n = "Sp";
-    printToJson(n);
-    return status;
+    if (status) {
+        err << "Status error, not converged. [N=" << m_tree.numStages() - 1 << ", nx=nu=" << m_data.numStates()
+            << "].\n";
+        throw std::runtime_error(err.str());
+    }
+    T durationMilli = std::chrono::duration<T, std::milli>(tock - tick).count();
+    return durationMilli;
 }
 
 

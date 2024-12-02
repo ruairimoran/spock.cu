@@ -5,6 +5,10 @@
 #include "cones.cuh"
 
 
+TEMPLATE_WITH_TYPE_T
+__global__ void k_projectionMultiIndexedNnoc(T *, size_t, int *, int *);
+
+
 /**
  * Base class for a coherent risk
  * that can be described by the tuple
@@ -14,13 +18,27 @@ template<typename T>
 class CoherentRisk {
 
 protected:
+    size_t m_dim;
     std::unique_ptr<DTensor<T>> m_d_nullspaceProjectionMatrix = nullptr;
-    std::unique_ptr<Cartesian<T>> m_K = nullptr;
     std::unique_ptr<DTensor<T>> m_d_b = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_bTr = nullptr;
 
-    explicit CoherentRisk(size_t nodeIdx, DTensor<T> &nullspaceProj, DTensor<T> &b) {
-        m_d_nullspaceProjectionMatrix = std::make_unique<DTensor<T>>(nullspaceProj, 2, nodeIdx, nodeIdx);
-        m_d_b = std::make_unique<DTensor<T>>(b, 2, nodeIdx, nodeIdx);
+    explicit CoherentRisk(std::string path) {
+        m_d_nullspaceProjectionMatrix = std::make_unique<DTensor<T>>(
+            DTensor<T>::parseFromTextFile(path + "NNtr", rowMajor));
+        m_d_b = std::make_unique<DTensor<T>>(
+            DTensor<T>::parseFromTextFile(path + "b", rowMajor));
+        m_d_bTr = std::make_unique<DTensor<T>>(m_d_b->tr());
+        m_dim = m_d_b->numEl();
+    }
+
+    bool dimensionCheck(DTensor<T> &d_tensor) {
+        if (d_tensor.numEl() != m_dim) {
+            err << "[Risk] Given DTensor size (" << d_tensor.numEl()
+                << "), but projection setup for (" << m_dim << "]\n";
+            throw std::invalid_argument(err.str());
+        }
+        return true;
     }
 
     virtual std::ostream &print(std::ostream &out) const { return out; };
@@ -28,17 +46,15 @@ protected:
 public:
     virtual ~CoherentRisk() {}
 
-    virtual DTensor<T> &nullspace() { return *m_d_nullspaceProjectionMatrix; }
+    virtual size_t dimension() { return m_dim; }
 
-    virtual Cartesian<T> &cone() { return *m_K; }
+    virtual DTensor<T> &nullspaceProj() { return *m_d_nullspaceProjectionMatrix; }
 
     virtual DTensor<T> &b() { return *m_d_b; }
 
-    virtual size_t dimension() { return m_d_b->numEl(); }
+    virtual DTensor<T> &bTr() { return *m_d_bTr; }
 
-    virtual bool isAvar() { return false; }
-
-    virtual size_t sizeNnoc() { return 0; }
+    virtual void projectDual(DTensor<T> &) {};
 
     friend std::ostream &operator<<(std::ostream &out, const CoherentRisk<T> &data) { return data.print(out); }
 };
@@ -51,34 +67,43 @@ template<typename T>
 class AVaR : public CoherentRisk<T> {
 
 protected:
-    std::unique_ptr<NonnegativeOrthantCone<T>> m_nnoc = nullptr;
-    std::unique_ptr<ZeroCone<T>> m_zero = nullptr;
-    size_t m_doubleNumCh = 0;
+    std::vector<int> m_idxNnoc;
+    std::unique_ptr<DTensor<int>> m_d_idxNnoc = nullptr;
+    std::unique_ptr<DTensor<int>> m_d_idx = nullptr;
+    std::unique_ptr<DTensor<int>> m_d_zeros = nullptr;
 
     std::ostream &print(std::ostream &out) const {
         out << "Risk: AVaR, \n";
-        out << this->m_K;
         return out;
     }
 
 public:
-    explicit AVaR(size_t nodeIdx, size_t numChildren, DTensor<T> &nullspaceProj, DTensor<T> &b) :
-        CoherentRisk<T>(nodeIdx, nullspaceProj, b) {
-        m_doubleNumCh = numChildren * 2;
+    explicit AVaR(std::string path, std::vector<size_t> &numCh) : CoherentRisk<T>(path) {
         /* The zero cone is extended for nodes with fewer children.
-         * As we are projecting on the dual, the buffer elements will never be changed.
+         * As we only project on the dual, some elements will never be changed.
          */
-        size_t fill = this->m_d_b->numEl() - m_doubleNumCh;
-        m_nnoc = std::make_unique<NonnegativeOrthantCone<T>>(m_doubleNumCh);
-        m_zero = std::make_unique<ZeroCone<T>>(fill);
-        this->m_K = std::make_unique<Cartesian<T>>();
-        this->m_K->addCone(*m_nnoc);
-        this->m_K->addCone(*m_zero);
+        size_t riskDim = this->b().numRows();
+        for (size_t i = 0; i < this->b().numMats(); i++) {
+            size_t nnocDim = numCh[i] * 2;
+            for (size_t j = 0; j < riskDim; j++) {
+                if (j < nnocDim) m_idxNnoc.push_back(1);
+                else m_idxNnoc.push_back(0);
+            }
+        }
+        size_t n = this->b().numEl();
+        m_d_idxNnoc = std::make_unique<DTensor<int>>(m_idxNnoc, n);
+        m_d_idx = std::make_unique<DTensor<int>>(n);
+        m_d_zeros = std::make_unique<DTensor<int>>(n, 1, 1, true);
     }
 
-    bool isAvar() { return true; }
-
-    size_t sizeNnoc() { return m_doubleNumCh; }
+    void projectDual(DTensor<T> &d_tensor) {
+        this->dimensionCheck(d_tensor);
+        m_d_zeros->deviceCopyTo(*m_d_idx);
+        k_projectionMultiIndexedNnoc<<<numBlocks(this->m_dim, TPB), TPB>>>(d_tensor.raw(),
+                                                                           this->m_dim,
+                                                                           m_d_idxNnoc->raw(),
+                                                                           m_d_idx->raw());
+    }
 };
 
 

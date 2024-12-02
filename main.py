@@ -1,6 +1,11 @@
 import py
 import numpy as np
+import argparse
 
+parser = argparse.ArgumentParser(description='Problem data generator.')
+parser.add_argument("--N", type=int, default=3)
+parser.add_argument("--nx", type=int, default=2)
+args = parser.parse_args()
 
 # --------------------------------------------------------
 # Generate scenario tree
@@ -10,7 +15,8 @@ p = np.array([[0.5, 0.5], [0.5, 0.5]])
 
 v = np.array([0.3, 0.7])
 
-(final_stage, stop_branching_stage) = (11, 11)
+N = args.N
+(final_stage, stop_branching_stage) = (N, N)
 tree = py.treeFactory.TreeFactoryMarkovChain(
     transition_prob=p,
     initial_distribution=v,
@@ -26,7 +32,7 @@ print(tree)
 # --------------------------------------------------------
 
 # Sizes
-num_states = 50
+num_states = args.nx
 num_inputs = num_states
 num_events = 2
 

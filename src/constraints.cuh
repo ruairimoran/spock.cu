@@ -3,28 +3,37 @@
 
 #include "../include/gpu.cuh"
 #include "cones.cuh"
+#include "memCpy.cuh"
 
 
 TEMPLATE_WITH_TYPE_T
 __global__ void k_projectRectangle(size_t, T *, T *, T *);
 
 
+/**
+ * Constraint types
+ */
+enum ConstraintMode {
+    nonleaf,
+    leaf
+};
+
+
+/**
+ * Base constraint class
+ */
 TEMPLATE_WITH_TYPE_T
 class Constraint {
 
 protected:
-    size_t m_nodeIndex = 0;
-    size_t m_dimension = 0;
-    std::unique_ptr<DTensor<T>> m_d_empty = nullptr;
+    size_t m_dim = 0;
 
-    explicit Constraint(size_t node, size_t dim) : m_nodeIndex(node), m_dimension(dim) {
-        m_d_empty = std::make_unique<DTensor<T>>(0);
-    }
+    explicit Constraint(size_t dim = 0) : m_dim(dim) {}
 
     bool dimensionCheck(DTensor<T> &d_vec) {
-        if (d_vec.numRows() != m_dimension || d_vec.numCols() != 1 || d_vec.numMats() != 1) {
-            err << "DTensor is [" << d_vec.numRows() << " x " << d_vec.numCols() << " x " << d_vec.numMats()
-                << "], but constraint has dimensions [" << m_dimension << " x " << 1 << " x " << 1 << "]\n";
+        if (d_vec.numEl() != m_dim) {
+            err << "[Constraint] Given DTensor has size (" << d_vec.numEl()
+                << "), but constraint has size (" << m_dim << ")\n";
             throw std::invalid_argument(err.str());
         }
         return true;
@@ -35,21 +44,17 @@ protected:
 public:
     virtual ~Constraint() = default;
 
-    virtual size_t node() { return m_nodeIndex; }
+    virtual size_t dimension() { return m_dim; }
 
-    virtual size_t dimension() { return m_dimension; }
+    virtual void constrain(DTensor<T> &) {};
 
-    virtual void project(DTensor<T> &d_vec) {};
+    virtual void op(DTensor<T> &, DTensor<T> &, size_t, size_t, DTensor<T> &, size_t) {};
 
-    virtual bool isNone() { return false; }
+    virtual void op(DTensor<T> &, DTensor<T> &, size_t, size_t) {};
 
-    virtual bool isRectangle() { return false; }
+    virtual void adj(DTensor<T> &, DTensor<T> &, size_t, size_t, DTensor<T> &, size_t) {};
 
-    virtual DTensor<T> &lo() { return *m_d_empty; }
-
-    virtual DTensor<T> &hi() { return *m_d_empty; }
-
-    virtual bool isBall() { return false; }
+    virtual void adj(DTensor<T> &, DTensor<T> &, size_t, size_t) {};
 
     friend std::ostream &operator<<(std::ostream &out, const Constraint<T> &data) { return data.print(out); }
 };
@@ -63,9 +68,16 @@ TEMPLATE_WITH_TYPE_T
 class NoConstraint : public Constraint<T> {
 
 public:
-    explicit NoConstraint(size_t node, size_t dim) : Constraint<T>(node, dim) {}
+    explicit NoConstraint() : Constraint<T>() {}
 
-    bool isNone() { return true; }
+    void adj(DTensor<T> &dual, DTensor<T> &x, size_t nMinusOne, size_t numStates, DTensor<T> &u, size_t numInputs) {
+        k_setToZero<<<numBlocks(x.numEl(), TPB), TPB>>>(x.raw(), x.numEl());
+        k_setToZero<<<numBlocks(u.numEl(), TPB), TPB>>>(u.raw(), u.numEl());
+    }
+
+    void adj(DTensor<T> &dual, DTensor<T> &x, size_t nMinusOne, size_t numStates) {
+        k_setToZero<<<numBlocks(x.numEl(), TPB), TPB>>>(x.raw(), x.numEl());
+    }
 };
 
 
@@ -84,29 +96,42 @@ private:
     std::unique_ptr<DTensor<T>> m_d_upperBound = nullptr;
 
     std::ostream &print(std::ostream &out) const {
-        out << "Node: " << this->m_nodeIndex << ", Constraint: Rectangle, \n";
+        out << "Constraint: Rectangle, \n";
         printIfTensor(out, "Lower bound: ", m_d_lowerBound);
         printIfTensor(out, "Upper bound: ", m_d_upperBound);
         return out;
     }
 
 public:
-    explicit Rectangle(size_t node, size_t dim, std::vector<T> &lb, std::vector<T> &ub) : Constraint<T>(node, dim) {
-        m_d_lowerBound = std::make_unique<DTensor<T>>(lb, dim);
-        m_d_upperBound = std::make_unique<DTensor<T>>(ub, dim);
+    explicit Rectangle(std::string file) {
+        m_d_lowerBound = std::make_unique<DTensor<T>>(DTensor<T>::parseFromTextFile(file + "LB", rowMajor));
+        m_d_upperBound = std::make_unique<DTensor<T>>(DTensor<T>::parseFromTextFile(file + "UB", rowMajor));
+        this->m_dim = m_d_lowerBound->numEl();
     }
 
-    void project(DTensor<T> &d_vec) {
+    void constrain(DTensor<T> &d_vec) {
         this->dimensionCheck(d_vec);
-        k_projectRectangle<<<numBlocks(this->m_dimension, TPB), TPB>>>(this->m_dimension, d_vec.raw(),
-                                                                       m_d_lowerBound->raw(), m_d_upperBound->raw());
+        k_projectRectangle<<<numBlocks(this->m_dim, TPB), TPB>>>(this->m_dim, d_vec.raw(),
+                                                                 m_d_lowerBound->raw(), m_d_upperBound->raw());
     }
 
-    bool isRectangle() { return true; }
+    void op(DTensor<T> &dual, DTensor<T> &x, size_t nMinusOne, size_t numStates, DTensor<T> &u, size_t numInputs) {
+        memCpy(&dual, &x, 0, nMinusOne, numStates);
+        memCpy(&dual, &u, 0, nMinusOne, numInputs, numStates);
+    }
 
-    DTensor<T> &lo() { return *m_d_lowerBound; }
+    void op(DTensor<T> &dual, DTensor<T> &x, size_t nMinusOne, size_t numStates) {
+        memCpy(&dual, &x, 0, nMinusOne, numStates);
+    }
 
-    DTensor<T> &hi() { return *m_d_upperBound; }
+    void adj(DTensor<T> &dual, DTensor<T> &x, size_t nMinusOne, size_t numStates, DTensor<T> &u, size_t numInputs) {
+        memCpy(&x, &dual, 0, nMinusOne, numStates);
+        memCpy(&u, &dual, 0, nMinusOne, numInputs, 0, numStates);
+    }
+
+    void adj(DTensor<T> &dual, DTensor<T> &x, size_t nMinusOne, size_t numStates) {
+        memCpy(&x, &dual, 0, nMinusOne, numStates);
+    }
 };
 
 
@@ -120,9 +145,8 @@ TEMPLATE_WITH_TYPE_T
 class Ball : public Constraint<T> {
 
 public:
-    explicit Ball(size_t node, size_t dim) : Constraint<T>(node, dim) {}
+    explicit Ball(size_t dim) : Constraint<T>(dim) {}
 
-    bool isBall() { return true; }
 };
 
 

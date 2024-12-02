@@ -36,7 +36,7 @@ test_python() {
 # ------------------------------------
 test_cpp() {
     # -- create build files
-    cmake -S . -B ./build -Wno-dev -DSPOCK_BUILD_TESTING=ON
+    cmake -S . -B ./build -Wno-dev -SPOCK_BUILD_TESTING=ON
 
     # -- build files in build folder
     cmake --build ./build

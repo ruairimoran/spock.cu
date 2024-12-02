@@ -6,8 +6,6 @@
 class RisksTest : public testing::Test {
 protected:
     RisksTest() = default;
-
-    virtual ~RisksTest() = default;
 };
 
 
@@ -22,7 +20,7 @@ public:
         m_tree = std::make_unique<ScenarioTree<T>>(m_path);
     }
 
-    virtual ~RisksTestData() {}
+    virtual ~RisksTestData() = default;
 };
 
 TEMPLATE_WITH_TYPE_T

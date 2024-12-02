@@ -7,8 +7,6 @@
 class CacheTest : public testing::Test {
 protected:
     CacheTest() = default;
-
-    virtual ~CacheTest() = default;
 };
 
 TEMPLATE_WITH_TYPE_T
@@ -69,10 +67,10 @@ void testDynamicsProjectionOnline(CacheTestData<T> &d, T epsilon) {
     size_t inputsSize = d.m_data->numInputs() * d.m_tree->numNonleafNodes();
     std::vector<T> cvxStates(statesSize);
     std::vector<T> cvxInputs(inputsSize);
-    DTensor<T> dpStates = DTensor<T>::parseFromTextFile(d.m_path + "dpTestStates", rowMajor);
-    DTensor<T> dpInputs = DTensor<T>::parseFromTextFile(d.m_path + "dpTestInputs", rowMajor);
-    DTensor<T> dpProjectedStates = DTensor<T>::parseFromTextFile(d.m_path + "dpProjectedStates", rowMajor);
-    DTensor<T> dpProjectedInputs = DTensor<T>::parseFromTextFile(d.m_path + "dpProjectedInputs", rowMajor);
+    DTensor<T> dpStates = DTensor<T>::parseFromFile(d.m_path + "dpTestStates", rowMajor);
+    DTensor<T> dpInputs = DTensor<T>::parseFromFile(d.m_path + "dpTestInputs", rowMajor);
+    DTensor<T> dpProjectedStates = DTensor<T>::parseFromFile(d.m_path + "dpProjectedStates", rowMajor);
+    DTensor<T> dpProjectedInputs = DTensor<T>::parseFromFile(d.m_path + "dpProjectedInputs", rowMajor);
     dpProjectedStates.download(cvxStates);
     dpProjectedInputs.download(cvxInputs);
     DTensor<T> d_x0(dpStates, 0, 0, d.m_data->numStates() - 1);
@@ -151,7 +149,7 @@ void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon) {
         t.deviceCopyTo(projT);
         s.deviceCopyTo(projS);
         /* Compute kernel matrix * projected vector */
-        DTensor<T> kerConMats = DTensor<T>::parseFromTextFile(d.m_path + "S2", rowMajor);
+        DTensor<T> kerConMats = DTensor<T>::parseFromFile(d.m_path + "S2", rowMajor);
         DTensor<T> kerConMat(kerConMats, 2, node, node);
         DTensor<T> shouldBeZeros = kerConMat * projected;
         std::vector<T> result(shouldBeZeros.numEl());
@@ -242,8 +240,8 @@ TEST_F(CacheTest, kernelProjectionOnlineOrthogonality) {
 
 TEMPLATE_WITH_TYPE_T
 void testDotM(CacheTestData<T> &d, T epsilon) {
-    DTensor<T> dotVector = DTensor<T>::parseFromTextFile(d.m_path + "dotVector", rowMajor);
-    DTensor<T> dotResult = DTensor<T>::parseFromTextFile(d.m_path + "dotResult", rowMajor);
+    DTensor<T> dotVector = DTensor<T>::parseFromFile(d.m_path + "dotVector", rowMajor);
+    DTensor<T> dotResult = DTensor<T>::parseFromFile(d.m_path + "dotResult", rowMajor);
     Cache<T> &c = *d.m_cache;
     T dot = c.dotM(dotVector, dotVector);
     std::vector<T> expected(1);

@@ -191,15 +191,16 @@ class Tree:
             path = os.path.join(os.getcwd(), self.__folder)
             os.makedirs(path, exist_ok=True)
             output_file = os.path.join(path, name)
-            np.savetxt(output_file,
-                       X=tensor,
-                       fmt='%-.15f',
-                       delimiter='\n',
-                       newline='\n',
-                       header=f"{len(tensor)}\n"
-                              f"{1}\n"
-                              f"{1}",
-                       comments='')
+            with open(output_file, 'w') as f:
+                np.savetxt(f,
+                           X=tensor,
+                           fmt='%-.15f',
+                           delimiter='\n',
+                           newline='\n',
+                           header=f"{len(tensor)}\n"
+                                  f"{1}\n"
+                                  f"{1}",
+                           comments='')
 
 
 # Visualisation

@@ -112,27 +112,29 @@ class Problem:
 
     @staticmethod
     def save_tensor(file, tensor):
-        np.savetxt(file,
-                   X=tensor.reshape(-1),
-                   fmt='%-.15f',
-                   delimiter='\n',
-                   newline='\n',
-                   header=f"{tensor.shape[1]}\n"
-                          f"{tensor.shape[2]}\n"
-                          f"{tensor.shape[0]}",
-                   comments='')
+        with open(file, 'w') as f:
+            np.savetxt(f,
+                       X=tensor.reshape(-1),
+                       fmt='%-.15f',
+                       delimiter='\n',
+                       newline='\n',
+                       header=f"{tensor.shape[1]}\n"
+                              f"{tensor.shape[2]}\n"
+                              f"{tensor.shape[0]}",
+                       comments='')
 
     @staticmethod
     def save_vector(file, vector):
-        np.savetxt(file,
-                   X=vector,
-                   fmt='%-.15f',
-                   delimiter='\n',
-                   newline='\n',
-                   header=f"{len(vector)}\n"
-                          f"{1}\n"
-                          f"{1}",
-                   comments='')
+        with open(file, 'w') as f:
+            np.savetxt(f,
+                       X=vector,
+                       fmt='%-.15f',
+                       delimiter='\n',
+                       newline='\n',
+                       header=f"{len(vector)}\n"
+                              f"{1}\n"
+                              f"{1}",
+                       comments='')
 
     def generate_problem_files(self):
         # Setup jinja environment

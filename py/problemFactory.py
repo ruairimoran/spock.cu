@@ -4,6 +4,7 @@ import numpy as np
 import scipy as sp
 from scipy.linalg import sqrtm
 from scipy.sparse.linalg import LinearOperator, eigs
+import gputils_api as ga
 import cvxpy as cvx
 from copy import deepcopy
 from . import treeFactory
@@ -108,33 +109,7 @@ class Problem:
     def get_file(self, name):
         path = os.path.join(os.getcwd(), self.__tree.folder)
         os.makedirs(path, exist_ok=True)
-        return os.path.join(path, name)
-
-    @staticmethod
-    def save_tensor(file, tensor):
-        with open(file, 'w') as f:
-            np.savetxt(f,
-                       X=tensor.reshape(-1),
-                       fmt='%-.15f',
-                       delimiter='\n',
-                       newline='\n',
-                       header=f"{tensor.shape[1]}\n"
-                              f"{tensor.shape[2]}\n"
-                              f"{tensor.shape[0]}",
-                       comments='')
-
-    @staticmethod
-    def save_vector(file, vector):
-        with open(file, 'w') as f:
-            np.savetxt(f,
-                       X=vector,
-                       fmt='%-.15f',
-                       delimiter='\n',
-                       newline='\n',
-                       header=f"{len(vector)}\n"
-                              f"{1}\n"
-                              f"{1}",
-                       comments='')
+        return os.path.join(path, name + ".bt")
 
     def generate_problem_files(self):
         # Setup jinja environment
@@ -213,7 +188,7 @@ class Problem:
             })
         # Generate tensor files
         for name, tensor in tensors.items():
-            self.save_tensor(self.get_file(name), tensor)
+            self.__tree.save_tensor(self.get_file(name), tensor)
         if self.__test:
             stack_ker_con = np.array(self.__kernel_constraint_matrix)
             test_tensors = {
@@ -231,9 +206,9 @@ class Problem:
                 "dotResult": [self.__dot_result]
             }
             for name, tensor in test_tensors.items():
-                self.save_tensor(self.get_file(name), tensor)
+                self.__tree.save_tensor(self.get_file(name), tensor)
             for name, vector in test_vectors.items():
-                self.save_vector(self.get_file(name), vector)
+                self.__tree.save_vector(self.get_file(name), vector)
 
     # --------------------------------------------------------
     # Cache

@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import turtle
-import jinja2 as j2
+import gputils_api as ga
 
 
 class Tree:
@@ -167,6 +167,15 @@ class Tree:
         return f"Scenario tree with {self.num_nodes} nodes, {self.num_stages} stages " \
                f"and {len(self.nodes_of_stage(self.num_stages - 1))} scenarios"
 
+    @staticmethod
+    def save_vector(file, vector):
+        ga.write_array_to_gputils_binary_file(np.array(vector), file)
+
+    @staticmethod
+    def save_tensor(file, tensor):
+        a = tensor.reshape(tensor.shape[1], tensor.shape[2], tensor.shape[0])
+        ga.write_array_to_gputils_binary_file(a, file)
+
     def generate_tree_files(self):
         # Generate extra lists
         child_from = [arr[0] for arr in self.__children]
@@ -187,20 +196,11 @@ class Tree:
             "stageTo": stage_to
         }
         # Generate tensor files
-        for name, tensor in tensors.items():
+        for name, vector in tensors.items():
             path = os.path.join(os.getcwd(), self.__folder)
             os.makedirs(path, exist_ok=True)
-            output_file = os.path.join(path, name)
-            with open(output_file, 'w') as f:
-                np.savetxt(f,
-                           X=tensor,
-                           fmt='%-.15f',
-                           delimiter='\n',
-                           newline='\n',
-                           header=f"{len(tensor)}\n"
-                                  f"{1}\n"
-                                  f"{1}",
-                           comments='')
+            output_file = os.path.join(path, name + ".bt")
+            self.save_vector(output_file, vector)
 
 
 # Visualisation

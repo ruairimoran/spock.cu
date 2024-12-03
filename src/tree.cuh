@@ -84,25 +84,25 @@ public:
         /* Read tensors onto device */
         // Note that ancestors[0] and events[0] will be max(size_t) on device because they are -1 on host
         m_d_stages = std::make_unique<DTensor<size_t>>(
-            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "stages", rowMajor));
+            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "stages" + FILE_EXT, rowMajor));
         m_d_ancestors = std::make_unique<DTensor<size_t>>(
-            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "ancestors", rowMajor));
+            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "ancestors" + FILE_EXT, rowMajor));
         m_d_probabilities = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_pathToDataFolder + "probabilities", rowMajor));
+            DTensor<T>::parseFromFile(m_pathToDataFolder + "probabilities" + FILE_EXT, rowMajor));
         m_d_conditionalProbabilities = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_pathToDataFolder + "conditionalProbabilities", rowMajor));
+            DTensor<T>::parseFromFile(m_pathToDataFolder + "conditionalProbabilities" + FILE_EXT, rowMajor));
         m_d_events = std::make_unique<DTensor<size_t>>(
-            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "events", rowMajor));
+            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "events" + FILE_EXT, rowMajor));
         m_d_childFrom = std::make_unique<DTensor<size_t>>(
-            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "childrenFrom", rowMajor));
+            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "childrenFrom" + FILE_EXT, rowMajor));
         m_d_childTo = std::make_unique<DTensor<size_t>>(
-            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "childrenTo", rowMajor));
+            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "childrenTo" + FILE_EXT, rowMajor));
         m_d_numChildren = std::make_unique<DTensor<size_t>>(
-            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "numChildren", rowMajor));
+            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "numChildren" + FILE_EXT, rowMajor));
         m_d_stageFrom = std::make_unique<DTensor<size_t>>(
-            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "stageFrom", rowMajor));
+            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "stageFrom" + FILE_EXT, rowMajor));
         m_d_stageTo = std::make_unique<DTensor<size_t>>(
-            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "stageTo", rowMajor));
+            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "stageTo" + FILE_EXT, rowMajor));
 
         /* Allocate memory on host for data */
         m_childFrom = std::vector<size_t>(m_numNonleafNodes);

@@ -116,25 +116,25 @@ public:
         /* Allocate memory on device */
         m_d_stepSize = std::make_unique<DTensor<T>>(std::vector(1, m_stepSize), 1);
         m_d_inputDynamicsTr = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "inputDynTr", rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "inputDynTr" + FILE_EXT, rowMajor));
         m_d_stateInputDynamics = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "AB_dyn", rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "AB_dyn" + FILE_EXT, rowMajor));
         m_d_sqrtStateWeight = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "sqrtStateCost", rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "sqrtStateCost" + FILE_EXT, rowMajor));
         m_d_sqrtInputWeight = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "sqrtInputCost", rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "sqrtInputCost" + FILE_EXT, rowMajor));
         m_d_sqrtStateWeightLeaf = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "sqrtTerminalCost", rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "sqrtTerminalCost" + FILE_EXT, rowMajor));
         m_d_lowerCholesky = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "lowChol", rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "lowChol" + FILE_EXT, rowMajor));
         m_d_K = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "K", rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "K" + FILE_EXT, rowMajor));
         m_d_dynamicsSumTr = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "dynTr", rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "dynTr" + FILE_EXT, rowMajor));
         m_d_P = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "P", rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "P" + FILE_EXT, rowMajor));
         m_d_APB = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "APB", rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "APB" + FILE_EXT, rowMajor));
         m_d_KTr = std::make_unique<DTensor<T>>(m_numStates, m_numInputs, m_tree.numNonleafNodes(), true);
         m_d_bTr = std::make_unique<DTensor<T>>(1, m_numY, m_tree.numNonleafNodes(), true);
 

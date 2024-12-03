@@ -25,9 +25,9 @@ protected:
 
     explicit CoherentRisk(std::string path) {
         m_d_nullspaceProjectionMatrix = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(path + "NNtr", rowMajor));
+            DTensor<T>::parseFromFile(path + "NNtr" + FILE_EXT, rowMajor));
         m_d_b = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(path + "b", rowMajor));
+            DTensor<T>::parseFromFile(path + "b" + FILE_EXT, rowMajor));
         m_d_bTr = std::make_unique<DTensor<T>>(m_d_b->tr());
         m_dim = m_d_b->numEl();
     }

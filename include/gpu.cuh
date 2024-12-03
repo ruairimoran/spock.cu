@@ -21,6 +21,7 @@
 #define TPB 512
 #define TEST_PRECISION_LOW 1e-3
 #define TEST_PRECISION_HIGH 1e-4
+#define FILE_EXT ".bt"
 static std::ostringstream err;
 
 /**

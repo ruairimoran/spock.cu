@@ -13,7 +13,6 @@ TEMPLATE_WITH_TYPE_T
 class OperatorTestData {
 public:
     std::string m_path = "../../data/";
-    std::string m_file;
     std::unique_ptr<ScenarioTree<T>> m_tree;
     std::unique_ptr<ProblemData<T>> m_data;
     std::unique_ptr<Cache<T>> m_cache;
@@ -27,7 +26,6 @@ public:
         m_tree = std::make_unique<ScenarioTree<T>>(m_path);
         m_data = std::make_unique<ProblemData<T>>(*m_tree);
         m_cache = std::make_unique<Cache<T>>(*m_tree, *m_data, m_tol, m_maxIters);
-        m_file = m_tree->path() + m_tree->json();
     };
 
     virtual ~OperatorTestData() = default;
@@ -39,8 +37,9 @@ public:
 
 TEMPLATE_WITH_TYPE_T
 void testOperator(OperatorTestData<T> &d, T epsilon) {
-    DTensor<T> primBeforeOp = DTensor<T>::parseFromFile(d.m_path + "primBeforeOp", rowMajor);
-    DTensor<T> dualAfterOpBeforeAdj = DTensor<T>::parseFromFile(d.m_path + "dualAfterOpBeforeAdj", rowMajor);
+    std::string ext = d.m_tree->fpFileExt();
+    DTensor<T> primBeforeOp = DTensor<T>::parseFromFile(d.m_path + "primBeforeOp" + ext);
+    DTensor<T> dualAfterOpBeforeAdj = DTensor<T>::parseFromFile(d.m_path + "dualAfterOpBeforeAdj" + ext);
     dualAfterOpBeforeAdj.download(d.m_dualAfterOpBeforeAdj);
     /* Load primal and test resulting dual */
     Cache<T> &c = *d.m_cache;
@@ -65,8 +64,9 @@ TEST_F(OperatorTest, op) {
 
 TEMPLATE_WITH_TYPE_T
 void testAdjoint(OperatorTestData<T> &d, T epsilon) {
-    DTensor<T> dualAfterOpBeforeAdj = DTensor<T>::parseFromFile(d.m_path + "dualAfterOpBeforeAdj", rowMajor);
-    DTensor<T> primAfterAdj = DTensor<T>::parseFromFile(d.m_path + "primAfterAdj", rowMajor);
+    std::string ext = d.m_tree->fpFileExt();
+    DTensor<T> dualAfterOpBeforeAdj = DTensor<T>::parseFromFile(d.m_path + "dualAfterOpBeforeAdj" + ext);
+    DTensor<T> primAfterAdj = DTensor<T>::parseFromFile(d.m_path + "primAfterAdj" + ext);
     primAfterAdj.download(d.m_primAfterAdj);
     /* Load dual and test resulting primal */
     Cache<T> &c = *d.m_cache;

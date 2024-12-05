@@ -17,7 +17,9 @@ class ScenarioTree {
 
 private:
     std::string m_pathToDataFolder;
-    std::string m_jsonFile = "data.json";
+    std::string m_jsonFileName = "data.json";
+    std::string m_fp;
+    std::string m_fileExt = ".bt";
     /* Host data */
     size_t m_numEvents = 0;  ///< Total number of possible events
     size_t m_numNodes = 0;  ///< Total number of nodes (incl. root)
@@ -64,7 +66,7 @@ public:
      * Constructor from JSON file stream
      */
     ScenarioTree(std::string pathToDataFolder = "./data/") : m_pathToDataFolder(std::move(pathToDataFolder)) {
-        std::ifstream file(m_pathToDataFolder + m_jsonFile);
+        std::ifstream file(m_pathToDataFolder + m_jsonFileName);
         std::string json((std::istreambuf_iterator<char>(file)),
                          std::istreambuf_iterator<char>());
         rapidjson::Document doc;
@@ -80,29 +82,34 @@ public:
         m_numNonleafNodes = doc["numNonleafNodes"].GetInt();
         m_numNodes = doc["numNodes"].GetInt();
         m_numStages = doc["numStages"].GetInt();
+        
+        /* Assign file extensions */
+        if constexpr (std::is_same_v<T, float>) { m_fp = "_f" + m_fileExt; }
+        else if constexpr (std::is_same_v<T, double>) { m_fp = "_d" + m_fileExt; }
+        std::string ui = "_u" + m_fileExt;
 
         /* Read tensors onto device */
         // Note that ancestors[0] and events[0] will be max(size_t) on device because they are -1 on host
         m_d_stages = std::make_unique<DTensor<size_t>>(
-            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "stages" + FILE_EXT, rowMajor));
+            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "stages" + ui));
         m_d_ancestors = std::make_unique<DTensor<size_t>>(
-            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "ancestors" + FILE_EXT, rowMajor));
+            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "ancestors" + ui));
         m_d_probabilities = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_pathToDataFolder + "probabilities" + FILE_EXT, rowMajor));
+            DTensor<T>::parseFromFile(m_pathToDataFolder + "probabilities" + m_fp));
         m_d_conditionalProbabilities = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_pathToDataFolder + "conditionalProbabilities" + FILE_EXT, rowMajor));
+            DTensor<T>::parseFromFile(m_pathToDataFolder + "conditionalProbabilities" + m_fp));
         m_d_events = std::make_unique<DTensor<size_t>>(
-            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "events" + FILE_EXT, rowMajor));
+            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "events" + ui));
         m_d_childFrom = std::make_unique<DTensor<size_t>>(
-            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "childrenFrom" + FILE_EXT, rowMajor));
+            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "childrenFrom" + ui));
         m_d_childTo = std::make_unique<DTensor<size_t>>(
-            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "childrenTo" + FILE_EXT, rowMajor));
+            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "childrenTo" + ui));
         m_d_numChildren = std::make_unique<DTensor<size_t>>(
-            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "numChildren" + FILE_EXT, rowMajor));
+            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "numChildren" + ui));
         m_d_stageFrom = std::make_unique<DTensor<size_t>>(
-            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "stageFrom" + FILE_EXT, rowMajor));
+            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "stageFrom" + ui));
         m_d_stageTo = std::make_unique<DTensor<size_t>>(
-            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "stageTo" + FILE_EXT, rowMajor));
+            DTensor<size_t>::parseFromFile(m_pathToDataFolder + "stageTo" + ui));
 
         /* Allocate memory on host for data */
         m_childFrom = std::vector<size_t>(m_numNonleafNodes);
@@ -139,7 +146,9 @@ public:
      */
     std::string path() { return m_pathToDataFolder; }
 
-    std::string json() { return m_jsonFile; }
+    std::string json() { return m_jsonFileName; }
+
+    std::string fpFileExt() { return m_fp; }
 
     size_t numEvents() { return m_numEvents; }
 

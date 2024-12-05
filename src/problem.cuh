@@ -61,7 +61,7 @@ private:
         if (typeStr == std::string("no")) {
             constraint = std::make_unique<NoConstraint<T>>();
         } else if (typeStr == std::string("rectangle")) {
-            constraint = std::make_unique<Rectangle<T>>(m_tree.path() + modeStr);
+            constraint = std::make_unique<Rectangle<T>>(m_tree.path() + modeStr, m_tree.fpFileExt());
         } else {
             err << "[parseConstraint] Constraint type " << typeStr
                 << " is not supported. Supported types include: rectangle" << "\n";
@@ -72,7 +72,7 @@ private:
     void parseRisk(const rapidjson::Value &value) {
         std::string typeStr = value["type"].GetString();
         if (typeStr == std::string("avar")) {
-            m_risk = std::make_unique<AVaR<T>>(m_tree.path(), m_tree.numChildren());
+            m_risk = std::make_unique<AVaR<T>>(m_tree.path(), m_tree.fpFileExt(), m_tree.numChildren());
         } else {
             err << "[parseRisk] Risk type " << typeStr
                 << " is not supported. Supported types include: avar" << "\n";
@@ -114,29 +114,29 @@ public:
         m_stepSizeRecip = 1. / m_stepSize;
 
         /* Allocate memory on device */
+        std::string ext = m_tree.fpFileExt();
         m_d_stepSize = std::make_unique<DTensor<T>>(std::vector(1, m_stepSize), 1);
         m_d_inputDynamicsTr = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "inputDynTr" + FILE_EXT, rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "inputDynTr" + ext));
         m_d_stateInputDynamics = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "AB_dyn" + FILE_EXT, rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "AB_dyn" + ext));
         m_d_sqrtStateWeight = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "sqrtStateCost" + FILE_EXT, rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "sqrtStateCost" + ext));
         m_d_sqrtInputWeight = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "sqrtInputCost" + FILE_EXT, rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "sqrtInputCost" + ext));
         m_d_sqrtStateWeightLeaf = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "sqrtTerminalCost" + FILE_EXT, rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "sqrtTerminalCost" + ext));
         m_d_lowerCholesky = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "lowChol" + FILE_EXT, rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "lowChol" + ext));
         m_d_K = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "K" + FILE_EXT, rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "K" + ext));
         m_d_dynamicsSumTr = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "dynTr" + FILE_EXT, rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "dynTr" + ext));
         m_d_P = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "P" + FILE_EXT, rowMajor));
+            DTensor<T>::parseFromFile(m_tree.path() + "P" + ext));
         m_d_APB = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "APB" + FILE_EXT, rowMajor));
-        m_d_KTr = std::make_unique<DTensor<T>>(m_numStates, m_numInputs, m_tree.numNonleafNodes(), true);
-        m_d_bTr = std::make_unique<DTensor<T>>(1, m_numY, m_tree.numNonleafNodes(), true);
+            DTensor<T>::parseFromFile(m_tree.path() + "APB" + ext));
+        m_d_KTr = std::make_unique<DTensor<T>>(m_d_K->tr());
 
         /* Parse constraints, risks, and Cholesky data */
         parseConstraint(doc, m_nonleafConstraint, nonleaf);
@@ -150,10 +150,6 @@ public:
             m_choleskyStage[stage] = std::make_unique<DTensor<T>>(*m_d_lowerCholesky, 2, nodeFr, nodeTo);
             m_choleskyBatch[stage] = std::make_unique<CholeskyBatchFactoriser<T>>(*m_choleskyStage[stage], true);
         }
-
-        /* Update remaining fields */
-        DTensor<T> KTr = m_d_K->tr();
-        KTr.deviceCopyTo(*m_d_KTr);
     }
 
     /**

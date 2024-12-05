@@ -9,7 +9,7 @@ class Tree:
     Scenario tree creation and visualisation
     """
 
-    def __init__(self, stages, ancestors, probability, w_values=None, is_markovian=False, is_iid=False):
+    def __init__(self, dt, stages, ancestors, probability, w_values=None, is_markovian=False, is_iid=False):
         """
         :param stages: array where `array position=node number` and `value at position=stage at node`
         :param ancestors: array where `array position=node number` and `value at position=node ancestor`
@@ -19,6 +19,8 @@ class Tree:
         Note: avoid using this constructor directly; use a factory instead
         """
         self.__folder = "data"
+        self.__file_ext = ".bt"
+        self.__dt = dt
         self.__is_markovian = is_markovian
         self.__is_iid = is_iid
         self.__stages = stages
@@ -167,14 +169,16 @@ class Tree:
         return f"Scenario tree with {self.num_nodes} nodes, {self.num_stages} stages " \
                f"and {len(self.nodes_of_stage(self.num_stages - 1))} scenarios"
 
-    @staticmethod
-    def save_vector(file, vector):
-        ga.write_array_to_gputils_binary_file(np.array(vector), file)
+    def get_file(self, name, dt):
+        path = os.path.join(os.getcwd(), self.__folder)
+        os.makedirs(path, exist_ok=True)
+        return os.path.join(path, name + "_" + dt + self.__file_ext)
 
-    @staticmethod
-    def save_tensor(file, tensor):
-        a = tensor.reshape(tensor.shape[1], tensor.shape[2], tensor.shape[0])
-        ga.write_array_to_gputils_binary_file(a, file)
+    def write_to_file_uint(self, name, vector):
+        ga.write_array_to_gputils_binary_file(np.array(vector, dtype=np.uintp), self.get_file(name, 'u'))
+
+    def write_to_file_fp(self, name, tensor):
+        ga.write_array_to_gputils_binary_file(tensor.astype(self.__dt), self.get_file(name, self.__dt))
 
     def generate_tree_files(self):
         # Generate extra lists
@@ -183,11 +187,9 @@ class Tree:
         stage_from = [arr[0] for arr in self.__nodes_of_stage]
         stage_to = [arr[-1] for arr in self.__nodes_of_stage]
         # Create tensor dict
-        tensors = {
+        vectors_int = {
             "stages": self.__stages,
             "ancestors": self.__ancestors,
-            "probabilities": self.__probability,
-            "conditionalProbabilities": self.__conditional_probability,
             "events": self.__w_idx,
             "childrenFrom": child_from,
             "childrenTo": child_to,
@@ -195,12 +197,15 @@ class Tree:
             "stageFrom": stage_from,
             "stageTo": stage_to
         }
-        # Generate tensor files
-        for name, vector in tensors.items():
-            path = os.path.join(os.getcwd(), self.__folder)
-            os.makedirs(path, exist_ok=True)
-            output_file = os.path.join(path, name + ".bt")
-            self.save_vector(output_file, vector)
+        vectors_fp = {
+            "probabilities": np.array(self.__probability),
+            "conditionalProbabilities": np.array(self.__conditional_probability)
+        }
+        # Generate files
+        for name, vector in vectors_int.items():
+            self.write_to_file_uint(name, vector)
+        for name, vector in vectors_fp.items():
+            self.write_to_file_fp(name, vector)
 
 
 # Visualisation
@@ -293,14 +298,14 @@ class TreeFactoryMarkovChain:
     Factory class to construct scenario trees from stopped Markov chains
     """
 
-    def __init__(self, transition_prob, initial_distribution, horizon, stopping_stage=None):
+    def __init__(self, transition_prob, initial_distribution, horizon, stopping_stage=None, dt='d'):
         """
         :param transition_prob: transition matrix of the Markov chain
         :param initial_distribution: initial distribution of `w`
         :param horizon: horizon of the scenario tree (N) or number of final stage
         :param stopping_stage: stopping stage, which must be no larger than the number of stages [default: None]
         """
-        # self.__factory_type = "MarkovChain"
+        self.__dt = dt
         if stopping_stage is None:
             stopping_stage = horizon
         else:
@@ -410,7 +415,7 @@ class TreeFactoryMarkovChain:
         # check input data
         ancestors, values, stages = self.__make_ancestors_values_stages()
         probs = self.__make_probability_values(ancestors, values, stages)
-        tree = Tree(stages, ancestors, probs, values, is_markovian=True)
+        tree = Tree(self.__dt, stages, ancestors, probs, values, is_markovian=True)
         print("Generating tree files...")
         tree.generate_tree_files()
         return tree

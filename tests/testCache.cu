@@ -13,7 +13,6 @@ TEMPLATE_WITH_TYPE_T
 class CacheTestData {
 public:
     std::string m_path = "../../data/";
-    std::string m_file;
     std::unique_ptr<ScenarioTree<T>> m_tree;
     std::unique_ptr<ProblemData<T>> m_data;
     std::unique_ptr<Cache<T>> m_cache;
@@ -31,7 +30,6 @@ public:
         m_data = std::make_unique<ProblemData<T>>(*m_tree);
         m_cache = std::make_unique<Cache<T>>(*m_tree, *m_data, m_detectInfeas, m_tol, m_maxIters,
                                              m_maxInnerIters, m_andersonBuff, m_allowK0);
-        m_file = m_tree->path() + m_tree->json();
     };
 
     virtual ~CacheTestData() = default;
@@ -67,10 +65,11 @@ void testDynamicsProjectionOnline(CacheTestData<T> &d, T epsilon) {
     size_t inputsSize = d.m_data->numInputs() * d.m_tree->numNonleafNodes();
     std::vector<T> cvxStates(statesSize);
     std::vector<T> cvxInputs(inputsSize);
-    DTensor<T> dpStates = DTensor<T>::parseFromFile(d.m_path + "dpTestStates", rowMajor);
-    DTensor<T> dpInputs = DTensor<T>::parseFromFile(d.m_path + "dpTestInputs", rowMajor);
-    DTensor<T> dpProjectedStates = DTensor<T>::parseFromFile(d.m_path + "dpProjectedStates", rowMajor);
-    DTensor<T> dpProjectedInputs = DTensor<T>::parseFromFile(d.m_path + "dpProjectedInputs", rowMajor);
+    std::string ext = d.m_tree->fpFileExt();
+    DTensor<T> dpStates = DTensor<T>::parseFromFile(d.m_path + "dpTestStates" + ext);
+    DTensor<T> dpInputs = DTensor<T>::parseFromFile(d.m_path + "dpTestInputs" + ext);
+    DTensor<T> dpProjectedStates = DTensor<T>::parseFromFile(d.m_path + "dpProjectedStates" + ext);
+    DTensor<T> dpProjectedInputs = DTensor<T>::parseFromFile(d.m_path + "dpProjectedInputs" + ext);
     dpProjectedStates.download(cvxStates);
     dpProjectedInputs.download(cvxInputs);
     DTensor<T> d_x0(dpStates, 0, 0, d.m_data->numStates() - 1);
@@ -149,7 +148,7 @@ void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon) {
         t.deviceCopyTo(projT);
         s.deviceCopyTo(projS);
         /* Compute kernel matrix * projected vector */
-        DTensor<T> kerConMats = DTensor<T>::parseFromFile(d.m_path + "S2", rowMajor);
+        DTensor<T> kerConMats = DTensor<T>::parseFromFile(d.m_path + "S2" + d.m_tree->fpFileExt());
         DTensor<T> kerConMat(kerConMats, 2, node, node);
         DTensor<T> shouldBeZeros = kerConMat * projected;
         std::vector<T> result(shouldBeZeros.numEl());
@@ -240,8 +239,9 @@ TEST_F(CacheTest, kernelProjectionOnlineOrthogonality) {
 
 TEMPLATE_WITH_TYPE_T
 void testDotM(CacheTestData<T> &d, T epsilon) {
-    DTensor<T> dotVector = DTensor<T>::parseFromFile(d.m_path + "dotVector", rowMajor);
-    DTensor<T> dotResult = DTensor<T>::parseFromFile(d.m_path + "dotResult", rowMajor);
+    std::string ext = d.m_tree->fpFileExt();
+    DTensor<T> dotVector = DTensor<T>::parseFromFile(d.m_path + "dotVector" + ext);
+    DTensor<T> dotResult = DTensor<T>::parseFromFile(d.m_path + "dotResult" + ext);
     Cache<T> &c = *d.m_cache;
     T dot = c.dotM(dotVector, dotVector);
     std::vector<T> expected(1);

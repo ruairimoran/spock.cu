@@ -31,7 +31,6 @@ target_compile_options(spock_developer_flags
 target_link_libraries(spock_compiler_flags INTERFACE $<BUILD_INTERFACE:spock_developer_flags>
 )
 # ----
-set(GPUTILS_BUILD_TESTING OFF)
 include(FetchContent)
 FetchContent_Declare(
     gputils
@@ -44,13 +43,13 @@ FetchContent_GetProperties(
 )
 # ----
 add_subdirectory(src)
-if(NOT SPOCK_BUILD_TESTING)
-    set(SPOCK_BUILD_TESTING OFF)
+if(NOT SPOCK_BUILD_TEST)
+    set(SPOCK_BUILD_TEST OFF)
 endif()
-if (SPOCK_BUILD_TESTING)
+if (SPOCK_BUILD_TEST)
     add_subdirectory(tests)
 endif()
-unset(SPOCK_BUILD_TESTING CACHE)
+unset(SPOCK_BUILD_TEST CACHE)
 # ----
 add_executable(spock_main)
 target_sources(spock_main  # add files

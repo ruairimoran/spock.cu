@@ -23,11 +23,11 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_b = nullptr;
     std::unique_ptr<DTensor<T>> m_d_bTr = nullptr;
 
-    explicit CoherentRisk(std::string path) {
+    explicit CoherentRisk(std::string path, std::string ext) {
         m_d_nullspaceProjectionMatrix = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(path + "NNtr" + FILE_EXT, rowMajor));
+            DTensor<T>::parseFromFile(path + "NNtr" + ext));
         m_d_b = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(path + "b" + FILE_EXT, rowMajor));
+            DTensor<T>::parseFromFile(path + "b" + ext));
         m_d_bTr = std::make_unique<DTensor<T>>(m_d_b->tr());
         m_dim = m_d_b->numEl();
     }
@@ -78,7 +78,7 @@ protected:
     }
 
 public:
-    explicit AVaR(std::string path, std::vector<size_t> &numCh) : CoherentRisk<T>(path) {
+    explicit AVaR(std::string path, std::string ext, std::vector<size_t> &numCh) : CoherentRisk<T>(path, ext) {
         /* The zero cone is extended for nodes with fewer children.
          * As we only project on the dual, some elements will never be changed.
          */

@@ -30,12 +30,18 @@ class Constraint:
         return False
 
     def assign_dual(self, dual, idx, vec_length, num_vec):
-        return None, 0
-
-    def op(self, dual, x, n, u=0):
         pass
 
-    def adj(self, dual, x, n, u=0):
+    def op_nonleaf(self, x, n, u):
+        pass
+
+    def op_leaf(self, x, n):
+        pass
+
+    def adj_nonleaf(self, dual, x, n, u):
+        pass
+
+    def adj_leaf(self, dual, x, n):
         pass
 
 
@@ -49,17 +55,26 @@ class No(Constraint):
 
     def __init__(self):
         super().__init__()
+        self.__nada = np.array([]).reshape(1, 0)
 
     @property
     def is_no(self):
         return True
 
     def assign_dual(self, dual, idx, vec_length, num_vec):
-        return np.array([]).reshape(1, 0), 0
+        return self.__nada, idx
 
-    def op(self, dual, x, n, u=0):
-        dual = np.array([]).reshape(1, 0)
-        return dual
+    def op_nonleaf(self, x, n, u):
+        return self.__nada
+
+    def op_leaf(self, x, n):
+        return self.__nada
+
+    def adj_nonleaf(self, dual, x, n, u):
+        return x, u
+
+    def adj_leaf(self, dual, x, n):
+        return x
 
 
 # --------------------------------------------------------
@@ -111,18 +126,29 @@ class Rectangle(Constraint):
         idx += vec_length * num_vec
         return d, idx
 
-    def op(self, dual, x, n, u=0):
-        dual = [None] * n
+    def op_nonleaf(self, x, n, u):
+        dual = [np.zeros((x[0].size + u[0].size, 1))] * n
         for i in range(n):
-            dual[i] = np.vstack((x[i], u[i])) if u else x[i]
+            dual[i] = np.vstack((x[i], u[i]))
         return dual
 
-    def adj(self, dual, x, n, u=0):
+    def op_leaf(self, x, n):
+        dual = [np.zeros((x[0].size, 1))] * n
         for i in range(n):
-            x[i] = dual[i][:x[0].size]
-            if u:
-                u[i] = dual[i][x[0].size:]
+            dual[i] = x[i]
+        return dual
+
+    def adj_nonleaf(self, dual, x, n, u):
+        dim = x[0].size
+        for i in range(n):
+            x[i] = dual[i][:dim]
+            u[i] = dual[i][dim:]
         return x, u
+
+    def adj_leaf(self, dual, x, n):
+        for i in range(n):
+            x[i] = dual[i]
+        return x
 
 
 # =====================================================================================================================

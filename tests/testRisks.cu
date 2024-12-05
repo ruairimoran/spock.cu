@@ -25,7 +25,7 @@ public:
 
 TEMPLATE_WITH_TYPE_T
 void testCreateAvar(RisksTestData<T> &d) {
-    AVaR<T> myRisk(d.m_path, d.m_tree->numChildren());
+    AVaR<T> myRisk(d.m_path, d.m_tree->fpFileExt(), d.m_tree->numChildren());
 }
 
 TEST_F(RisksTest, createAvar) {
@@ -37,7 +37,7 @@ TEST_F(RisksTest, createAvar) {
 
 TEMPLATE_WITH_TYPE_T
 void testIndexedNnoc(RisksTestData<T> &d) {
-    AVaR<T> avar(d.m_path, d.m_tree->numChildren());
+    AVaR<T> avar(d.m_path, d.m_tree->fpFileExt(), d.m_tree->numChildren());
     size_t dim = avar.dimension();
     DTensor<T> d_vec(std::vector<T>(dim, -10.), dim);
     avar.projectDual(d_vec);

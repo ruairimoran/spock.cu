@@ -103,9 +103,9 @@ private:
     }
 
 public:
-    explicit Rectangle(std::string file) {
-        m_d_lowerBound = std::make_unique<DTensor<T>>(DTensor<T>::parseFromFile(file + "LB" + FILE_EXT, rowMajor));
-        m_d_upperBound = std::make_unique<DTensor<T>>(DTensor<T>::parseFromFile(file + "UB" + FILE_EXT, rowMajor));
+    explicit Rectangle(std::string path, std::string ext) {
+        m_d_lowerBound = std::make_unique<DTensor<T>>(DTensor<T>::parseFromFile(path + "LB" + ext));
+        m_d_upperBound = std::make_unique<DTensor<T>>(DTensor<T>::parseFromFile(path + "UB" + ext));
         this->m_dim = m_d_lowerBound->numEl();
     }
 

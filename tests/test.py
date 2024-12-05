@@ -3,7 +3,7 @@ import numpy as np
 import argparse
 
 parser = argparse.ArgumentParser(description='Test data generator.')
-parser.add_argument("--dt", type=str, default='f')
+parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
 dt = args.dt
 

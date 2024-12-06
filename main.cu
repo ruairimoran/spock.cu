@@ -12,28 +12,25 @@
 
 
 int main() {
-    /** SCENARIO TREE */
+    /* SCENARIO TREE */
     std::cout << "Reading tree file...\n";
     ScenarioTree tree;
-//  	std::cout << tree;
 
-    /** PROBLEM DATA */
+    /* PROBLEM DATA */
     std::cout << "Reading problem file...\n";
     ProblemData problem(tree);
-//  	std::cout << problem;
 
-    /** CACHE */
+    /* CACHE */
     real_t tol = 1e-3;
     size_t maxOuterIters = 1000;
     size_t maxInnerIters = 8;
     size_t andersonBuffer = 3;
-    bool detectInfeas = false;
     bool allowK0Updates = true;
     bool debug = false;
-    Cache cache(tree, problem, tol, maxOuterIters, false, detectInfeas, maxInnerIters, andersonBuffer,
-                allowK0Updates, debug);
+    std::cout << "Allocating cache...\n";
+    Cache cache(tree, problem, tol, tol, maxOuterIters, maxInnerIters, andersonBuffer, allowK0Updates, debug);
 
-    /** TIMING ALGORITHM */
+    /* TIMING ALGORITHM */
     std::vector<real_t> initState(problem.numStates(), .1);
     size_t runs = 10;
     std::vector<real_t> runTimes(runs, 0.);
@@ -43,10 +40,10 @@ int main() {
         cache.reset();
         std::cout << "Run (" << i << ") = " << runTimes[i] << " ms.\n";
     }
-    real_t total = std::reduce(runTimes.begin(), runTimes.end());
-    real_t avg = total / runs;
+    real_t total = std::reduce(runTimes.begin() + 1, runTimes.end());
+    real_t avg = total / (runs - 1);
 
-    /** SAVE */
+    /* SAVE */
     std::ofstream timeScaling;
     timeScaling.open("misc/timeScaling.csv", std::ios::app);
     timeScaling << tree.numStages() - 1 << ", " << problem.numStates() << ", " << avg << std::endl;

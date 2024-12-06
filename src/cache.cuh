@@ -54,21 +54,24 @@ protected:
     ScenarioTree<T> &m_tree;  ///< Previously created scenario tree
     ProblemData<T> &m_data;  ///< Previously created problem
     LinearOperator<T> m_L = LinearOperator<T>(m_tree, m_data);  ///< Linear operator and its adjoint
-    bool m_debug = false;
-    bool m_status = false;
-    bool m_detectInfeas = false;
-    bool m_allowK0 = false;
-    bool m_log = false;
-    T m_tol = 0;
-    T m_err = 0;
+    T m_tolAbs = 0;
+    T m_tolRel = 0;
+    T m_tolPrim = 0;
+    T m_tolDual = 0;
+    T m_errAbs = 0;
+    T m_errPrimAbs = 0;
+    T m_errDualAbs = 0;
     size_t m_maxOuterIters = 0;
     size_t m_andSize = 0;
     size_t m_countIterations = 0;
     size_t m_rowAxis = 0;
     size_t m_colAxis = 1;
     size_t m_matAxis = 2;
-    size_t m_period = 100;
     size_t m_callsToL = 0;
+    bool m_allowK0 = false;
+    bool m_debug = false;
+    bool m_errInit = true;
+    bool m_status = false;
     /* Sizes */
     size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
     size_t m_sizeX = 0;  ///< States of all nodes
@@ -240,7 +243,7 @@ protected:
 
     void updateDirection(size_t);
 
-    bool computeError(size_t);
+    void computeError(size_t);
 
     void printToJson(std::string &);
 
@@ -250,16 +253,15 @@ public:
      */
     Cache(ScenarioTree<T> &tree,
           ProblemData<T> &data,
-          T tol = 1e-3,
+          T absTol = 1e-3,
+          T relTol = 0.,
           size_t maxOuterIters = 1000,
-          bool log = false,
-          bool detectInfeas = false,
           size_t maxInnerIters = 8,
           size_t andBuff = 3,
           bool allowK0 = false,
           bool debug = false) :
-        m_tree(tree), m_data(data), m_detectInfeas(detectInfeas), m_tol(tol), m_maxOuterIters(maxOuterIters),
-        m_maxInnerIters(maxInnerIters), m_andSize(andBuff), m_log(log), m_allowK0(allowK0), m_debug(debug) {
+        m_tree(tree), m_data(data), m_tolAbs(absTol), m_tolRel(relTol), m_maxOuterIters(maxOuterIters),
+        m_maxInnerIters(maxInnerIters), m_andSize(andBuff), m_allowK0(allowK0), m_debug(debug) {
         /* Sizes */
         initialiseSizes();
         /* Allocate memory on host */
@@ -729,7 +731,7 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
 template<typename T>
 void Cache<T>::L(bool ignore) {
     m_L.op(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
-    if (!ignore) { m_callsToL += 1; }
+    if (!ignore && m_debug) { m_callsToL += 1; }
 }
 
 /**
@@ -932,7 +934,7 @@ void Cache<T>::updateDirection(size_t idx) {
  * Compute errors for termination check.
  */
 template<typename T>
-bool Cache<T>::computeError(size_t idx) {
+void Cache<T>::computeError(size_t idx) {
     cudaDeviceSynchronize();  // DO NOT REMOVE !!!
     /* L(deltaIteratePrim) and L'(deltaIterateDual) */
     m_d_deltaIterateDual->deviceCopyTo(*m_d_workIterateDual);
@@ -945,22 +947,28 @@ bool Cache<T>::computeError(size_t idx) {
     m_d_deltaIterate->deviceCopyTo(*m_d_workIterate);
     *m_d_workIterate *= -m_data.stepSizeRecip();
     *m_d_workIterate += *m_d_ellDeltaIterate;
-    bool result = false;
-    if (m_log) {
-        /* errPrim + L'(errDual) */
-        m_d_workIteratePrim->deviceCopyTo(*m_d_err);
-        Ltr();
-        *m_d_err += *m_d_workIteratePrim;
-        m_err = m_d_err->maxAbs();
-        if (m_err <= m_tol) result = true;
+    if (m_errInit) {
+        m_tolPrim = std::max(m_tolAbs, m_tolRel * m_d_workIteratePrim->maxAbs());
+        m_tolDual = std::max(m_tolAbs, m_tolRel * m_d_workIterateDual->maxAbs());
+        m_errInit = false;
     } else {
-        m_err = m_d_workIterate->maxAbs();
-        if (m_err <= m_tol) result = true;
-//        if (m_err < std::max(m_tol * m_cacheError0[1], m_tol)) result = true;
+        if (m_debug) {
+            m_cacheError1[idx] = m_d_workIteratePrim->maxAbs();
+            m_cacheError2[idx] = m_d_workIterateDual->maxAbs();
+            m_cacheCallsToL[idx] = m_callsToL;
+            /* errPrim + L'(errDual) */
+            m_d_workIteratePrim->deviceCopyTo(*m_d_err);
+            Ltr();
+            *m_d_err += *m_d_workIteratePrim;
+            m_errAbs = m_d_err->maxAbs();
+            if (idx > 1 && m_errAbs <= std::max(m_tolAbs, m_tolRel * m_cacheError0[1])) m_status = true;
+            m_cacheError0[idx] = m_errAbs;
+        } else {
+            m_errPrimAbs = m_d_workIteratePrim->maxAbs();
+            m_errDualAbs = m_d_workIterateDual->maxAbs();
+            if (m_errPrimAbs <= m_tolPrim && m_errDualAbs <= m_tolDual) m_status = true;
+        }
     }
-    m_cacheError0[idx] = m_err;
-    m_cacheCallsToL[idx] = m_callsToL;
-    return result;
 }
 
 /**
@@ -972,6 +980,9 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
     initialiseState(initState);
     /* Load previous solution if given */
     initialisePrev(previousSolution);
+    /* Reset error check */
+    m_errInit = true;
+    m_status = false;
     /* Run algorithm */
     for (size_t i = 0; i < m_maxOuterIters; i++) {
         /* Save iterate to prev */
@@ -983,7 +994,7 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
         /* Compute change in iterate */
         computeDeltaIterate();
         /* Check error */
-        m_status = computeError(i);
+        computeError(i);
         if (m_status) {
             m_countIterations = i;
             break;
@@ -991,7 +1002,7 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
     }
     /* Return status */
     if (m_status) {
-        std::cout << "\nConverged in " << m_countIterations << " iterations, to a tolerance of " << m_tol << "\n";
+        std::cout << "\nConverged in " << m_countIterations << " iterations, to a tolerance of " << m_tolPrim << "\n";
         return 0;
     } else {
         std::cout << "\nMax iterations (" << m_maxOuterIters << ") reached.\n";
@@ -1008,6 +1019,9 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     initialiseState(initState);
     /* Load previous solution if given */
     initialisePrev(previousSolution);
+    /* Reset error check */
+    m_errInit = true;
+    m_status = false;
     /* Initialise variables */
     size_t countK0 = 0;
     size_t countK1 = 0;
@@ -1028,7 +1042,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             /* Compute change of iterate */
             computeDeltaIterate();
             /* Check error */
-            m_status = computeError(iOut);
+            computeError(iOut);
             if (m_status) {
                 m_countIterations = iOut;
                 break;
@@ -1098,7 +1112,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     /* Return status */
     if (m_status) {
         if (print) {
-            std::cout << "\nConverged in " << m_countIterations << " outer iterations, to a tolerance of " << m_tol
+            std::cout << "\nConverged in " << m_countIterations << " outer iterations, to a tolerance of " << m_tolPrim
                       << ", [K0: " << countK0
                       << ", K1: " << countK1
                       << ", K2: " << countK2
@@ -1160,7 +1174,7 @@ void Cache<T>::printToJson(std::string &file) {
     rapidjson::Document doc(&allocator, 2048);
     doc.SetObject();
     doc.AddMember("maxIters", m_maxOuterIters, doc.GetAllocator());
-    doc.AddMember("tol", m_tol, doc.GetAllocator());
+    doc.AddMember("tol", m_tolPrim, doc.GetAllocator());
     doc.AddMember("sizeCache", m_maxOuterIters, doc.GetAllocator());
     doc.AddMember("sizePrim", m_sizePrim, doc.GetAllocator());
     doc.AddMember("sizeDual", m_sizeDual, doc.GetAllocator());

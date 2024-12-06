@@ -97,8 +97,6 @@ private:
 
     std::ostream &print(std::ostream &out) const {
         out << "Constraint: Rectangle, \n";
-        printIfTensor(out, "Lower bound: ", m_d_lowerBound);
-        printIfTensor(out, "Upper bound: ", m_d_upperBound);
         return out;
     }
 

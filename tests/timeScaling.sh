@@ -10,10 +10,9 @@ main() {
     pip install --upgrade pip
     pip install .
 
-    for N in {3..20}
+    for N in {3..5}
     do
-        nx=50
-        python main.py --N="$N" --nx="$nx"
+        python main.py --dt="d" --N="$N" --nx="50"
         cmake -S . -B ./build -Wno-dev
         cmake --build ./build
         ./build/spock_main

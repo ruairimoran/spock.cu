@@ -67,7 +67,7 @@ protected:
     size_t m_callsToL = 0;
     bool m_allowK0 = false;
     bool m_debug = false;
-    bool m_errInit = true;
+    bool m_errInit = false;
     bool m_status = false;
     /* Sizes */
     size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
@@ -240,7 +240,7 @@ protected:
 
     void updateDirection(size_t);
 
-    void computeError(size_t);
+    bool computeError(size_t);
 
     void printToJson(std::string &);
 
@@ -312,7 +312,7 @@ public:
 
     int runCp(std::vector<T> &, std::vector<T> * = nullptr);
 
-    int runSpock(std::vector<T> &, std::vector<T> * = nullptr, bool = false);
+    int runSpock(std::vector<T> &, std::vector<T> * = nullptr);
 
     int timeCp(std::vector<T> &);
 
@@ -931,7 +931,7 @@ void Cache<T>::updateDirection(size_t idx) {
  * Compute errors for termination check.
  */
 template<typename T>
-void Cache<T>::computeError(size_t idx) {
+bool Cache<T>::computeError(size_t idx) {
     cudaDeviceSynchronize();  // DO NOT REMOVE !!!
     /* L(deltaIteratePrim) and L'(deltaIterateDual) */
     m_d_deltaIterateDual->deviceCopyTo(*m_d_workIterateDual);
@@ -947,7 +947,10 @@ void Cache<T>::computeError(size_t idx) {
     if (m_errInit) {
         m_tol = std::max(m_tolAbs, m_tolRel * m_d_workIterate->maxAbs());
         m_errInit = false;
+        m_status = false;
     } else {
+        m_errAbs = m_d_workIterate->maxAbs();
+        if (m_errAbs <= m_tol) m_status = true;
         if (m_debug) {
             m_cacheError1[idx] = m_d_workIteratePrim->maxAbs();
             m_cacheError2[idx] = m_d_workIterateDual->maxAbs();
@@ -956,14 +959,10 @@ void Cache<T>::computeError(size_t idx) {
             m_d_workIteratePrim->deviceCopyTo(*m_d_err);
             Ltr();
             *m_d_err += *m_d_workIteratePrim;
-            m_errAbs = m_d_err->maxAbs();
-            if (idx > 1 && m_errAbs <= std::max(m_tolAbs, m_tolRel * m_cacheError0[1])) m_status = true;
-            m_cacheError0[idx] = m_errAbs;
-        } else {
-            m_errAbs = m_d_workIterate->maxAbs();
-            if (m_errAbs <= m_tol) m_status = true;
+            m_cacheError0[idx] = m_d_err->maxAbs();
         }
     }
+    return m_status;
 }
 
 /**
@@ -977,7 +976,6 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
     initialisePrev(previousSolution);
     /* Reset error check */
     m_errInit = true;
-    m_status = false;
     /* Run algorithm */
     for (size_t i = 0; i < m_maxOuterIters; i++) {
         /* Save iterate to prev */
@@ -989,7 +987,7 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
         /* Compute change in iterate */
         computeDeltaIterate();
         /* Check error */
-        computeError(i);
+        m_status = computeError(i);
         if (m_status) {
             m_countIterations = i;
             break;
@@ -1009,14 +1007,13 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
  * SPOCK algorithm.
  */
 template<typename T>
-int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSolution, bool print) {
+int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSolution) {
     /* Load initial state */
     initialiseState(initState);
     /* Load previous solution if given */
     initialisePrev(previousSolution);
     /* Reset error check */
     m_errInit = true;
-    m_status = false;
     /* Initialise variables */
     size_t countK0 = 0;
     size_t countK1 = 0;
@@ -1037,7 +1034,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             /* Compute change of iterate */
             computeDeltaIterate();
             /* Check error */
-            computeError(iOut);
+            m_status = computeError(iOut);
             if (m_status) {
                 m_countIterations = iOut;
                 break;
@@ -1106,7 +1103,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     //    printToJson(n);
     /* Return status */
     if (m_status) {
-        if (print) {
+        if (m_debug) {
             std::cout << "\nConverged in " << m_countIterations << " outer iterations, to a tolerance of " << m_tol
                       << ", [K0: " << countK0
                       << ", K1: " << countK1
@@ -1117,7 +1114,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         }
         return 0;
     } else {
-        if (print) {
+        if (m_debug) {
             std::cout << "\nMax iterations (" << m_maxOuterIters << ") reached [K0: " << countK0
                       << ", K1: " << countK1
                       << ", K2: " << countK2

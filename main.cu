@@ -12,13 +12,17 @@
 
 
 int main() {
+    bool debug = false;
+
     /* SCENARIO TREE */
-    std::cout << "Reading tree file...\n";
+    std::cout << "Reading tree files...\n";
     ScenarioTree tree;
+    if (debug) std::cout << tree;
 
     /* PROBLEM DATA */
-    std::cout << "Reading problem file...\n";
+    std::cout << "Reading problem files...\n";
     ProblemData problem(tree);
+    if (debug) std::cout << problem;
 
     /* CACHE */
     real_t tol = 1e-3;
@@ -26,7 +30,6 @@ int main() {
     size_t maxInnerIters = 8;
     size_t andersonBuffer = 3;
     bool allowK0Updates = true;
-    bool debug = false;
     std::cout << "Allocating cache...\n";
     Cache cache(tree, problem, tol, tol, maxOuterIters, maxInnerIters, andersonBuffer, allowK0Updates, debug);
 

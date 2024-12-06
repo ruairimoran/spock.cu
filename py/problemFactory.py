@@ -4,6 +4,7 @@ import numpy as np
 import scipy as sp
 from scipy.linalg import sqrtm
 from scipy.sparse.linalg import LinearOperator, eigs
+import gputils_api as ga
 import cvxpy as cvx
 from copy import deepcopy
 from . import treeFactory
@@ -105,37 +106,6 @@ class Problem:
     def risk_at_node(self, idx):
         return self.__list_of_risks[idx]
 
-    def get_file(self, name):
-        path = os.path.join(os.getcwd(), self.__tree.folder)
-        os.makedirs(path, exist_ok=True)
-        return os.path.join(path, name)
-
-    @staticmethod
-    def save_tensor(file, tensor):
-        with open(file, 'w') as f:
-            np.savetxt(f,
-                       X=tensor.reshape(-1),
-                       fmt='%-.15f',
-                       delimiter='\n',
-                       newline='\n',
-                       header=f"{tensor.shape[1]}\n"
-                              f"{tensor.shape[2]}\n"
-                              f"{tensor.shape[0]}",
-                       comments='')
-
-    @staticmethod
-    def save_vector(file, vector):
-        with open(file, 'w') as f:
-            np.savetxt(f,
-                       X=vector,
-                       fmt='%-.15f',
-                       delimiter='\n',
-                       newline='\n',
-                       header=f"{len(vector)}\n"
-                              f"{1}\n"
-                              f"{1}",
-                       comments='')
-
     def generate_problem_files(self):
         # Setup jinja environment
         file_loader = j2.FileSystemLoader(searchpath=["py/"])
@@ -170,18 +140,18 @@ class Problem:
         fh.write(output)
         fh.close()
         # Generate stacks
-        stack_input_dyn_tr = np.array([a.T for a in self.__list_of_input_dynamics])
-        stack_AB_dyn = np.array(self.__list_of_state_input_dynamics)
-        stack_sqrt_state_cost = np.array(self.__sqrt_nonleaf_state_costs)
-        stack_sqrt_input_cost = np.array(self.__sqrt_nonleaf_input_costs)
-        stack_sqrt_terminal_cost = np.array(self.__sqrt_leaf_state_costs)
-        stack_P = np.array(self.__P)
-        stack_K = np.array(self.__K)
-        stack_low_chol = np.array(self.__cholesky_lower)
-        stack_dyn_tr = np.array(self.__sum_of_dynamics_tr)
-        stack_APB = np.array(self.__At_P_B)
-        stack_null = np.array(self.__nullspace_projection_matrix)
-        stack_b = np.array(self.__padded_b)
+        stack_input_dyn_tr = np.dstack([a.T for a in self.__list_of_input_dynamics])
+        stack_AB_dyn = np.dstack(self.__list_of_state_input_dynamics)
+        stack_sqrt_state_cost = np.dstack(self.__sqrt_nonleaf_state_costs)
+        stack_sqrt_input_cost = np.dstack(self.__sqrt_nonleaf_input_costs)
+        stack_sqrt_terminal_cost = np.dstack(self.__sqrt_leaf_state_costs)
+        stack_P = np.dstack(self.__P)
+        stack_K = np.dstack(self.__K)
+        stack_low_chol = np.dstack(self.__cholesky_lower)
+        stack_dyn_tr = np.dstack(self.__sum_of_dynamics_tr)
+        stack_APB = np.dstack(self.__At_P_B)
+        stack_null = np.dstack(self.__nullspace_projection_matrix)
+        stack_b = np.dstack(self.__padded_b)
         # Create tensor dict
         tensors = {
             "inputDynTr": stack_input_dyn_tr,
@@ -198,24 +168,26 @@ class Problem:
             "b": stack_b
         }
         if self.__list_of_nonleaf_constraints[0].is_rectangle:
-            stack_lb = np.array([con.lower_bound for con in self.__list_of_nonleaf_constraints])
-            stack_ub = np.array([con.upper_bound for con in self.__list_of_nonleaf_constraints])
+            dim = self.__num_states + self.__num_inputs
+            stack_lb = np.vstack([con.lower_bound for con in self.__list_of_nonleaf_constraints]).reshape(dim, 1, -1)
+            stack_ub = np.vstack([con.upper_bound for con in self.__list_of_nonleaf_constraints]).reshape(dim, 1, -1)
             tensors.update({
                 "nonleafConstraintLB": stack_lb,
                 "nonleafConstraintUB": stack_ub
             })
         if self.__list_of_leaf_constraints[0].is_rectangle:
-            stack_lb = np.array([con.lower_bound for con in self.__list_of_leaf_constraints])
-            stack_ub = np.array([con.upper_bound for con in self.__list_of_leaf_constraints])
+            dim = self.__num_states
+            stack_lb = np.vstack([con.lower_bound for con in self.__list_of_leaf_constraints]).reshape(dim, 1, -1)
+            stack_ub = np.vstack([con.upper_bound for con in self.__list_of_leaf_constraints]).reshape(dim, 1, -1)
             tensors.update({
                 "leafConstraintLB": stack_lb,
                 "leafConstraintUB": stack_ub
             })
-        # Generate tensor files
+        # Generate files
         for name, tensor in tensors.items():
-            self.save_tensor(self.get_file(name), tensor)
+            self.__tree.write_to_file_fp(name, tensor)
         if self.__test:
-            stack_ker_con = np.array(self.__kernel_constraint_matrix)
+            stack_ker_con = np.dstack(self.__kernel_constraint_matrix)
             test_tensors = {
                 "S2": stack_ker_con
             }
@@ -224,16 +196,16 @@ class Problem:
                 "dpTestInputs": self.__dp_test_inputs.reshape(-1),
                 "dpProjectedStates": self.__dp_projected_states.reshape(-1),
                 "dpProjectedInputs": self.__dp_projected_inputs.reshape(-1),
-                "primBeforeOp": self.__prim_before_op,
-                "dualAfterOpBeforeAdj": self.__dual_after_op_before_adj,
-                "primAfterAdj": self.__prim_after_adj,
-                "dotVector": self.__dot_vector,
-                "dotResult": [self.__dot_result]
+                "primBeforeOp": np.array(self.__prim_before_op),
+                "dualAfterOpBeforeAdj": np.array(self.__dual_after_op_before_adj),
+                "primAfterAdj": np.array(self.__prim_after_adj),
+                "dotVector": np.array(self.__dot_vector),
+                "dotResult": np.array([self.__dot_result])
             }
             for name, tensor in test_tensors.items():
-                self.save_tensor(self.get_file(name), tensor)
+                self.__tree.write_to_file_fp(name, tensor)
             for name, vector in test_vectors.items():
-                self.save_vector(self.get_file(name), vector)
+                self.__tree.write_to_file_fp(name, vector)
 
     # --------------------------------------------------------
     # Cache
@@ -360,13 +332,12 @@ class Problem:
         i_ = deepcopy(y)
 
         # -> ii
-        ii = [None] * self.__tree.num_nonleaf_nodes
+        ii = [0.] * self.__tree.num_nonleaf_nodes
         for i in range(self.__tree.num_nonleaf_nodes):
-            ii[i] = s[i] - np.asarray(self.__padded_b[i]).T @ y[i]
+            ii[i] = s[i] - self.__padded_b[i].T @ y[i]
 
         # -> iii
-        iii = None
-        iii = self.__list_of_nonleaf_constraints[0].op(iii, x, self.__tree.num_nonleaf_nodes, u)
+        iii = self.__list_of_nonleaf_constraints[0].op_nonleaf(x, self.__tree.num_nonleaf_nodes, u)
 
         # -> iv
         iv = [np.zeros((num_si + 2, 1))] * self.__tree.num_nodes
@@ -378,8 +349,7 @@ class Problem:
                                half_t, half_t))
 
         # -> v
-        v = None
-        v = self.__list_of_leaf_constraints[0].op(v, x[self.__tree.num_nonleaf_nodes:], self.__tree.num_leaf_nodes)
+        v = self.__list_of_leaf_constraints[0].op_leaf(x[self.__tree.num_nonleaf_nodes:], self.__tree.num_leaf_nodes)
 
         # -> vi
         vi = [np.zeros((self.__num_states + 2, 1))] * self.__tree.num_leaf_nodes
@@ -416,18 +386,18 @@ class Problem:
             vi_size, 1) for i in range(self.__tree.num_leaf_nodes)]
 
         # -> s (nonleaf)
-        s = [None] * self.__tree.num_nodes
-        s[:self.__tree.num_nonleaf_nodes] = ii[:self.__tree.num_nonleaf_nodes]
+        s = [0.] * self.__tree.num_nodes
+        s[:self.__tree.num_nonleaf_nodes] = ii
 
         # -> y
         y = [np.zeros((self.__y_size, 1))] * self.__tree.num_nonleaf_nodes
         for i in range(self.__tree.num_nonleaf_nodes):
-            y[i] = i_[i] - np.asarray(self.__padded_b[i]) * ii[i]
+            y[i] = i_[i] - self.__padded_b[i] * ii[i]
 
         # -> x (nonleaf) and u:Gamma
         x = [np.zeros((self.__num_states, 1))] * self.__tree.num_nodes
         u = [np.zeros((self.__num_inputs, 1))] * self.__tree.num_nonleaf_nodes
-        x, u = self.__list_of_nonleaf_constraints[0].adj(iii, x, self.__tree.num_nonleaf_nodes, u)
+        x, u = self.__list_of_nonleaf_constraints[0].adj_nonleaf(iii, x, self.__tree.num_nonleaf_nodes, u)
         # -> x (nonleaf) and u
         for i in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(i)
@@ -435,14 +405,13 @@ class Problem:
             u[anc] += self.__sqrt_nonleaf_input_costs[i] @ iv[i][self.__num_states:num_si]
 
         # -> t
-        t = [0.] + [None] * (self.__tree.num_nodes - 1)
+        t = [0.] * self.__tree.num_nodes
         for i in range(1, self.__tree.num_nodes):
             t[i] = 0.5 * (iv[i][num_si] + iv[i][num_si + 1])
 
         # -> x (leaf):Gamma
-        x[self.__tree.num_nonleaf_nodes:], _ = self.__list_of_leaf_constraints[0].adj(v,
-                                                                                      x[self.__tree.num_nonleaf_nodes:],
-                                                                                      self.__tree.num_leaf_nodes)
+        x[self.__tree.num_nonleaf_nodes:] = self.__list_of_leaf_constraints[0].adj_leaf(
+            v, x[self.__tree.num_nonleaf_nodes:], self.__tree.num_leaf_nodes)
 
         # -> x (leaf)
         for i in range(self.__tree.num_leaf_nodes):

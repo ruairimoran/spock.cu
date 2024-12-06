@@ -8,44 +8,43 @@
 #include "src/tree.cuh"
 #include "src/problem.cuh"
 #include "src/cache.cuh"
-
-#define T double
+#define real_t double  // templates type defaults to double
 
 
 int main() {
     /** SCENARIO TREE */
     std::cout << "Reading tree file...\n";
-    ScenarioTree<T> tree;
+    ScenarioTree tree;
 //  	std::cout << tree;
 
     /** PROBLEM DATA */
     std::cout << "Reading problem file...\n";
-    ProblemData<T> problem(tree);
+    ProblemData problem(tree);
 //  	std::cout << problem;
 
     /** CACHE */
-    T tol = 1e-3;
-    size_t maxOuterIters = 100000;
+    real_t tol = 1e-3;
+    size_t maxOuterIters = 1000;
     size_t maxInnerIters = 8;
     size_t andersonBuffer = 3;
     bool detectInfeas = false;
     bool allowK0Updates = true;
     bool debug = false;
-    Cache<T> cache(tree, problem, tol, maxOuterIters, false, detectInfeas, maxInnerIters, andersonBuffer,
-                   allowK0Updates, debug);
+    Cache cache(tree, problem, tol, maxOuterIters, false, detectInfeas, maxInnerIters, andersonBuffer,
+                allowK0Updates, debug);
 
     /** TIMING ALGORITHM */
-    std::vector<T> initState(problem.numStates(), .1);
+    std::vector<real_t> initState(problem.numStates(), .1);
     size_t runs = 10;
-    std::vector<T> runTimes(runs, 0.);
+    std::vector<real_t> runTimes(runs, 0.);
     std::cout << "Computing average solve time over (" << runs << ") runs...\n";
     for (size_t i = 0; i < runs; i++) {
         runTimes[i] = cache.timeSp(initState);
         cache.reset();
         std::cout << "Run (" << i << ") = " << runTimes[i] << " ms.\n";
     }
-    T total = std::reduce(runTimes.begin(), runTimes.end());
-    T avg = total / runs;
+    real_t total = std::reduce(runTimes.begin(), runTimes.end());
+    real_t avg = total / runs;
 
     /** SAVE */
     std::ofstream timeScaling;

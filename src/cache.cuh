@@ -15,15 +15,6 @@ __global__ void k_memCpyInTS(T *, T *, size_t, size_t, size_t, size_t *, size_t 
 TEMPLATE_WITH_TYPE_T
 __global__ void k_memCpyOutTS(T *, T *, size_t, size_t, size_t, size_t *, size_t *);
 
-TEMPLATE_WITH_TYPE_T
-static void parseVec(const rapidjson::Value &value, std::vector<T> &vec) {
-    size_t numElements = value.Capacity();
-    if (vec.capacity() != numElements) vec.resize(numElements);
-    for (rapidjson::SizeType i = 0; i < numElements; i++) {
-        vec[i] = value[i].GetDouble();
-    }
-}
-
 template<typename T>
 class CacheTestData;
 

@@ -19,6 +19,7 @@ dependencies = [
     'scipy',
     'matplotlib',
     'jinja2',
+    'gputils_api'
 ]
 
 [project.optional-dependencies]

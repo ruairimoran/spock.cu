@@ -27,8 +27,9 @@ test_python() {
     python -W ignore tests/testTreeFactory.py -v
     python -W ignore tests/testProblemFactory.py -v
 
-    # -- run the test file to create data for c++ testing
-    python tests/test.py
+    # -- run the test file to create float- and double-type data for C++ testing
+    python tests/test.py --dt='f'
+    python tests/test.py --dt='d'
 }
 
 # ------------------------------------
@@ -36,7 +37,7 @@ test_python() {
 # ------------------------------------
 test_cpp() {
     # -- create build files
-    cmake -S . -B ./build -Wno-dev -DSPOCK_BUILD_TESTING=ON
+    cmake -S . -B ./build -Wno-dev -DSPOCK_BUILD_TEST=ON
 
     # -- build files in build folder
     cmake --build ./build

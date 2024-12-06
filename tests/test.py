@@ -1,5 +1,11 @@
 import py
 import numpy as np
+import argparse
+
+parser = argparse.ArgumentParser(description='Test data generator.')
+parser.add_argument("--dt", type=str, default='d')
+args = parser.parse_args()
+dt = args.dt
 
 
 # --------------------------------------------------------
@@ -15,7 +21,8 @@ tree = py.treeFactory.TreeFactoryMarkovChain(
     transition_prob=p,
     initial_distribution=v,
     horizon=horizon,
-    stopping_stage=stopping_stage
+    stopping_stage=stopping_stage,
+    dt=dt
 ).generate_tree()
 
 # tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')  # requires python-tk@3.x installation

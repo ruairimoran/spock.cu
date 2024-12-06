@@ -5,7 +5,9 @@ import argparse
 parser = argparse.ArgumentParser(description='Problem data generator.')
 parser.add_argument("--N", type=int, default=3)
 parser.add_argument("--nx", type=int, default=2)
+parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
+dt = args.dt
 
 # --------------------------------------------------------
 # Generate scenario tree
@@ -21,7 +23,8 @@ tree = py.treeFactory.TreeFactoryMarkovChain(
     transition_prob=p,
     initial_distribution=v,
     horizon=final_stage,
-    stopping_stage=stop_branching_stage
+    stopping_stage=stop_branching_stage,
+    dt=dt
 ).generate_tree()
 
 # tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')  # requires python-tk@3.x installation

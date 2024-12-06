@@ -73,7 +73,7 @@ protected:
     std::unique_ptr<DTensor<int>> m_d_zeros = nullptr;
 
     std::ostream &print(std::ostream &out) const {
-        out << "Risk: AVaR, \n";
+        out << "Risk: AVaR\n";
         return out;
     }
 

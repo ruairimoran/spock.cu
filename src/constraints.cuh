@@ -96,7 +96,7 @@ private:
     std::unique_ptr<DTensor<T>> m_d_upperBound = nullptr;
 
     std::ostream &print(std::ostream &out) const {
-        out << "Constraint: Rectangle, \n";
+        out << "Constraint: Rectangle\n";
         return out;
     }
 

@@ -1040,7 +1040,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
                 break;
             }
         }
-        /* START: compute T */
+        /* START */
         cpIter();
         backup();
         /* Compute residual */

@@ -83,9 +83,9 @@ private:
     std::ostream &print(std::ostream &out) const {
         out << "Number of states: " << m_numStates << "\n";
         out << "Number of inputs: " << m_numInputs << "\n";
-        out << "Nonleaf constraint: " << *m_nonleafConstraint << "\n";
-        out << "Leaf constraint: " << *m_leafConstraint << "\n";
-        out << "Risk: " << *m_risk << "\n";
+        out << "Nonleaf constraint: " << *m_nonleafConstraint;
+        out << "Leaf constraint: " << *m_leafConstraint;
+        out << "Risk: " << *m_risk;
         return out;
     }
 

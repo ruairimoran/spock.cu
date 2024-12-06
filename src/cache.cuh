@@ -56,11 +56,8 @@ protected:
     LinearOperator<T> m_L = LinearOperator<T>(m_tree, m_data);  ///< Linear operator and its adjoint
     T m_tolAbs = 0;
     T m_tolRel = 0;
-    T m_tolPrim = 0;
-    T m_tolDual = 0;
+    T m_tol = 0;
     T m_errAbs = 0;
-    T m_errPrimAbs = 0;
-    T m_errDualAbs = 0;
     size_t m_maxOuterIters = 0;
     size_t m_andSize = 0;
     size_t m_countIterations = 0;
@@ -948,8 +945,7 @@ void Cache<T>::computeError(size_t idx) {
     *m_d_workIterate *= -m_data.stepSizeRecip();
     *m_d_workIterate += *m_d_ellDeltaIterate;
     if (m_errInit) {
-        m_tolPrim = std::max(m_tolAbs, m_tolRel * m_d_workIteratePrim->maxAbs());
-        m_tolDual = std::max(m_tolAbs, m_tolRel * m_d_workIterateDual->maxAbs());
+        m_tol = std::max(m_tolAbs, m_tolRel * m_d_workIterate->maxAbs());
         m_errInit = false;
     } else {
         if (m_debug) {
@@ -964,9 +960,8 @@ void Cache<T>::computeError(size_t idx) {
             if (idx > 1 && m_errAbs <= std::max(m_tolAbs, m_tolRel * m_cacheError0[1])) m_status = true;
             m_cacheError0[idx] = m_errAbs;
         } else {
-            m_errPrimAbs = m_d_workIteratePrim->maxAbs();
-            m_errDualAbs = m_d_workIterateDual->maxAbs();
-            if (m_errPrimAbs <= m_tolPrim && m_errDualAbs <= m_tolDual) m_status = true;
+            m_errAbs = m_d_workIterate->maxAbs();
+            if (m_errAbs <= m_tol) m_status = true;
         }
     }
 }
@@ -1002,7 +997,7 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
     }
     /* Return status */
     if (m_status) {
-        std::cout << "\nConverged in " << m_countIterations << " iterations, to a tolerance of " << m_tolPrim << "\n";
+        std::cout << "\nConverged in " << m_countIterations << " iterations, to a tolerance of " << m_tol << "\n";
         return 0;
     } else {
         std::cout << "\nMax iterations (" << m_maxOuterIters << ") reached.\n";
@@ -1112,7 +1107,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     /* Return status */
     if (m_status) {
         if (print) {
-            std::cout << "\nConverged in " << m_countIterations << " outer iterations, to a tolerance of " << m_tolPrim
+            std::cout << "\nConverged in " << m_countIterations << " outer iterations, to a tolerance of " << m_tol
                       << ", [K0: " << countK0
                       << ", K1: " << countK1
                       << ", K2: " << countK2
@@ -1174,7 +1169,7 @@ void Cache<T>::printToJson(std::string &file) {
     rapidjson::Document doc(&allocator, 2048);
     doc.SetObject();
     doc.AddMember("maxIters", m_maxOuterIters, doc.GetAllocator());
-    doc.AddMember("tol", m_tolPrim, doc.GetAllocator());
+    doc.AddMember("tol", m_tol, doc.GetAllocator());
     doc.AddMember("sizeCache", m_maxOuterIters, doc.GetAllocator());
     doc.AddMember("sizePrim", m_sizePrim, doc.GetAllocator());
     doc.AddMember("sizeDual", m_sizeDual, doc.GetAllocator());

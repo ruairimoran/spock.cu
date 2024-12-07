@@ -950,7 +950,7 @@ bool Cache<T>::computeError(size_t idx) {
         m_status = false;
     } else {
         m_errAbs = m_d_workIterate->maxAbs();
-        if (m_errAbs <= m_tol) m_status = true;
+        m_status = (m_errAbs <= m_tol);
         if (m_debug) {
             m_cacheError1[idx] = m_d_workIteratePrim->maxAbs();
             m_cacheError2[idx] = m_d_workIterateDual->maxAbs();
@@ -1099,8 +1099,8 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             }
         }
     }
-    //    std::string n = "Sp";
-    //    printToJson(n);
+//    std::string n = "Sp";
+//    printToJson(n);
     /* Return status */
     if (m_status) {
         if (m_debug) {
@@ -1193,7 +1193,7 @@ void Cache<T>::printToJson(std::string &file) {
     rapidjson::Writer<StringBuffer> writer(buffer, reinterpret_cast<rapidjson::CrtAllocator *>(&allocator));
     doc.Accept(writer);
     std::string json(buffer.GetString(), buffer.GetSize());
-    std::ofstream of("/home/biggirl/Documents/remote_host/raocp-parallel/json/cache" + file + ".json");
+    std::ofstream of("/home/biggirl/Documents/remote_host/raocp-parallel/misc/cache" + file + ".json");
     of << json;
     if (!of.good()) throw std::runtime_error("[Cache::printToJson] Can't write the JSON string to the file!");
 }
@@ -1224,7 +1224,7 @@ T Cache<T>::timeSp(std::vector<T> &initialState) {
     int status = runSpock(initialState);
     const auto tock = std::chrono::high_resolution_clock::now();
     if (status) {
-        err << "Status error, not converged. [N=" << m_tree.numStages() - 1 << ", nx=nu=" << m_data.numStates()
+        err << "Status error, not converged. [numStages=" << m_tree.numStages() << ", nx=nu=" << m_data.numStates()
             << "].\n";
         throw std::runtime_error(err.str());
     }

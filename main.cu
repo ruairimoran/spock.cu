@@ -35,21 +35,23 @@ int main() {
 
     /* TIMING ALGORITHM */
     std::vector<real_t> initState(problem.numStates(), .1);
-    size_t runs = 10;
+    size_t runs = 11;
+    size_t warm = 1;
+    size_t rmw = runs - warm;
     std::vector<real_t> runTimes(runs, 0.);
-    std::cout << "Computing average solve time over (" << runs << ") runs...\n";
+    std::cout << "Computing average solve time over (" << rmw << ") runs...\n";
     for (size_t i = 0; i < runs; i++) {
         runTimes[i] = cache.timeSp(initState);
         cache.reset();
         std::cout << "Run (" << i << ") = " << runTimes[i] << " ms.\n";
     }
-    real_t total = std::reduce(runTimes.begin() + 1, runTimes.end());
-    real_t avg = total / (runs - 1);
+    real_t total = std::reduce(runTimes.begin() + warm, runTimes.end());
+    real_t avg = total / rmw;
 
     /* SAVE */
     std::ofstream timeScaling;
     timeScaling.open("misc/timeScaling.csv", std::ios::app);
-    timeScaling << tree.numStages() - 1 << ", " << problem.numStates() << ", " << avg << std::endl;
+    timeScaling << tree.numStages() << ", " << problem.numStates() << ", " << avg << std::endl;
     timeScaling.close();
     std::cout << "Saved (avg = " << avg << " ms)." << std::endl;
 

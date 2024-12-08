@@ -10,7 +10,7 @@ main() {
     pip install --upgrade pip
     pip install .
 
-    for n in {3..17}; do
+    for n in {3..16}; do
         python main.py --dt="d" --nStages="$n" --nStates="50"
         cmake -S . -B ./build -Wno-dev
         cmake --build ./build

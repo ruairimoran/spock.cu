@@ -16,12 +16,12 @@ int main() {
 
     /* SCENARIO TREE */
     std::cout << "Reading tree files...\n";
-    ScenarioTree tree;
+    ScenarioTree<real_t> tree;
     if (debug) std::cout << tree;
 
     /* PROBLEM DATA */
     std::cout << "Reading problem files...\n";
-    ProblemData problem(tree);
+    ProblemData<real_t> problem(tree);
     if (debug) std::cout << problem;
 
     /* CACHE */

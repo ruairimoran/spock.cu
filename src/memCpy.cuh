@@ -35,8 +35,7 @@ void memCpy(DTensor<T> *dst, DTensor<T> *src,
             size_t nodeFrom, size_t nodeTo, size_t numEl,
             size_t elFromDst = 0, size_t elFromSrc = 0,
             MemCpyMode mode = MemCpyMode::defaultMode,
-            DTensor<size_t> *ancestors = nullptr,
-            DTensor<size_t> *chFrom = nullptr, DTensor<size_t> *chTo = nullptr) {
+            DTensor<size_t> *ancestors = nullptr) {
     size_t nodeSizeDst = dst->numRows();
     size_t nodeSizeSrc = src->numRows();
     if (dst->numCols() != 1 || src->numCols() != 1) throw std::invalid_argument("[memCpy] numCols must be 1.");

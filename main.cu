@@ -12,44 +12,46 @@
 
 
 int main() {
-    /** SCENARIO TREE */
-    std::cout << "Reading tree file...\n";
-    ScenarioTree tree;
-//  	std::cout << tree;
+    bool debug = false;
 
-    /** PROBLEM DATA */
-    std::cout << "Reading problem file...\n";
-    ProblemData problem(tree);
-//  	std::cout << problem;
+    /* SCENARIO TREE */
+    std::cout << "Reading tree files...\n";
+    ScenarioTree<real_t> tree;
+    if (debug) std::cout << tree;
 
-    /** CACHE */
+    /* PROBLEM DATA */
+    std::cout << "Reading problem files...\n";
+    ProblemData<real_t> problem(tree);
+    if (debug) std::cout << problem;
+
+    /* CACHE */
     real_t tol = 1e-3;
     size_t maxOuterIters = 1000;
     size_t maxInnerIters = 8;
     size_t andersonBuffer = 3;
-    bool detectInfeas = false;
     bool allowK0Updates = true;
-    bool debug = false;
-    Cache cache(tree, problem, tol, maxOuterIters, false, detectInfeas, maxInnerIters, andersonBuffer,
-                allowK0Updates, debug);
+    std::cout << "Allocating cache...\n";
+    Cache cache(tree, problem, tol, tol, maxOuterIters, maxInnerIters, andersonBuffer, allowK0Updates, debug);
 
-    /** TIMING ALGORITHM */
+    /* TIMING ALGORITHM */
     std::vector<real_t> initState(problem.numStates(), .1);
-    size_t runs = 10;
+    size_t runs = 11;
+    size_t warm = 1;
+    size_t rmw = runs - warm;
     std::vector<real_t> runTimes(runs, 0.);
-    std::cout << "Computing average solve time over (" << runs << ") runs...\n";
+    std::cout << "Computing average solve time over (" << rmw << ") runs...\n";
     for (size_t i = 0; i < runs; i++) {
         runTimes[i] = cache.timeSp(initState);
         cache.reset();
         std::cout << "Run (" << i << ") = " << runTimes[i] << " ms.\n";
     }
-    real_t total = std::reduce(runTimes.begin(), runTimes.end());
-    real_t avg = total / runs;
+    real_t total = std::reduce(runTimes.begin() + warm, runTimes.end());
+    real_t avg = total / rmw;
 
-    /** SAVE */
+    /* SAVE */
     std::ofstream timeScaling;
     timeScaling.open("misc/timeScaling.csv", std::ios::app);
-    timeScaling << tree.numStages() - 1 << ", " << problem.numStates() << ", " << avg << std::endl;
+    timeScaling << tree.numStages() << ", " << problem.numStates() << ", " << avg << std::endl;
     timeScaling.close();
     std::cout << "Saved (avg = " << avg << " ms)." << std::endl;
 

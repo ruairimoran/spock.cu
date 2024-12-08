@@ -3,8 +3,8 @@ import numpy as np
 import argparse
 
 parser = argparse.ArgumentParser(description='Problem data generator.')
-parser.add_argument("--N", type=int, default=3)
-parser.add_argument("--nx", type=int, default=2)
+parser.add_argument("--nStages", type=int, default=3)
+parser.add_argument("--nStates", type=int, default=2)
 parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
 dt = args.dt
@@ -17,8 +17,8 @@ p = np.array([[0.5, 0.5], [0.5, 0.5]])
 
 v = np.array([0.3, 0.7])
 
-N = args.N
-(final_stage, stop_branching_stage) = (N, N)
+num_stages = args.nStages
+(final_stage, stop_branching_stage) = (num_stages - 1, num_stages - 1)
 tree = py.treeFactory.TreeFactoryMarkovChain(
     transition_prob=p,
     initial_distribution=v,
@@ -35,7 +35,7 @@ print(tree)
 # --------------------------------------------------------
 
 # Sizes
-num_states = args.nx
+num_states = args.nStates
 num_inputs = num_states
 num_events = 2
 

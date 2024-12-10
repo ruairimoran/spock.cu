@@ -572,14 +572,14 @@ void Cache<T>::projectPrimalWorkspaceOnDynamics() {
     /*
      * Set first q
      */
-    DTensor<T> x_LastStage(*m_d_x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
+    DTensor<T> x_LastStage(*m_d_x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodesMinus1());
     x_LastStage *= -1.;
-    DTensor<T> q_LastStage(*m_d_q, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodes() - 1);
+    DTensor<T> q_LastStage(*m_d_q, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodesMinus1());
     x_LastStage.deviceCopyTo(q_LastStage);
     /*
      * Solve for all d at current stage
      */
-    size_t horizon = m_tree.numStages() - 1;
+    size_t horizon = m_tree.numStagesMinus1();
     for (size_t t = 1; t < m_tree.numStages(); t++) {
         size_t stage = horizon - t;  // Current stage (reverse from N-1 to 0)
         size_t stageFr = m_tree.stageFrom()[stage];  // First node of current stage
@@ -595,10 +595,7 @@ void Cache<T>::projectPrimalWorkspaceOnDynamics() {
         Bq_ChStage.addAB(Btr_ChStage, q_ChStage);
         /* Sum `Bq` children of each node into `d` at current stage */
         for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
-            k_memCpyCh2Node<<<stageTo + 1, TPB>>>(m_d_d->raw(), m_d_workU->raw(),
-                                                  stageFr, stageTo, m_data.numInputs(), chIdx,
-                                                  m_tree.d_childFrom().raw(), m_tree.d_numChildren().raw(),
-                                                  chIdx);
+            m_tree.memCpyCh2Node(*m_d_d, *m_d_workU, stageFr, stageTo, chIdx, chIdx);
         }
         /* Subtract d from u in place */
         DTensor<T> d_Stage(*m_d_d, m_matAxis, stageFr, stageTo);
@@ -613,18 +610,14 @@ void Cache<T>::projectPrimalWorkspaceOnDynamics() {
         /* Compute APBdAq_ChStage = A(PBd+q) for each node at child stage. A = (A+B@K).tr */
         DTensor<T> APB_ChStage(m_data.APB(), m_matAxis, chStageFr, chStageTo);
         DTensor<T> ABKtr_ChStage(m_data.dynamicsSumTr(), m_matAxis, chStageFr, chStageTo);
-        memCpy(m_d_workU.get(), m_d_d.get(), chStageFr, chStageTo, m_d_d->numRows(),
-               0, 0, anc2Node, &m_tree.d_ancestors());
+        m_tree.memCpyAnc2Node(*m_d_workU, *m_d_d, chStageFr, chStageTo, m_d_d->numRows(), 0, 0);
         DTensor<T> q_SumChStage(*m_d_workX, m_matAxis, chStageFr, chStageTo);
         DTensor<T> d_ExpandedChStage(*m_d_workU, m_matAxis, chStageFr, chStageTo);
         q_SumChStage.addAB(APB_ChStage, d_ExpandedChStage);
         q_SumChStage.addAB(ABKtr_ChStage, q_ChStage, 1., 1.);
         /* Sum `APBdAq` children of each node into `q` at current stage */
         for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
-            k_memCpyCh2Node<<<stageTo + 1, TPB>>>(m_d_q->raw(), m_d_workX->raw(),
-                                                  stageFr, stageTo, m_data.numStates(), chIdx,
-                                                  m_tree.d_childFrom().raw(), m_tree.d_numChildren().raw(),
-                                                  chIdx);
+            m_tree.memCpyCh2Node(*m_d_q, *m_d_workX, stageFr, stageTo, chIdx, chIdx);
         }
         /* Compute Kdux = K.tr(d-u)@x for each node at current stage and add to `q` */
         DTensor<T> du_Stage(*m_d_workU, m_matAxis, stageFr, stageTo);
@@ -641,7 +634,7 @@ void Cache<T>::projectPrimalWorkspaceOnDynamics() {
      */
     DTensor<T> firstState(*m_d_x, m_matAxis, 0, 0);
     m_d_initState->deviceCopyTo(firstState);
-    for (size_t stage = 0; stage < m_tree.numStages() - 1; stage++) {
+    for (size_t stage = 0; stage < m_tree.numStagesMinus1(); stage++) {
         size_t stageFr = m_tree.stageFrom()[stage];
         size_t stageTo = m_tree.stageTo()[stage];
         size_t chStage = stage + 1;  // Stage of children of current stage
@@ -660,10 +653,8 @@ void Cache<T>::projectPrimalWorkspaceOnDynamics() {
          * Compute child states
          */
         /* Fill `xu` */
-        memCpy(m_d_workXU.get(), m_d_x.get(), chStageFr, chStageTo, m_data.numStates(), 0, 0,
-               anc2Node, &m_tree.d_ancestors());
-        memCpy(m_d_workXU.get(), m_d_u.get(), chStageFr, chStageTo, m_data.numInputs(), m_data.numStates(), 0,
-               anc2Node, &m_tree.d_ancestors());
+        m_tree.memCpyAnc2Node(*m_d_workXU, *m_d_x, chStageFr, chStageTo, m_data.numStates(), 0, 0);
+        m_tree.memCpyAnc2Node(*m_d_workXU, *m_d_u, chStageFr, chStageTo, m_data.numInputs(), m_data.numStates(), 0);
         DTensor<T> x_ChStage(*m_d_x, m_matAxis, chStageFr, chStageTo);
         DTensor<T> AB_ChStage(m_data.stateInputDynamics(), m_matAxis, chStageFr, chStageTo);
         DTensor<T> xu_ChStage(*m_d_workXU, m_matAxis, chStageFr, chStageTo);
@@ -677,7 +668,7 @@ void Cache<T>::projectPrimalWorkspaceOnKernels() {
      * Project on kernel of every node of tree at once
      */
     /* Gather vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
-    memCpy(m_d_workYTS.get(), m_d_y.get(), 0, m_tree.numNonleafNodes() - 1, m_data.yDim());
+    memCpyNode2Node(*m_d_workYTS, *m_d_y, 0, m_tree.numNonleafNodesMinus1(), m_data.yDim());
     k_memCpyInTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_workYTS->raw(), m_d_t->raw(),
                                                              m_tree.numNodes(), m_d_workYTS->numRows(),
                                                              m_data.yDim(),
@@ -689,7 +680,7 @@ void Cache<T>::projectPrimalWorkspaceOnKernels() {
     /* Project onto nullspace in place */
     m_d_workYTS->addAB(m_data.risk()->nullspaceProj(), *m_d_workYTS);
     /* Disperse vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
-    memCpy(m_d_y.get(), m_d_workYTS.get(), 0, m_tree.numNonleafNodes() - 1, m_data.yDim());
+    memCpyNode2Node(*m_d_y, *m_d_workYTS, 0, m_tree.numNonleafNodesMinus1(), m_data.yDim());
     k_memCpyOutTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_t->raw(), m_d_workYTS->raw(),
                                                               m_tree.numNodes(), m_d_workYTS->numRows(),
                                                               m_data.yDim(),

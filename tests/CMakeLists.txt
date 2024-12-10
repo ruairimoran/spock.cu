@@ -15,7 +15,6 @@ target_sources(spock_tests  # add files
     testTree.cu
     testCones.cu
     testRisks.cu
-    testMemCpy.cu
     testProblem.cu
     testProjections.cu
     testCache.cu

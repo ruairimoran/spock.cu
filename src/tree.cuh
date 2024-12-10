@@ -6,6 +6,22 @@
 #include <utility>
 
 
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyNode2Node(T *, T *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyAnc2Node(T *, T *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, const size_t *);
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyLeaf2Zero(T *, T *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyZero2Leaf(T *, T *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_memCpyCh2Node(T *, T *, size_t, size_t, size_t, size_t, const size_t *, const size_t *, bool);
+
+
 /**
  * Store scenario tree data
  * - from JSON file
@@ -25,6 +41,11 @@ private:
     size_t m_numNodes = 0;  ///< Total number of nodes (incl. root)
     size_t m_numNonleafNodes = 0;  ///< Total number of nonleaf nodes (incl. root)
     size_t m_numStages = 0;  ///< Total number of stages (incl. root)
+    size_t m_numLeafNodes = 0;
+    size_t m_numNodesMinus1 = 0;
+    size_t m_numNonleafNodesMinus1 = 0;
+    size_t m_numLeafNodesMinus1 = 0;
+    size_t m_numStagesMinus1 = 0;  ///< horizon
     std::vector<size_t> m_childFrom;
     std::vector<size_t> m_childTo;
     std::vector<size_t> m_numChildren;
@@ -82,7 +103,7 @@ public:
         m_numNonleafNodes = doc["numNonleafNodes"].GetInt();
         m_numNodes = doc["numNodes"].GetInt();
         m_numStages = doc["numStages"].GetInt();
-        
+
         /* Assign file extensions */
         if constexpr (std::is_same_v<T, float>) { m_fp = "_f" + m_fileExt; }
         else if constexpr (std::is_same_v<T, double>) { m_fp = "_d" + m_fileExt; }
@@ -127,7 +148,12 @@ public:
         m_d_stageTo->download(m_stageTo);
 
         /* Update remaining fields */
-        for (size_t stage = 0; stage < m_numStages - 1; stage++) {
+        m_numLeafNodes = m_numNodes - m_numNonleafNodes;
+        m_numNodesMinus1 = m_numNodes - 1;
+        m_numNonleafNodesMinus1 = m_numNonleafNodes - 1;
+        m_numLeafNodesMinus1 = m_numLeafNodes - 1;
+        m_numStagesMinus1 = m_numStages - 1;
+        for (size_t stage = 0; stage < m_numStagesMinus1; stage++) {
             size_t stageFr = m_stageFrom[stage];
             size_t stageTo = m_stageTo[stage];
             size_t maxCh = 0;
@@ -152,13 +178,21 @@ public:
 
     size_t numEvents() { return m_numEvents; }
 
-    size_t numNonleafNodes() { return m_numNonleafNodes; }
-
-    size_t numLeafNodes() { return m_numNodes - m_numNonleafNodes; }
-
     size_t numNodes() { return m_numNodes; }
 
+    size_t numNonleafNodes() { return m_numNonleafNodes; }
+
+    size_t numLeafNodes() { return m_numLeafNodes; }
+
+    size_t numNodesMinus1() { return m_numNodesMinus1; }
+
+    size_t numNonleafNodesMinus1() { return m_numNonleafNodesMinus1; }
+
+    size_t numLeafNodesMinus1() { return m_numLeafNodesMinus1; }
+
     size_t numStages() { return m_numStages; }
+
+    size_t numStagesMinus1() { return m_numStagesMinus1; }
 
     std::vector<size_t> &childFrom() { return m_childFrom; }
 
@@ -193,6 +227,98 @@ public:
     DTensor<size_t> &d_stageTo() { return *m_d_stageTo; }
 
     friend std::ostream &operator<<(std::ostream &out, const ScenarioTree<T> &data) { return data.print(out); }
+
+    void memCpyAnc2Node(DTensor<T> &, DTensor<T> &, size_t, size_t, size_t, size_t = 0, size_t = 0);
+
+    /**
+     * Caution! Dst must not be src.
+     */
+    void memCpyCh2Node(DTensor<T> &dst, DTensor<T> &src, size_t, size_t, size_t, bool = false);
+
+    /**
+     * For leaf transfers, you must transfer all leaf nodes! So `nodeFrom` == numNonleafNodes.
+     * The `nodeFrom/To` requires the actual node numbers (not zero-indexed).
+     */
+    void memCpyLeaf2Zero(DTensor<T> &, DTensor<T> &, size_t, size_t = 0, size_t = 0);
+
+    void memCpyZero2Leaf(DTensor<T> &, DTensor<T> &, size_t, size_t = 0, size_t = 0);
 };
+
+static void setKernelDimensions(dim3 &blocks, dim3 &threads, size_t nX, size_t nY) {
+    size_t threadsPerBlockPerAxis = 32;  // Do not change! Max number of threads per block is 32x32=1024
+    threads = dim3(threadsPerBlockPerAxis, threadsPerBlockPerAxis);
+    blocks = dim3(numBlocks(nX, threadsPerBlockPerAxis), numBlocks(nY, threadsPerBlockPerAxis));
+}
+
+template<typename T>
+static void memCpyNode2Node(DTensor<T> &dst, DTensor<T> &src,
+                            size_t nodeFrom, size_t nodeTo, size_t numEl,
+                            size_t elFromDst = 0, size_t elFromSrc = 0) {
+    size_t nodeSizeDst = dst.numRows();
+    size_t nodeSizeSrc = src.numRows();
+    if (dst.numCols() != 1 || src.numCols() != 1)
+        throw std::invalid_argument("[scenarioTree::memCpy::node2Node] numCols must be 1.");
+    dim3 blocks, threads;
+    setKernelDimensions(blocks, threads, nodeTo - nodeFrom + 1, numEl);
+    k_memCpyNode2Node<<<blocks, threads>>>(dst.raw(), src.raw(), nodeFrom, nodeTo, numEl, nodeSizeDst,
+                                           nodeSizeSrc, elFromDst, elFromSrc);
+}
+
+template<typename T>
+void ScenarioTree<T>::memCpyAnc2Node(DTensor<T> &dst, DTensor<T> &src,
+                                     size_t nodeFrom, size_t nodeTo, size_t numEl,
+                                     size_t elFromDst, size_t elFromSrc) {
+    size_t nodeSizeDst = dst.numRows();
+    size_t nodeSizeSrc = src.numRows();
+    if (dst.numCols() != 1 || src.numCols() != 1)
+        throw std::invalid_argument("[scenarioTree::memCpy::anc2Node] numCols must be 1.");
+    if (nodeFrom < 1)
+        throw std::invalid_argument("[scenarioTree::memCpy::anc2Node] Root node has no ancestor.");
+    dim3 blocks, threads;
+    setKernelDimensions(blocks, threads, nodeTo - nodeFrom + 1, numEl);
+    k_memCpyAnc2Node<<<blocks, threads>>>(dst.raw(), src.raw(), nodeFrom, nodeTo, numEl, nodeSizeDst,
+                                          nodeSizeSrc, elFromDst, elFromSrc, m_d_ancestors->raw());
+}
+
+template<typename T>
+void ScenarioTree<T>::memCpyCh2Node(DTensor<T> &dst, DTensor<T> &src,
+                                    size_t nodeFrom, size_t nodeTo, size_t chIdx, bool add) {
+    size_t numEl = src.numRows();
+    if (dst.numCols() != 1 || src.numCols() != 1)
+        throw std::invalid_argument("[scenarioTree::memCpy::ch2Node] numCols must be 1.");
+    if (dst.numRows() != numEl)
+        throw std::invalid_argument("[scenarioTree::memCpy::ch2Node] Source and destination dimensions mismatch.");
+    dim3 blocks, threads;
+    setKernelDimensions(blocks, threads, nodeTo - nodeFrom + 1, numEl);
+    k_memCpyCh2Node<<<blocks, threads>>>(dst.raw(), src.raw(),
+                                         nodeFrom, nodeTo, numEl, chIdx,
+                                         m_d_childFrom->raw(), m_d_numChildren->raw(), add);
+}
+
+template<typename T>
+void ScenarioTree<T>::memCpyLeaf2Zero(DTensor<T> &dst, DTensor<T> &src,
+                                      size_t numEl, size_t elFromDst, size_t elFromSrc) {
+    size_t nodeSizeDst = dst.numRows();
+    size_t nodeSizeSrc = src.numRows();
+    if (dst.numCols() != 1 || src.numCols() != 1)
+        throw std::invalid_argument("[scenarioTree::memCpy::leaf2Zero] numCols must be 1.");
+    dim3 blocks, threads;
+    setKernelDimensions(blocks, threads, m_numLeafNodes, numEl);
+    k_memCpyLeaf2Zero<<<blocks, threads>>>(dst.raw(), src.raw(), m_numNonleafNodes, m_numNodesMinus1, numEl,
+                                           nodeSizeDst, nodeSizeSrc, elFromDst, elFromSrc);
+}
+
+template<typename T>
+void ScenarioTree<T>::memCpyZero2Leaf(DTensor<T> &dst, DTensor<T> &src,
+                                      size_t numEl, size_t elFromDst, size_t elFromSrc) {
+    size_t nodeSizeDst = dst.numRows();
+    size_t nodeSizeSrc = src.numRows();
+    if (dst.numCols() != 1 || src.numCols() != 1)
+        throw std::invalid_argument("[scenarioTree::memCpy::zero2Leaf] numCols must be 1.");
+    dim3 blocks, threads;
+    setKernelDimensions(blocks, threads, m_numLeafNodes, numEl);
+    k_memCpyZero2Leaf<<<blocks, threads>>>(dst.raw(), src.raw(), m_numNonleafNodes, m_numNodesMinus1, numEl,
+                                           nodeSizeDst, nodeSizeSrc, elFromDst, elFromSrc);
+}
 
 #endif

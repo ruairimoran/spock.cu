@@ -77,7 +77,9 @@ template __global__ void k_shiftDiagonal(double *, double *, size_t, size_t);
 
 /**
  * Copy node data to other in parallel.
- * Must be launched with <<<[>=nodeTo+1], [>=max(nodeSizeDst, nodeSizeSrc)]>>>.
+ * Caution! Max block size is 32x32=1024 threads per block - do not exceed!
+ * Caution! Must be launched with <<<dim3(numBlocks(nodeTo-nodeFrom+1, t), numBlocks(numEl, t)), dim3(t, t)>>>,
+ * where t<=32.
  *
  * @param dst memory destination
  * @param src memory source
@@ -89,20 +91,18 @@ template __global__ void k_shiftDiagonal(double *, double *, size_t, size_t);
  * @param elFromDst first element in node data to copy to (0-indexed)
  * @param elFromSrc first element in node data to copy from (0-indexed)
  * @param ancestors array of ancestors of each node
- * @param chFrom array of first child of each node
- * @param chTo array of last child of each node
  */
 TEMPLATE_WITH_TYPE_T
 __global__ void k_memCpyNode2Node(T *dst, T *src,
                                   size_t nodeFrom, size_t nodeTo, size_t numEl,
                                   size_t nodeSizeDst, size_t nodeSizeSrc,
                                   size_t elFromDst, size_t elFromSrc) {
-    const unsigned int element = threadIdx.x;
-    const unsigned int node = blockIdx.x;
-    if (node >= nodeFrom && node <= nodeTo) {
+    const unsigned int node = blockIdx.x * blockDim.x + threadIdx.x + nodeFrom;
+    const unsigned int element = blockIdx.y * blockDim.y + threadIdx.y;
+    if (node >= nodeFrom && node <= nodeTo && element < numEl) {
         const unsigned int dstIdx = node * nodeSizeDst + elFromDst + element;
         const unsigned int srcIdx = node * nodeSizeSrc + elFromSrc + element;
-        if (element < numEl) dst[dstIdx] = src[srcIdx];
+        dst[dstIdx] = src[srcIdx];
     }
 }
 
@@ -111,41 +111,43 @@ __global__ void k_memCpyAnc2Node(T *dst, T *src,
                                  size_t nodeFrom, size_t nodeTo, size_t numEl,
                                  size_t nodeSizeDst, size_t nodeSizeSrc,
                                  size_t elFromDst, size_t elFromSrc,
-                                 size_t *ancestors) {
-    const unsigned int element = threadIdx.x;
-    const unsigned int node = blockIdx.x;
-    if (node >= nodeFrom && node <= nodeTo) {
+                                 const size_t *ancestors) {
+    const unsigned int node = blockIdx.x * blockDim.x + threadIdx.x + nodeFrom;
+    const unsigned int element = blockIdx.y * blockDim.y + threadIdx.y;
+    if (node >= nodeFrom && node <= nodeTo && element < numEl) {
         const unsigned int dstIdx = node * nodeSizeDst + elFromDst + element;
         const unsigned int srcIdx = ancestors[node] * nodeSizeSrc + elFromSrc + element;
-        if (element < numEl) dst[dstIdx] = src[srcIdx];
+        dst[dstIdx] = src[srcIdx];
     }
 }
 
 TEMPLATE_WITH_TYPE_T
-__global__ void k_memCpyLeaf2ZeroLeaf(T *dst, T *src,
-                                      size_t nodeFrom, size_t nodeTo, size_t numEl,
-                                      size_t nodeSizeDst, size_t nodeSizeSrc,
-                                      size_t elFromDst, size_t elFromSrc) {
-    const unsigned int element = threadIdx.x;
-    const unsigned int node = blockIdx.x;
-    if (node >= nodeFrom && node <= nodeTo) {
-        const unsigned int dstIdx = (node - nodeFrom) * nodeSizeDst + elFromDst + element;
+__global__ void k_memCpyLeaf2Zero(T *dst, T *src,
+                                  size_t nodeFrom, size_t nodeTo, size_t numEl,
+                                  size_t nodeSizeDst, size_t nodeSizeSrc,
+                                  size_t elFromDst, size_t elFromSrc) {
+    const unsigned int zeroIdxNode = blockIdx.x * blockDim.x + threadIdx.x;
+    const unsigned int node = zeroIdxNode + nodeFrom;
+    const unsigned int element = blockIdx.y * blockDim.y + threadIdx.y;
+    if (node >= nodeFrom && node <= nodeTo && element < numEl) {
+        const unsigned int dstIdx = zeroIdxNode * nodeSizeDst + elFromDst + element;
         const unsigned int srcIdx = node * nodeSizeSrc + elFromSrc + element;
-        if (element < numEl) dst[dstIdx] = src[srcIdx];
+        dst[dstIdx] = src[srcIdx];
     }
 }
 
 TEMPLATE_WITH_TYPE_T
-__global__ void k_memCpyZeroLeaf2Leaf(T *dst, T *src,
-                                      size_t nodeFrom, size_t nodeTo, size_t numEl,
-                                      size_t nodeSizeDst, size_t nodeSizeSrc,
-                                      size_t elFromDst, size_t elFromSrc) {
-    const unsigned int element = threadIdx.x;
-    const unsigned int node = blockIdx.x;
-    if (node >= nodeFrom && node <= nodeTo) {
+__global__ void k_memCpyZero2Leaf(T *dst, T *src,
+                                  size_t nodeFrom, size_t nodeTo, size_t numEl,
+                                  size_t nodeSizeDst, size_t nodeSizeSrc,
+                                  size_t elFromDst, size_t elFromSrc) {
+    const unsigned int zeroIdxNode = blockIdx.x * blockDim.x + threadIdx.x;
+    const unsigned int node = zeroIdxNode + nodeFrom;
+    const unsigned int element = blockIdx.y * blockDim.y + threadIdx.y;
+    if (node >= nodeFrom && node <= nodeTo && element < numEl) {
         const unsigned int dstIdx = node * nodeSizeDst + elFromDst + element;
-        const unsigned int srcIdx = (node - nodeFrom) * nodeSizeSrc + elFromSrc + element;
-        if (element < numEl) dst[dstIdx] = src[srcIdx];
+        const unsigned int srcIdx = zeroIdxNode * nodeSizeSrc + elFromSrc + element;
+        dst[dstIdx] = src[srcIdx];
     }
 }
 
@@ -156,27 +158,29 @@ template __global__ void
 k_memCpyNode2Node(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
 
 template __global__ void
-k_memCpyAnc2Node(float *, float *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t *);
+k_memCpyAnc2Node(float *, float *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, const size_t *);
 
 template __global__ void
-k_memCpyAnc2Node(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t *);
+k_memCpyAnc2Node(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t, const size_t *);
 
 template __global__ void
-k_memCpyLeaf2ZeroLeaf(float *, float *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+k_memCpyLeaf2Zero(float *, float *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
 
 template __global__ void
-k_memCpyLeaf2ZeroLeaf(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+k_memCpyLeaf2Zero(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
 
 template __global__ void
-k_memCpyZeroLeaf2Leaf(float *, float *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+k_memCpyZero2Leaf(float *, float *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
 
 template __global__ void
-k_memCpyZeroLeaf2Leaf(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
+k_memCpyZero2Leaf(double *, double *, size_t, size_t, size_t, size_t, size_t, size_t, size_t);
 
 /**
  * Copies data from a child index.
- * Must be launched with <<<[>=nodeTo+1], [>=numEl]>>>.
  * Caution! Dst must not be src.
+ * Caution! Max block size is 32x32=1024 threads per block - do not exceed!
+ * Caution! Must be launched with <<<dim3(numBlocks(nodeTo-nodeFrom+1, t), numBlocks(numEl, t)), dim3(t, t)>>>,
+ * where t<=32.
  *
  * @param dst destination data
  * @param src source data
@@ -191,23 +195,21 @@ k_memCpyZeroLeaf2Leaf(double *, double *, size_t, size_t, size_t, size_t, size_t
 TEMPLATE_WITH_TYPE_T
 __global__ void k_memCpyCh2Node(T *dst, T *src,
                                 size_t nodeFrom, size_t nodeTo, size_t numEl, size_t chIdx,
-                                size_t *chFrom, size_t *numCh, bool add = false) {
-    const unsigned int element = threadIdx.x;
-    const unsigned int node = blockIdx.x;
-    if (node >= nodeFrom && node <= nodeTo && chIdx < numCh[node]) {
+                                const size_t *chFrom, const size_t *numCh, bool add = false) {
+    const unsigned int node = blockIdx.x * blockDim.x + threadIdx.x + nodeFrom;
+    const unsigned int element = blockIdx.y * blockDim.y + threadIdx.y;
+    if (node >= nodeFrom && node <= nodeTo && element < numEl && chIdx < numCh[node]) {
         const unsigned int dstIdx = node * numEl + element;
         const unsigned int srcIdx = (chFrom[node] + chIdx) * numEl + element;
-        if (element < numEl) {
-            dst[dstIdx] = (add == true) ? dst[dstIdx] + src[srcIdx] : src[srcIdx];
-        }
+        dst[dstIdx] = add ? dst[dstIdx] + src[srcIdx] : src[srcIdx];
     }
 }
 
 template __global__ void
-k_memCpyCh2Node(float *, float *, size_t, size_t, size_t, size_t, size_t *, size_t *, bool);
+k_memCpyCh2Node(float *, float *, size_t, size_t, size_t, size_t, const size_t *, const size_t *, bool);
 
 template __global__ void
-k_memCpyCh2Node(double *, double *, size_t, size_t, size_t, size_t, size_t *, size_t *, bool);
+k_memCpyCh2Node(double *, double *, size_t, size_t, size_t, size_t, const size_t *, const size_t *, bool);
 
 /**
  * To project onto matrices' kernels, we need to gather

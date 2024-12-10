@@ -142,9 +142,9 @@ public:
         parseConstraint(doc, m_nonleafConstraint, nonleaf);
         parseConstraint(doc, m_leafConstraint, leaf);
         parseRisk(doc["risk"]);
-        m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>>(m_tree.numStages() - 1);
-        m_choleskyStage = std::vector<std::unique_ptr<DTensor<T>>>(m_tree.numStages() - 1);
-        for (size_t stage = 0; stage < m_tree.numStages() - 1; stage++) {
+        m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>>(m_tree.numStagesMinus1());
+        m_choleskyStage = std::vector<std::unique_ptr<DTensor<T>>>(m_tree.numStagesMinus1());
+        for (size_t stage = 0; stage < m_tree.numStagesMinus1(); stage++) {
             size_t nodeFr = m_tree.stageFrom()[stage];
             size_t nodeTo = m_tree.stageTo()[stage];
             m_choleskyStage[stage] = std::make_unique<DTensor<T>>(*m_d_lowerCholesky, 2, nodeFr, nodeTo);

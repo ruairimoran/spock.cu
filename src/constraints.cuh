@@ -2,8 +2,8 @@
 #define CONSTRAINTS_CUH
 
 #include "../include/gpu.cuh"
+#include "tree.cuh"
 #include "cones.cuh"
-#include "memCpy.cuh"
 
 
 TEMPLATE_WITH_TYPE_T
@@ -114,37 +114,22 @@ public:
     }
 
     void op(DTensor<T> &dual, DTensor<T> &x, size_t nMinusOne, size_t numStates, DTensor<T> &u, size_t numInputs) {
-        memCpy(&dual, &x, 0, nMinusOne, numStates);
-        memCpy(&dual, &u, 0, nMinusOne, numInputs, numStates);
+        memCpyNode2Node(dual, x, 0, nMinusOne, numStates);
+        memCpyNode2Node(dual, u, 0, nMinusOne, numInputs, numStates);
     }
 
     void op(DTensor<T> &dual, DTensor<T> &x, size_t nMinusOne, size_t numStates) {
-        memCpy(&dual, &x, 0, nMinusOne, numStates);
+        memCpyNode2Node(dual, x, 0, nMinusOne, numStates);
     }
 
     void adj(DTensor<T> &dual, DTensor<T> &x, size_t nMinusOne, size_t numStates, DTensor<T> &u, size_t numInputs) {
-        memCpy(&x, &dual, 0, nMinusOne, numStates);
-        memCpy(&u, &dual, 0, nMinusOne, numInputs, 0, numStates);
+        memCpyNode2Node(x, dual, 0, nMinusOne, numStates);
+        memCpyNode2Node(u, dual, 0, nMinusOne, numInputs, 0, numStates);
     }
 
     void adj(DTensor<T> &dual, DTensor<T> &x, size_t nMinusOne, size_t numStates) {
-        memCpy(&x, &dual, 0, nMinusOne, numStates);
+        memCpyNode2Node(x, dual, 0, nMinusOne, numStates);
     }
-};
-
-
-/**
- * Ball constraint
- * ||x||_{2} <= ub
- *
- * @param ub upper bound
-*/
-TEMPLATE_WITH_TYPE_T
-class Ball : public Constraint<T> {
-
-public:
-    explicit Ball(size_t dim) : Constraint<T>(dim) {}
-
 };
 
 

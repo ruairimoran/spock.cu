@@ -15,7 +15,7 @@ class ProjectionsTestData {
 
 public:
     /* Prepare some host and device data */
-    size_t m_n = 520;
+    size_t m_n = 555;
     DTensor<T> m_d_data = DTensor<T>(m_n, 1, 1, true);
     std::vector<T> m_data = std::vector<T>(m_n);
     std::vector<T> m_socA = std::vector<T>(m_n);
@@ -23,8 +23,8 @@ public:
     std::vector<T> m_socC = std::vector<T>(m_n);
     std::vector<T> m_test = std::vector<T>(m_n);
     std::vector<T> m_zero = std::vector<T>(m_n);
-    DTensor<T> d_singleProjectSize = DTensor<T>(m_d_data.numRows());
-    SocProjection<T> socProj = SocProjection<T>(d_singleProjectSize);
+    DTensor<T> d_singleProjectSize = DTensor<T>(m_n);
+    SocProjection<T> socProj = SocProjection<T>(d_singleProjectSize, false);
 
     ProjectionsTestData() {
         /* For testing i1 */
@@ -151,7 +151,7 @@ void testCartesianCone(ProjectionsTestData<T> &d, T epsilon) {
                            5., 6., 7., 8., -200,
                            9., -10., 11., -12., 100};
     DTensor<T> d_socs(socs, coneDim, numCones);
-    SocProjection multiSocProj(d_socs);
+    SocProjection multiSocProj(d_socs, false);
     multiSocProj.project(d_socs);
     std::vector<T> test(coneDim, numCones);
     d_socs.download(test);
@@ -202,23 +202,25 @@ TEMPLATE_WITH_TYPE_T
 void testCartesianWithMultipleBlocksPerCone(ProjectionsTestData<T> &d) {
     /**
      * This test ensures that the shared memory for batched SOC projections works as intended.
-     * The cone's dimensions are greater than the block size,
-     * so each cone requires two blocks of threads.
-     * If only the threads in one block can access the shared memory,
-     * then the test will fail (the projection will set the cones to zeros = i2 projection).
-     * If threads in both blocks have access to the shared memory,
-     * the projection will not set the cones to zeros (= i3 projection).
+     * The cone's dimensions are greater than any possible block size,
+     * so each cone requires at least two blocks of threads.
+     * If any block does not get counted,
+     * the test will fail (the projection will set the cones to zeros = i2 projection).
+     * If all blocks are counted,
+     * the test will pass (projection will not set the cones to zeros = i3 projection).
     */
-    size_t extra = 50;
-    size_t coneDim = TPB + (extra * 2);
+    size_t extra = 5;
+    size_t base = 1024;
+    size_t coneDim = base + (extra * 2);
     size_t numCones = 2;
     DTensor<T> d_socs(coneDim, numCones);
-    SocProjection multiSocProj(d_socs);
+    SocProjection multiSocProj(d_socs, false);
     DTensor<T> d_cone1(d_socs, 1, 0, 0);
     DTensor<T> d_cone2(d_socs, 1, 1, 1);
-    std::vector<T> cone1(coneDim, 1.);
-    std::vector<T> cone2(coneDim, 1.);
-    T lastElement = -sqrt(TPB + extra);
+    T val = 2.;
+    std::vector<T> cone1(coneDim, val);
+    std::vector<T> cone2(coneDim, val);
+    T lastElement = -sqrt(val * (base + extra));
     cone1[coneDim - 1] = lastElement;
     cone2[coneDim - 1] = lastElement;
     d_cone1.upload(cone1);

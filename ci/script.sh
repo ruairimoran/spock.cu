@@ -47,7 +47,7 @@ test_cpp() {
 
     # -- run compute sanitizer
     cd ./build/tests
-    /usr/local/cuda-12.3/bin/compute-sanitizer --tool memcheck --leak-check=full ./spock_tests
+    /usr/local/cuda-12.3/bin/compute-sanitizer --tool memcheck --leak-check=full --print-limit=3 ./spock_tests
 }
 
 main() {

@@ -75,24 +75,26 @@ private:
     size_t m_sharedMemBytes = 0;
 
 public:
-    explicit SocProjection(DTensor<T> &d_tensor) : Projectable<T>(d_tensor) {
+    explicit SocProjection(DTensor<T> &d_tensor, bool warnings = true) : Projectable<T>(d_tensor) {
         if (this->m_numMats != 1) {
             err << "Trying to setup [SocProjection] with " << d_tensor.numMats()
                 << " matrices. Number of matrices must be 1.\n";
             throw std::invalid_argument(err.str());
         }
-        m_d_zeros = std::make_unique<DTensor<T>>(this->m_numCols, 1, 1, true);
         m_d_lastElementOfSocs = std::make_unique<DTensor<T>>(this->m_numCols);
         m_d_scalingParams = std::make_unique<DTensor<T>>(this->m_numCols, 1, 1, true);
         m_d_i2 = std::make_unique<DTensor<int>>(this->m_numCols, 1, 1, true);
         m_d_i3 = std::make_unique<DTensor<int>>(this->m_numCols, 1, 1, true);
         m_threadsPerBlock = TPB;
         m_blocksPerCone = numBlocks(this->m_numRows, m_threadsPerBlock);
-        if (m_blocksPerCone > 1)
+        if (m_blocksPerCone > 1 && warnings)
             std::cout << "[SocProjection] Warning: not optimal performance! Blocks per cone > 1.\n";
         m_gridDims.x = m_blocksPerCone;
         m_gridDims.y = this->m_numCols;
         m_d_norms = std::make_unique<DTensor<T>>(this->m_numCols, m_blocksPerCone);
+        m_d_zeros = std::make_unique<DTensor<T>>(m_d_norms->numRows(),
+                                                 m_d_norms->numCols(),
+                                                 m_d_norms->numMats(), true);
         size_t elementsPerBlock = (this->m_numRows > TPB) ? TPB : this->m_numRows;
         m_sharedMemBytes = sizeof(T) * elementsPerBlock;
     }
@@ -105,9 +107,6 @@ public:
                                                                                        this->m_numRows,
                                                                                        m_d_lastElementOfSocs->raw(),
                                                                                        m_d_norms->raw());
-        gpuErrChk(cudaPeekAtLastError());
-        gpuErrChk(cudaDeviceSynchronize());
-        std::cout << *m_d_norms;
         k_projectionMultiSocStep1<<<dim3(1, m_gridDims.y), m_blocksPerCone>>>(this->m_numCols,
                                                                               m_blocksPerCone,
                                                                               m_d_lastElementOfSocs->raw(),

@@ -303,26 +303,27 @@ __global__ void k_projectionMultiSocStep0(T *data,
     /* Since each column of blocks (in the x-dimension)
      * corresponds to a different SOC and the number of
      * these blocks is not going to be too large in general,
-     * the addition will be performed using block-wise atomicAdd
-     * and then few (if any) additions in
-     * the cone axis (no need for map-reduce-type summation).
+     * the addition will be performed using block-wise atomicAdd.
+     * Then, we add the few (if any) block results for
+     * each cone (no need for map-reduce-type summation).
      * For faster block-wise addition, we will use shared memory.
+     * CAUTION! Shared memory is 0-indexed PER BLOCK!
      */
-    extern __shared__ unsigned char mem[];
-    T *sharedMem = reinterpret_cast<T *>(mem);
+    extern __shared__ char sharedArr[];
+    T *sharedMem = reinterpret_cast<T *>(&sharedArr);
     if (cone < numCones && thread < coneDimension - 1) {
         T temp = data[element];
-        sharedMem[thread] = temp * temp;
+        sharedMem[threadIdx.x] = temp * temp;
     }
     __syncthreads();  // Sync threads in each block
 
     /* Do the block-wise addition atomically */
     if (cone < numCones && thread < coneDimension - 1) {
-        atomicAdd(&norms[cone + blockIdx.x * numCones], sharedMem[thread]);
+        atomicAdd(&norms[cone + blockIdx.x * numCones], sharedMem[threadIdx.x]);
     }
 
     /*
-     * We break here as block-wise synchronisation is required.
+     * We break here as grid-wise synchronisation is required.
      */
 }
 
@@ -342,7 +343,7 @@ __global__ void k_projectionMultiSocStep1(size_t numCones,
                                           T *scaling) {
     const unsigned int thread = threadIdx.x + blockIdx.x * blockDim.x;
     const unsigned int cone = blockIdx.y;
-    /* Add the results of each block */
+    /* Add the results of each block for each cone */
     if (cone < numCones && thread > 0 && thread < blocksPerCone) {
         atomicAdd(&norms[cone], norms[cone + thread * numCones]);
     }
@@ -378,8 +379,9 @@ __global__ void k_projectionMultiSocStep2(T *data,
                                           int *i2) {
     const unsigned int thread = threadIdx.x + blockIdx.x * blockDim.x;
     const unsigned int cone = blockIdx.y;
-    const unsigned int allButLastElement = cone * coneDimension + thread;
-    if (cone < numCones && thread < coneDimension) data[allButLastElement] *= 1 - i2[cone];
+    const unsigned int element = cone * coneDimension + thread;
+    /* If i2 is true, set all elements of cone to 0 */
+    if (cone < numCones && thread < coneDimension) data[element] *= 1 - i2[cone];
 }
 
 template __global__ void k_projectionMultiSocStep2(float *, size_t, size_t, int *);
@@ -396,17 +398,16 @@ __global__ void k_projectionMultiSocStep3(T *data,
                                           T *scaling) {
     const unsigned int thread = threadIdx.x + blockIdx.x * blockDim.x;
     const unsigned int cone = blockIdx.y;
-    const unsigned int allButLastElement = cone * coneDimension + thread;
+    const unsigned int element = cone * coneDimension + thread;
     if (cone < numCones && thread < coneDimension - 1) {
         T multiplier = i3[cone] * scaling[cone] + 1 - i3[cone];
-        data[allButLastElement] *= multiplier;
+        data[element] *= multiplier;
     }
     if (cone < numCones && thread == coneDimension - 1) {
         int c_i2 = i2[cone];
         int c_i3 = i3[cone];
         int c_i1 = (1 - c_i2) * (1 - c_i3);
-        data[allButLastElement] =
-            c_i1 * data[allButLastElement] + (1 - c_i1) * (1 - c_i2) * (c_i3 * (scaling[cone] * norms[cone] - 1) + 1);
+        data[element] = c_i1 * data[element] + (1 - c_i1) * (1 - c_i2) * (c_i3 * (scaling[cone] * norms[cone] - 1) + 1);
     }
 }
 

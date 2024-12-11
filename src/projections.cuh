@@ -6,7 +6,10 @@
 
 
 TEMPLATE_WITH_TYPE_T
-__global__ void k_projectionMultiSocStep1(T *, size_t, size_t, T *, T *, T *, int *, int *, T *);
+__global__ void k_projectionMultiSocStep0(T *, size_t, size_t, T *, T *);
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_projectionMultiSocStep1(size_t, size_t, T *, T *, int *, int *, T *);
 
 TEMPLATE_WITH_TYPE_T
 __global__ void k_projectionMultiSocStep2(T *, size_t, size_t, int *);
@@ -67,6 +70,7 @@ private:
     std::unique_ptr<DTensor<int>> m_d_i3 = nullptr;
     std::unique_ptr<DTensor<T>> m_d_zeros = nullptr;
     size_t m_threadsPerBlock = 0;
+    size_t m_blocksPerCone = 0;
     dim3 m_gridDims;
     size_t m_sharedMemBytes = 0;
 
@@ -79,33 +83,48 @@ public:
         }
         m_d_zeros = std::make_unique<DTensor<T>>(this->m_numCols, 1, 1, true);
         m_d_lastElementOfSocs = std::make_unique<DTensor<T>>(this->m_numCols);
-        m_d_squaredElements = std::make_unique<DTensor<T>>(this->m_numCols * (this->m_numRows - 1));
-        m_d_norms = std::make_unique<DTensor<T>>(this->m_numCols);
         m_d_scalingParams = std::make_unique<DTensor<T>>(this->m_numCols, 1, 1, true);
         m_d_i2 = std::make_unique<DTensor<int>>(this->m_numCols, 1, 1, true);
         m_d_i3 = std::make_unique<DTensor<int>>(this->m_numCols, 1, 1, true);
         m_threadsPerBlock = TPB;
-        size_t blocksDimX = numBlocks(this->m_numRows, m_threadsPerBlock);
-        m_gridDims.x = blocksDimX;
+        m_blocksPerCone = numBlocks(this->m_numRows, m_threadsPerBlock);
+        if (m_blocksPerCone > 1)
+            std::cout << "[SocProjection] Warning: not optimal performance! Blocks per cone > 1.\n";
+        m_gridDims.x = m_blocksPerCone;
         m_gridDims.y = this->m_numCols;
-        size_t sharedMemMultiplier = (this->m_numRows > TPB) ? TPB : this->m_numRows;
-        m_sharedMemBytes = sizeof(T) * sharedMemMultiplier;
+        m_d_norms = std::make_unique<DTensor<T>>(this->m_numCols, m_blocksPerCone);
+        size_t elementsPerBlock = (this->m_numRows > TPB) ? TPB : this->m_numRows;
+        m_sharedMemBytes = sizeof(T) * elementsPerBlock;
     }
 
     void project(DTensor<T> &d_tensor) {
         this->dimensionCheck(d_tensor);
         m_d_zeros->deviceCopyTo(*m_d_norms);
-        k_projectionMultiSocStep1<<<m_gridDims, m_threadsPerBlock, m_sharedMemBytes>>>(d_tensor.raw(), this->m_numCols,
+        k_projectionMultiSocStep0<<<m_gridDims, m_threadsPerBlock, m_sharedMemBytes>>>(d_tensor.raw(),
+                                                                                       this->m_numCols,
                                                                                        this->m_numRows,
                                                                                        m_d_lastElementOfSocs->raw(),
-                                                                                       m_d_squaredElements->raw(),
-                                                                                       m_d_norms->raw(), m_d_i2->raw(),
-                                                                                       m_d_i3->raw(),
-                                                                                       m_d_scalingParams->raw());
-        k_projectionMultiSocStep2<<<m_gridDims, m_threadsPerBlock>>>(d_tensor.raw(), this->m_numCols, this->m_numRows,
+                                                                                       m_d_norms->raw());
+        gpuErrChk(cudaPeekAtLastError());
+        gpuErrChk(cudaDeviceSynchronize());
+        std::cout << *m_d_norms;
+        k_projectionMultiSocStep1<<<dim3(1, m_gridDims.y), m_blocksPerCone>>>(this->m_numCols,
+                                                                              m_blocksPerCone,
+                                                                              m_d_lastElementOfSocs->raw(),
+                                                                              m_d_norms->raw(),
+                                                                              m_d_i2->raw(),
+                                                                              m_d_i3->raw(),
+                                                                              m_d_scalingParams->raw());
+        k_projectionMultiSocStep2<<<m_gridDims, m_threadsPerBlock>>>(d_tensor.raw(),
+                                                                     this->m_numCols,
+                                                                     this->m_numRows,
                                                                      m_d_i2->raw());
-        k_projectionMultiSocStep3<<<m_gridDims, m_threadsPerBlock>>>(d_tensor.raw(), this->m_numCols, this->m_numRows,
-                                                                     m_d_norms->raw(), m_d_i2->raw(), m_d_i3->raw(),
+        k_projectionMultiSocStep3<<<m_gridDims, m_threadsPerBlock>>>(d_tensor.raw(),
+                                                                     this->m_numCols,
+                                                                     this->m_numRows,
+                                                                     m_d_norms->raw(),
+                                                                     m_d_i2->raw(),
+                                                                     m_d_i3->raw(),
                                                                      m_d_scalingParams->raw());
     }
 };

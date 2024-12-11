@@ -287,54 +287,74 @@ template __global__ void k_projectOnSoc(float *, size_t, float, float);
 template __global__ void k_projectOnSoc(double *, size_t, double, double);
 
 TEMPLATE_WITH_TYPE_T
-__global__ void k_projectionMultiSocStep1(T *data,
+__global__ void k_projectionMultiSocStep0(T *data,
                                           size_t numCones,
                                           size_t coneDimension,
                                           T *lastElementOfCones,
-                                          T *squaredElements,
-                                          T *norms,
-                                          int *i2,
-                                          int *i3,
-                                          T *scaling) {
+                                          T *norms) {
     /* Copy data to workspace */
     const unsigned int thread = threadIdx.x + blockIdx.x * blockDim.x;
     const unsigned int cone = blockIdx.y;
-    const unsigned int allButLastElement = cone * coneDimension + thread;
-    if (cone < numCones) {
+    const unsigned int element = cone * coneDimension + thread;
+    if (cone < numCones && thread == 0) {
         lastElementOfCones[cone] = data[coneDimension * (cone + 1) - 1];
     }
-    if (cone < numCones && thread < coneDimension - 1) {
-        T temp = data[allButLastElement];
-        squaredElements[allButLastElement - cone] = temp * temp;
-    }
-    __syncthreads(); /* sync threads in each block */
 
-    /* Since each block corresponds to a different SOC and the dimension of
-     * each SOC is not going to be too large in general, the addition will
-     * be performed by using atomicAdd. In order for the synchronisation to
-     * be block-wise (and not device-wide), we will use shared memory.
-     * For this reason we won't do any map-reduce-type summation.
+    /* Since each column of blocks (in the x-dimension)
+     * corresponds to a different SOC and the number of
+     * these blocks is not going to be too large in general,
+     * the addition will be performed using block-wise atomicAdd
+     * and then few (if any) additions in
+     * the cone axis (no need for map-reduce-type summation).
+     * For faster block-wise addition, we will use shared memory.
      */
     extern __shared__ unsigned char mem[];
     T *sharedMem = reinterpret_cast<T *>(mem);
     if (cone < numCones && thread < coneDimension - 1) {
-        sharedMem[thread] = squaredElements[cone * (coneDimension - 1) + thread];
+        T temp = data[element];
+        sharedMem[thread] = temp * temp;
     }
-    __syncthreads();
+    __syncthreads();  // Sync threads in each block
 
-    /* and now do the addition atomically */
+    /* Do the block-wise addition atomically */
     if (cone < numCones && thread < coneDimension - 1) {
-        atomicAdd(&norms[cone], sharedMem[thread]);
+        atomicAdd(&norms[cone + blockIdx.x * numCones], sharedMem[thread]);
+    }
+
+    /*
+     * We break here as block-wise synchronisation is required.
+     */
+}
+
+template __global__ void
+k_projectionMultiSocStep0(float *, size_t, size_t, float *, float *);
+
+template __global__ void
+k_projectionMultiSocStep0(double *, size_t, size_t, double *, double *);
+
+TEMPLATE_WITH_TYPE_T
+__global__ void k_projectionMultiSocStep1(size_t numCones,
+                                          size_t blocksPerCone,
+                                          T *lastElementOfCones,
+                                          T *norms,
+                                          int *i2,
+                                          int *i3,
+                                          T *scaling) {
+    const unsigned int thread = threadIdx.x + blockIdx.x * blockDim.x;
+    const unsigned int cone = blockIdx.y;
+    /* Add the results of each block */
+    if (cone < numCones && thread > 0 && thread < blocksPerCone) {
+        atomicAdd(&norms[cone], norms[cone + thread * numCones]);
     }
     __syncthreads();
 
-    /* Final touch: apply the square root to determine the Euclidean norms */
+    /* Apply the square root to determine the Euclidean norms */
     if (cone < numCones && thread == 0) {
         norms[cone] = sqrt(norms[cone]);
     }
     __syncthreads();
 
-    /* populate sets i2 and i3 and compute scaling parameters */
+    /* Populate sets i2 and i3 and compute scaling parameters */
     if (cone < numCones && thread == 0) {
         T nrm_j = norms[cone];
         T t_j = lastElementOfCones[cone];
@@ -346,10 +366,10 @@ __global__ void k_projectionMultiSocStep1(T *data,
 }
 
 template __global__ void
-k_projectionMultiSocStep1(float *, size_t, size_t, float *, float *, float *, int *, int *, float *);
+k_projectionMultiSocStep1(size_t, size_t, float *, float *, int *, int *, float *);
 
 template __global__ void
-k_projectionMultiSocStep1(double *, size_t, size_t, double *, double *, double *, int *, int *, double *);
+k_projectionMultiSocStep1(size_t, size_t, double *, double *, int *, int *, double *);
 
 TEMPLATE_WITH_TYPE_T
 __global__ void k_projectionMultiSocStep2(T *data,

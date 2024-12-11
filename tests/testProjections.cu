@@ -202,23 +202,24 @@ TEMPLATE_WITH_TYPE_T
 void testCartesianWithMultipleBlocksPerCone(ProjectionsTestData<T> &d) {
     /**
      * This test ensures that the shared memory for batched SOC projections works as intended.
-     * The cone's dimensions are greater than the block size,
-     * so each cone requires two blocks of threads.
-     * If only the threads in one block can access the shared memory,
-     * then the test will fail (the projection will set the cones to zeros = i2 projection).
-     * If threads in both blocks have access to the shared memory,
-     * the projection will not set the cones to zeros (= i3 projection).
+     * The cone's dimensions are greater than any possible block size,
+     * so each cone requires at least two blocks of threads.
+     * If any block does not get counted,
+     * the test will fail (the projection will set the cones to zeros = i2 projection).
+     * If all blocks are counted,
+     * the test will pass (projection will not set the cones to zeros = i3 projection).
     */
-    size_t extra = 50;
-    size_t coneDim = TPB + (extra * 2);
+    size_t extra = 5;
+    size_t base = 200;
+    size_t coneDim = base + (extra * 2);
     size_t numCones = 2;
     DTensor<T> d_socs(coneDim, numCones);
     SocProjection multiSocProj(d_socs);
     DTensor<T> d_cone1(d_socs, 1, 0, 0);
     DTensor<T> d_cone2(d_socs, 1, 1, 1);
-    std::vector<T> cone1(coneDim, 1.);
-    std::vector<T> cone2(coneDim, 1.);
-    T lastElement = -sqrt(TPB + extra);
+    std::vector<T> cone1(coneDim, 2.);
+    std::vector<T> cone2(coneDim, 2.);
+    T lastElement = -sqrt(2. * (base + extra));
     cone1[coneDim - 1] = lastElement;
     cone2[coneDim - 1] = lastElement;
     d_cone1.upload(cone1);

@@ -1,4 +1,5 @@
 # Custom
+misc/timeScaling.csv
 data/
 .vscode
 venv*

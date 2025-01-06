@@ -69,6 +69,8 @@ protected:
     bool m_debug = false;
     bool m_errInit = false;
     bool m_status = false;
+    /* Streams */
+    cudaStream_t stream1, stream2;
     /* Sizes */
     size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
     size_t m_sizeX = 0;  ///< States of all nodes
@@ -259,6 +261,9 @@ public:
           bool debug = false) :
         m_tree(tree), m_data(data), m_tolAbs(absTol), m_tolRel(relTol), m_maxOuterIters(maxOuterIters),
         m_maxInnerIters(maxInnerIters), m_andSize(andBuff), m_allowK0(allowK0), m_debug(debug) {
+        /* Streams */
+        gpuErrChk(cudaStreamCreate(&stream1));
+        gpuErrChk(cudaStreamCreate(&stream2));
         /* Sizes */
         initialiseSizes();
         /* Allocate memory on host */

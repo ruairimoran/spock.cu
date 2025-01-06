@@ -61,6 +61,10 @@ class Tree:
         return self.__folder
 
     @property
+    def dtype(self):
+        return self.__dt
+
+    @property
     def is_markovian(self):
         return self.__is_markovian
 

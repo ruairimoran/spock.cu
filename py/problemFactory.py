@@ -458,8 +458,8 @@ class Problem:
         p = np.zeros(prim_size)
         d = self.__op(p)
         dual_size = len(d)
-        op = LinearOperator(dtype=None, shape=(dual_size, prim_size), matvec=self.__op)
-        adj = LinearOperator(dtype=None, shape=(prim_size, dual_size), matvec=self.__adj)
+        op = LinearOperator(dtype=self.__tree.dtype, shape=(dual_size, prim_size), matvec=self.__op)
+        adj = LinearOperator(dtype=self.__tree.dtype, shape=(prim_size, dual_size), matvec=self.__adj)
         adj_op = adj * op
         eigen, _ = eigs(adj_op)
         max_eigen = np.real(max(eigen))

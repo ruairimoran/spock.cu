@@ -30,6 +30,7 @@ class Constraint {
 
 protected:
     size_t m_dim = 0;
+    size_t m_dimPerNode = 0;
     size_t m_matAxis = 2;
 
     explicit Constraint(size_t dim = 0) : m_dim(dim) {}
@@ -49,6 +50,8 @@ public:
     virtual ~Constraint() = default;
 
     virtual size_t dimension() { return m_dim; }
+
+    virtual size_t dimensionPerNode() { return m_dimPerNode; }
 
     virtual void constrain(DTensor<T> &) {};
 
@@ -111,8 +114,17 @@ public:
     explicit Rectangle(std::string path, std::string ext, size_t numNodes, size_t numStates, size_t numInputs) :
         m_numStates(numStates), m_numInputs(numInputs) {
         m_numNodesMinus1 = numNodes - 1;
-        m_d_lowerBound = std::make_unique<DTensor<T>>(DTensor<T>::parseFromFile(path + "LB" + ext));
-        m_d_upperBound = std::make_unique<DTensor<T>>(DTensor<T>::parseFromFile(path + "UB" + ext));
+        DTensor<T> lb(DTensor<T>::parseFromFile(path + "LB" + ext));
+        DTensor<T> ub(DTensor<T>::parseFromFile(path + "UB" + ext));
+        this->m_dimPerNode = lb.numEl();
+        m_d_lowerBound = std::make_unique<DTensor<T>>(this->m_dimPerNode, 1, numNodes);
+        m_d_upperBound = std::make_unique<DTensor<T>>(this->m_dimPerNode, 1, numNodes);
+        for (size_t i = 0; i < numNodes; i++) {
+            DTensor<T> lbNode(*m_d_lowerBound, this->m_matAxis, i, i);
+            DTensor<T> ubNode(*m_d_upperBound, this->m_matAxis, i, i);
+            lb.deviceCopyTo(lbNode);
+            ub.deviceCopyTo(ubNode);
+        }
         this->m_dim = m_d_lowerBound->numEl();
     }
 
@@ -194,6 +206,7 @@ public:
         }
         /* Set constraint dimension */
         this->m_dim = m_d_upperBound->numEl();
+        this->m_dimPerNode = b.numEl();
     }
 
     void constrain(DTensor<T> &d_vec) {

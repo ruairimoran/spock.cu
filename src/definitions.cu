@@ -40,6 +40,19 @@ template __global__ void k_projectRectangle(size_t, float *, float *, float *);
 template __global__ void k_projectRectangle(size_t, double *, double *, double *);
 
 TEMPLATE_WITH_TYPE_T
+__global__ void k_projectPolyhedron(size_t dimension, T *vec, T *upperBound) {
+    const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < dimension) {
+        int upper = (vec[i] > upperBound[i]);
+        vec[i] = vec[i] * (1 - upper) + upper * upperBound[i];
+    }
+}
+
+template __global__ void k_projectPolyhedron(size_t, float *, float *);
+
+template __global__ void k_projectPolyhedron(size_t, double *, double *);
+
+TEMPLATE_WITH_TYPE_T
 __global__ void k_maxWithZero(T *vec, size_t n) {
     const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) vec[i] = max(0., vec[i]);

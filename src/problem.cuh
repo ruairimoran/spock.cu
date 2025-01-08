@@ -55,16 +55,21 @@ private:
     void parseConstraint(const rapidjson::Document &doc, std::unique_ptr<Constraint<T>> &constraint,
                          ConstraintMode mode) {
         std::string modeStr;
-        if (mode == nonleaf) modeStr = "nonleafConstraint";
-        else if (mode == leaf) modeStr = "leafConstraint";
+        size_t numNodes;
+        if (mode == nonleaf) { modeStr = "nonleafConstraint"; numNodes = m_tree.numNonleafNodes(); }
+        else if (mode == leaf) { modeStr = "leafConstraint"; numNodes = m_tree.numLeafNodes(); }
         std::string typeStr = doc[modeStr.c_str()].GetString();
         if (typeStr == std::string("no")) {
             constraint = std::make_unique<NoConstraint<T>>();
         } else if (typeStr == std::string("rectangle")) {
-            constraint = std::make_unique<Rectangle<T>>(m_tree.path() + modeStr, m_tree.fpFileExt());
+            constraint = std::make_unique<Rectangle<T>>(m_tree.path() + modeStr, m_tree.fpFileExt(),
+                                                        numNodes, m_numStates, m_numInputs);
+        } else if (typeStr == std::string("polyhedron")) {
+            constraint = std::make_unique<Polyhedron<T>>(m_tree.path() + modeStr, m_tree.fpFileExt(), mode,
+                                                         numNodes, m_numStates, m_numInputs);
         } else {
             err << "[parseConstraint] Constraint type " << typeStr
-                << " is not supported. Supported types include: rectangle" << "\n";
+                << " is not supported. Supported types include: none, rectangle, polyhedron" << "\n";
             throw std::invalid_argument(err.str());
         }
     }

@@ -14,7 +14,7 @@ class Constraint:
     """
 
     def __init__(self):
-        pass
+        self.__dim = 0
 
     # TYPES
     @property
@@ -26,10 +26,22 @@ class Constraint:
         return False
 
     @property
+    def is_polyhedron(self):
+        return False
+
+    @property
     def is_ball(self):
         return False
 
-    def assign_dual(self, dual, idx, vec_length, num_vec):
+    @property
+    def dim(self):
+        return self.__dim
+
+    @dim.setter
+    def dim(self, d):
+        self.__dim = d
+
+    def assign_dual(self, dual, idx, num_vec):
         pass
 
     def op_nonleaf(self, x, n, u):
@@ -61,7 +73,7 @@ class No(Constraint):
     def is_no(self):
         return True
 
-    def assign_dual(self, dual, idx, vec_length, num_vec):
+    def assign_dual(self, dual, idx, num_vec):
         return self.__nada, idx
 
     def op_nonleaf(self, x, n, u):
@@ -91,9 +103,10 @@ class Rectangle(Constraint):
         :param upper_bound: vector of maximum values
         """
         super().__init__()
-        self.__check_constraints(lower_bound, upper_bound)
-        self.__lb = lower_bound
-        self.__ub = upper_bound
+        self.__check_bounds(lower_bound, upper_bound)
+        self.__lb = np.array(lower_bound).reshape(-1, 1)
+        self.__ub = np.array(upper_bound).reshape(-1, 1)
+        self.dim = self.__ub.size
 
     @property
     def is_rectangle(self):
@@ -108,7 +121,7 @@ class Rectangle(Constraint):
         return self.__ub
 
     @staticmethod
-    def __check_constraints(lb, ub):
+    def __check_bounds(lb, ub):
         if lb.size != ub.size:
             raise Exception("Rectangle constraint - min and max vectors sizes are not equal")
         for i in range(lb.size):
@@ -120,10 +133,10 @@ class Rectangle(Constraint):
                 if lb[i] > ub[i]:
                     raise Exception("Rectangle constraint - min greater than max")
 
-    def assign_dual(self, dual, idx, vec_length, num_vec):
-        d = [np.array(dual[idx + i * vec_length:idx + i * vec_length + vec_length]).reshape(vec_length, 1) for i in
+    def assign_dual(self, dual, idx, num_vec):
+        d = [np.array(dual[idx + i * self.dim:idx + i * self.dim + self.dim]).reshape(self.dim, 1) for i in
              range(num_vec)]
-        idx += vec_length * num_vec
+        idx += self.dim * num_vec
         return d, idx
 
     def op_nonleaf(self, x, n, u):
@@ -148,6 +161,79 @@ class Rectangle(Constraint):
     def adj_leaf(self, dual, x, n):
         for i in range(n):
             x[i] = dual[i]
+        return x
+
+
+# --------------------------------------------------------
+# Polyhedron
+# --------------------------------------------------------
+class Polyhedron(Constraint):
+    """
+    A polyhedral constraint of the form: Ax <= b
+    """
+
+    def __init__(self, matrix, upper_bound):
+        """
+        :param matrix: pre-multiplying matrix
+        :param upper_bound: vector
+        """
+        super().__init__()
+        self.__check_arguments(matrix, upper_bound)
+        self.__matrix = matrix
+        self.__ub = np.array(upper_bound).reshape(-1, 1)
+        self.dim = self.__ub.size
+
+    @property
+    def is_polyhedron(self):
+        return True
+
+    @property
+    def matrix(self):
+        return self.__matrix
+
+    @property
+    def upper_bound(self):
+        return self.__ub
+
+    @staticmethod
+    def __check_arguments(A, b):
+        if not isinstance(A, np.ndarray):
+            raise Exception("Polyhedron constraint - matrix is not a numpy array")
+        if A.shape[0] != b.size:
+            raise Exception("Polyhedron constraint - matrix row and upper bound dimensions are not equal")
+        for i in range(b.size):
+            if b[i] is None:
+                raise Exception("Polyhedron constraint - bound cannot be None")
+
+    def assign_dual(self, dual, idx, num_vec):
+        d = [np.array(dual[idx + i * self.dim:idx + i * self.dim + self.dim]).reshape(self.dim, 1) for i in
+             range(num_vec)]
+        idx += self.dim * num_vec
+        return d, idx
+
+    def op_nonleaf(self, x, n, u):
+        dual = [np.zeros((self.__matrix.shape[0], 1))] * n
+        for i in range(n):
+            dual[i] = self.matrix @ np.vstack((x[i], u[i]))
+        return dual
+
+    def op_leaf(self, x, n):
+        dual = [np.zeros((self.__matrix.shape[0], 1))] * n
+        for i in range(n):
+            dual[i] = self.matrix @ x[i]
+        return dual
+
+    def adj_nonleaf(self, dual, x, n, u):
+        dim = x[0].size
+        for i in range(n):
+            xu = self.matrix.T @ dual[i]
+            x[i] = xu[:dim]
+            u[i] = xu[dim:]
+        return x, u
+
+    def adj_leaf(self, dual, x, n):
+        for i in range(n):
+            x[i] = self.matrix.T @ dual[i]
         return x
 
 

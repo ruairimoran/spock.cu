@@ -29,8 +29,8 @@ TEMPLATE_WITH_TYPE_T
 __global__ void k_projectRectangle(size_t dimension, T *vec, T *lowerBound, T *upperBound) {
     const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < dimension) {
-        int lower = (vec[i] < lowerBound[i]);
-        int upper = (vec[i] > upperBound[i]);
+        int lower = (vec[i] <= lowerBound[i]);
+        int upper = (vec[i] >= upperBound[i]);
         vec[i] = vec[i] * (1 - lower) * (1 - upper) + lower * lowerBound[i] + upper * upperBound[i];
     }
 }
@@ -43,7 +43,7 @@ TEMPLATE_WITH_TYPE_T
 __global__ void k_projectPolyhedron(size_t dimension, T *vec, T *upperBound) {
     const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < dimension) {
-        int upper = (vec[i] > upperBound[i]);
+        int upper = (vec[i] >= upperBound[i]);
         vec[i] = vec[i] * (1 - upper) + upper * upperBound[i];
     }
 }

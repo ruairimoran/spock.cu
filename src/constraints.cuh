@@ -157,6 +157,7 @@ public:
 /**
  * Polyhedron constraint:
  * Gx <= b
+ * TODO change this to b_min <= Gx <= b_max
  *
  * @param G matrix
  * @param b upper bound
@@ -188,17 +189,17 @@ public:
         /* Create workspace for nonleaf */
         if (mode == nonleaf)
             m_d_xuNonleafWorkspace = std::make_unique<DTensor<T>>(m_numStates + m_numInputs, 1, numNodes);
-        /* Create tensor Gamma */
+        /* Create tensor Gamma = (Γ, Γ, ..., Γ) */
         m_d_gamma = std::make_unique<DTensor<T>>(g.numRows(), g.numCols(), numNodes);
         for (size_t i = 0; i < numNodes; i++) {
             DTensor<T> gNode(*m_d_gamma, this->m_matAxis, i, i);
             g.deviceCopyTo(gNode);
         }
-        /* Compute transpose */
+        /* Compute transpose m_d_gammaTr = (Γ', Γ', ..., Γ') */
         m_d_gammaTr = std::make_unique<DTensor<T>>(g.numCols(), g.numRows(), numNodes);
         DTensor<T> gTr = m_d_gamma->tr();
         gTr.deviceCopyTo(*m_d_gammaTr);
-        /* Create upper bound tensor */
+        /* Create upper bound tensor m_d_upperBound = (b, b, ..., b) */
         m_d_upperBound = std::make_unique<DTensor<T>>(b.numRows(), 1, numNodes);
         for (size_t i = 0; i < numNodes; i++) {
             DTensor<T> bNode(*m_d_upperBound, this->m_matAxis, i, i);
@@ -214,12 +215,23 @@ public:
         k_projectPolyhedron<<<numBlocks(this->m_dim, TPB), TPB>>>(this->m_dim, d_vec.raw(), m_d_upperBound->raw());
     }
 
+    /**
+     * Operator z -> [Γx Γu] * z for nonleaf nodes
+     * @param dual output of operator
+     * @param x
+     * @param u
+     */
     void op(DTensor<T> &dual, DTensor<T> &x, DTensor<T> &u) {
         memCpyNode2Node(*m_d_xuNonleafWorkspace, x, 0, m_numNodesMinus1, m_numStates);
         memCpyNode2Node(*m_d_xuNonleafWorkspace, u, 0, m_numNodesMinus1, m_numInputs, 0, m_numStates);
         dual.addAB(*m_d_gamma, *m_d_xuNonleafWorkspace);
     }
 
+    /**
+     * Same as the other op, but for leaf nodes
+     * @param dual result
+     * @param x
+     */
     void op(DTensor<T> &dual, DTensor<T> &x) {
         dual.addAB(*m_d_gamma, x);
     }
@@ -235,5 +247,10 @@ public:
     }
 };
 
+class MixedRectangleAndPolyhedron_couldBeShorter_or_just_MixedConstraint : public Constraint<T> {
+    // TODO
+    // 1. Combine lower_bound with b_min (allocate contiguous memory for this)
+    // 2. Use the above classes to compute the operator and the projection
+};
 
 #endif

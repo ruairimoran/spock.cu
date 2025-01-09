@@ -54,7 +54,6 @@ void projectPolyhedron(T epsilon) {
     for (size_t i = 0; i < n; i++) {
         EXPECT_TRUE(d_v(i, 0, 0) <= ub);
     }
-    std::cout << d_v.tr();
 }
 
 TEST_F(KernelsTest, projectPolyhedron) {

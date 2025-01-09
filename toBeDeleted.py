@@ -3,8 +3,8 @@ import numpy as np
 import argparse
 
 parser = argparse.ArgumentParser(description='Problem data generator.')
-parser.add_argument("--nStages", type=int, default=3)
-parser.add_argument("--nStates", type=int, default=2)
+parser.add_argument("--nStages", type=int, default=5)
+parser.add_argument("--nStates", type=int, default=50)
 parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
 dt = args.dt
@@ -70,7 +70,7 @@ G @ [x' u']' results in [x' u' -x' -u']'
 nl_state_lim = 1.
 nl_input_lim = 1.5
 nl_bound = np.vstack((nl_state_lim * np.ones((num_states, 1)), nl_input_lim * np.ones((num_inputs, 1))))
-nl_bound = np.vstack((nl_bound, -nl_bound))
+nl_bound = np.vstack((nl_bound, nl_bound))
 nl_g = np.eye(num_states + num_inputs)
 nl_g = np.vstack((nl_g, -nl_g))
 nonleaf_constraint = py.build.Polyhedron(nl_g, nl_bound)
@@ -81,7 +81,7 @@ G @ x results in [x' -x']'
 """
 l_state_lim = 1.
 l_bound = l_state_lim * np.ones((num_states, 1))
-l_bound = np.vstack((l_bound, -l_bound))
+l_bound = np.vstack((l_bound, l_bound))
 l_g = np.eye(num_states)
 l_g = np.vstack((l_g, -l_g))
 leaf_constraint = py.build.Polyhedron(l_g, l_bound)

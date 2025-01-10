@@ -41,7 +41,9 @@ __global__ void k_projectPolyhedron(size_t n, T *v, T *lb, T *ub) {
     if (i < n) {
         int lower = (v[i] <= lb[i]);
         int upper = (v[i] >= ub[i]);
-        v[i] = v[i] * (1 - lower) * (1 - upper) + lower * lb[i] + upper * ub[i];
+        T lbi = isinf(lb[i]) ? 0 : lower * lb[i];
+        T ubi = isinf(ub[i]) ? 0 : upper * ub[i];
+        v[i] = v[i] * (1 - lower) * (1 - upper) + lbi + ubi;
     }
 }
 

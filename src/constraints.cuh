@@ -375,7 +375,8 @@ public:
      * So, (offline,) we create the contiguous memory,
      * and then we reshape two pointers to this memory,
      * one each for the `Iz` and `Gz` constraints.
-     * @param dual memory to be reshaped for use in `op` and `adj`
+     *
+     * @param dual contiguous memory to be reshaped for use in `op` and `adj`
      */
     void reshape(DTensor<T> &dual) {
         this->dimensionCheck(dual);
@@ -386,8 +387,9 @@ public:
     }
 
     /**
-     * Operator: dual <- [I (Γxi Γui)']' * [xi' ui']' for nonleaf nodes
-     * @param dual result space
+     * Operator: iDual, gDual <- I * [xi' ui']', [Γxi Γui] * [xi' ui']' for nonleaf nodes
+     *
+     * @param dual contiguous memory
      * @param x nonleaf states
      * @param u inputs
      */
@@ -398,8 +400,9 @@ public:
     }
 
     /**
-     * Operator: dual <- Γxj * xj for leaf nodes
-     * @param dual result space
+     * Operator: iDual, gDual <- I * xj, Γxj * xj for leaf nodes
+     *
+     * @param dual contiguous memory
      * @param x leaf states
      */
     void op(DTensor<T> &dual, DTensor<T> &x) {
@@ -408,8 +411,9 @@ public:
     }
 
     /**
-     * Operator: xi, ui <- [I (Γxi Γui)']' * dual for nonleaf nodes
-     * @param dual projected vector
+     * Operator: xi, ui <- I * iDual + [Γxi Γui]' * gDual for nonleaf nodes
+     *
+     * @param dual contiguous memory
      * @param x nonleaf states
      * @param u inputs
      */
@@ -420,8 +424,9 @@ public:
     }
 
     /**
-     * Operator: xj <- [I (Γxj)']' * dual for leaf nodes
-     * @param dual projected vector
+     * Operator: xj <- I * iDual + Γxj' * gDual for leaf nodes
+     *
+     * @param dual contiguous memory
      * @param x leaf states
      */
     void adj(DTensor<T> &dual, DTensor<T> &x) {

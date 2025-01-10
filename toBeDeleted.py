@@ -4,7 +4,7 @@ import argparse
 
 parser = argparse.ArgumentParser(description='Problem data generator.')
 parser.add_argument("--nStages", type=int, default=5)
-parser.add_argument("--nStates", type=int, default=5)
+parser.add_argument("--nStates", type=int, default=50)
 parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
 dt = args.dt
@@ -36,7 +36,7 @@ print(tree)
 
 # Sizes
 num_states = args.nStates
-num_inputs = 3
+num_inputs = 20
 num_events = 2
 
 # State dynamics

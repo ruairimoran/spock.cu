@@ -21,8 +21,12 @@ void projectPolyhedron(T epsilon) {
     for (size_t i = 0; i < n; i+=2) v[i] *= -1;  // include some negatives
     for (size_t i = 0; i < n; i+=3) v[i] *= .5;  // include some within bounds
     DTensor<T> d_v(v, n);
-    DTensor<T> d_lb(std::vector<T>(n, lb), n);  // lower bound
-    DTensor<T> d_ub(std::vector<T>(n, ub), n);  // upper bound
+    std::vector<T> vlb(n, lb);
+    std::vector<T> vub(n, ub);
+    vlb[0] = -INFINITY;  // add some spice to bounds
+    vub[0] = INFINITY;
+    DTensor<T> d_lb(vlb, n);  // lower bound
+    DTensor<T> d_ub(vub, n);  // upper bound
     k_projectPolyhedron<<<numBlocks(n, TPB), TPB>>>(n, d_v.raw(), d_lb.raw(), d_ub.raw());
     EXPECT_NEAR(d_v(0, 0, 0), -(ub+oob)*.5, epsilon);
     for (size_t i = 0; i < n; i++) {

@@ -25,32 +25,29 @@ template __global__ void k_setMatToId(float *, size_t, size_t);
 
 template __global__ void k_setMatToId(double *, size_t, size_t);
 
+/**
+ * Project vector in place on polyhedron bounds of the form:
+ * lb <= v <= ub
+ * Launched with <<<numBlocks(n, TPB), TPB>>>.
+ *
+ * @param n size of vec
+ * @param v vector
+ * @param lb lower bound
+ * @param ub upper bound
+ */
 TEMPLATE_WITH_TYPE_T
-__global__ void k_projectRectangle(size_t dimension, T *vec, T *lowerBound, T *upperBound) {
+__global__ void k_projectPolyhedron(size_t n, T *v, T *lb, T *ub) {
     const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < dimension) {
-        int lower = (vec[i] <= lowerBound[i]);
-        int upper = (vec[i] >= upperBound[i]);
-        vec[i] = vec[i] * (1 - lower) * (1 - upper) + lower * lowerBound[i] + upper * upperBound[i];
+    if (i < n) {
+        int lower = (v[i] <= lb[i]);
+        int upper = (v[i] >= ub[i]);
+        v[i] = v[i] * (1 - lower) * (1 - upper) + lower * lb[i] + upper * ub[i];
     }
 }
 
-template __global__ void k_projectRectangle(size_t, float *, float *, float *);
+template __global__ void k_projectPolyhedron(size_t, float *, float *, float *);
 
-template __global__ void k_projectRectangle(size_t, double *, double *, double *);
-
-TEMPLATE_WITH_TYPE_T
-__global__ void k_projectPolyhedron(size_t dimension, T *vec, T *upperBound) {
-    const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < dimension) {
-        int upper = (vec[i] >= upperBound[i]);
-        vec[i] = vec[i] * (1 - upper) + upper * upperBound[i];
-    }
-}
-
-template __global__ void k_projectPolyhedron(size_t, float *, float *);
-
-template __global__ void k_projectPolyhedron(size_t, double *, double *);
+template __global__ void k_projectPolyhedron(size_t, double *, double *, double *);
 
 TEMPLATE_WITH_TYPE_T
 __global__ void k_maxWithZero(T *vec, size_t n) {

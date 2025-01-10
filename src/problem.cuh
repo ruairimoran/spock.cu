@@ -56,8 +56,14 @@ private:
                          ConstraintMode mode) {
         std::string modeStr;
         size_t numNodes;
-        if (mode == nonleaf) { modeStr = "nonleafConstraint"; numNodes = m_tree.numNonleafNodes(); }
-        else if (mode == leaf) { modeStr = "leafConstraint"; numNodes = m_tree.numLeafNodes(); }
+        if (mode == nonleaf) {
+            modeStr = "nonleafConstraint";
+            numNodes = m_tree.numNonleafNodes();
+        }
+        else if (mode == leaf) {
+            modeStr = "leafConstraint";
+            numNodes = m_tree.numLeafNodes();
+        }
         std::string typeStr = doc[modeStr.c_str()].GetString();
         if (typeStr == std::string("no")) {
             constraint = std::make_unique<NoConstraint<T>>();
@@ -67,9 +73,12 @@ private:
         } else if (typeStr == std::string("polyhedron")) {
             constraint = std::make_unique<Polyhedron<T>>(m_tree.path() + modeStr, m_tree.fpFileExt(), mode,
                                                          numNodes, m_numStates, m_numInputs);
+        } else if (typeStr == std::string("mixed")) {
+            constraint = std::make_unique<PolyhedronWithIdentity<T>>(m_tree.path() + modeStr, m_tree.fpFileExt(),
+                                                                     numNodes, m_numStates, m_numInputs);
         } else {
             err << "[parseConstraint] Constraint type " << typeStr
-                << " is not supported. Supported types include: none, rectangle, polyhedron" << "\n";
+                << " is not supported. Supported types include: none, rectangle, polyhedron, mixed" << "\n";
             throw std::invalid_argument(err.str());
         }
     }

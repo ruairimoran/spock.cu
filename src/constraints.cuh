@@ -26,6 +26,7 @@ TEMPLATE_WITH_TYPE_T
 class Constraint {
 
 protected:
+    size_t m_rowAxis = 0;
     size_t m_matAxis = 2;
     size_t m_dim = 0;
     size_t m_dimPerNode = 0;
@@ -41,10 +42,10 @@ protected:
         m_numNodesMinus1 = m_numNodes - 1;
     }
 
-    void makeBounds(size_t dimPerNode, size_t n) {
+    void makeBounds(size_t dimPerNode) {
         m_dimPerNode = dimPerNode;
-        m_d_lowerBound = std::make_unique<DTensor<T>>(m_dimPerNode, 1, n);
-        m_d_upperBound = std::make_unique<DTensor<T>>(m_dimPerNode, 1, n);
+        m_d_lowerBound = std::make_unique<DTensor<T>>(m_dimPerNode, 1, m_numNodes);
+        m_d_upperBound = std::make_unique<DTensor<T>>(m_dimPerNode, 1, m_numNodes);
         m_dim = m_d_lowerBound->numEl();
     }
 
@@ -73,6 +74,11 @@ public:
     virtual void adj(DTensor<T> &, DTensor<T> &, DTensor<T> &) {};
 
     virtual void adj(DTensor<T> &, DTensor<T> &) {};
+
+    virtual void reshape(DTensor<T> &dual) {
+        dimensionCheck(dual);
+        dual.reshape(dimensionPerNode(), 1, m_numNodes);
+    }
 
     void constrain(DTensor<T> &d_vec) {
         dimensionCheck(d_vec);
@@ -139,7 +145,7 @@ public:
         DTensor<T> lb(DTensor<T>::parseFromFile(path + "ILB" + ext));
         DTensor<T> ub(DTensor<T>::parseFromFile(path + "IUB" + ext));
         /* Create bounds memory */
-        this->makeBounds(lb.numEl(), this->m_numNodes);
+        this->makeBounds(lb.numEl());
         /* Fill bounds */
         for (size_t i = 0; i < numNodes; i++) {
             DTensor<T> lbNode(*this->m_d_lowerBound, this->m_matAxis, i, i);
@@ -235,7 +241,7 @@ public:
         DTensor<T> gTr = m_d_gamma->tr();
         gTr.deviceCopyTo(*m_d_gammaTr);
         /* Create bound tensors m_d_lowerBound = (lb, lb, ..., lb) and m_d_upperBound = (ub, ub, ..., ub) */
-        this->makeBounds(lb.numEl(), this->m_numNodes);
+        this->makeBounds(lb.numEl());
         for (size_t i = 0; i < this->m_numNodes; i++) {
             DTensor<T> lbNode(*this->m_d_lowerBound, this->m_matAxis, i, i);
             DTensor<T> ubNode(*this->m_d_upperBound, this->m_matAxis, i, i);
@@ -301,10 +307,13 @@ TEMPLATE_WITH_TYPE_T
 class PolyhedronWithIdentity : public Constraint<T> {
 
 private:
+    size_t m_dimI = 0;
+    size_t m_dimPerNodeI = 0;
+    size_t m_dimPerNodeG = 0;
     std::unique_ptr<DTensor<T>> m_d_gamma = nullptr;
     std::unique_ptr<DTensor<T>> m_d_gammaTr = nullptr;
-    size_t m_numNodesDoubled = 0;
-    size_t m_numNodesDoubledMinus1 = 0;
+    std::unique_ptr<DTensor<T>> m_d_iDual = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_gDual = nullptr;
 
     std::ostream &print(std::ostream &out) const {
         out << "Constraint: Polyhedron with identity\n";
@@ -315,8 +324,6 @@ public:
     explicit PolyhedronWithIdentity(std::string path, std::string ext,
                                     size_t numNodes, size_t numStates, size_t numInputs) :
         Constraint<T>(numNodes, numStates, numInputs) {
-        m_numNodesDoubled = this->m_numNodes * 2;
-        m_numNodesDoubledMinus1 = m_numNodesDoubled - 1;
         /* Read matrix and vectors */
         DTensor<T> ilb(DTensor<T>::parseFromFile(path + "ILB" + ext));
         DTensor<T> iub(DTensor<T>::parseFromFile(path + "IUB" + ext));
@@ -333,20 +340,49 @@ public:
         m_d_gammaTr = std::make_unique<DTensor<T>>(g.numCols(), g.numRows(), this->m_numNodes);
         DTensor<T> gTr = m_d_gamma->tr();
         gTr.deviceCopyTo(*m_d_gammaTr);
-        /* Create bound tensors m_d_lowerBound = (ilb, ..., ilb, glb, ..., glb)
-         * and m_d_upperBound = (iub, ..., iub, gub, ..., gub) */
-        this->makeBounds(ilb.numEl() + glb.numEl(), m_numNodesDoubled);
+        /* Create bound tensors m_d_lowerBound = ([ilb' ... ilb' glb' ... glb']')
+         * and m_d_upperBound = ([iub' ... iub' gub' ... gub']') */
+        m_dimPerNodeI = ilb.numEl();
+        m_dimPerNodeG = glb.numEl();
+        m_dimI = m_dimPerNodeI * this->m_numNodes;
+        this->m_dimPerNode = m_dimPerNodeI + m_dimPerNodeG;  // Not really, this is only for convenience
+        this->m_d_lowerBound = std::make_unique<DTensor<T>>(this->m_dimPerNode * this->m_numNodes, 1, 1);
+        this->m_d_upperBound = std::make_unique<DTensor<T>>(this->m_dimPerNode * this->m_numNodes, 1, 1);
+        this->m_dim = this->m_d_lowerBound->numEl();
+        DTensor<T> ilbSlice(*this->m_d_lowerBound, this->m_rowAxis, 0, m_dimI - 1);
+        DTensor<T> glbSlice(*this->m_d_lowerBound, this->m_rowAxis, m_dimI, this->m_dim - 1);
+        DTensor<T> iubSlice(*this->m_d_upperBound, this->m_rowAxis, 0, m_dimI - 1);
+        DTensor<T> gubSlice(*this->m_d_upperBound, this->m_rowAxis, m_dimI, this->m_dim - 1);
+        ilbSlice.reshape(m_dimPerNodeI, 1, this->m_numNodes);
+        glbSlice.reshape(m_dimPerNodeG, 1, this->m_numNodes);
+        iubSlice.reshape(m_dimPerNodeI, 1, this->m_numNodes);
+        gubSlice.reshape(m_dimPerNodeG, 1, this->m_numNodes);
         for (size_t i = 0; i < this->m_numNodes; i++) {
-            DTensor<T> ilbNode(*this->m_d_lowerBound, this->m_matAxis, i, i);
-            DTensor<T> iubNode(*this->m_d_upperBound, this->m_matAxis, i, i);
+            DTensor<T> ilbNode(ilbSlice, this->m_matAxis, i, i);
+            DTensor<T> iubNode(iubSlice, this->m_matAxis, i, i);
             ilb.deviceCopyTo(ilbNode);
             iub.deviceCopyTo(iubNode);
-            size_t idx = i + this->m_numNodes;
-            DTensor<T> glbNode(*this->m_d_lowerBound, this->m_matAxis, idx, idx);
-            DTensor<T> gubNode(*this->m_d_upperBound, this->m_matAxis, idx, idx);
+            DTensor<T> glbNode(glbSlice, this->m_matAxis, i, i);
+            DTensor<T> gubNode(gubSlice, this->m_matAxis, i, i);
             glb.deviceCopyTo(glbNode);
             gub.deviceCopyTo(gubNode);
         }
+    }
+
+    /**
+     * The projection here requires the dual to be in contiguous memory,
+     * however, the vectors `Iz` and `Gz` can be different sizes.
+     * So, (offline,) we create the contiguous memory,
+     * and then we reshape two pointers to this memory,
+     * one each for the `Iz` and `Gz` constraints.
+     * @param dual memory to be reshaped for use in `op` and `adj`
+     */
+    void reshape(DTensor<T> &dual) {
+        this->dimensionCheck(dual);
+        m_d_iDual = std::make_unique<DTensor<T>>(dual, this->m_rowAxis, 0, m_dimI - 1);
+        m_d_gDual = std::make_unique<DTensor<T>>(dual, this->m_rowAxis, m_dimI, this->m_dim - 1);
+        m_d_iDual->reshape(m_dimPerNodeI, 1, this->m_numNodes);
+        m_d_gDual->reshape(m_dimPerNodeG, 1, this->m_numNodes);
     }
 
     /**
@@ -356,11 +392,9 @@ public:
      * @param u inputs
      */
     void op(DTensor<T> &dual, DTensor<T> &x, DTensor<T> &u) {
-        DTensor<T> iDual(dual, this->m_matAxis, 0, this->m_numNodesMinus1);
-        DTensor<T> gDual(dual, this->m_matAxis, this->m_numNodes, m_numNodesDoubledMinus1);
-        memCpyNode2Node(iDual, x, 0, this->m_numNodesMinus1, this->m_numStates);
-        memCpyNode2Node(iDual, u, 0, this->m_numNodesMinus1, this->m_numInputs, this->m_numStates);
-        gDual.addAB(*m_d_gamma, iDual);
+        memCpyNode2Node(*m_d_iDual, x, 0, this->m_numNodesMinus1, this->m_numStates);
+        memCpyNode2Node(*m_d_iDual, u, 0, this->m_numNodesMinus1, this->m_numInputs, this->m_numStates);
+        m_d_gDual->addAB(*m_d_gamma, *m_d_iDual);
     }
 
     /**
@@ -369,10 +403,8 @@ public:
      * @param x leaf states
      */
     void op(DTensor<T> &dual, DTensor<T> &x) {
-        DTensor<T> iDual(dual, this->m_matAxis, 0, this->m_numNodesMinus1);
-        DTensor<T> gDual(dual, this->m_matAxis, this->m_numNodes, m_numNodesDoubledMinus1);
-        memCpyNode2Node(iDual, x, 0, this->m_numNodesMinus1, this->m_numStates);
-        gDual.addAB(*m_d_gamma, x);
+        memCpyNode2Node(*m_d_iDual, x, 0, this->m_numNodesMinus1, this->m_numStates);
+        m_d_gDual->addAB(*m_d_gamma, x);
     }
 
     /**
@@ -382,11 +414,9 @@ public:
      * @param u inputs
      */
     void adj(DTensor<T> &dual, DTensor<T> &x, DTensor<T> &u) {
-        DTensor<T> iDual(dual, this->m_matAxis, 0, this->m_numNodesMinus1);
-        DTensor<T> gDual(dual, this->m_matAxis, this->m_numNodes, m_numNodesDoubledMinus1);
-        iDual.addAB(*m_d_gammaTr, gDual, 1., 1.);
-        memCpyNode2Node(x, iDual, 0, this->m_numNodesMinus1, this->m_numStates);
-        memCpyNode2Node(u, iDual, 0, this->m_numNodesMinus1, this->m_numInputs, 0, this->m_numStates);
+        m_d_iDual->addAB(*m_d_gammaTr, *m_d_gDual, 1., 1.);
+        memCpyNode2Node(x, *m_d_iDual, 0, this->m_numNodesMinus1, this->m_numStates);
+        memCpyNode2Node(u, *m_d_iDual, 0, this->m_numNodesMinus1, this->m_numInputs, 0, this->m_numStates);
     }
 
     /**
@@ -395,10 +425,8 @@ public:
      * @param x leaf states
      */
     void adj(DTensor<T> &dual, DTensor<T> &x) {
-        DTensor<T> iDual(dual, this->m_matAxis, 0, this->m_numNodesMinus1);
-        DTensor<T> gDual(dual, this->m_matAxis, this->m_numNodes, m_numNodesDoubledMinus1);
-        iDual.addAB(*m_d_gammaTr, gDual, 1., 1.);
-        memCpyNode2Node(x, iDual, 0, this->m_numNodesMinus1, this->m_numStates);
+        m_d_iDual->addAB(*m_d_gammaTr, *m_d_gDual, 1., 1.);
+        memCpyNode2Node(x, *m_d_iDual, 0, this->m_numNodesMinus1, this->m_numStates);
     }
 };
 

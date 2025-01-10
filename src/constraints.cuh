@@ -94,11 +94,22 @@ class NoConstraint : public Constraint<T> {
 public:
     explicit NoConstraint() : Constraint<T>(0, 0, 0) {};
 
+    /**
+     * Set x and u to zeros for nonleaf nodes.
+     * @param dual
+     * @param x nonleaf states
+     * @param u inputs
+     */
     void adj(DTensor<T> &dual, DTensor<T> &x, DTensor<T> &u) {
         k_setToZero<<<numBlocks(x.numEl(), TPB), TPB>>>(x.raw(), x.numEl());
         k_setToZero<<<numBlocks(u.numEl(), TPB), TPB>>>(u.raw(), u.numEl());
     }
 
+    /**
+     * Set x to zeros for leaf nodes.
+     * @param dual
+     * @param x leaf states
+     */
     void adj(DTensor<T> &dual, DTensor<T> &x) {
         k_setToZero<<<numBlocks(x.numEl(), TPB), TPB>>>(x.raw(), x.numEl());
     }
@@ -125,8 +136,8 @@ public:
     explicit Rectangle(std::string path, std::string ext,
                        size_t numNodes, size_t numStates, size_t numInputs) :
         Constraint<T>(numNodes, numStates, numInputs) {
-        DTensor<T> lb(DTensor<T>::parseFromFile(path + "LB" + ext));
-        DTensor<T> ub(DTensor<T>::parseFromFile(path + "UB" + ext));
+        DTensor<T> lb(DTensor<T>::parseFromFile(path + "ILB" + ext));
+        DTensor<T> ub(DTensor<T>::parseFromFile(path + "IUB" + ext));
         /* Create bounds memory */
         this->makeBounds(lb.numEl(), this->m_numNodes);
         /* Fill bounds */
@@ -138,20 +149,42 @@ public:
         }
     }
 
+    /**
+     * Operator: dual <- I * [xi' ui']' for nonleaf nodes
+     * @param dual result space
+     * @param x nonleaf states
+     * @param u inputs
+     */
     void op(DTensor<T> &dual, DTensor<T> &x, DTensor<T> &u) {
         memCpyNode2Node(dual, x, 0, this->m_numNodesMinus1, this->m_numStates);
         memCpyNode2Node(dual, u, 0, this->m_numNodesMinus1, this->m_numInputs, this->m_numStates);
     }
 
+    /**
+     * Operator: dual <- I * xj for leaf nodes
+     * @param dual result space
+     * @param x leaf states
+     */
     void op(DTensor<T> &dual, DTensor<T> &x) {
         memCpyNode2Node(dual, x, 0, this->m_numNodesMinus1, this->m_numStates);
     }
 
+    /**
+     * Operator: xi, ui <- I * dual for nonleaf nodes
+     * @param dual result space
+     * @param x nonleaf states
+     * @param u inputs
+     */
     void adj(DTensor<T> &dual, DTensor<T> &x, DTensor<T> &u) {
         memCpyNode2Node(x, dual, 0, this->m_numNodesMinus1, this->m_numStates);
         memCpyNode2Node(u, dual, 0, this->m_numNodesMinus1, this->m_numInputs, 0, this->m_numStates);
     }
 
+    /**
+     * Operator: xj <- I * dual for leaf nodes
+     * @param dual result space
+     * @param x leaf states
+     */
     void adj(DTensor<T> &dual, DTensor<T> &x) {
         memCpyNode2Node(x, dual, 0, this->m_numNodesMinus1, this->m_numStates);
     }
@@ -185,8 +218,8 @@ public:
         Constraint<T>(numNodes, numStates, numInputs) {
         /* Read matrix and vector */
         DTensor<T> g(DTensor<T>::parseFromFile(path + "Gamma" + ext));
-        DTensor<T> lb(DTensor<T>::parseFromFile(path + "LB" + ext));
-        DTensor<T> ub(DTensor<T>::parseFromFile(path + "UB" + ext));
+        DTensor<T> lb(DTensor<T>::parseFromFile(path + "GLB" + ext));
+        DTensor<T> ub(DTensor<T>::parseFromFile(path + "GUB" + ext));
         /* Create workspace for nonleaf */
         if (mode == nonleaf)
             m_d_xuNonleafWorkspace = std::make_unique<DTensor<T>>(this->m_numStates + this->m_numInputs, 1,

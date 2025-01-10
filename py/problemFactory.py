@@ -168,19 +168,28 @@ class Problem:
             "b": stack_b
         }
         l_con = [self.__nonleaf_constraint, self.__leaf_constraint]
-        l_txt = ["nonleaf", "leaf"]
+        l_txt = ["nonleafConstraint", "leafConstraint"]
         for i in range(len(l_con)):
             con = l_con[i]
             txt = l_txt[i]
             if con.is_rectangle:
                 tensors.update({
-                    txt + "ConstraintLB": con.lower_bound,
-                    txt + "ConstraintUB": con.upper_bound
+                    txt + "ILB": con.lower_bound,
+                    txt + "IUB": con.upper_bound
                 })
             if con.is_polyhedron:
                 tensors.update({
-                    txt + "ConstraintGamma": con.matrix,
-                    txt + "ConstraintUB": con.upper_bound
+                    txt + "Gamma": con.matrix,
+                    txt + "GLB": con.lower_bound,
+                    txt + "GUB": con.upper_bound
+                })
+            if con.is_mixed:
+                tensors.update({
+                    txt + "ILB": con.rect.lower_bound,
+                    txt + "IUB": con.rect.upper_bound,
+                    txt + "Gamma": con.poly.matrix,
+                    txt + "GLB": con.poly.lower_bound,
+                    txt + "GUB": con.poly.upper_bound
                 })
         # Generate files
         for name, tensor in tensors.items():

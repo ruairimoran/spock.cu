@@ -13,9 +13,9 @@
 \# NUMBER OF INPUTS #\
 "numInputs": \~num_inputs~\,
 \# NONLEAF CONSTRAINTS #\
-"nonleafConstraint": \% if nonleaf_constraint.is_no %\"no"\% elif nonleaf_constraint.is_rectangle %\"rectangle"\% elif nonleaf_constraint.is_polyhedron %\"polyhedron"\% endif %\,
+"nonleafConstraint": \% if nonleaf_constraint.is_no %\"no"\% elif nonleaf_constraint.is_rectangle %\"rectangle"\% elif nonleaf_constraint.is_polyhedron %\"polyhedron"\% elif nonleaf_constraint.is_mixed %\"mixed"\% endif %\,
 \# LEAF CONSTRAINTS #\
-"leafConstraint": \% if leaf_constraint.is_no %\"no"\% elif leaf_constraint.is_rectangle %\"rectangle"\% elif leaf_constraint.is_polyhedron %\"polyhedron"\% endif %\,
+"leafConstraint": \% if leaf_constraint.is_no %\"no"\% elif leaf_constraint.is_rectangle %\"rectangle"\% elif leaf_constraint.is_polyhedron %\"polyhedron"\% elif leaf_constraint.is_mixed %\"mixed"\% endif %\,
 \# RISKS #\
 "risk": {"type": \% if risk.is_avar %\"avar", "alpha": \~risk.alpha~\\% elif risk.is_evar %\"evar"\% endif %\
 },

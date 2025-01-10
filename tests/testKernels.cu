@@ -3,7 +3,7 @@
 
 
 TEMPLATE_WITH_TYPE_T
-__global__ void k_projectPolyhedron(size_t, T *, T *, T *);
+__global__ void k_projectRectangle(size_t, T *, T *, T *);
 
 
 class KernelsTest : public testing::Test {
@@ -12,7 +12,7 @@ protected:
 };
 
 TEMPLATE_WITH_TYPE_T
-void projectPolyhedron(T epsilon) {
+void projectRectangle(T epsilon) {
     size_t n = 1025;
     T ub = 4;
     T lb = -ub;
@@ -27,7 +27,7 @@ void projectPolyhedron(T epsilon) {
     vub[0] = INFINITY;
     DTensor<T> d_lb(vlb, n);  // lower bound
     DTensor<T> d_ub(vub, n);  // upper bound
-    k_projectPolyhedron<<<numBlocks(n, TPB), TPB>>>(n, d_v.raw(), d_lb.raw(), d_ub.raw());
+    k_projectRectangle<<<numBlocks(n, TPB), TPB>>>(n, d_v.raw(), d_lb.raw(), d_ub.raw());
     EXPECT_NEAR(d_v(0, 0, 0), -(ub+oob)*.5, epsilon);
     for (size_t i = 0; i < n; i++) {
         EXPECT_TRUE(d_v(i, 0, 0) >= lb);
@@ -35,7 +35,7 @@ void projectPolyhedron(T epsilon) {
     }
 }
 
-TEST_F(KernelsTest, projectPolyhedron) {
-    projectPolyhedron<float>(TEST_PRECISION_LOW);
-    projectPolyhedron<double>(TEST_PRECISION_HIGH);
+TEST_F(KernelsTest, projectRectangle) {
+    projectRectangle<float>(TEST_PRECISION_LOW);
+    projectRectangle<double>(TEST_PRECISION_HIGH);
 }

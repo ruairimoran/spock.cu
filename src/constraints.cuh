@@ -7,7 +7,7 @@
 
 
 TEMPLATE_WITH_TYPE_T
-__global__ void k_projectPolyhedron(size_t, T *, T *, T *);
+__global__ void k_projectRectangle(size_t, T *, T *, T *);
 
 
 /**
@@ -82,8 +82,8 @@ public:
 
     void constrain(DTensor<T> &d_vec) {
         dimensionCheck(d_vec);
-        k_projectPolyhedron<<<numBlocks(this->m_dim, TPB), TPB>>>(this->m_dim, d_vec.raw(),
-                                                                  m_d_lowerBound->raw(), m_d_upperBound->raw());
+        k_projectRectangle<<<numBlocks(this->m_dim, TPB), TPB>>>(this->m_dim, d_vec.raw(),
+                                                                 m_d_lowerBound->raw(), m_d_upperBound->raw());
     }
 
     friend std::ostream &operator<<(std::ostream &out, const Constraint<T> &data) { return data.print(out); }
@@ -237,9 +237,7 @@ public:
             g.deviceCopyTo(gNode);
         }
         /* Compute transpose m_d_gammaTr = (Γ', Γ', ..., Γ') */
-        m_d_gammaTr = std::make_unique<DTensor<T>>(g.numCols(), g.numRows(), this->m_numNodes);
-        DTensor<T> gTr = m_d_gamma->tr();
-        gTr.deviceCopyTo(*m_d_gammaTr);
+        m_d_gammaTr = std::make_unique<DTensor<T>>(m_d_gamma->tr());
         /* Create bound tensors m_d_lowerBound = (lb, lb, ..., lb) and m_d_upperBound = (ub, ub, ..., ub) */
         this->makeBounds(lb.numEl());
         for (size_t i = 0; i < this->m_numNodes; i++) {
@@ -337,9 +335,7 @@ public:
             g.deviceCopyTo(gNode);
         }
         /* Compute transpose m_d_gammaTr = (Γ', Γ', ..., Γ') */
-        m_d_gammaTr = std::make_unique<DTensor<T>>(g.numCols(), g.numRows(), this->m_numNodes);
-        DTensor<T> gTr = m_d_gamma->tr();
-        gTr.deviceCopyTo(*m_d_gammaTr);
+        m_d_gammaTr = std::make_unique<DTensor<T>>(m_d_gamma->tr());
         /* Create bound tensors m_d_lowerBound = ([ilb' ... ilb' glb' ... glb']')
          * and m_d_upperBound = ([iub' ... iub' gub' ... gub']') */
         m_dimPerNodeI = ilb.numEl();

@@ -49,7 +49,7 @@ for w in range(num_events):
         As[w][j][j] = diag
 
 # Input dynamics
-B = 1. * np.eye(num_inputs)
+B = 1. * np.ones((num_states, num_inputs))
 Bs = [B, B]
 
 e = 1. * np.ones((num_states, 1))
@@ -93,7 +93,7 @@ problem = (
         scenario_tree=tree,
         num_states=num_states,
         num_inputs=num_inputs)
-    .with_markovian_linear_dynamics(As, Bs, es)
+    .with_markovian_affine_dynamics(As, Bs, es)
     .with_markovian_nonleaf_costs(Qs, Rs)
     .with_leaf_cost(T)
     .with_nonleaf_constraint(nonleaf_constraint)

@@ -12,8 +12,9 @@
 "numStates": \~num_states~\,
 \# NUMBER OF INPUTS #\
 "numInputs": \~num_inputs~\,
-\# DYNAMICS TYPE #\
-"dynamics": \% if dynamics_type is None %\"linear"\% else %\"affine"\% endif %\,
+\# DYNAMICS #\
+"dynamics": {"type": \% if dynamics.is_linear %\"linear"\% elif dynamics.is_affine %\"affine"\% endif %\
+},
 \# NONLEAF CONSTRAINTS #\
 "nonleafConstraint": \% if nonleaf_constraint.is_no %\"no"\% elif nonleaf_constraint.is_rectangle %\"rectangle"\% endif %\,
 \# LEAF CONSTRAINTS #\

@@ -90,7 +90,7 @@ problem = (
         scenario_tree=tree,
         num_states=num_states,
         num_inputs=num_inputs)
-    .with_markovian_dynamics(As, Bs)
+    .with_markovian_linear_dynamics(As, Bs)
     .with_markovian_nonleaf_costs(Qs, Rs)
     .with_leaf_cost(T)
     .with_nonleaf_constraint(nonleaf_constraint)

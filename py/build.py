@@ -62,7 +62,7 @@ class Constraint:
 # --------------------------------------------------------
 class No(Constraint):
     """
-    For no constraints
+    No constraint
     """
 
     def __init__(self):
@@ -94,7 +94,8 @@ class No(Constraint):
 # --------------------------------------------------------
 class Rectangle(Constraint):
     """
-    A rectangle constraint
+    A rectangle constraint of the form:
+    lb <= z <= ub
     """
 
     def __init__(self, lower_bound, upper_bound):
@@ -165,7 +166,7 @@ class Rectangle(Constraint):
 class Polyhedron(Constraint):
     """
     A polyhedral constraint of the form:
-    lb <= Gx <= ub
+    lb <= Gz <= ub
     """
 
     def __init__(self, matrix, lower_bound, upper_bound):
@@ -247,7 +248,7 @@ class Polyhedron(Constraint):
 class Mixed(Constraint):
     """
     A polyhedron constraint of the form:
-    lb <= [I (G)']' * x <= ub
+    lb <= [I (G)']' * z <= ub
     where I is the identity matrix.
     """
 

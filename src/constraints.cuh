@@ -124,7 +124,7 @@ public:
 
 /**
  * Rectangle constraint:
- * lb <= x <= ub
+ * lb <= z <= ub
  *
  * @param lb lower bound
  * @param ub upper bound

@@ -49,7 +49,7 @@ void testDynamicsProjectionOnline(ProblemTestData<T> &d, T epsilon) {
     /* Compare states */
     std::vector<T> spockStates(statesSize);
     d_states.download(spockStates);
-    for (size_t i = 0; i < statesSize; i++) { std::cout << i << "\n";EXPECT_NEAR(spockStates[i], cvxStates[i], epsilon); }
+    for (size_t i = 0; i < statesSize; i++) { EXPECT_NEAR(spockStates[i], cvxStates[i], epsilon); }
     /* Compare inputs */
     std::vector<T> spockInputs(inputsSize);
     d_inputs.download(spockInputs);

@@ -97,8 +97,7 @@ class TestProblem(unittest.TestCase):
         tree = TestProblem.__tree_from_markov
         problem = TestProblem.__problem_from_markov_with_markov
         for i in range(0, tree.num_nodes):
-            self.assertTrue(problem.state_dynamics_at_node(i) is not None)
-            self.assertTrue(problem.input_dynamics_at_node(i) is not None)
+            self.assertTrue(problem.dynamics_at_node(i) is not None)
 
     def test_markovian_nonleaf_costs_list(self):
         tree = TestProblem.__tree_from_markov

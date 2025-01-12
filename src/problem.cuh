@@ -21,20 +21,17 @@ class ProblemData {
 
 private:
     ScenarioTree<T> &m_tree;  ///< Previously created scenario tree of problem
-    size_t m_numStates = 0;  ///< Total number system states
-    size_t m_numInputs = 0;  ///< Total number control inputs
-    size_t m_numStatesAndInputs = 0;
     size_t m_numY = 0;  ///< Size of primal vector 'y'
     T m_stepSize = 0;  ///< Step size of CP operator T
     T m_stepSizeRecip = 0;  ///< Reciprocal of step size of CP operator T
-    std::unique_ptr<DTensor<T>> m_d_stepSize = nullptr;  ///< Step size of CP operator T
+    std::unique_ptr<DTensor<T>> m_d_stepSize = nullptr;  ///< Step size of CP operator T (on device)
     std::unique_ptr<DTensor<T>> m_d_sqrtStateWeight = nullptr;
     std::unique_ptr<DTensor<T>> m_d_sqrtInputWeight = nullptr;
     std::unique_ptr<DTensor<T>> m_d_sqrtStateWeightLeaf = nullptr;
-    std::unique_ptr<Dynamics<T>> m_dynamics = nullptr;  ///< Ptr to
-    std::unique_ptr<Constraint<T>> m_nonleafConstraint;  ///< Ptr to
-    std::unique_ptr<Constraint<T>> m_leafConstraint;  ///< Ptr to
-    std::unique_ptr<CoherentRisk<T>> m_risk;  ///< Ptr to
+    std::unique_ptr<Dynamics<T>> m_dynamics = nullptr;
+    std::unique_ptr<Constraint<T>> m_nonleafConstraint = nullptr;
+    std::unique_ptr<Constraint<T>> m_leafConstraint = nullptr;
+    std::unique_ptr<CoherentRisk<T>> m_risk = nullptr;
     /* Kernel projection */
     size_t m_nullDim = 0;
     std::unique_ptr<DTensor<T>> m_d_nullspaceProj = nullptr;
@@ -42,9 +39,9 @@ private:
     void parseDynamics(const rapidjson::Value &value) {
         std::string typeStr = value["type"].GetString();
         if (typeStr == std::string("linear")) {
-            m_dynamics = std::make_unique<Linear<T>>(*m_tree);
+            m_dynamics = std::make_unique<Linear<T>>(m_tree);
         } else if (typeStr == std::string("affine")) {
-            m_dynamics = std::make_unique<Affine<T>>(*m_tree);
+            m_dynamics = std::make_unique<Affine<T>>(m_tree);
         } else {
             err << "[parseDynamics] Dynamics type " << typeStr
                 << " is not supported. Supported types include: linear, affine" << "\n";
@@ -81,8 +78,6 @@ private:
     }
 
     std::ostream &print(std::ostream &out) const {
-        out << "Number of states: " << m_numStates << "\n";
-        out << "Number of inputs: " << m_numInputs << "\n";
         out << "Nonleaf constraint: " << *m_nonleafConstraint;
         out << "Leaf constraint: " << *m_leafConstraint;
         out << "Risk: " << *m_risk;
@@ -105,9 +100,6 @@ public:
         }
 
         /* Store single element data from JSON in host memory */
-        m_numStates = doc["numStates"].GetInt();
-        m_numInputs = doc["numInputs"].GetInt();
-        m_numStatesAndInputs = m_numStates + m_numInputs;
         m_nullDim = doc["rowsNNtr"].GetInt();
         m_numY = m_nullDim - (m_tree.numEvents() * 2);
         m_stepSize = doc["stepSize"].GetDouble();
@@ -138,12 +130,6 @@ public:
     /**
      * Getters
      */
-    size_t numStates() { return m_numStates; }
-
-    size_t numInputs() { return m_numInputs; }
-
-    size_t numStatesAndInputs() { return m_numStatesAndInputs; }
-
     T stepSize() { return m_stepSize; }
 
     T stepSizeRecip() { return m_stepSizeRecip; }
@@ -160,17 +146,7 @@ public:
 
     DTensor<T> &sqrtStateWeightLeaf() { return *m_d_sqrtStateWeightLeaf; }
 
-    DTensor<T> &K() { return *m_d_K; }
-
-    DTensor<T> &KTr() { return *m_d_KTr; }
-
-    DTensor<T> &dynamicsSumTr() { return *m_d_dynamicsSumTr; }
-
-    DTensor<T> &P() { return *m_d_P; }
-
-    DTensor<T> &APB() { return *m_d_APB; }
-
-    std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>> &choleskyBatch() { return m_choleskyBatch; }
+    std::unique_ptr<Dynamics<T>> &dynamics() { return m_dynamics; }
 
     std::unique_ptr<Constraint<T>> &nonleafConstraint() { return m_nonleafConstraint; }
 

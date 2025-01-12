@@ -46,6 +46,9 @@ private:
     size_t m_numNonleafNodesMinus1 = 0;
     size_t m_numLeafNodesMinus1 = 0;
     size_t m_numStagesMinus1 = 0;  ///< horizon
+    size_t m_numStates = 0;  ///< Total number system states
+    size_t m_numInputs = 0;  ///< Total number control inputs
+    size_t m_numStatesAndInputs = 0;
     std::vector<size_t> m_childFrom;
     std::vector<size_t> m_childTo;
     std::vector<size_t> m_numChildren;
@@ -69,6 +72,8 @@ private:
         out << "Number of nonleaf nodes: " << m_numNonleafNodes << "\n";
         out << "Number of nodes: " << m_numNodes << "\n";
         out << "Number of stages: " << m_numStages << "\n";
+        out << "Number of states: " << m_numStates << "\n";
+        out << "Number of inputs: " << m_numInputs << "\n";
         printIfTensor(out, "Stages (from device): ", m_d_stages);
         printIfTensor(out, "Ancestors (from device): ", m_d_ancestors);
         printIfTensor(out, "Probabilities (from device): ", m_d_probabilities);
@@ -103,6 +108,9 @@ public:
         m_numNonleafNodes = doc["numNonleafNodes"].GetInt();
         m_numNodes = doc["numNodes"].GetInt();
         m_numStages = doc["numStages"].GetInt();
+        m_numStates = doc["numStates"].GetInt();
+        m_numInputs = doc["numInputs"].GetInt();
+        m_numStatesAndInputs = m_numStates + m_numInputs;
 
         /* Assign file extensions */
         if constexpr (std::is_same_v<T, float>) { m_fp = "_f" + m_fileExt; }
@@ -193,6 +201,12 @@ public:
     size_t numStages() { return m_numStages; }
 
     size_t numStagesMinus1() { return m_numStagesMinus1; }
+
+    size_t numStates() { return m_numStates; }
+
+    size_t numInputs() { return m_numInputs; }
+
+    size_t numStatesAndInputs() { return m_numStatesAndInputs; }
 
     std::vector<size_t> &childFrom() { return m_childFrom; }
 

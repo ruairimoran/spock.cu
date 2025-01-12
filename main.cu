@@ -34,7 +34,7 @@ int main() {
     Cache cache(tree, problem, tol, tol, maxOuterIters, maxInnerIters, andersonBuffer, allowK0Updates, debug);
 
     /* TIMING ALGORITHM */
-    std::vector<real_t> initState(problem.numStates(), .1);
+    std::vector<real_t> initState(tree.numStates(), .1);
     size_t runs = 11;
     size_t warm = 1;
     size_t rmw = runs - warm;
@@ -51,7 +51,7 @@ int main() {
     /* SAVE */
     std::ofstream timeScaling;
     timeScaling.open("misc/timeScaling.csv", std::ios::app);
-    timeScaling << tree.numStages() << ", " << problem.numStates() << ", " << avg << std::endl;
+    timeScaling << tree.numStages() << ", " << tree.numStates() << ", " << avg << std::endl;
     timeScaling.close();
     std::cout << "Saved (avg = " << avg << " ms)." << std::endl;
 

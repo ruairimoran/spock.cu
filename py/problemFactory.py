@@ -120,7 +120,7 @@ class Problem:
                                  num_stages=self.__tree.num_stages,
                                  num_states=self.__num_states,
                                  num_inputs=self.__num_inputs,
-                                 dynamics=self.__list_of_dynamics[-1],
+                                 dynamics=self.__list_of_dynamics[0],
                                  nonleaf_constraint=self.__list_of_nonleaf_constraints[0],
                                  leaf_constraint=self.__list_of_leaf_constraints[-1],
                                  risk=self.__list_of_risks[0],

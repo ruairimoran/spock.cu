@@ -309,18 +309,9 @@ public:
     T timeSp(std::vector<T> &);
 
     /**
-     * Getters
-     */
-    DTensor<T> &inputs() { return *m_d_u; }
-
-    DTensor<T> &states() { return *m_d_x; }
-
-    /**
      * Test functions. As a friend, they can access protected members.
      */
     friend void testInitialisingState<>(CacheTestData<T> &);
-
-    friend void testDynamicsProjectionOnline<>(CacheTestData<T> &, T);
 
     friend void testKernelProjectionOnline<>(CacheTestData<T> &, T);
 

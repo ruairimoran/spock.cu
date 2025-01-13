@@ -12,7 +12,7 @@
 
 
 int main() {
-    bool debug = false;
+    bool debug = true;
 
     /* SCENARIO TREE */
     std::cout << "Reading tree files...\n";

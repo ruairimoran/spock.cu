@@ -19,11 +19,11 @@ public:
 
     /** Prepare some host and device data */
     bool m_detectInfeas = false;
-    T m_tol = 1e-4;
-    size_t m_maxIters = 20;
+    T m_tol = 1e-3;
+    size_t m_maxIters = 1000;
     size_t m_maxInnerIters = 8;
-    size_t m_andersonBuff = 5;
-    bool m_allowK0 = false;
+    size_t m_andersonBuff = 3;
+    bool m_allowK0 = true;
 
     CacheTestData() {
         m_tree = std::make_unique<ScenarioTree<T>>(m_path);
@@ -273,4 +273,22 @@ TEST_F(CacheTest, memCpyOutTS) {
     testMemCpyOutTS<float>(df);
     CacheTestData<double> dd;
     testMemCpyOutTS<double>(dd);
+}
+
+/* ---------------------------------------
+ * Convergence
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void testConvergence(CacheTestData<T> &d) {
+    std::vector<T> initState(d.m_tree->numStates(), .1);
+    int status = d.m_cache->runSpock(initState);
+    EXPECT_EQ(status, 0);
+}
+
+TEST_F(CacheTest, testConvergence) {
+    CacheTestData<float> df;
+    testConvergence<float>(df);
+    CacheTestData<double> dd;
+    testConvergence<double>(dd);
 }

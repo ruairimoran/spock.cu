@@ -52,29 +52,29 @@ private:
     std::unique_ptr<DTensor<T>> m_d_b = nullptr;
     std::unique_ptr<DTensor<T>> m_d_bTr = nullptr;
 
-    void parseConstraint(const rapidjson::Document &doc, std::unique_ptr<Constraint<T>> &constraint,
+    void parseConstraint(const rapidjson::Value &value, std::unique_ptr<Constraint<T>> &constraint,
                          ConstraintMode mode) {
         std::string modeStr;
         size_t numNodes;
         if (mode == nonleaf) {
-            modeStr = "nonleafConstraint";
+            modeStr = "nonleaf";
             numNodes = m_tree.numNonleafNodes();
-        }
-        else if (mode == leaf) {
-            modeStr = "leafConstraint";
+        } else if (mode == leaf) {
+            modeStr = "leaf";
             numNodes = m_tree.numLeafNodes();
         }
-        std::string typeStr = doc[modeStr.c_str()].GetString();
+        std::string typeStr = value[modeStr.c_str()].GetString();
+        std::string filePrefix = m_tree.path() + modeStr + "Constraint";
         if (typeStr == std::string("no")) {
             constraint = std::make_unique<NoConstraint<T>>();
         } else if (typeStr == std::string("rectangle")) {
-            constraint = std::make_unique<Rectangle<T>>(m_tree.path() + modeStr, m_tree.fpFileExt(),
+            constraint = std::make_unique<Rectangle<T>>(filePrefix, m_tree.fpFileExt(),
                                                         numNodes, m_numStates, m_numInputs);
         } else if (typeStr == std::string("polyhedron")) {
-            constraint = std::make_unique<Polyhedron<T>>(m_tree.path() + modeStr, m_tree.fpFileExt(), mode,
-                                                         numNodes, m_numStates, m_numInputs);
+            constraint = std::make_unique<Polyhedron<T>>(filePrefix, m_tree.fpFileExt(),
+                                                         numNodes, m_numStates, m_numInputs, mode);
         } else if (typeStr == std::string("mixed")) {
-            constraint = std::make_unique<PolyhedronWithIdentity<T>>(m_tree.path() + modeStr, m_tree.fpFileExt(),
+            constraint = std::make_unique<PolyhedronWithIdentity<T>>(filePrefix, m_tree.fpFileExt(),
                                                                      numNodes, m_numStates, m_numInputs);
         } else {
             err << "[parseConstraint] Constraint type " << typeStr
@@ -153,8 +153,8 @@ public:
         m_d_KTr = std::make_unique<DTensor<T>>(m_d_K->tr());
 
         /* Parse constraints, risks, and Cholesky data */
-        parseConstraint(doc, m_nonleafConstraint, nonleaf);
-        parseConstraint(doc, m_leafConstraint, leaf);
+        parseConstraint(doc["constraint"], m_nonleafConstraint, nonleaf);
+        parseConstraint(doc["constraint"], m_leafConstraint, leaf);
         parseRisk(doc["risk"]);
         m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>>(m_tree.numStagesMinus1());
         m_choleskyStage = std::vector<std::unique_ptr<DTensor<T>>>(m_tree.numStagesMinus1());

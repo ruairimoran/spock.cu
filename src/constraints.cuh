@@ -219,8 +219,8 @@ private:
     }
 
 public:
-    explicit Polyhedron(std::string path, std::string ext, ConstraintMode mode,
-                        size_t numNodes, size_t numStates, size_t numInputs) :
+    explicit Polyhedron(std::string path, std::string ext,
+                        size_t numNodes, size_t numStates, size_t numInputs, ConstraintMode mode) :
         Constraint<T>(numNodes, numStates, numInputs) {
         /* Read matrix and vector */
         DTensor<T> g(DTensor<T>::parseFromFile(path + "Gamma" + ext));

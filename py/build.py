@@ -14,7 +14,7 @@ class Constraint:
     """
 
     def __init__(self):
-        pass
+        self.__dim_per_node = 0
 
     # TYPES
     @property
@@ -26,22 +26,70 @@ class Constraint:
         return False
 
     @property
-    def is_ball(self):
+    def is_polyhedron(self):
         return False
 
-    def assign_dual(self, dual, idx, vec_length, num_vec):
+    @property
+    def is_polyhedron_with_identity(self):
+        return False
+
+    @property
+    def dim_per_node(self):
+        """
+        :return: size of constraint at each node
+        """
+        return self.__dim_per_node
+
+    @dim_per_node.setter
+    def dim_per_node(self, d):
+        self.__dim_per_node = d
+
+    def assign_dual(self, dual, idx, num_vec):
+        """
+        Assign dual memory for constraints in operator L*
+        :param dual: existing memory
+        :param idx: dual memory index to start assigning from
+        :param num_vec: number of nodes constrained
+        :return: assigned memory, index + assigned memory size
+        """
         pass
 
     def op_nonleaf(self, x, n, u):
+        """
+        Operator: constraint part of L on nonleaf nodes
+        :param x: states
+        :param n: number of nonleaf nodes
+        :param u: inputs
+        :return: L(xi, ui)
+        """
         pass
 
     def op_leaf(self, x, n):
+        """
+        Operator: constraint part of L on leaf nodes
+        :param x: leaf states
+        :param n: number of leaf nodes
+        :return: L(xj)
+        """
         pass
 
     def adj_nonleaf(self, dual, x, n, u):
+        """
+        Operator: constraint part of L* on nonleaf nodes
+        :param x: states
+        :param n: number of nonleaf nodes
+        :param u: inputs
+        :return: L*(xi, ui)
+        """
         pass
 
     def adj_leaf(self, dual, x, n):
+        """
+        Operator: constraint part of L* on leaf nodes
+        :param x: leaf states
+        :param n: number of leaf nodes
+        :return: L*(xj)
+        """
         pass
 
 
@@ -50,7 +98,7 @@ class Constraint:
 # --------------------------------------------------------
 class No(Constraint):
     """
-    For no constraints
+    No constraint
     """
 
     def __init__(self):
@@ -61,7 +109,7 @@ class No(Constraint):
     def is_no(self):
         return True
 
-    def assign_dual(self, dual, idx, vec_length, num_vec):
+    def assign_dual(self, dual, idx, num_vec):
         return self.__nada, idx
 
     def op_nonleaf(self, x, n, u):
@@ -82,7 +130,8 @@ class No(Constraint):
 # --------------------------------------------------------
 class Rectangle(Constraint):
     """
-    A rectangle constraint
+    A rectangle constraint of the form:
+    lb <= z <= ub
     """
 
     def __init__(self, lower_bound, upper_bound):
@@ -91,9 +140,10 @@ class Rectangle(Constraint):
         :param upper_bound: vector of maximum values
         """
         super().__init__()
-        self.__check_constraints(lower_bound, upper_bound)
-        self.__lb = lower_bound
-        self.__ub = upper_bound
+        self.__check_bounds(lower_bound, upper_bound)
+        self.__lb = np.array(lower_bound).reshape(-1, 1)
+        self.__ub = np.array(upper_bound).reshape(-1, 1)
+        self.dim_per_node = self.__lb.size
 
     @property
     def is_rectangle(self):
@@ -108,22 +158,17 @@ class Rectangle(Constraint):
         return self.__ub
 
     @staticmethod
-    def __check_constraints(lb, ub):
+    def __check_bounds(lb, ub):
         if lb.size != ub.size:
-            raise Exception("Rectangle constraint - min and max vectors sizes are not equal")
+            raise Exception("Rectangle constraint - min and max bound dimensions are not equal")
         for i in range(lb.size):
-            if lb[i] is None and ub[i] is None:
-                raise Exception("Rectangle constraint - both min and max constraints cannot be None")
-            if lb[i] is None or ub[i] is None:
-                pass
-            else:
-                if lb[i] > ub[i]:
-                    raise Exception("Rectangle constraint - min greater than max")
+            if lb[i] > ub[i]:
+                raise Exception("Rectangle constraint - min greater than max at index (", i, ")")
 
-    def assign_dual(self, dual, idx, vec_length, num_vec):
-        d = [np.array(dual[idx + i * vec_length:idx + i * vec_length + vec_length]).reshape(vec_length, 1) for i in
-             range(num_vec)]
-        idx += vec_length * num_vec
+    def assign_dual(self, dual, idx, num_vec):
+        d = [np.array(dual[idx + i * self.dim_per_node:idx + i * self.dim_per_node + self.dim_per_node]).reshape(
+            self.dim_per_node, 1) for i in range(num_vec)]
+        idx += self.dim_per_node * num_vec
         return d, idx
 
     def op_nonleaf(self, x, n, u):
@@ -148,6 +193,165 @@ class Rectangle(Constraint):
     def adj_leaf(self, dual, x, n):
         for i in range(n):
             x[i] = dual[i]
+        return x
+
+
+# --------------------------------------------------------
+# Polyhedron
+# --------------------------------------------------------
+class Polyhedron(Constraint):
+    """
+    A polyhedral constraint of the form:
+    lb <= Gz <= ub
+    """
+
+    def __init__(self, matrix, lower_bound, upper_bound):
+        """
+        :param matrix: pre-multiplying matrix
+        :param lower_bound: vector
+        :param upper_bound: vector
+        """
+        super().__init__()
+        self.__check_arguments(matrix, lower_bound, upper_bound)
+        self.__matrix = matrix
+        self.__lb = np.array(lower_bound).reshape(-1, 1)
+        self.__ub = np.array(upper_bound).reshape(-1, 1)
+        self.dim_per_node = self.__lb.size
+
+    @property
+    def is_polyhedron(self):
+        return True
+
+    @property
+    def matrix(self):
+        return self.__matrix
+
+    @property
+    def lower_bound(self):
+        return self.__lb
+
+    @property
+    def upper_bound(self):
+        return self.__ub
+
+    @staticmethod
+    def __check_arguments(G, lb, ub):
+        if not isinstance(G, np.ndarray):
+            raise Exception("Polyhedron constraint - matrix is not a numpy array")
+        if lb.size != ub.size:
+            raise Exception("Polyhedron constraint - min and max bound dimensions are not equal")
+        if G.shape[0] != lb.size:
+            raise Exception("Polyhedron constraint - matrix and bound dimensions are not equal")
+        for i in range(lb.size):
+            if lb[i] > ub[i]:
+                raise Exception("Polyhedron constraint - min greater than max at index (", i, ")")
+
+    def assign_dual(self, dual, idx, num_vec):
+        d = [np.array(dual[idx + i * self.dim_per_node:idx + i * self.dim_per_node + self.dim_per_node]).reshape(
+            self.dim_per_node, 1) for i in range(num_vec)]
+        idx += self.dim_per_node * num_vec
+        return d, idx
+
+    def op_nonleaf(self, x, n, u):
+        dual = [np.zeros((self.__matrix.shape[0], 1))] * n
+        for i in range(n):
+            dual[i] = self.matrix @ np.vstack((x[i], u[i]))
+        return dual
+
+    def op_leaf(self, x, n):
+        dual = [np.zeros((self.__matrix.shape[0], 1))] * n
+        for i in range(n):
+            dual[i] = self.matrix @ x[i]
+        return dual
+
+    def adj_nonleaf(self, dual, x, n, u):
+        dim = x[0].size
+        for i in range(n):
+            xu = self.matrix.T @ dual[i]
+            x[i] = xu[:dim]
+            u[i] = xu[dim:]
+        return x, u
+
+    def adj_leaf(self, dual, x, n):
+        for i in range(n):
+            x[i] = self.matrix.T @ dual[i]
+        return x
+
+
+# --------------------------------------------------------
+# Polyhedron with identity matrix
+# --------------------------------------------------------
+class PolyhedronWithIdentity(Constraint):
+    """
+    A polyhedron constraint of the form:
+    lb <= [I (G)']' * z <= ub
+    where I is the identity matrix.
+    """
+
+    def __init__(self, rect, poly):
+        """
+        :param rect: instance of class `Rectangle`
+        :param poly: instance of class `Polyhedron`
+        """
+        super().__init__()
+        self.__check_arguments(rect, poly)
+        self.__rect = rect
+        self.__poly = poly
+
+    @staticmethod
+    def __check_arguments(rect, poly):
+        if not isinstance(rect, Rectangle):
+            raise Exception("PolyhedronWithIdentity constraint - not rectangle")
+        if not isinstance(poly, Polyhedron):
+            raise Exception("PolyhedronWithIdentity constraint - not polyhedron")
+
+    def is_polyhedron_with_identity(self):
+        return True
+
+    @property
+    def rect(self):
+        return self.__rect
+
+    @property
+    def poly(self):
+        return self.__poly
+
+    def assign_dual(self, dual, idx, num_vec):
+        r = self.__rect.dim_per_node
+        p = self.__poly.dim_per_node
+        d = [np.array(dual[idx + i * r:idx + i * r + r]).reshape(r, 1) for i in range(num_vec)] + [
+            np.array(dual[idx + i * p:idx + i * p + p]).reshape(p, 1) for i in range(num_vec)]
+        idx += (r + p) * num_vec
+        return d, idx
+
+    def op_nonleaf(self, x, n, u):
+        dual = [np.zeros((self.__rect.dim_per_node, 1))] * n + [np.zeros((self.__poly.dim_per_node, 1))] * n
+        for i in range(n):
+            dual[i] = np.vstack((x[i], u[i]))
+            dual[i + n] = self.__poly.matrix @ np.vstack((x[i], u[i]))
+        return dual
+
+    def op_leaf(self, x, n):
+        dual = [np.zeros((self.__rect.dim_per_node, 1))] * n + [np.zeros((self.__poly.dim_per_node, 1))] * n
+        for i in range(n):
+            dual[i] = x[i]
+            dual[i + n] = self.__poly.matrix @ x[i]
+        return dual
+
+    def adj_nonleaf(self, dual, x, n, u):
+        dim = x[0].size
+        for i in range(n):
+            x[i] = dual[i][:dim]
+            u[i] = dual[i][dim:]
+            xu = self.__poly.matrix.T @ dual[i + n]
+            x[i] += xu[:dim]
+            u[i] += xu[dim:]
+        return x, u
+
+    def adj_leaf(self, dual, x, n):
+        for i in range(n):
+            x[i] = dual[i]
+            x[i] += self.__poly.matrix.T @ dual[i + n]
         return x
 
 

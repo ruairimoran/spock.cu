@@ -12,10 +12,10 @@
 "numStates": \~num_states~\,
 \# NUMBER OF INPUTS #\
 "numInputs": \~num_inputs~\,
-\# NONLEAF CONSTRAINTS #\
-"nonleafConstraint": \% if nonleaf_constraint.is_no %\"no"\% elif nonleaf_constraint.is_rectangle %\"rectangle"\% endif %\,
-\# LEAF CONSTRAINTS #\
-"leafConstraint": \% if leaf_constraint.is_no %\"no"\% elif leaf_constraint.is_rectangle %\"rectangle"\% endif %\,
+\# CONSTRAINTS #\
+"constraint": {"nonleaf": \% if nonleaf_constraint.is_no %\"no"\% elif nonleaf_constraint.is_rectangle %\"rectangle"\% elif nonleaf_constraint.is_polyhedron %\"polyhedron"\% elif nonleaf_constraint.is_polyhedron_with_identity %\"polyhedronWithIdentity"\% endif
+%\, "leaf": \% if leaf_constraint.is_no %\"no"\% elif leaf_constraint.is_rectangle %\"rectangle"\% elif leaf_constraint.is_polyhedron %\"polyhedron"\% elif leaf_constraint.is_polyhedron_with_identity %\"polyhedronWithIdentity"\% endif %\
+},
 \# RISKS #\
 "risk": {"type": \% if risk.is_avar %\"avar", "alpha": \~risk.alpha~\\% elif risk.is_evar %\"evar"\% endif %\
 },

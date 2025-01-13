@@ -45,6 +45,8 @@ void testDynamicsProjectionOnline(ProblemTestData<T> &d, T epsilon) {
     DTensor<T> d_initState(dpStates, 0, 0, d.m_tree->numStates() - 1);
     DTensor<T> d_states(d.m_tree->numStates(), 1, d.m_tree->numNodes());
     DTensor<T> d_inputs(d.m_tree->numInputs(), 1, d.m_tree->numNonleafNodes());
+    dpStates.deviceCopyTo(d_states);
+    dpInputs.deviceCopyTo(d_inputs);
     d.m_data->dynamics()->project(d_initState, d_states, d_inputs);
     /* Compare states */
     std::vector<T> spockStates(statesSize);

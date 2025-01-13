@@ -24,8 +24,8 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_dynamicsSumTr = nullptr;
     std::unique_ptr<DTensor<T>> m_d_P = nullptr;
     std::unique_ptr<DTensor<T>> m_d_APB = nullptr;
-    std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>> m_choleskyBatch;
     std::vector<std::unique_ptr<DTensor<T>>> m_choleskyStage;
+    std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>> m_choleskyBatch;
     /* Workspaces */
     std::unique_ptr<DTensor<T>> m_d_q = nullptr;
     std::unique_ptr<DTensor<T>> m_d_d = nullptr;
@@ -51,8 +51,8 @@ protected:
             DTensor<T>::parseFromFile(m_tree.path() + "APB" + m_tree.fpFileExt()));
         m_d_KTr = std::make_unique<DTensor<T>>(m_d_K->tr());
         /* Sort Cholesky data */
-        m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>>(m_tree.numStagesMinus1());
         m_choleskyStage = std::vector<std::unique_ptr<DTensor<T>>>(m_tree.numStagesMinus1());
+        m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>>(m_tree.numStagesMinus1());
         for (size_t stage = 0; stage < m_tree.numStagesMinus1(); stage++) {
             size_t nodeFr = m_tree.stageFrom()[stage];
             size_t nodeTo = m_tree.stageTo()[stage];
@@ -75,7 +75,7 @@ public:
     /**
      * For reuse while testing.
      */
-    void reset() {
+    void resetWorkspace() {
         m_d_q->upload(std::vector<T>(m_tree.numStates() * m_tree.numNodes(), 0));
         m_d_d->upload(std::vector<T>(m_tree.numInputs() * m_tree.numNonleafNodes(), 0));
         m_d_workX->upload(std::vector<T>(m_tree.numStates() * m_tree.numNodes(), 0));
@@ -109,12 +109,10 @@ public:
         /*
          * Set first q
          */
-        DTensor<T> x_LastStage(states, this->m_matAxis,
-                               this->m_tree.numNonleafNodes(), this->m_tree.numNodesMinus1());
+        DTensor<T> x_LastStage(states, this->m_matAxis, this->m_tree.numNonleafNodes(), this->m_tree.numNodesMinus1());
         x_LastStage *= -1.;
-        DTensor<T> q_LastStage(*this->m_d_q, this->m_matAxis,
-                               this->m_tree.numNonleafNodes(), this->m_tree.numNodesMinus1());
-        x_LastStage.deviceCopyTo(q_LastStage);
+        memCpyNode2Node(*this->m_d_q, states,
+                        this->m_tree.numNonleafNodes(), this->m_tree.numNodesMinus1(), this->m_tree.numStates());
         /*
          * Solve for all d at current stage
          */
@@ -149,7 +147,7 @@ public:
             /* Compute APBdAq_ChStage = A(PBd+q) for each node at child stage. A = (A+B@K).tr */
             DTensor<T> APB_ChStage(*this->m_d_APB, this->m_matAxis, chStageFr, chStageTo);
             DTensor<T> ABKtr_ChStage(*this->m_d_dynamicsSumTr, this->m_matAxis, chStageFr, chStageTo);
-            this->m_tree.memCpyAnc2Node(*this->m_d_workU, *this->m_d_d, chStageFr, chStageTo, this->m_d_d->numRows());
+            this->m_tree.memCpyAnc2Node(*this->m_d_workU, *this->m_d_d, chStageFr, chStageTo, this->m_d_d->numRows(), 0, 0);
             DTensor<T> q_SumChStage(*this->m_d_workX, this->m_matAxis, chStageFr, chStageTo);
             DTensor<T> d_ExpandedChStage(*this->m_d_workU, this->m_matAxis, chStageFr, chStageTo);
             q_SumChStage.addAB(APB_ChStage, d_ExpandedChStage);
@@ -171,8 +169,7 @@ public:
         /*
          * Set initial state
          */
-        DTensor<T> firstState(states, this->m_matAxis, 0, 0);
-        initState.deviceCopyTo(firstState);
+        memCpyNode2Node(states, initState, 0, 0, this->m_tree.numStates());
         for (size_t stage = 0; stage < this->m_tree.numStagesMinus1(); stage++) {
             size_t stageFr = this->m_tree.stageFrom()[stage];
             size_t stageTo = this->m_tree.stageTo()[stage];
@@ -196,7 +193,7 @@ public:
             this->m_tree.memCpyAnc2Node(*this->m_d_workXU, inputs, chStageFr, chStageTo, this->m_tree.numInputs(),
                                         this->m_tree.numStates());
             DTensor<T> x_ChStage(states, this->m_matAxis, chStageFr, chStageTo);
-            DTensor<T> AB_ChStage(*this->m_d_dynamicsSumTr, this->m_matAxis, chStageFr, chStageTo);
+            DTensor<T> AB_ChStage(*this->m_d_stateInputDynamics, this->m_matAxis, chStageFr, chStageTo);
             DTensor<T> xu_ChStage(*this->m_d_workXU, this->m_matAxis, chStageFr, chStageTo);
             x_ChStage.addAB(AB_ChStage, xu_ChStage);
         }
@@ -206,7 +203,7 @@ public:
 
 /**
  * Affine dynamics of the form
- * x(t+1) = A(t+1)x(t) + B(t+1)u(t) + e(t+1)
+ * x(i+) = A(i+)x(i) + B(i+)u(i) + e(i+)
 */
 template<typename T>
 class Affine : public Dynamics<T> {

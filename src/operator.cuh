@@ -40,7 +40,7 @@ public:
     /**
      * For reuse while testing.
      */
-    void reset() {
+    void resetWorkspace() {
         m_d_uNonleafWorkspace->upload(std::vector<T>(m_tree.numInputs() * m_tree.numNodes(), 0));
         m_d_xNonleafWorkspace->upload(std::vector<T>(m_tree.numStates() * m_tree.numNodes(), 0));
         m_d_xLeafWorkspace->upload(std::vector<T>(m_tree.numStates() * m_tree.numLeafNodes(), 0));

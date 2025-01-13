@@ -339,8 +339,8 @@ public:
  */
 template<typename T>
 void Cache<T>::reset() {
-    m_data.dynamics().reset();
-    m_L.reset();
+    m_data.dynamics()->resetWorkspace();
+    m_L.resetWorkspace();
     /* Create zero vectors */
     std::vector<T> numStates(m_tree.numStates(), 0);
     std::vector<T> sizeIterate(m_sizeIterate, 0);

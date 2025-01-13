@@ -73,7 +73,7 @@ private:
         } else if (typeStr == std::string("polyhedron")) {
             constraint = std::make_unique<Polyhedron<T>>(filePrefix, m_tree.fpFileExt(),
                                                          numNodes, m_numStates, m_numInputs, mode);
-        } else if (typeStr == std::string("mixed")) {
+        } else if (typeStr == std::string("polyhedronWithIdentity")) {
             constraint = std::make_unique<PolyhedronWithIdentity<T>>(filePrefix, m_tree.fpFileExt(),
                                                                      numNodes, m_numStates, m_numInputs);
         } else {

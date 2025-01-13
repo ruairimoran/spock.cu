@@ -183,7 +183,7 @@ class Problem:
                     txt + "GLB": con.lower_bound,
                     txt + "GUB": con.upper_bound
                 })
-            if con.is_mixed:
+            if con.is_polyhedron_with_identity:
                 tensors.update({
                     txt + "ILB": con.rect.lower_bound,
                     txt + "IUB": con.rect.upper_bound,

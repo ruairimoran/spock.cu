@@ -30,7 +30,7 @@ class Constraint:
         return False
 
     @property
-    def is_mixed(self):
+    def is_polyhedron_with_identity(self):
         return False
 
     @property
@@ -243,9 +243,9 @@ class Polyhedron(Constraint):
 
 
 # --------------------------------------------------------
-# Mixed: Polyhedron with identity matrix
+# Polyhedron with identity matrix
 # --------------------------------------------------------
-class Mixed(Constraint):
+class PolyhedronWithIdentity(Constraint):
     """
     A polyhedron constraint of the form:
     lb <= [I (G)']' * z <= ub
@@ -265,11 +265,11 @@ class Mixed(Constraint):
     @staticmethod
     def __check_arguments(rect, poly):
         if not isinstance(rect, Rectangle):
-            raise Exception("Mixed constraint - not rectangle")
+            raise Exception("PolyhedronWithIdentity constraint - not rectangle")
         if not isinstance(poly, Polyhedron):
-            raise Exception("Mixed constraint - not polyhedron")
+            raise Exception("PolyhedronWithIdentity constraint - not polyhedron")
 
-    def is_mixed(self):
+    def is_polyhedron_with_identity(self):
         return True
 
     @property

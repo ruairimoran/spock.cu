@@ -77,7 +77,7 @@ for i in range(num_inputs):
     nl_g[i, num_states + i] = 1
 nl_p = py.build.Polyhedron(nl_g, nl_p_lb, nl_p_ub)
 
-nonleaf_constraint = py.build.Mixed(nl_r, nl_p)
+nonleaf_constraint = py.build.PolyhedronWithIdentity(nl_r, nl_p)
 
 # Terminal constraint (rectangle to constrain first half of states, poly to constrain other half)
 half = int(np.floor(num_states / 2))
@@ -94,7 +94,7 @@ for i in range(other_half):
     l_g[i, half + i] = 1
 l_p = py.build.Polyhedron(l_g, l_p_lb, l_p_ub)
 
-leaf_constraint = py.build.Mixed(l_r, l_p)
+leaf_constraint = py.build.PolyhedronWithIdentity(l_r, l_p)
 
 # Risk
 alpha = .95

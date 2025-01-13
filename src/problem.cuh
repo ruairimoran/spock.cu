@@ -66,13 +66,13 @@ private:
             constraint = std::make_unique<NoConstraint<T>>();
         } else if (typeStr == std::string("rectangle")) {
             constraint = std::make_unique<Rectangle<T>>(filePrefix, m_tree.fpFileExt(), numNodes,
-                                                        m_tree.m_numStates(), m_tree.m_numInputs());
+                                                        m_tree.numStates(), m_tree.numInputs());
         } else if (typeStr == std::string("polyhedron")) {
             constraint = std::make_unique<Polyhedron<T>>(filePrefix, m_tree.fpFileExt(), numNodes,
-                                                         m_tree.m_numStates(), m_tree.m_numInputs(), mode);
+                                                         m_tree.numStates(), m_tree.numInputs(), mode);
         } else if (typeStr == std::string("polyhedronWithIdentity")) {
             constraint = std::make_unique<PolyhedronWithIdentity<T>>(filePrefix, m_tree.fpFileExt(), numNodes,
-                                                                     m_tree.m_numStates(), m_tree.m_numInputs());
+                                                                     m_tree.numStates(), m_tree.numInputs());
         } else {
             err << "[parseConstraint] Constraint type " << typeStr
                 << " is not supported. Supported types include: none, rectangle, polyhedron, polyhedronWithIdentity\n";

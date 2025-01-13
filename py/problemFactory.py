@@ -17,7 +17,7 @@ class Problem:
     """
 
     def __init__(self, scenario_tree: treeFactory.Tree, num_states, num_inputs, state_dyn, input_dyn, state_cost,
-                 input_cost, terminal_cost, risk, nonleaf_constraint, leaf_constraint, test):
+                 input_cost, terminal_cost, nonleaf_constraint, leaf_constraint, risk, test):
         """
         :param scenario_tree: instance of ScenarioTree
         :param num_states: number of system states
@@ -27,9 +27,9 @@ class Problem:
         :param state_cost: list of state cost matrices (size: num_nodes, used: 1 to num_nodes)
         :param input_cost: list of input cost matrices (size: num_nodes, used: 1 to num_nodes)
         :param terminal_cost: list of terminal cost matrices (size: num_nodes, used: num_nonleaf_nodes to num_nodes)
-        :param risk: list of risk classes (size: num_nonleaf_nodes, used: all)
         :param nonleaf_constraint: state-input constraint class (size: 1)
         :param leaf_constraint: state constraint class (size: 1)
+        :param risk: list of risk classes (size: num_nonleaf_nodes, used: all)
         :param test: whether to compute test data
 
         Note: avoid using this constructor directly; use a factory instead
@@ -80,6 +80,13 @@ class Problem:
         self.__sqrt_nonleaf_state_costs = [np.zeros((0, 0))] * self.__tree.num_nodes
         self.__sqrt_nonleaf_input_costs = [np.zeros((0, 0))] * self.__tree.num_nodes
         self.__sqrt_leaf_state_costs = [np.zeros((0, 0))] * self.__tree.num_leaf_nodes
+        # Generate data and files
+        print("Computing offline data...")
+        self.__generate_offline()
+        print("Generating problem files...")
+        self.__generate_problem_files()
+        # Print problem
+        self.__print()
 
     # GETTERS
     def state_dynamics_at_node(self, idx):
@@ -106,7 +113,7 @@ class Problem:
     def risk_at_node(self, idx):
         return self.__list_of_risks[idx]
 
-    def generate_problem_files(self):
+    def __generate_problem_files(self):
         # Setup jinja environment
         file_loader = j2.FileSystemLoader(searchpath=["py/"])
         env = j2.Environment(loader=file_loader,
@@ -219,7 +226,7 @@ class Problem:
     # Cache
     # --------------------------------------------------------
 
-    def generate_offline(self):
+    def __generate_offline(self):
         self.__offline_projection_dynamics()
         self.__offline_projection_kernel()
         self.__pad_b()
@@ -492,7 +499,7 @@ class Problem:
         self.__dot_vector = x.tolist()
         self.__dot_result = res
 
-    def print(self):
+    def __print(self):
         print("Problem Data\n"
               "+ Step size: ", self.__step_size, "\n")
         return self
@@ -626,13 +633,8 @@ class ProblemFactory:
                           self.__list_of_nonleaf_state_costs,
                           self.__list_of_nonleaf_input_costs,
                           self.__list_of_leaf_state_costs,
-                          self.__list_of_risks,
                           self.__nonleaf_constraint,
                           self.__leaf_constraint,
+                          self.__list_of_risks,
                           self.__test)
-        print("Computing offline data...")
-        problem.generate_offline()
-        print("Generating problem files...")
-        problem.generate_problem_files()
-        problem.print()
         return problem

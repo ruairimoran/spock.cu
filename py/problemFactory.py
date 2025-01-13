@@ -26,9 +26,9 @@ class Problem:
         :param state_cost: list of state cost matrices (size: num_nodes, used: 1 to num_nodes)
         :param input_cost: list of input cost matrices (size: num_nodes, used: 1 to num_nodes)
         :param terminal_cost: list of terminal cost matrices (size: num_nodes, used: num_nonleaf_nodes to num_nodes)
-        :param nonleaf_constraint: list of state-input constraint classes (size: num_nonleaf_nodes)
-        :param leaf_constraint: list of input constraint classes (size: num_nodes, used: num_nonleaf_nodes to num_nodes)
         :param risk: list of risk classes (size: num_nonleaf_nodes, used: all)
+        :param nonleaf_constraint: state-input constraint class (size: 1)
+        :param leaf_constraint: state constraint class (size: 1)
         :param test: whether to compute test data
 
         Note: avoid using this constructor directly; use a factory instead
@@ -40,9 +40,9 @@ class Problem:
         self.__list_of_nonleaf_state_costs = state_cost
         self.__list_of_nonleaf_input_costs = input_cost
         self.__list_of_leaf_state_costs = terminal_cost
-        self.__list_of_nonleaf_constraints = nonleaf_constraint
-        self.__list_of_leaf_constraints = leaf_constraint
         self.__list_of_risks = risk
+        self.__nonleaf_constraint = nonleaf_constraint
+        self.__leaf_constraint = leaf_constraint
         self.__test = test
         # Dynamics projection
         self.__P = [np.zeros((self.__num_states, self.__num_states))] * self.__tree.num_nodes
@@ -91,11 +91,11 @@ class Problem:
     def leaf_state_cost_at_node(self, idx):
         return self.__list_of_leaf_state_costs[idx]
 
-    def nonleaf_constraint_at_node(self, idx):
-        return self.__list_of_nonleaf_constraints[idx]
+    def nonleaf_constraint(self):
+        return self.__nonleaf_constraint
 
-    def leaf_constraint_at_node(self, idx):
-        return self.__list_of_leaf_constraints[idx]
+    def leaf_constraint(self):
+        return self.__leaf_constraint
 
     def risk_at_node(self, idx):
         return self.__list_of_risks[idx]
@@ -121,8 +121,8 @@ class Problem:
                                  num_states=self.__num_states,
                                  num_inputs=self.__num_inputs,
                                  dynamics=self.__list_of_dynamics[0],
-                                 nonleaf_constraint=self.__list_of_nonleaf_constraints[0],
-                                 leaf_constraint=self.__list_of_leaf_constraints[-1],
+                                 nonleaf_constraint=self.__nonleaf_constraint,
+                                 leaf_constraint=self.__leaf_constraint,
                                  risk=self.__list_of_risks[0],
                                  ker_con_rows=self.__kernel_constraint_matrix_rows,
                                  null_dim=self.__max_nullspace_dim,
@@ -167,22 +167,30 @@ class Problem:
             tensors.update({
                 "affine_dyn": stack_affine_dyn
             })
-        if self.__list_of_nonleaf_constraints[0].is_rectangle:
-            dim = self.__num_states + self.__num_inputs
-            stack_lb = np.vstack([con.lower_bound for con in self.__list_of_nonleaf_constraints]).reshape(dim, 1, -1)
-            stack_ub = np.vstack([con.upper_bound for con in self.__list_of_nonleaf_constraints]).reshape(dim, 1, -1)
-            tensors.update({
-                "nonleafConstraintLB": stack_lb,
-                "nonleafConstraintUB": stack_ub
-            })
-        if self.__list_of_leaf_constraints[0].is_rectangle:
-            dim = self.__num_states
-            stack_lb = np.vstack([con.lower_bound for con in self.__list_of_leaf_constraints]).reshape(dim, 1, -1)
-            stack_ub = np.vstack([con.upper_bound for con in self.__list_of_leaf_constraints]).reshape(dim, 1, -1)
-            tensors.update({
-                "leafConstraintLB": stack_lb,
-                "leafConstraintUB": stack_ub
-            })
+        l_con = [self.__nonleaf_constraint, self.__leaf_constraint]
+        l_txt = ["nonleafConstraint", "leafConstraint"]
+        for i in range(len(l_con)):
+            con = l_con[i]
+            txt = l_txt[i]
+            if con.is_rectangle:
+                tensors.update({
+                    txt + "ILB": con.lower_bound,
+                    txt + "IUB": con.upper_bound
+                })
+            if con.is_polyhedron:
+                tensors.update({
+                    txt + "Gamma": con.matrix,
+                    txt + "GLB": con.lower_bound,
+                    txt + "GUB": con.upper_bound
+                })
+            if con.is_polyhedron_with_identity:
+                tensors.update({
+                    txt + "ILB": con.rect.lower_bound,
+                    txt + "IUB": con.rect.upper_bound,
+                    txt + "Gamma": con.poly.matrix,
+                    txt + "GLB": con.poly.lower_bound,
+                    txt + "GUB": con.poly.upper_bound
+                })
         # Generate files
         for name, tensor in tensors.items():
             self.__tree.write_to_file_fp(name, tensor)
@@ -338,7 +346,7 @@ class Problem:
             ii[i] = s[i] - self.__padded_b[i].T @ y[i]
 
         # -> iii
-        iii = self.__list_of_nonleaf_constraints[0].op_nonleaf(x, self.__tree.num_nonleaf_nodes, u)
+        iii = self.__nonleaf_constraint.op_nonleaf(x, self.__tree.num_nonleaf_nodes, u)
 
         # -> iv
         iv = [np.zeros((num_si + 2, 1))] * self.__tree.num_nodes
@@ -350,7 +358,7 @@ class Problem:
                                half_t, half_t))
 
         # -> v
-        v = self.__list_of_leaf_constraints[0].op_leaf(x[self.__tree.num_nonleaf_nodes:], self.__tree.num_leaf_nodes)
+        v = self.__leaf_constraint.op_leaf(x[self.__tree.num_nonleaf_nodes:], self.__tree.num_leaf_nodes)
 
         # -> vi
         vi = [np.zeros((self.__num_states + 2, 1))] * self.__tree.num_leaf_nodes
@@ -375,13 +383,12 @@ class Problem:
         idx += self.__y_size * self.__tree.num_nonleaf_nodes
         ii = [np.array(dual[idx + i * 1:idx + i * 1 + 1]).reshape(1, 1) for i in range(self.__tree.num_nonleaf_nodes)]
         idx += self.__tree.num_nonleaf_nodes
-        iii, idx = self.__list_of_nonleaf_constraints[0].assign_dual(dual, idx, num_si, self.__tree.num_nonleaf_nodes)
+        iii, idx = self.__nonleaf_constraint.assign_dual(dual, idx, self.__tree.num_nonleaf_nodes)
         iv_size = num_si + 2
         iv = [np.array(dual[idx + i * iv_size:idx + i * iv_size + iv_size]).reshape(
             iv_size, 1) for i in range(self.__tree.num_nodes)]
         idx += iv_size * self.__tree.num_nodes
-        v, idx = self.__list_of_leaf_constraints[0].assign_dual(dual, idx, self.__num_states,
-                                                                self.__tree.num_leaf_nodes)
+        v, idx = self.__leaf_constraint.assign_dual(dual, idx, self.__tree.num_leaf_nodes)
         vi_size = self.__num_states + 2
         vi = [np.array(dual[idx + i * vi_size:idx + i * vi_size + vi_size]).reshape(
             vi_size, 1) for i in range(self.__tree.num_leaf_nodes)]
@@ -398,7 +405,7 @@ class Problem:
         # -> x (nonleaf) and u:Gamma
         x = [np.zeros((self.__num_states, 1))] * self.__tree.num_nodes
         u = [np.zeros((self.__num_inputs, 1))] * self.__tree.num_nonleaf_nodes
-        x, u = self.__list_of_nonleaf_constraints[0].adj_nonleaf(iii, x, self.__tree.num_nonleaf_nodes, u)
+        x, u = self.__nonleaf_constraint.adj_nonleaf(iii, x, self.__tree.num_nonleaf_nodes, u)
         # -> x (nonleaf) and u
         for i in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(i)
@@ -411,7 +418,7 @@ class Problem:
             t[i] = 0.5 * (iv[i][num_si] + iv[i][num_si + 1])
 
         # -> x (leaf):Gamma
-        x[self.__tree.num_nonleaf_nodes:] = self.__list_of_leaf_constraints[0].adj_leaf(
+        x[self.__tree.num_nonleaf_nodes:] = self.__leaf_constraint.adj_leaf(
             v, x[self.__tree.num_nonleaf_nodes:], self.__tree.num_leaf_nodes)
 
         # -> x (leaf)
@@ -508,8 +515,8 @@ class ProblemFactory:
         self.__list_of_nonleaf_state_costs = [None] * self.__tree.num_nodes
         self.__list_of_nonleaf_input_costs = [None] * self.__tree.num_nodes
         self.__list_of_leaf_state_costs = [None] * self.__tree.num_leaf_nodes
-        self.__list_of_nonleaf_constraints = [None] * self.__tree.num_nonleaf_nodes
-        self.__list_of_leaf_constraints = [None] * self.__tree.num_leaf_nodes
+        self.__nonleaf_constraint = [None] * self.__tree.num_nonleaf_nodes
+        self.__leaf_constraint = [None] * self.__tree.num_leaf_nodes
         self.__list_of_risks = [None] * self.__tree.num_nonleaf_nodes
         self.__test = False
         self.__preload_constraints()
@@ -595,21 +602,16 @@ class ProblemFactory:
     # Constraints
     # --------------------------------------------------------
     def __preload_constraints(self):
-        # load "No constraint" into constraints list
-        for i in range(self.__tree.num_nodes):
-            if i < self.__tree.num_nonleaf_nodes:
-                self.__list_of_nonleaf_constraints[i] = build.No()
-            if i < self.__tree.num_leaf_nodes:
-                self.__list_of_leaf_constraints[i] = build.No()
+        # load "No constraint"
+        self.__nonleaf_constraint = build.No()
+        self.__leaf_constraint = build.No()
 
     def with_nonleaf_constraint(self, state_input_constraint):
-        for i in range(self.__tree.num_nonleaf_nodes):
-            self.__list_of_nonleaf_constraints[i] = deepcopy(state_input_constraint)
+        self.__nonleaf_constraint = deepcopy(state_input_constraint)
         return self
 
     def with_leaf_constraint(self, state_constraint):
-        for i in range(self.__tree.num_leaf_nodes):
-            self.__list_of_leaf_constraints[i] = deepcopy(state_constraint)
+        self.__leaf_constraint = deepcopy(state_constraint)
         return self
 
     # --------------------------------------------------------
@@ -642,8 +644,8 @@ class ProblemFactory:
                           self.__list_of_nonleaf_state_costs,
                           self.__list_of_nonleaf_input_costs,
                           self.__list_of_leaf_state_costs,
-                          self.__list_of_nonleaf_constraints,
-                          self.__list_of_leaf_constraints,
+                          self.__nonleaf_constraint,
+                          self.__leaf_constraint,
                           self.__list_of_risks,
                           self.__test)
         print("Computing offline data...")

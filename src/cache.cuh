@@ -463,7 +463,7 @@ void Cache<T>::reshapeDualWorkspace() {
     start += m_sizeII;
     if (m_sizeIII) {
         m_d_iii = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeIII - 1);
-        m_d_iii->reshape(m_tree.numStatesAndInputs(), 1, m_tree.numNonleafNodes());
+        m_data.nonleafConstraint()->reshape(*m_d_iii);
     }
     start += m_sizeIII;
     m_d_iv = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeIV - 1);
@@ -476,7 +476,7 @@ void Cache<T>::reshapeDualWorkspace() {
     start += m_sizeIV;
     if (m_sizeV) {
         m_d_v = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeV - 1);
-        m_d_v->reshape(m_tree.numStates(), 1, m_tree.numLeafNodes());
+        m_data.leafConstraint()->reshape(*m_d_v);
     }
     start += m_sizeV;
     m_d_vi = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeVI - 1);

@@ -65,7 +65,7 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
     sNonleaf.deviceCopyTo(ii);
     ii.addAB(m_data.risk()->bTr(), y, -1., 1.);
     /* III */
-    m_data.nonleafConstraint()->op(iii, x, m_numNonleafNodesMinus1, m_tree.numStates(), u, m_tree.numInputs());
+    m_data.nonleafConstraint()->op(iii, x, u);
     /* IV:1 */
     m_tree.memCpyAnc2Node(*m_d_xNonleafWorkspace, x, 1, m_numNodesMinus1, m_tree.numStates(), 0, 0);
     m_d_xNonleafWorkspace->addAB(m_data.sqrtStateWeight(), *m_d_xNonleafWorkspace);
@@ -85,7 +85,7 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
     memCpyNode2Node(iv, t, 1, m_numNodesMinus1, 1, m_tree.numStatesAndInputs() + 1);
     /* V */
     DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_numNodesMinus1);
-    m_data.leafConstraint()->op(v, xLeaf, m_numLeafNodesMinus1, m_tree.numStates());
+    m_data.leafConstraint()->op(v, xLeaf);
     /* VI:1 */
     m_d_xLeafWorkspace->addAB(m_data.sqrtStateWeightLeaf(), xLeaf);
     /* VI:2,3 */
@@ -110,7 +110,7 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     i.deviceCopyTo(y);
     y.addAB(m_data.risk()->b(), ii, -1., 1.);
     /* x (nonleaf) and u:Gamma */
-    m_data.nonleafConstraint()->adj(iii, x, m_numNonleafNodesMinus1, m_tree.numStates(), u, m_tree.numInputs());
+    m_data.nonleafConstraint()->adj(iii, x, u);
     /* x (nonleaf) and u:Weights */
     /* -> Compute `Qiv1` at every nonroot node */
     memCpyNode2Node(*m_d_xNonleafWorkspace, iv, 1, m_numNodesMinus1, m_tree.numStates());
@@ -133,7 +133,7 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     t *= 0.5;
     /* x (leaf):Gamma */
     DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_numNodesMinus1);
-    m_data.leafConstraint()->adj(v, xLeaf, m_numLeafNodesMinus1, m_tree.numStates());
+    m_data.leafConstraint()->adj(v, xLeaf);
     /* x (leaf) */
     memCpyNode2Node(*m_d_xLeafWorkspace, vi, 0, m_numLeafNodesMinus1, m_tree.numStates());
     xLeaf.addAB(m_data.sqrtStateWeightLeaf(), *m_d_xLeafWorkspace, 1., 1.);

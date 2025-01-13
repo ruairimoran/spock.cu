@@ -12,6 +12,7 @@ enable_testing()
 add_executable(spock_tests)
 target_sources(spock_tests  # add files
     PRIVATE
+    testKernels.cu
     testTree.cu
     testCones.cu
     testRisks.cu

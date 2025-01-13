@@ -81,9 +81,9 @@ public:
     }
 
     void constrain(DTensor<T> &d_vec) {
-        dimensionCheck(d_vec);
-        k_projectRectangle<<<numBlocks(this->m_dim, TPB), TPB>>>(this->m_dim, d_vec.raw(),
-                                                                 m_d_lowerBound->raw(), m_d_upperBound->raw());
+        if (m_dim)
+            k_projectRectangle<<<numBlocks(this->m_dim, TPB), TPB>>>(this->m_dim, d_vec.raw(),
+                                                                     m_d_lowerBound->raw(), m_d_upperBound->raw());
     }
 
     friend std::ostream &operator<<(std::ostream &out, const Constraint<T> &data) { return data.print(out); }
@@ -149,7 +149,7 @@ public:
         /* Fill bounds */
         for (size_t i = 0; i < numNodes; i++) {
             DTensor<T> lbNode(*this->m_d_lowerBound, this->m_matAxis, i, i);
-            DTensor<T> ubNode(*this->m_d_lowerBound, this->m_matAxis, i, i);
+            DTensor<T> ubNode(*this->m_d_upperBound, this->m_matAxis, i, i);
             lb.deviceCopyTo(lbNode);
             ub.deviceCopyTo(ubNode);
         }

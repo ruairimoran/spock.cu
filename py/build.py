@@ -35,6 +35,9 @@ class Constraint:
 
     @property
     def dim_per_node(self):
+        """
+        :return: size of constraint at each node
+        """
         return self.__dim_per_node
 
     @dim_per_node.setter
@@ -42,18 +45,51 @@ class Constraint:
         self.__dim_per_node = d
 
     def assign_dual(self, dual, idx, num_vec):
+        """
+        Assign dual memory for constraints in operator L*
+        :param dual: existing memory
+        :param idx: dual memory index to start assigning from
+        :param num_vec: number of nodes constrained
+        :return: assigned memory, index + assigned memory size
+        """
         pass
 
     def op_nonleaf(self, x, n, u):
+        """
+        Operator: constraint part of L on nonleaf nodes
+        :param x: states
+        :param n: number of nonleaf nodes
+        :param u: inputs
+        :return: L(xi, ui)
+        """
         pass
 
     def op_leaf(self, x, n):
+        """
+        Operator: constraint part of L on leaf nodes
+        :param x: leaf states
+        :param n: number of leaf nodes
+        :return: L(xj)
+        """
         pass
 
     def adj_nonleaf(self, dual, x, n, u):
+        """
+        Operator: constraint part of L* on nonleaf nodes
+        :param x: states
+        :param n: number of nonleaf nodes
+        :param u: inputs
+        :return: L*(xi, ui)
+        """
         pass
 
     def adj_leaf(self, dual, x, n):
+        """
+        Operator: constraint part of L* on leaf nodes
+        :param x: leaf states
+        :param n: number of leaf nodes
+        :return: L*(xj)
+        """
         pass
 
 

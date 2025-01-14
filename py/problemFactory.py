@@ -169,8 +169,8 @@ class Problem:
             "NNtr": stack_null,
             "b": stack_b
         }
-        if self.__list_of_dynamics[-1].is_affine:
-            stack_affine_dyn = np.dstack([a.affine for a in self.__list_of_dynamics])
+        if self.__list_of_dynamics[0].is_affine:
+            stack_affine_dyn = np.dstack([dyn.affine for dyn in self.__list_of_dynamics])
             tensors.update({
                 "affine_dyn": stack_affine_dyn
             })
@@ -295,7 +295,7 @@ class Problem:
                 constraints += [x[:, ch] ==
                                 self.__list_of_dynamics[ch].state @ x[:, node] +
                                 self.__list_of_dynamics[ch].input @ u[:, node] +
-                                self.__list_of_dynamics[ch].affine]  # affine=zeros if linear dynamics
+                                self.__list_of_dynamics[ch].affine.reshape(-1)]  # affine=zeros if linear dynamics
 
         # Leaf nodes
         for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):

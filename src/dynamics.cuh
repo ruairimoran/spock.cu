@@ -142,29 +142,32 @@ public:
             /* Use Cholesky decomposition for final step of computing all d at current stage */
             this->m_choleskyBatch[stage]->solve(d_Stage);
             /*
-             * Solve for all q at current stage
+             * Solve for all q at current stage (except for stage 0)
              */
-            /* Compute APBdAq_ChStage = A(PBd+q) for each node at child stage. A = (A+B@K).tr */
-            DTensor<T> APB_ChStage(*this->m_d_APB, this->m_matAxis, chStageFr, chStageTo);
-            DTensor<T> ABKtr_ChStage(*this->m_d_dynamicsSumTr, this->m_matAxis, chStageFr, chStageTo);
-            this->m_tree.memCpyAnc2Node(*this->m_d_workU, *this->m_d_d, chStageFr, chStageTo, this->m_d_d->numRows(), 0, 0);
-            DTensor<T> q_SumChStage(*this->m_d_workX, this->m_matAxis, chStageFr, chStageTo);
-            DTensor<T> d_ExpandedChStage(*this->m_d_workU, this->m_matAxis, chStageFr, chStageTo);
-            q_SumChStage.addAB(APB_ChStage, d_ExpandedChStage);
-            q_SumChStage.addAB(ABKtr_ChStage, q_ChStage, 1., 1.);
-            /* Sum `APBdAq` children of each node into `q` at current stage */
-            for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
-                this->m_tree.memCpyCh2Node(*this->m_d_q, *this->m_d_workX, stageFr, stageTo, chIdx, chIdx);
+            if (stage) {
+                /* Compute APBdAq_ChStage = A(PBd+q) for each node at child stage. A = (A+B@K).tr */
+                DTensor<T> APB_ChStage(*this->m_d_APB, this->m_matAxis, chStageFr, chStageTo);
+                DTensor<T> ABKtr_ChStage(*this->m_d_dynamicsSumTr, this->m_matAxis, chStageFr, chStageTo);
+                this->m_tree.memCpyAnc2Node(*this->m_d_workU, *this->m_d_d, chStageFr, chStageTo,
+                                            this->m_d_d->numRows(), 0, 0);
+                DTensor<T> q_SumChStage(*this->m_d_workX, this->m_matAxis, chStageFr, chStageTo);
+                DTensor<T> d_ExpandedChStage(*this->m_d_workU, this->m_matAxis, chStageFr, chStageTo);
+                q_SumChStage.addAB(APB_ChStage, d_ExpandedChStage);
+                q_SumChStage.addAB(ABKtr_ChStage, q_ChStage, 1., 1.);
+                /* Sum `APBdAq` children of each node into `q` at current stage */
+                for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
+                    this->m_tree.memCpyCh2Node(*this->m_d_q, *this->m_d_workX, stageFr, stageTo, chIdx, chIdx);
+                }
+                /* Compute Kdux = K.tr(d-u)@x for each node at current stage and add to `q` */
+                DTensor<T> du_Stage(*this->m_d_workU, this->m_matAxis, stageFr, stageTo);
+                d_Stage.deviceCopyTo(du_Stage);
+                du_Stage -= u_Stage;
+                DTensor<T> Ktr_Stage(*this->m_d_KTr, this->m_matAxis, stageFr, stageTo);
+                DTensor<T> q_Stage(*this->m_d_q, this->m_matAxis, stageFr, stageTo);
+                q_Stage.addAB(Ktr_Stage, du_Stage, 1., 1.);
+                DTensor<T> x_Stage(states, this->m_matAxis, stageFr, stageTo);
+                q_Stage -= x_Stage;
             }
-            /* Compute Kdux = K.tr(d-u)@x for each node at current stage and add to `q` */
-            DTensor<T> du_Stage(*this->m_d_workU, this->m_matAxis, stageFr, stageTo);
-            d_Stage.deviceCopyTo(du_Stage);
-            du_Stage -= u_Stage;
-            DTensor<T> Ktr_Stage(*this->m_d_KTr, this->m_matAxis, stageFr, stageTo);
-            DTensor<T> q_Stage(*this->m_d_q, this->m_matAxis, stageFr, stageTo);
-            q_Stage.addAB(Ktr_Stage, du_Stage, 1., 1.);
-            DTensor<T> x_Stage(states, this->m_matAxis, stageFr, stageTo);
-            q_Stage -= x_Stage;
         }
         /*
          * Set initial state
@@ -209,7 +212,8 @@ template<typename T>
 class Affine : public Dynamics<T> {
 
 protected:
-    std::unique_ptr<DTensor<T>> m_d_affineDyn = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_e = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_Pe = nullptr;
 
     std::ostream &print(std::ostream &out) const {
         out << "Dynamics: Affine\n";
@@ -218,8 +222,9 @@ protected:
 
 public:
     explicit Affine(ScenarioTree<T> &tree) : Dynamics<T>(tree) {
-        m_d_affineDyn = std::make_unique<DTensor<T>>(
+        m_d_e = std::make_unique<DTensor<T>>(
             DTensor<T>::parseFromFile(this->m_tree.path() + "affine_dyn" + this->m_tree.fpFileExt()));
+        m_d_Pe = std::make_unique<DTensor<T>>(*this->m_d_P * *m_d_e);
     }
 
     void project(DTensor<T> &initState, DTensor<T> &states, DTensor<T> &inputs) {
@@ -242,12 +247,14 @@ public:
             size_t chStageFr = this->m_tree.stageFrom()[chStage];  // First node of child stage
             size_t chStageTo = this->m_tree.stageTo()[chStage];  // Last node of child stage
             size_t maxCh = this->m_tree.childMax()[stage];  // Max number of children of any node at current stage
-            /* Compute `Bq` at every child of current stage */
+            /* Compute BqPe = B(q+Pe) at every child of current stage */
             DTensor<T> Btr_ChStage(*this->m_d_inputDynamicsTr, this->m_matAxis, chStageFr, chStageTo);
-            DTensor<T> q_ChStage(*this->m_d_q, this->m_matAxis, chStageFr, chStageTo);
-            DTensor<T> Bq_ChStage(*this->m_d_workU, this->m_matAxis, chStageFr, chStageTo);
-            Bq_ChStage.addAB(Btr_ChStage, q_ChStage);
-            /* Sum `Bq` children of each node into `d` at current stage */
+            DTensor<T> qPe_ChStage(*this->m_d_q, this->m_matAxis, chStageFr, chStageTo);
+            DTensor<T> Pe_ChStage(*m_d_Pe, this->m_matAxis, chStageFr, chStageTo);
+            qPe_ChStage += Pe_ChStage;
+            DTensor<T> BqPe_ChStage(*this->m_d_workU, this->m_matAxis, chStageFr, chStageTo);
+            BqPe_ChStage.addAB(Btr_ChStage, qPe_ChStage);
+            /* Sum `BqPe` children of each node into `d` at current stage */
             for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
                 this->m_tree.memCpyCh2Node(*this->m_d_d, *this->m_d_workU, stageFr, stageTo, chIdx, chIdx);
             }
@@ -259,29 +266,32 @@ public:
             /* Use Cholesky decomposition for final step of computing all d at current stage */
             this->m_choleskyBatch[stage]->solve(d_Stage);
             /*
-             * Solve for all q at current stage
+             * Solve for all q at current stage (except for stage 0)
              */
-            /* Compute APBdAq_ChStage = A(PBd+q) for each node at child stage. A = (A+B@K).tr */
-            DTensor<T> APB_ChStage(*this->m_d_APB, this->m_matAxis, chStageFr, chStageTo);
-            DTensor<T> ABKtr_ChStage(*this->m_d_dynamicsSumTr, this->m_matAxis, chStageFr, chStageTo);
-            this->m_tree.memCpyAnc2Node(*this->m_d_workU, *this->m_d_d, chStageFr, chStageTo, this->m_d_d->numRows(), 0, 0);
-            DTensor<T> q_SumChStage(*this->m_d_workX, this->m_matAxis, chStageFr, chStageTo);
-            DTensor<T> d_ExpandedChStage(*this->m_d_workU, this->m_matAxis, chStageFr, chStageTo);
-            q_SumChStage.addAB(APB_ChStage, d_ExpandedChStage);
-            q_SumChStage.addAB(ABKtr_ChStage, q_ChStage, 1., 1.);
-            /* Sum `APBdAq` children of each node into `q` at current stage */
-            for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
-                this->m_tree.memCpyCh2Node(*this->m_d_q, *this->m_d_workX, stageFr, stageTo, chIdx, chIdx);
+            if (stage) {
+                /* Compute APBdAq_ChStage = A(PBd+q+Pe) for each node at child stage. A = (A+B@K).tr */
+                DTensor<T> APB_ChStage(*this->m_d_APB, this->m_matAxis, chStageFr, chStageTo);
+                DTensor<T> ABKtr_ChStage(*this->m_d_dynamicsSumTr, this->m_matAxis, chStageFr, chStageTo);
+                this->m_tree.memCpyAnc2Node(*this->m_d_workU, *this->m_d_d, chStageFr, chStageTo,
+                                            this->m_d_d->numRows());
+                DTensor<T> q_SumChStage(*this->m_d_workX, this->m_matAxis, chStageFr, chStageTo);
+                DTensor<T> d_ExpandedChStage(*this->m_d_workU, this->m_matAxis, chStageFr, chStageTo);
+                q_SumChStage.addAB(APB_ChStage, d_ExpandedChStage);
+                q_SumChStage.addAB(ABKtr_ChStage, qPe_ChStage, 1., 1.);
+                /* Sum `APBdAqPe` children of each node into `q` at current stage */
+                for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
+                    this->m_tree.memCpyCh2Node(*this->m_d_q, *this->m_d_workX, stageFr, stageTo, chIdx, chIdx);
+                }
+                /* Compute Kdux = K.tr(d-u)@x for each node at current stage and add to `q` */
+                DTensor<T> du_Stage(*this->m_d_workU, this->m_matAxis, stageFr, stageTo);
+                d_Stage.deviceCopyTo(du_Stage);
+                du_Stage -= u_Stage;
+                DTensor<T> Ktr_Stage(*this->m_d_KTr, this->m_matAxis, stageFr, stageTo);
+                DTensor<T> q_Stage(*this->m_d_q, this->m_matAxis, stageFr, stageTo);
+                q_Stage.addAB(Ktr_Stage, du_Stage, 1., 1.);
+                DTensor<T> x_Stage(states, this->m_matAxis, stageFr, stageTo);
+                q_Stage -= x_Stage;
             }
-            /* Compute Kdux = K.tr(d-u)@x for each node at current stage and add to `q` */
-            DTensor<T> du_Stage(*this->m_d_workU, this->m_matAxis, stageFr, stageTo);
-            d_Stage.deviceCopyTo(du_Stage);
-            du_Stage -= u_Stage;
-            DTensor<T> Ktr_Stage(*this->m_d_KTr, this->m_matAxis, stageFr, stageTo);
-            DTensor<T> q_Stage(*this->m_d_q, this->m_matAxis, stageFr, stageTo);
-            q_Stage.addAB(Ktr_Stage, du_Stage, 1., 1.);
-            DTensor<T> x_Stage(states, this->m_matAxis, stageFr, stageTo);
-            q_Stage -= x_Stage;
         }
         /*
          * Set initial state
@@ -312,7 +322,9 @@ public:
             DTensor<T> x_ChStage(states, this->m_matAxis, chStageFr, chStageTo);
             DTensor<T> AB_ChStage(*this->m_d_stateInputDynamics, this->m_matAxis, chStageFr, chStageTo);
             DTensor<T> xu_ChStage(*this->m_d_workXU, this->m_matAxis, chStageFr, chStageTo);
+            DTensor<T> e_ChStage(*m_d_e, this->m_matAxis, chStageFr, chStageTo);
             x_ChStage.addAB(AB_ChStage, xu_ChStage);
+            x_ChStage += e_ChStage;
         }
     }
 };

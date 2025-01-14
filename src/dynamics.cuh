@@ -15,20 +15,20 @@ protected:
     size_t m_matAxis = 2;
     ScenarioTree<T> &m_tree;
     /* Dynamics data */
-    std::unique_ptr<DTensor<T>> m_d_inputDynamicsTr = nullptr;  ///< B'
-    std::unique_ptr<DTensor<T>> m_d_stateInputDynamics = nullptr;  ///< [A B]
-    std::unique_ptr<DTensor<T>> m_d_affineDynamics = nullptr;  ///< e
+    std::unique_ptr<DTensor<T>> m_d_BTr = nullptr;  ///< input dynamics, B'
+    std::unique_ptr<DTensor<T>> m_d_AB = nullptr;  ///< combined dynamics, [A B]
+    std::unique_ptr<DTensor<T>> m_d_e = nullptr;  ///< constant dynamics, e
     bool m_affine = false;
     /* Projection data */
     std::unique_ptr<DTensor<T>> m_d_K = nullptr;
     std::unique_ptr<DTensor<T>> m_d_KTr = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_dynamicsSumTr = nullptr;  ///< [A+BK]'
+    std::unique_ptr<DTensor<T>> m_d_ABKTr = nullptr;  ///< (A+BK)'
     std::unique_ptr<DTensor<T>> m_d_P = nullptr;
     std::unique_ptr<DTensor<T>> m_d_APB = nullptr;  ///< (A+BK)'PB
+    std::unique_ptr<DTensor<T>> m_d_Pe = nullptr;
     std::unique_ptr<DTensor<T>> m_d_lowerCholesky = nullptr;
     std::vector<std::unique_ptr<DTensor<T>>> m_choleskyStage;
     std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>> m_choleskyBatch;
-    std::unique_ptr<DTensor<T>> m_d_Pe = nullptr;
     /* Workspaces */
     std::unique_ptr<DTensor<T>> m_d_q = nullptr;
     std::unique_ptr<DTensor<T>> m_d_d = nullptr;
@@ -38,20 +38,20 @@ protected:
 
     explicit Dynamics(ScenarioTree<T> &tree) : m_tree(tree) {
         /* Read projection data from files */
-        m_d_inputDynamicsTr = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "inputDynTr" + m_tree.fpFileExt()));
-        m_d_stateInputDynamics = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "AB_dyn" + m_tree.fpFileExt()));
+        m_d_BTr = std::make_unique<DTensor<T>>(
+            DTensor<T>::parseFromFile(m_tree.path() + "dyn_BTr" + m_tree.fpFileExt()));
+        m_d_AB = std::make_unique<DTensor<T>>(
+            DTensor<T>::parseFromFile(m_tree.path() + "dyn_AB" + m_tree.fpFileExt()));
         m_d_K = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "K" + m_tree.fpFileExt()));
-        m_d_dynamicsSumTr = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "dynTr" + m_tree.fpFileExt()));
+            DTensor<T>::parseFromFile(m_tree.path() + "dyn_K" + m_tree.fpFileExt()));
+        m_d_ABKTr = std::make_unique<DTensor<T>>(
+            DTensor<T>::parseFromFile(m_tree.path() + "dyn_ABKTr" + m_tree.fpFileExt()));
         m_d_P = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "P" + m_tree.fpFileExt()));
+            DTensor<T>::parseFromFile(m_tree.path() + "dyn_P" + m_tree.fpFileExt()));
         m_d_APB = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "APB" + m_tree.fpFileExt()));
+            DTensor<T>::parseFromFile(m_tree.path() + "dyn_APB" + m_tree.fpFileExt()));
         m_d_lowerCholesky = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "lowChol" + m_tree.fpFileExt()));
+            DTensor<T>::parseFromFile(m_tree.path() + "dyn_lowCholesky" + m_tree.fpFileExt()));
         m_d_KTr = std::make_unique<DTensor<T>>(m_d_K->tr());
         /* Sort Cholesky data */
         m_choleskyStage = std::vector<std::unique_ptr<DTensor<T>>>(m_tree.numStagesMinus1());
@@ -89,16 +89,16 @@ protected:
             size_t chStageFr = m_tree.stageFrom()[chStage];  // First node of child stage
             size_t chStageTo = m_tree.stageTo()[chStage];  // Last node of child stage
             size_t maxCh = m_tree.childMax()[stage];  // Max number of children of any node at current stage
-            /* Compute BqPe = B(q+Pe) at every child of current stage */
-            DTensor<T> Btr_ChStage(*m_d_inputDynamicsTr, m_matAxis, chStageFr, chStageTo);
+            /* Compute Bq = B(q+Pe) at every child of current stage */
+            DTensor<T> Btr_ChStage(*m_d_BTr, m_matAxis, chStageFr, chStageTo);
             DTensor<T> q_ChStage(*m_d_q, m_matAxis, chStageFr, chStageTo);
             if (m_affine) {
                 DTensor<T> Pe_ChStage(*m_d_Pe, m_matAxis, chStageFr, chStageTo);
                 q_ChStage += Pe_ChStage;
             }
-            DTensor<T> BqPe_ChStage(*m_d_workU, m_matAxis, chStageFr, chStageTo);
-            BqPe_ChStage.addAB(Btr_ChStage, q_ChStage);
-            /* Sum `BqPe` children of each node into `d` at current stage */
+            DTensor<T> Bq_ChStage(*m_d_workU, m_matAxis, chStageFr, chStageTo);
+            Bq_ChStage.addAB(Btr_ChStage, q_ChStage);
+            /* Sum `Bq` children of each node into `d` at current stage */
             for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
                 m_tree.memCpyCh2Node(*m_d_d, *m_d_workU, stageFr, stageTo, chIdx, chIdx);
             }
@@ -115,13 +115,13 @@ protected:
             if (stage) {
                 /* Compute APBdAq_ChStage = A(PBd+q+Pe) for each node at child stage. A = (A+B@K).tr */
                 DTensor<T> APB_ChStage(*m_d_APB, m_matAxis, chStageFr, chStageTo);
-                DTensor<T> ABKtr_ChStage(*m_d_dynamicsSumTr, m_matAxis, chStageFr, chStageTo);
+                DTensor<T> ABKtr_ChStage(*m_d_ABKTr, m_matAxis, chStageFr, chStageTo);
                 m_tree.memCpyAnc2Node(*m_d_workU, *m_d_d, chStageFr, chStageTo, m_d_d->numRows());
                 DTensor<T> q_SumChStage(*m_d_workX, m_matAxis, chStageFr, chStageTo);
                 DTensor<T> d_ExpandedChStage(*m_d_workU, m_matAxis, chStageFr, chStageTo);
                 q_SumChStage.addAB(APB_ChStage, d_ExpandedChStage);
                 q_SumChStage.addAB(ABKtr_ChStage, q_ChStage, 1., 1.);
-                /* Sum `APBdAqPe` children of each node into `q` at current stage */
+                /* Sum `APBdAq` children of each node into `q` at current stage */
                 for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
                     m_tree.memCpyCh2Node(*m_d_q, *m_d_workX, stageFr, stageTo, chIdx, chIdx);
                 }
@@ -162,11 +162,11 @@ protected:
             m_tree.memCpyAnc2Node(*m_d_workXU, states, chStageFr, chStageTo, m_tree.numStates());
             m_tree.memCpyAnc2Node(*m_d_workXU, inputs, chStageFr, chStageTo, m_tree.numInputs(), m_tree.numStates());
             DTensor<T> x_ChStage(states, m_matAxis, chStageFr, chStageTo);
-            DTensor<T> AB_ChStage(*m_d_stateInputDynamics, m_matAxis, chStageFr, chStageTo);
+            DTensor<T> AB_ChStage(*m_d_AB, m_matAxis, chStageFr, chStageTo);
             DTensor<T> xu_ChStage(*m_d_workXU, m_matAxis, chStageFr, chStageTo);
             x_ChStage.addAB(AB_ChStage, xu_ChStage);
             if (m_affine) {
-                DTensor<T> e_ChStage(*m_d_affineDynamics, m_matAxis, chStageFr, chStageTo);
+                DTensor<T> e_ChStage(*m_d_e, m_matAxis, chStageFr, chStageTo);
                 x_ChStage += e_ChStage;
             }
         }
@@ -198,7 +198,7 @@ public:
 
 /**
  * Linear dynamics of the form
- * x(t+1) = A(t+1)x(t) + B(t+1)u(t)
+ * x(i+) = A(i+)x(i) + B(i+)u(i)
 */
 template<typename T>
 class Linear : public Dynamics<T> {
@@ -230,9 +230,9 @@ protected:
 public:
     explicit Affine(ScenarioTree<T> &tree) : Dynamics<T>(tree) {
         this->m_affine = true;
-        this->m_d_affineDynamics = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(this->m_tree.path() + "affine_dyn" + this->m_tree.fpFileExt()));
-        this->m_d_Pe = std::make_unique<DTensor<T>>(*this->m_d_P * *this->m_d_affineDynamics);
+        this->m_d_e = std::make_unique<DTensor<T>>(
+            DTensor<T>::parseFromFile(this->m_tree.path() + "dyn_e" + this->m_tree.fpFileExt()));
+        this->m_d_Pe = std::make_unique<DTensor<T>>(*this->m_d_P * *this->m_d_e);
     }
 };
 

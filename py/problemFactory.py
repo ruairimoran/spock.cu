@@ -156,23 +156,23 @@ class Problem:
         stack_b = np.dstack(self.__padded_b)
         # Create tensor dict
         tensors = {
-            "inputDynTr": stack_input_dyn_tr,
-            "AB_dyn": stack_AB_dyn,
+            "dyn_BTr": stack_input_dyn_tr,
+            "dyn_AB": stack_AB_dyn,
+            "dyn_P": stack_P,
+            "dyn_K": stack_K,
+            "dyn_lowCholesky": stack_low_chol,
+            "dyn_ABKTr": stack_dyn_tr,
+            "dyn_APB": stack_APB,
             "sqrtStateCost": stack_sqrt_state_cost,
             "sqrtInputCost": stack_sqrt_input_cost,
             "sqrtTerminalCost": stack_sqrt_terminal_cost,
-            "P": stack_P,
-            "K": stack_K,
-            "lowChol": stack_low_chol,
-            "dynTr": stack_dyn_tr,
-            "APB": stack_APB,
             "NNtr": stack_null,
             "b": stack_b
         }
         if self.__list_of_dynamics[0].is_affine:
             stack_affine_dyn = np.dstack([dyn.affine for dyn in self.__list_of_dynamics])
             tensors.update({
-                "affine_dyn": stack_affine_dyn
+                "dyn_e": stack_affine_dyn
             })
         l_con = [self.__nonleaf_constraint, self.__leaf_constraint]
         l_txt = ["nonleafConstraint", "leafConstraint"]

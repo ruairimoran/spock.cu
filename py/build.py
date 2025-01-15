@@ -1,4 +1,43 @@
 import numpy as np
+from scipy.linalg import sqrtm
+
+
+# =====================================================================================================================
+# Costs
+# =====================================================================================================================
+
+# --------------------------------------------------------
+# Base
+# --------------------------------------------------------
+class Cost:
+    """
+    Base class for costs.
+    """
+
+    def __init__(self, Q, R, q, r):
+        self.__leaf = (R is None)
+        self.__Q = Q  # quadratic state cost matrix
+        self.__R = R  # quadratic input cost matrix
+        self.__q = q  # linear state cost vector
+        self.__r = r  # linear input cost vector
+        self.__sqrt_Q = sqrtm(self.__Q)
+        self.__sqrt_R = sqrtm(self.__R) if self.__R is not None else None
+
+    @property
+    def sqrt_Q(self):
+        return self.__Q
+
+    @property
+    def sqrt_R(self):
+        return self.__R
+
+    @property
+    def q(self):
+        return self.__q
+
+    @property
+    def r(self):
+        return self.__r
 
 
 # =====================================================================================================================

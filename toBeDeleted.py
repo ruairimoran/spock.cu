@@ -4,7 +4,7 @@ import argparse
 
 parser = argparse.ArgumentParser(description='Problem data generator.')
 parser.add_argument("--nStages", type=int, default=5)
-parser.add_argument("--nStates", type=int, default=50)
+parser.add_argument("--nStates", type=int, default=4)
 parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
 dt = args.dt
@@ -36,7 +36,7 @@ print(tree)
 
 # Sizes
 num_states = args.nStates
-num_inputs = 20
+num_inputs = 3
 num_events = 2
 
 # State dynamics
@@ -55,46 +55,31 @@ Bs = [B, B]
 # State cost
 Q = 1e-1 * np.eye(num_states)
 Qs = [Q, Q]
+q = 1e-1 * np.ones(num_states)
+qs = [q, q]
 
 # Input cost
 R = 1. * np.eye(num_inputs)
 Rs = [R, R]
+r = 1. * np.ones(num_inputs)
+rs = [r, r]
 
 # Terminal state cost
 T = 1e-1 * np.eye(num_states)
+t = 1e-1 * np.ones(num_states)
 
-# State-input constraint (rectangle to constrain states, poly to constrain inputs)
+# State-input constraint
 nl_state_lim = 1.
-nl_r_ub = np.vstack((nl_state_lim * np.ones((num_states, 1)), np.Inf * np.ones((num_inputs, 1))))
-nl_r_lb = -nl_r_ub
-nl_r = py.build.Rectangle(nl_r_lb, nl_r_ub)
-
 nl_input_lim = 1.5
-nl_p_ub = nl_input_lim * np.ones((num_inputs, 1))
-nl_p_lb = -nl_p_ub
-nl_g = np.zeros((num_inputs, num_states + num_inputs))
-for i in range(num_inputs):
-    nl_g[i, num_states + i] = 1
-nl_p = py.build.Polyhedron(nl_g, nl_p_lb, nl_p_ub)
+nl_r_ub = np.vstack((nl_state_lim * np.ones((num_states, 1)), nl_input_lim * np.ones((num_inputs, 1))))
+nl_r_lb = -nl_r_ub
+nonleaf_constraint = py.build.Rectangle(nl_r_lb, nl_r_ub)
 
-nonleaf_constraint = py.build.PolyhedronWithIdentity(nl_r, nl_p)
-
-# Terminal constraint (rectangle to constrain first half of states, poly to constrain other half)
-half = int(np.floor(num_states / 2))
-other_half = int(num_states - half)
+# Terminal constraint
 l_state_lim = 1.
-l_r_ub = np.vstack((l_state_lim * np.ones((half, 1)), np.Inf * np.ones((other_half, 1))))
+l_r_ub = np.vstack((l_state_lim * np.ones((num_states, 1))))
 l_r_lb = -l_r_ub
-l_r = py.build.Rectangle(l_r_lb, l_r_ub)
-
-l_p_ub = l_state_lim * np.ones((other_half, 1))
-l_p_lb = -l_p_ub
-l_g = np.zeros((other_half, num_states))
-for i in range(other_half):
-    l_g[i, half + i] = 1
-l_p = py.build.Polyhedron(l_g, l_p_lb, l_p_ub)
-
-leaf_constraint = py.build.PolyhedronWithIdentity(l_r, l_p)
+leaf_constraint = py.build.Rectangle(l_r_lb, l_r_ub)
 
 # Risk
 alpha = .95
@@ -107,8 +92,8 @@ problem = (
         num_states=num_states,
         num_inputs=num_inputs)
     .with_markovian_dynamics(As, Bs)
-    .with_markovian_nonleaf_costs(Qs, Rs)
-    .with_leaf_cost(T)
+    .with_markovian_nonleaf_costs(Qs, Rs, qs, rs)
+    .with_leaf_cost(T, t)
     .with_nonleaf_constraint(nonleaf_constraint)
     .with_leaf_constraint(leaf_constraint)
     .with_risk(risk)

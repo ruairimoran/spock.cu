@@ -2,7 +2,6 @@ import jinja2 as j2
 import os
 import numpy as np
 import scipy as sp
-from scipy.linalg import sqrtm
 from scipy.sparse.linalg import LinearOperator, eigs
 import gputils_api as ga
 import cvxpy as cvx
@@ -16,17 +15,16 @@ class Problem:
     Risk-averse optimal control problem and offline cache storage
     """
 
-    def __init__(self, scenario_tree: treeFactory.Tree, num_states, num_inputs, state_dyn, input_dyn, state_cost,
-                 input_cost, terminal_cost, nonleaf_constraint, leaf_constraint, risk, test):
+    def __init__(self, scenario_tree: treeFactory.Tree, num_states, num_inputs, state_dyn, input_dyn,
+                 nonleaf_cost, leaf_cost, nonleaf_constraint, leaf_constraint, risk, test):
         """
         :param scenario_tree: instance of ScenarioTree
         :param num_states: number of system states
         :param num_inputs: number of system inputs
         :param state_dyn: list of state dynamics matrices (size: num_nodes, used: 1 to num_nodes)
         :param input_dyn: list of input dynamics matrices (size: num_nodes, used: 1 to num_nodes)
-        :param state_cost: list of state cost matrices (size: num_nodes, used: 1 to num_nodes)
-        :param input_cost: list of input cost matrices (size: num_nodes, used: 1 to num_nodes)
-        :param terminal_cost: list of terminal cost matrices (size: num_nodes, used: num_nonleaf_nodes to num_nodes)
+        :param nonleaf_cost: list of nonleaf costs (size: num_nodes, used: 1 to num_nodes)
+        :param leaf_cost: list of leaf cost (size: num_leaf_nodes, used: all)
         :param nonleaf_constraint: state-input constraint class (size: 1)
         :param leaf_constraint: state constraint class (size: 1)
         :param risk: list of risk classes (size: num_nonleaf_nodes, used: all)
@@ -40,9 +38,8 @@ class Problem:
         self.__list_of_state_dynamics = state_dyn
         self.__list_of_input_dynamics = input_dyn
         self.__list_of_state_input_dynamics = [np.hstack((A, B)) for A, B in zip(state_dyn, input_dyn)]
-        self.__list_of_nonleaf_state_costs = state_cost
-        self.__list_of_nonleaf_input_costs = input_cost
-        self.__list_of_leaf_state_costs = terminal_cost
+        self.__list_of_nonleaf_costs = nonleaf_cost
+        self.__list_of_leaf_costs = leaf_cost
         self.__list_of_risks = risk
         self.__nonleaf_constraint = nonleaf_constraint
         self.__leaf_constraint = leaf_constraint
@@ -77,9 +74,6 @@ class Problem:
         self.__y_size = 2 * self.__tree.num_events + 1
         self.__step_size = 0
         self.__padded_b = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
-        self.__sqrt_nonleaf_state_costs = [np.zeros((0, 0))] * self.__tree.num_nodes
-        self.__sqrt_nonleaf_input_costs = [np.zeros((0, 0))] * self.__tree.num_nodes
-        self.__sqrt_leaf_state_costs = [np.zeros((0, 0))] * self.__tree.num_leaf_nodes
         # Generate data and files
         print("Computing offline data...")
         self.__generate_offline()
@@ -95,14 +89,11 @@ class Problem:
     def input_dynamics_at_node(self, idx):
         return self.__list_of_input_dynamics[idx]
 
-    def nonleaf_state_cost_at_node(self, idx):
-        return self.__list_of_nonleaf_state_costs[idx]
+    def nonleaf_cost_at_node(self, idx):
+        return self.__list_of_nonleaf_costs[idx]
 
-    def nonleaf_input_cost_at_node(self, idx):
-        return self.__list_of_nonleaf_input_costs[idx]
-
-    def leaf_state_cost_at_node(self, idx):
-        return self.__list_of_leaf_state_costs[idx]
+    def leaf_cost_at_node(self, idx):
+        return self.__list_of_leaf_costs[idx]
 
     def nonleaf_constraint(self):
         return self.__nonleaf_constraint
@@ -149,9 +140,9 @@ class Problem:
         # Generate stacks
         stack_input_dyn_tr = np.dstack([a.T for a in self.__list_of_input_dynamics])
         stack_AB_dyn = np.dstack(self.__list_of_state_input_dynamics)
-        stack_sqrt_state_cost = np.dstack(self.__sqrt_nonleaf_state_costs)
-        stack_sqrt_input_cost = np.dstack(self.__sqrt_nonleaf_input_costs)
-        stack_sqrt_terminal_cost = np.dstack(self.__sqrt_leaf_state_costs)
+        stack_sqrt_state_cost = np.dstack([cost.sqrt_Q for cost in self.__list_of_nonleaf_costs])
+        stack_sqrt_input_cost = np.dstack([cost.sqrt_R for cost in self.__list_of_nonleaf_costs])
+        stack_sqrt_terminal_cost = np.dstack([cost.sqrt_Q for cost in self.__list_of_leaf_costs])
         stack_P = np.dstack(self.__P)
         stack_K = np.dstack(self.__K)
         stack_low_chol = np.dstack(self.__cholesky_lower)
@@ -230,7 +221,6 @@ class Problem:
         self.__offline_projection_dynamics()
         self.__offline_projection_kernel()
         self.__pad_b()
-        self.__sqrt_costs()
         self.__get_step_size()
         if self.__test:
             self.__test_dynamic_programming()
@@ -313,14 +303,6 @@ class Problem:
             self.__padded_b[i] = np.pad(self.__list_of_risks[i].b, [(0, pad), (0, 0)], mode="constant",
                                         constant_values=0.)
 
-    def __sqrt_costs(self):
-        for i in range(self.__tree.num_nodes):
-            self.__sqrt_nonleaf_state_costs[i] = sqrtm(self.__list_of_nonleaf_state_costs[i])
-            self.__sqrt_nonleaf_input_costs[i] = sqrtm(self.__list_of_nonleaf_input_costs[i])
-
-        for i in range(self.__tree.num_leaf_nodes):
-            self.__sqrt_leaf_state_costs[i] = sqrtm(self.__list_of_leaf_state_costs[i])
-
     @staticmethod
     def __flatten(list_of_vectors):
         return np.hstack(np.vstack(list_of_vectors)).tolist()
@@ -359,8 +341,8 @@ class Problem:
         for i in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(i)
             half_t = t[i] * 0.5
-            iv[i] = np.vstack((self.__sqrt_nonleaf_state_costs[i] @ x[anc],
-                               self.__sqrt_nonleaf_input_costs[i] @ u[anc],
+            iv[i] = np.vstack((self.__list_of_nonleaf_costs[i].sqrt_Q @ x[anc],
+                               self.__list_of_nonleaf_costs[i].sqrt_R @ u[anc],
                                half_t, half_t))
 
         # -> v
@@ -370,7 +352,7 @@ class Problem:
         vi = [np.zeros((self.__num_states + 2, 1))] * self.__tree.num_leaf_nodes
         for i in range(self.__tree.num_leaf_nodes):
             half_s = s[i + self.__tree.num_nonleaf_nodes] * 0.5
-            vi[i] = np.vstack((self.__sqrt_leaf_state_costs[i] @ x[i + self.__tree.num_nonleaf_nodes],
+            vi[i] = np.vstack((self.__list_of_leaf_costs[i].sqrt_Q @ x[i + self.__tree.num_nonleaf_nodes],
                                half_s, half_s))
 
         # Gather dual
@@ -415,8 +397,8 @@ class Problem:
         # -> x (nonleaf) and u
         for i in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(i)
-            x[anc] += self.__sqrt_nonleaf_state_costs[i] @ iv[i][:self.__num_states]
-            u[anc] += self.__sqrt_nonleaf_input_costs[i] @ iv[i][self.__num_states:num_si]
+            x[anc] += self.__list_of_nonleaf_costs[i].sqrt_Q @ iv[i][:self.__num_states]
+            u[anc] += self.__list_of_nonleaf_costs[i].sqrt_R @ iv[i][self.__num_states:num_si]
 
         # -> t
         t = [0.] * self.__tree.num_nodes
@@ -429,7 +411,7 @@ class Problem:
 
         # -> x (leaf)
         for i in range(self.__tree.num_leaf_nodes):
-            x[i + self.__tree.num_nonleaf_nodes] += self.__sqrt_leaf_state_costs[i] @ vi[i][:self.__num_states]
+            x[i + self.__tree.num_nonleaf_nodes] += self.__list_of_leaf_costs[i].sqrt_Q @ vi[i][:self.__num_states]
 
         # -> s (leaf)
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
@@ -519,9 +501,8 @@ class ProblemFactory:
         self.__num_inputs = num_inputs
         self.__list_of_state_dynamics = [None] * self.__tree.num_nodes
         self.__list_of_input_dynamics = [None] * self.__tree.num_nodes
-        self.__list_of_nonleaf_state_costs = [None] * self.__tree.num_nodes
-        self.__list_of_nonleaf_input_costs = [None] * self.__tree.num_nodes
-        self.__list_of_leaf_state_costs = [None] * self.__tree.num_leaf_nodes
+        self.__list_of_nonleaf_costs = [None] * self.__tree.num_nodes
+        self.__list_of_leaf_costs = [None] * self.__tree.num_leaf_nodes
         self.__nonleaf_constraint = [None] * self.__tree.num_nonleaf_nodes
         self.__leaf_constraint = [None] * self.__tree.num_leaf_nodes
         self.__list_of_risks = [None] * self.__tree.num_nonleaf_nodes
@@ -559,31 +540,31 @@ class ProblemFactory:
     # --------------------------------------------------------
     # Costs
     # --------------------------------------------------------
-    def with_markovian_nonleaf_costs(self, state_costs, input_costs):
+    def with_markovian_nonleaf_costs(self, quadratic_states, quadratic_inputs, linear_states=None, linear_inputs=None):
         self.__check_markovian("costs")
-        self.__list_of_nonleaf_state_costs[0] = np.zeros((state_costs[0].shape[0], state_costs[0].shape[1]))
-        self.__list_of_nonleaf_input_costs[0] = np.zeros((input_costs[0].shape[0], input_costs[0].shape[1]))
+        if linear_states is None:
+            linear_states = [None] * self.__tree.num_events
+        if linear_inputs is None:
+            linear_inputs = [None] * self.__tree.num_events
+        self.__list_of_nonleaf_costs[0] = build.Cost(np.zeros(quadratic_states[0].shape),
+                                                     np.zeros(quadratic_inputs[0].shape), None, None)
         for i in range(1, self.__tree.num_nodes):
             event = self.__tree.event_of_node(i)
-            self.__list_of_nonleaf_state_costs[i] = deepcopy(state_costs[event])
-            self.__list_of_nonleaf_input_costs[i] = deepcopy(input_costs[event])
+            self.__list_of_nonleaf_costs[i] = build.Cost(quadratic_states[event], quadratic_inputs[event],
+                                                         linear_states[event], linear_inputs[event])
         return self
 
-    def with_nonleaf_cost(self, state_cost, input_cost):
-        try:
-            self.__list_of_nonleaf_state_costs[0] = np.zeros((state_cost[0].shape[0], state_cost[0].shape[1]))
-            self.__list_of_nonleaf_input_costs[0] = np.zeros((input_cost[0].shape[0], input_cost[0].shape[1]))
-        except:
-            self.__list_of_nonleaf_state_costs[0] = np.zeros((state_cost[0].shape[0], state_cost[0].shape[0]))
-            self.__list_of_nonleaf_input_costs[0] = np.zeros((input_cost[0].shape[0], input_cost[0].shape[0]))
+    def with_nonleaf_cost(self, quadratic_state, quadratic_input, linear_state=None, linear_input=None):
+        self.__list_of_nonleaf_costs[0] = build.Cost(np.zeros(quadratic_state[0].shape),
+                                                     np.zeros(quadratic_input[0].shape), None, None)
         for i in range(1, self.__tree.num_nodes):
-            self.__list_of_nonleaf_state_costs[i] = deepcopy(state_cost)
-            self.__list_of_nonleaf_input_costs[i] = deepcopy(input_cost)
+            self.__list_of_nonleaf_costs[i] = build.Cost(quadratic_state, quadratic_input,
+                                                         linear_state, linear_input)
         return self
 
-    def with_leaf_cost(self, state_cost):
+    def with_leaf_cost(self, quadratic, linear=None):
         for i in range(self.__tree.num_leaf_nodes):
-            self.__list_of_leaf_state_costs[i] = deepcopy(state_cost)
+            self.__list_of_leaf_costs[i] = build.Cost(quadratic, None, linear, None)
         return self
 
     # --------------------------------------------------------
@@ -630,9 +611,8 @@ class ProblemFactory:
                           self.__num_inputs,
                           self.__list_of_state_dynamics,
                           self.__list_of_input_dynamics,
-                          self.__list_of_nonleaf_state_costs,
-                          self.__list_of_nonleaf_input_costs,
-                          self.__list_of_leaf_state_costs,
+                          self.__list_of_nonleaf_costs,
+                          self.__list_of_leaf_costs,
                           self.__nonleaf_constraint,
                           self.__leaf_constraint,
                           self.__list_of_risks,

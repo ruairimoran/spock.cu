@@ -547,8 +547,8 @@ class ProblemFactory:
         return self
 
     def with_nonleaf_cost(self, cost):
-        self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(cost[0].sqrt_Q.shape),
-                                                            np.zeros(cost[0].sqrt_R.shape), None, None, False)
+        self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(cost.sqrt_Q.shape),
+                                                            np.zeros(cost.sqrt_R.shape), None, None, False)
         for i in range(1, self.__tree.num_nodes):
             self.__list_of_nonleaf_costs[i] = deepcopy(cost)
         return self

@@ -138,6 +138,8 @@ class Problem:
         stack_sqrt_state_cost = np.dstack([cost.sqrt_Q for cost in self.__list_of_nonleaf_costs])
         stack_sqrt_input_cost = np.dstack([cost.sqrt_R for cost in self.__list_of_nonleaf_costs])
         stack_sqrt_terminal_cost = np.dstack([cost.sqrt_Q for cost in self.__list_of_leaf_costs])
+        stack_nonleaf_translation = np.dstack([cost.t for cost in self.__list_of_nonleaf_costs])
+        stack_leaf_translation = np.dstack([cost.t for cost in self.__list_of_leaf_costs])
         stack_P = np.dstack(self.__P)
         stack_K = np.dstack(self.__K)
         stack_dyn_tr = np.dstack(self.__sum_of_dynamics_tr)
@@ -154,9 +156,11 @@ class Problem:
             "dynamics_ABKTr": stack_dyn_tr,
             "dynamics_APB": stack_APB,
             "dynamics_lowCholesky": stack_low_chol,
-            "sqrtStateCost": stack_sqrt_state_cost,
-            "sqrtInputCost": stack_sqrt_input_cost,
-            "sqrtTerminalCost": stack_sqrt_terminal_cost,
+            "nonleafCost_sqrtQ": stack_sqrt_state_cost,
+            "nonleafCost_sqrtR": stack_sqrt_input_cost,
+            "leafCost_sqrtQ": stack_sqrt_terminal_cost,
+            "nonleafCost_translation": stack_nonleaf_translation,
+            "leafCost_translation": stack_leaf_translation,
             "risk_NNtr": stack_null,
             "risk_b": stack_b
         }
@@ -516,74 +520,42 @@ class ProblemFactory:
     # --------------------------------------------------------
     # Dynamics
     # --------------------------------------------------------
-    def with_markovian_linear_dynamics(self, state_dynamics, input_dynamics):
-        self.__check_markovian("linear dynamics")
-        num_events = len(state_dynamics)
-        # check equal number of dynamics given
-        if num_events != len(input_dynamics):
-            raise ValueError("Different number of Markovian linear state and input dynamics given")
-        # check dynamics are compatible
-        if state_dynamics[0].shape[0] != input_dynamics[0].shape[0]:
-            raise ValueError("Markovian linear state and input dynamics are incompatible")
-        self.__list_of_dynamics[0] = build.Linear(np.zeros(state_dynamics[0].shape),
-                                                  np.zeros(input_dynamics[0].shape))
+    def with_markovian_dynamics(self, dynamics):
+        self.__check_markovian("dynamics")
+        if dynamics[0].is_linear:
+            self.__list_of_dynamics[0] = build.Linear(np.zeros(dynamics[0].state.shape),
+                                                  np.zeros(dynamics[0].input.shape))
+        if dynamics[0].is_affine:
+            self.__list_of_dynamics[0] = build.Affine(np.zeros(dynamics[0].state.shape),
+                                                      np.zeros(dynamics[0].input.shape),
+                                                      np.zeros((dynamics[0].state.shape[0], 1)))
         for i in range(1, self.__tree.num_nodes):
             event = self.__tree.event_of_node(i)
-            self.__list_of_dynamics[i] = build.Linear(deepcopy(state_dynamics[event]),
-                                                      deepcopy(input_dynamics[event]))
-        return self
-
-    def with_markovian_affine_dynamics(self, state_dynamics, input_dynamics, affine_dynamics):
-        self.__check_markovian("affine dynamics")
-        num_events = len(state_dynamics)
-        # check equal number of dynamics given
-        if num_events != len(input_dynamics):
-            raise ValueError("Different number of Markovian affine state and input dynamics given")
-        if num_events != len(affine_dynamics):
-            raise ValueError("Different number of Markovian affine state and input dynamics given")
-        # check dynamics are compatible
-        if state_dynamics[0].shape[0] != input_dynamics[0].shape[0]:
-            raise ValueError("Markovian affine state and input dynamics are incompatible")
-        if state_dynamics[0].shape[0] != affine_dynamics[0].shape[0]:
-            raise ValueError("Markovian affine state and affine dynamics are incompatible")
-        self.__list_of_dynamics[0] = build.Affine(np.zeros(state_dynamics[0].shape),
-                                                  np.zeros(input_dynamics[0].shape),
-                                                  np.zeros(affine_dynamics[0].shape))
-        for i in range(1, self.__tree.num_nodes):
-            event = self.__tree.event_of_node(i)
-            self.__list_of_dynamics[i] = build.Affine(deepcopy(state_dynamics[event]),
-                                                      deepcopy(input_dynamics[event]),
-                                                      deepcopy(affine_dynamics[event]))
+            self.__list_of_dynamics[i] = deepcopy(dynamics[event])
         return self
 
     # --------------------------------------------------------
     # Costs
     # --------------------------------------------------------
-    def with_markovian_nonleaf_costs(self, quadratic_states, quadratic_inputs, linear_states=None, linear_inputs=None):
+    def with_markovian_nonleaf_costs(self, costs):
         self.__check_markovian("costs")
-        if linear_states is None:
-            linear_states = [None] * self.__tree.num_events
-        if linear_inputs is None:
-            linear_inputs = [None] * self.__tree.num_events
-        self.__list_of_nonleaf_costs[0] = build.Cost(np.zeros(quadratic_states[0].shape),
-                                                     np.zeros(quadratic_inputs[0].shape), None, None)
+        self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(costs[0].sqrt_Q.shape),
+                                                            np.zeros(costs[0].sqrt_R.shape), None, None, False)
         for i in range(1, self.__tree.num_nodes):
             event = self.__tree.event_of_node(i)
-            self.__list_of_nonleaf_costs[i] = build.Cost(quadratic_states[event], quadratic_inputs[event],
-                                                         linear_states[event], linear_inputs[event])
+            self.__list_of_nonleaf_costs[i] = deepcopy(costs[event])
         return self
 
-    def with_nonleaf_cost(self, quadratic_state, quadratic_input, linear_state=None, linear_input=None):
-        self.__list_of_nonleaf_costs[0] = build.Cost(np.zeros(quadratic_state[0].shape),
-                                                     np.zeros(quadratic_input[0].shape), None, None)
+    def with_nonleaf_cost(self, cost):
+        self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(cost[0].sqrt_Q.shape),
+                                                            np.zeros(cost[0].sqrt_R.shape), None, None, False)
         for i in range(1, self.__tree.num_nodes):
-            self.__list_of_nonleaf_costs[i] = build.Cost(quadratic_state, quadratic_input,
-                                                         linear_state, linear_input)
+            self.__list_of_nonleaf_costs[i] = deepcopy(cost)
         return self
 
-    def with_leaf_cost(self, quadratic, linear=None):
+    def with_leaf_cost(self, cost):
         for i in range(self.__tree.num_leaf_nodes):
-            self.__list_of_leaf_costs[i] = build.Cost(quadratic, None, linear, None)
+            self.__list_of_leaf_costs[i] = deepcopy(cost)
         return self
 
     # --------------------------------------------------------

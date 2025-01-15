@@ -21,6 +21,14 @@ __global__ void k_memCpyZero2Leaf(T *, T *, size_t, size_t, size_t, size_t, size
 TEMPLATE_WITH_TYPE_T
 __global__ void k_memCpyCh2Node(T *, T *, size_t, size_t, size_t, size_t, const size_t *, const size_t *, bool);
 
+/**
+ * Parts of tree
+ */
+enum TreePart {
+    nonleaf,
+    leaf
+};
+
 
 /**
  * Store scenario tree data
@@ -91,7 +99,7 @@ public:
     /**
      * Constructor from JSON file stream
      */
-    ScenarioTree(std::string pathToDataFolder = "./data/") : m_pathToDataFolder(std::move(pathToDataFolder)) {
+    explicit ScenarioTree(std::string pathToDataFolder = "./data/") : m_pathToDataFolder(std::move(pathToDataFolder)) {
         std::ifstream file(m_pathToDataFolder + m_jsonFileName);
         std::string json((std::istreambuf_iterator<char>(file)),
                          std::istreambuf_iterator<char>());
@@ -100,7 +108,7 @@ public:
 
         if (doc.HasParseError()) {
             err << "[Tree] Error parsing tree JSON: " << GetParseError_En(doc.GetParseError()) << "\n";
-            throw std::invalid_argument(err.str());
+            throw ERR;
         }
 
         /* Store single element data from JSON in host memory */
@@ -178,6 +186,18 @@ public:
     /**
      * Getters
      */
+    std::string strOfPart(TreePart part) {
+        if (part == nonleaf) return "nonleaf";
+        else if (part == leaf) return "leaf";
+        else { err << "[tree::strOfPart] tree part not valid\n"; throw ERR; }
+    }
+
+    size_t numNodesOfPart(TreePart part) {
+        if (part == nonleaf) return m_numNonleafNodes;
+        else if (part == leaf) return m_numLeafNodes;
+        else { err << "[tree::numNodesOfPart] tree part not valid\n"; throw ERR; }
+    }
+
     std::string path() { return m_pathToDataFolder; }
 
     std::string json() { return m_jsonFileName; }

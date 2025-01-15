@@ -68,10 +68,10 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
     m_data.nonleafConstraint()->op(iii, x, u);
     /* IV:1 */
     m_tree.memCpyAnc2Node(*m_d_xNonleafWorkspace, x, 1, m_numNodesMinus1, m_tree.numStates(), 0, 0);
-    m_d_xNonleafWorkspace->addAB(m_data.sqrtStateWeight(), *m_d_xNonleafWorkspace);
+    m_d_xNonleafWorkspace->addAB(m_data.nonleafCost()->sqrtQ(), *m_d_xNonleafWorkspace);
     /* IV:2 */
     m_tree.memCpyAnc2Node(*m_d_uNonleafWorkspace, u, 1, m_numNodesMinus1, m_tree.numInputs(), 0, 0);
-    m_d_uNonleafWorkspace->addAB(m_data.sqrtInputWeight(), *m_d_uNonleafWorkspace);
+    m_d_uNonleafWorkspace->addAB(m_data.nonleafCost()->sqrtR(), *m_d_uNonleafWorkspace);
     /* IV:3,4 */
     t *= 0.5;  // This affects the current 't'!!! But it shouldn't matter...
     /* IV (organise IV:1-4) */
@@ -87,7 +87,7 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
     DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_numNodesMinus1);
     m_data.leafConstraint()->op(v, xLeaf);
     /* VI:1 */
-    m_d_xLeafWorkspace->addAB(m_data.sqrtStateWeightLeaf(), xLeaf);
+    m_d_xLeafWorkspace->addAB(m_data.leafCost()->sqrtQ(), xLeaf);
     /* VI:2,3 */
     s *= 0.5;  // This affects the current 's'!!! But it shouldn't matter...
     /* VI (organise VI:1-3) */
@@ -114,11 +114,10 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     /* x (nonleaf) and u:Weights */
     /* -> Compute `Qiv1` at every nonroot node */
     memCpyNode2Node(*m_d_xNonleafWorkspace, iv, 1, m_numNodesMinus1, m_tree.numStates());
-    m_d_xNonleafWorkspace->addAB(m_data.sqrtStateWeight(), *m_d_xNonleafWorkspace);
+    m_d_xNonleafWorkspace->addAB(m_data.nonleafCost()->sqrtQ(), *m_d_xNonleafWorkspace);
     /* -> Compute `Riv2` at every nonroot node */
-    memCpyNode2Node(*m_d_uNonleafWorkspace, iv, 1, m_numNodesMinus1, m_tree.numInputs(), 0,
-                           m_tree.numStates());
-    m_d_uNonleafWorkspace->addAB(m_data.sqrtInputWeight(), *m_d_uNonleafWorkspace);
+    memCpyNode2Node(*m_d_uNonleafWorkspace, iv, 1, m_numNodesMinus1, m_tree.numInputs(), 0, m_tree.numStates());
+    m_d_uNonleafWorkspace->addAB(m_data.nonleafCost()->sqrtR(), *m_d_uNonleafWorkspace);
     /* -> Add children of each nonleaf node */
     for (size_t chIdx = 0; chIdx < m_tree.numEvents(); chIdx++) {
         /* -> Add to `x` all children `Qiv1` */
@@ -136,7 +135,7 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     m_data.leafConstraint()->adj(v, xLeaf);
     /* x (leaf) */
     memCpyNode2Node(*m_d_xLeafWorkspace, vi, 0, m_numLeafNodesMinus1, m_tree.numStates());
-    xLeaf.addAB(m_data.sqrtStateWeightLeaf(), *m_d_xLeafWorkspace, 1., 1.);
+    xLeaf.addAB(m_data.leafCost()->sqrtQ(), *m_d_xLeafWorkspace, 1., 1.);
     /* s (leaf) */
     m_tree.memCpyZero2Leaf(s, vi, 1, 0, m_tree.numStates());
     m_tree.memCpyZero2Leaf(*m_d_scalarWorkspace, vi, 1, 0, m_tree.numStates() + 1);

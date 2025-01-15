@@ -1,3 +1,5 @@
+import build
+
 import py
 import numpy as np
 import argparse
@@ -39,7 +41,7 @@ num_states = args.nStates
 num_inputs = 3
 num_events = 2
 
-# State dynamics
+# Dynamics
 off_diag = 0.01 * np.ones((1, num_states - 1))[0]
 As = [None] * num_events
 for w in range(num_events):
@@ -48,25 +50,28 @@ for w in range(num_events):
         diag = 1 + (1 + j / num_states) * w / num_events
         As[w][j][j] = diag
 
-# Input dynamics
 B = 1. * np.ones((num_states, num_inputs))
-Bs = [B, B]
 
-# State cost
+dynamics = [py.build.Linear(As[0], B), py.build.Linear(As[1], B)]
+
+# Nonleaf costs
 Q = 1e-1 * np.eye(num_states)
 Qs = [Q, Q]
 q = 1e-1 * np.ones(num_states)
 qs = [q, q]
 
-# Input cost
 R = 1. * np.eye(num_inputs)
 Rs = [R, R]
 r = 1. * np.ones(num_inputs)
 rs = [r, r]
 
-# Terminal state cost
+nonleaf_costs = [py.build.NonleafCost(Q, R, q, r), py.build.NonleafCost(Q, .9*R, q, r)]
+
+# Leaf costs
 T = 1e-1 * np.eye(num_states)
 t = 1e-1 * np.ones(num_states)
+
+leaf_costs = py.build.LeafCost(Q, q)
 
 # State-input constraint
 nl_state_lim = 1.
@@ -91,9 +96,9 @@ problem = (
         scenario_tree=tree,
         num_states=num_states,
         num_inputs=num_inputs)
-    .with_markovian_linear_dynamics(As, Bs)
-    .with_markovian_nonleaf_costs(Qs, Rs, qs, rs)
-    .with_leaf_cost(T, t)
+    .with_markovian_dynamics(dynamics)
+    .with_markovian_nonleaf_costs(nonleaf_costs)
+    .with_leaf_cost(leaf_costs)
     .with_nonleaf_constraint(nonleaf_constraint)
     .with_leaf_constraint(leaf_constraint)
     .with_risk(risk)

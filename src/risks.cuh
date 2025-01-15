@@ -36,7 +36,7 @@ protected:
         if (d_tensor.numEl() != m_dim) {
             err << "[Risk] Given DTensor size (" << d_tensor.numEl()
                 << "), but projection setup for (" << m_dim << "]\n";
-            throw std::invalid_argument(err.str());
+            throw ERR;
         }
         return true;
     }

@@ -4,6 +4,7 @@
 #include "../include/gpu.cuh"
 #include "tree.cuh"
 #include "dynamics.cuh"
+#include "costs.cuh"
 #include "constraints.cuh"
 #include "risks.cuh"
 
@@ -25,10 +26,9 @@ private:
     T m_stepSize = 0;  ///< Step size of CP operator T
     T m_stepSizeRecip = 0;  ///< Reciprocal of step size of CP operator T
     std::unique_ptr<DTensor<T>> m_d_stepSize = nullptr;  ///< Step size of CP operator T (on device)
-    std::unique_ptr<DTensor<T>> m_d_sqrtStateWeight = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_sqrtInputWeight = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_sqrtStateWeightLeaf = nullptr;
     std::unique_ptr<Dynamics<T>> m_dynamics = nullptr;
+    std::unique_ptr<Cost<T>> m_nonleafCost = nullptr;
+    std::unique_ptr<Cost<T>> m_leafCost = nullptr;
     std::unique_ptr<Constraint<T>> m_nonleafConstraint = nullptr;
     std::unique_ptr<Constraint<T>> m_leafConstraint = nullptr;
     std::unique_ptr<CoherentRisk<T>> m_risk = nullptr;
@@ -44,22 +44,14 @@ private:
             m_dynamics = std::make_unique<Affine<T>>(m_tree);
         } else {
             err << "[parseDynamics] Dynamics type " << typeStr
-                << " is not supported. Supported types include: linear, affine" << "\n";
-            throw std::invalid_argument(err.str());
+                << " is not supported. Supported types include: linear, affine\n";
+            throw ERR;
         }
     }
 
-    void parseConstraint(const rapidjson::Value &value, std::unique_ptr<Constraint<T>> &constraint,
-                         ConstraintMode mode) {
-        std::string modeStr;
-        size_t numNodes;
-        if (mode == nonleaf) {
-            modeStr = "nonleaf";
-            numNodes = m_tree.numNonleafNodes();
-        } else if (mode == leaf) {
-            modeStr = "leaf";
-            numNodes = m_tree.numLeafNodes();
-        }
+    void parseConstraint(const rapidjson::Value &value, std::unique_ptr<Constraint<T>> &constraint, TreePart part) {
+        std::string modeStr = m_tree.strOfPart(part);
+        size_t numNodes = m_tree.numNodesOfPart(part);
         std::string typeStr = value[modeStr.c_str()].GetString();
         std::string filePrefix = m_tree.path() + modeStr + "Constraint";
         if (typeStr == std::string("no")) {
@@ -69,14 +61,14 @@ private:
                                                         m_tree.numStates(), m_tree.numInputs());
         } else if (typeStr == std::string("polyhedron")) {
             constraint = std::make_unique<Polyhedron<T>>(filePrefix, m_tree.fpFileExt(), numNodes,
-                                                         m_tree.numStates(), m_tree.numInputs(), mode);
+                                                         m_tree.numStates(), m_tree.numInputs(), part);
         } else if (typeStr == std::string("polyhedronWithIdentity")) {
             constraint = std::make_unique<PolyhedronWithIdentity<T>>(filePrefix, m_tree.fpFileExt(), numNodes,
                                                                      m_tree.numStates(), m_tree.numInputs());
         } else {
             err << "[parseConstraint] Constraint type " << typeStr
                 << " is not supported. Supported types include: none, rectangle, polyhedron, polyhedronWithIdentity\n";
-            throw std::invalid_argument(err.str());
+            throw ERR;
         }
     }
 
@@ -86,8 +78,8 @@ private:
             m_risk = std::make_unique<AVaR<T>>(m_tree.path(), m_tree.fpFileExt(), m_tree.numChildren());
         } else {
             err << "[parseRisk] Risk type " << typeStr
-                << " is not supported. Supported types include: avar" << "\n";
-            throw std::invalid_argument(err.str());
+                << " is not supported. Supported types include: avar\n";
+            throw ERR;
         }
     }
 
@@ -102,7 +94,7 @@ public:
     /**
      * Constructor from JSON file stream
      */
-    ProblemData(ScenarioTree<T> &tree) : m_tree(tree) {
+    explicit ProblemData(ScenarioTree<T> &tree) : m_tree(tree) {
         std::ifstream file(tree.path() + tree.json());
         std::string json((std::istreambuf_iterator<char>(file)),
                          std::istreambuf_iterator<char>());
@@ -110,7 +102,7 @@ public:
         doc.Parse(json.c_str());
         if (doc.HasParseError()) {
             err << "[Problem] Cannot parse problem data JSON file: " << GetParseError_En(doc.GetParseError()) << "\n";
-            throw std::invalid_argument(err.str());
+            throw ERR;
         }
 
         /* Store single element data from JSON in host memory */
@@ -120,17 +112,12 @@ public:
         m_stepSizeRecip = 1. / m_stepSize;
 
         /* Allocate memory on device */
-        std::string ext = m_tree.fpFileExt();
         m_d_stepSize = std::make_unique<DTensor<T>>(std::vector(1, m_stepSize), 1);
-        m_d_sqrtStateWeight = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "sqrtStateCost" + ext));
-        m_d_sqrtInputWeight = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "sqrtInputCost" + ext));
-        m_d_sqrtStateWeightLeaf = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "sqrtTerminalCost" + ext));
 
         /* Parse dynamics, constraints, and risks */
         parseDynamics(doc["dynamics"]);
+        m_nonleafCost = std::make_unique<CostNonleaf<T>>(m_tree);
+        m_leafCost = std::make_unique<CostLeaf<T>>(m_tree);
         parseConstraint(doc["constraint"], m_nonleafConstraint, nonleaf);
         parseConstraint(doc["constraint"], m_leafConstraint, leaf);
         parseRisk(doc["risk"]);
@@ -154,13 +141,11 @@ public:
 
     DTensor<T> &d_stepSize() { return *m_d_stepSize; }
 
-    DTensor<T> &sqrtStateWeight() { return *m_d_sqrtStateWeight; }
-
-    DTensor<T> &sqrtInputWeight() { return *m_d_sqrtInputWeight; }
-
-    DTensor<T> &sqrtStateWeightLeaf() { return *m_d_sqrtStateWeightLeaf; }
-
     std::unique_ptr<Dynamics<T>> &dynamics() { return m_dynamics; }
+
+    std::unique_ptr<Cost<T>> &nonleafCost() { return m_nonleafCost; }
+
+    std::unique_ptr<Cost<T>> &leafCost() { return m_leafCost; }
 
     std::unique_ptr<Constraint<T>> &nonleafConstraint() { return m_nonleafConstraint; }
 

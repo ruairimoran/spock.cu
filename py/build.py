@@ -3,44 +3,6 @@ from scipy.linalg import sqrtm
 
 
 # =====================================================================================================================
-# Costs
-# =====================================================================================================================
-
-# --------------------------------------------------------
-# Base
-# --------------------------------------------------------
-class Cost:
-    """
-    Base class for costs.
-    """
-
-    def __init__(self, Q, R, q, r):
-        self.__leaf = (R is None)
-        self.__Q = Q  # quadratic state cost matrix
-        self.__R = R  # quadratic input cost matrix
-        self.__q = q  # linear state cost vector
-        self.__r = r  # linear input cost vector
-        self.__sqrt_Q = sqrtm(self.__Q)
-        self.__sqrt_R = sqrtm(self.__R) if self.__R is not None else None
-
-    @property
-    def sqrt_Q(self):
-        return self.__Q
-
-    @property
-    def sqrt_R(self):
-        return self.__R
-
-    @property
-    def q(self):
-        return self.__q
-
-    @property
-    def r(self):
-        return self.__r
-
-
-# =====================================================================================================================
 # Dynamics
 # =====================================================================================================================
 
@@ -116,6 +78,91 @@ class Affine(Dynamics):
     @property
     def is_affine(self):
         return True
+
+
+# =====================================================================================================================
+# Costs
+# =====================================================================================================================
+
+# --------------------------------------------------------
+# Base
+# --------------------------------------------------------
+class Cost:
+    """
+    Base class for costs.
+    """
+
+    def __init__(self, Q, R=None):
+        self.__sqrt_Q = sqrtm(Q)
+        self.__sqrt_R = sqrtm(R) if R is not None else None
+        self.__t = None
+
+    @property
+    def sqrt_Q(self):
+        return self.__sqrt_Q
+
+    @property
+    def sqrt_R(self):
+        return self.__sqrt_R
+
+    @property
+    def t(self):
+        return self.__t
+
+    @t.setter
+    def t(self, t):
+        self.__t = t
+
+
+# --------------------------------------------------------
+# Nonleaf
+# --------------------------------------------------------
+class NonleafCost(Cost):
+    """
+    Nonleaf costs.
+    """
+
+    def __init__(self, Q, R, q=None, r=None, dud=False):
+        """
+        :param Q: quadratic state cost matrix
+        :param R: quadratic input cost matrix
+        :param q: linear state cost vector
+        :param r: linear input cost vector
+        """
+        super().__init__(Q, R)
+        lin_q = q is not None
+        lin_r = r is not None
+        nrm_q = q.T @ np.linalg.solve(Q, q) if lin_q else 0
+        nrm_r = r.T @ np.linalg.solve(R, r) if lin_r else 0
+        scaled_nrm = .125 * (nrm_q + nrm_r)
+        a = np.linalg.solve(self.sqrt_Q, q).reshape(-1, 1) if lin_q else np.zeros((Q.shape[0], 1))
+        b = np.linalg.solve(self.sqrt_R, r).reshape(-1, 1) if lin_r else np.zeros((R.shape[0], 1))
+        c = -.5 + scaled_nrm if not dud else 0
+        d = .5 + scaled_nrm if not dud else 0
+        self.t = np.vstack((a, b, c, d))
+
+
+# --------------------------------------------------------
+# Leaf
+# --------------------------------------------------------
+class LeafCost(Cost):
+    """
+    Leaf costs.
+    """
+
+    def __init__(self, Q, q=None):
+        """
+        :param Q: quadratic state cost matrix
+        :param q: linear state cost vector
+        """
+        super().__init__(Q)
+        lin_q = q is not None
+        nrm_q = q.T @ np.linalg.solve(Q, q) if lin_q else 0
+        scaled_nrm = .125 * nrm_q
+        a = np.linalg.solve(self.sqrt_Q, q).reshape(-1, 1) if lin_q else np.zeros((Q.shape[0], 1))
+        c = -.5 + scaled_nrm
+        d = .5 + scaled_nrm
+        self.t = np.vstack((a, c, d))
 
 
 # =====================================================================================================================

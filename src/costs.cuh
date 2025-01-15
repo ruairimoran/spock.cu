@@ -3,6 +3,7 @@
 
 #include "../include/gpu.cuh"
 #include "tree.cuh"
+#include "projections.cuh"
 
 
 /**
@@ -12,69 +13,91 @@ template<typename T>
 class Cost {
 
 protected:
-    size_t m_matAxis = 2;
-    ScenarioTree<T> &m_tree;
-    /* Dynamics data */
-    std::unique_ptr<DTensor<T>> m_d_BTr = nullptr;  ///< input dynamics, B'
-    std::unique_ptr<DTensor<T>> m_d_AB = nullptr;  ///< combined dynamics, [A B]
-    std::unique_ptr<DTensor<T>> m_d_e = nullptr;  ///< constant dynamics, e
-    bool m_affine = false;
-    /* Projection data */
-    std::unique_ptr<DTensor<T>> m_d_K = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_KTr = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_ABKTr = nullptr;  ///< (A+BK)'
-    std::unique_ptr<DTensor<T>> m_d_P = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_APB = nullptr;  ///< (A+BK)'PB
-    std::unique_ptr<DTensor<T>> m_d_Pe = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_lowerCholesky = nullptr;
-    std::vector<std::unique_ptr<DTensor<T>>> m_choleskyStage;
-    std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>> m_choleskyBatch;
-    /* Workspaces */
-    std::unique_ptr<DTensor<T>> m_d_q = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_d = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_workX = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_workU = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_workXU = nullptr;
+    size_t m_dimPerNode = 0;
+    size_t m_numNodes = 0;
+    size_t m_dim = 0;
+    std::string m_prefix = "Cost_";
+    std::unique_ptr<DTensor<T>> m_d_sqrtQ = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_translation = nullptr;
+    std::unique_ptr<SocProjection<T>> m_socs = nullptr;
 
-    explicit Cost(ScenarioTree<T> &tree) : m_tree(tree) {
+    explicit Cost(ScenarioTree<T> &tree, TreePart part, size_t dimPerNode, size_t numNodes) {
         /* Read data from files */
-        m_d_BTr = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "dynamics_BTr" + m_tree.fpFileExt()));
-        m_d_KTr = std::make_unique<DTensor<T>>(m_d_K->tr());
-        /* Allocate workspaces */
-        m_d_q = std::make_unique<DTensor<T>>(m_tree.numStates(), 1, m_tree.numNodes(), true);
-        m_d_d = std::make_unique<DTensor<T>>(m_tree.numInputs(), 1, m_tree.numNonleafNodes(), true);
-        m_d_workX = std::make_unique<DTensor<T>>(m_tree.numStates(), 1, m_tree.numNodes(), true);
-        m_d_workU = std::make_unique<DTensor<T>>(m_tree.numInputs(), 1, m_tree.numNodes(), true);
-        m_d_workXU = std::make_unique<DTensor<T>>(m_tree.numStatesAndInputs(), 1, m_tree.numNodes(), true);
+        m_prefix = tree.strOfPart(part) + m_prefix;
+        m_d_sqrtQ = std::make_unique<DTensor<T>>(
+            DTensor<T>::parseFromFile(tree.path() + m_prefix + "sqrtQ" + tree.fpFileExt()));
+        m_d_translation = std::make_unique<DTensor<T>>(
+            DTensor<T>::parseFromFile(tree.path() + m_prefix + "translation" + tree.fpFileExt()));
+        m_dimPerNode = dimPerNode;
+        m_numNodes = numNodes;
+        DTensor<T> d_soc(this->m_dimPerNode, this->m_numNodes, 1);
+        m_socs = std::make_unique<SocProjection<T>>(d_soc);
+        m_dim = d_soc.numEl();
     }
 
-    virtual std::ostream &print(std::ostream &out) const {
-        bool linear = true; //((*m_d_)(0, 0, 0) < 1e-6 && (*m_d_)(0, 0, 0) < 1e-6);
+    std::ostream &print(std::ostream &out) const {
+        T t0 = (*m_d_translation)(0, 0, 0);
+        bool linear = (t0 < 1e-6 && -t0 < 1e-6);
         if (linear) out << "Cost: Quadratic and linear\n";
         else out << "Cost: Quadratic\n";
         return out;
     }
 
 public:
-    virtual ~Cost() = default;
+    ~Cost() = default;
 
-    /**
-     * For reuse while testing.
-     */
-    void resetWorkspace() {
-        m_d_q->upload(std::vector<T>(m_tree.numStates() * m_tree.numNodes(), 0));
-        m_d_d->upload(std::vector<T>(m_tree.numInputs() * m_tree.numNonleafNodes(), 0));
-        m_d_workX->upload(std::vector<T>(m_tree.numStates() * m_tree.numNodes(), 0));
-        m_d_workU->upload(std::vector<T>(m_tree.numInputs() * m_tree.numNodes(), 0));
-        m_d_workXU->upload(std::vector<T>(m_tree.numStatesAndInputs() * m_tree.numNodes(), 0));
+    size_t dimPerNode() { return m_dimPerNode; }
+
+    size_t dim() { return m_dim; }
+
+    size_t numNodes() { return m_numNodes; }
+
+    DTensor<T> &sqrtQ() { return *m_d_sqrtQ; }
+
+    virtual DTensor<T> &sqrtR() { err << "[Cost::sqrtR] this is a leaf cost\n"; throw ERR; }
+
+    void translate(DTensor<T> &d_vec) {
+        d_vec += *m_d_translation;
     }
 
-    void project(DTensor<T> &initState, DTensor<T> &states, DTensor<T> &inputs) {
-        this->projectOnDynamics(initState, states, inputs);
+    void project(DTensor<T> &d_vec) {
+        m_socs->project(d_vec);
     }
 
     friend std::ostream &operator<<(std::ostream &out, const Cost<T> &data) { return data.print(out); }
+};
+
+
+/**
+ * Leaf costs
+*/
+template<typename T>
+class CostLeaf : public Cost<T> {
+
+public:
+    explicit CostLeaf(ScenarioTree<T> &tree) :
+        Cost<T>(tree, leaf, tree.numStates() + 2, tree.numLeafNodes()) {
+    }
+};
+
+
+/**
+ * Nonleaf costs
+ */
+template<typename T>
+class CostNonleaf : public Cost<T> {
+
+protected:
+    std::unique_ptr<DTensor<T>> m_d_sqrtR = nullptr;
+
+public:
+    explicit CostNonleaf(ScenarioTree<T> &tree) :
+        Cost<T>(tree, nonleaf, tree.numStatesAndInputs() + 2, tree.numNodes()) {
+        m_d_sqrtR = std::make_unique<DTensor<T>>(
+            DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "sqrtR" + tree.fpFileExt()));
+    }
+
+    DTensor<T> &sqrtR() { return *m_d_sqrtR; }
 };
 
 

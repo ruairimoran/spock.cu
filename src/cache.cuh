@@ -5,7 +5,6 @@
 #include "cones.cuh"
 #include "risks.cuh"
 #include "operator.cuh"
-#include "projections.cuh"
 #include <chrono>
 
 
@@ -20,9 +19,6 @@ class CacheTestData;
 
 template<typename T>
 void testInitialisingState(CacheTestData<T> &);
-
-template<typename T>
-void testDynamicsProjectionOnline(CacheTestData<T> &, T);
 
 template<typename T>
 void testKernelProjectionOnline(CacheTestData<T> &, T);
@@ -133,15 +129,7 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_vi = nullptr;
     std::unique_ptr<DTensor<T>> m_d_viSoc = nullptr;
     /* Projections */
-    std::unique_ptr<SocProjection<T>> m_socsNonleaf = nullptr;
-    std::unique_ptr<SocProjection<T>> m_socsLeaf = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_socsNonleafHalves = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_socsLeafHalves = nullptr;
     std::unique_ptr<NonnegativeOrthantCone<T>> m_nnocNonleaf = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_loBoundNonleaf = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_hiBoundNonleaf = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_loBoundLeaf = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_hiBoundLeaf = nullptr;
     /* Caches */
     std::vector<size_t> m_cacheCallsToL;
     std::vector<T> m_cacheError0;
@@ -381,9 +369,9 @@ void Cache<T>::initialiseSizes() {
     m_sizeI = m_tree.numNonleafNodes() * m_data.yDim();
     m_sizeII = m_tree.numNonleafNodes();
     m_sizeIII = m_data.nonleafConstraint()->dimension();
-    m_sizeIV = m_tree.numNodes() * (m_tree.numStatesAndInputs() + 2);
+    m_sizeIV = m_data.nonleafCost()->dim();
     m_sizeV = m_data.leafConstraint()->dimension();
-    m_sizeVI = m_tree.numLeafNodes() * (m_tree.numStates() + 2);
+    m_sizeVI = m_data.leafCost()->dim();
     m_sizeDual = m_sizeI + m_sizeII + m_sizeIII + m_sizeIV + m_sizeV + m_sizeVI;
     m_sizeIterate = m_sizePrim + m_sizeDual;
 }
@@ -458,12 +446,12 @@ void Cache<T>::reshapeDualWorkspace() {
     }
     start += m_sizeIII;
     m_d_iv = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeIV - 1);
-    m_d_iv->reshape(m_tree.numStatesAndInputs() + 2, 1, m_tree.numNodes());
+    m_d_iv->reshape(m_data.nonleafCost()->dimPerNode(), 1, m_data.nonleafCost()->numNodes());
     /*
      * SocProjection requires one matrix, where the columns are the vectors.
      */
     m_d_ivSoc = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeIV - 1);
-    m_d_ivSoc->reshape(m_tree.numStatesAndInputs() + 2, m_tree.numNodes(), 1);
+    m_d_ivSoc->reshape(m_data.nonleafCost()->dimPerNode(), m_data.nonleafCost()->numNodes(), 1);
     start += m_sizeIV;
     if (m_sizeV) {
         m_d_v = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeV - 1);
@@ -471,38 +459,18 @@ void Cache<T>::reshapeDualWorkspace() {
     }
     start += m_sizeV;
     m_d_vi = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeVI - 1);
-    m_d_vi->reshape(m_tree.numStates() + 2, 1, m_tree.numLeafNodes());
+    m_d_vi->reshape(m_data.leafCost()->dimPerNode(), 1, m_data.leafCost()->numNodes());
     /*
      * SocProjection requires one matrix, where the columns are the vectors.
      */
     m_d_viSoc = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeVI - 1);
-    m_d_viSoc->reshape(m_tree.numStates() + 2, m_tree.numLeafNodes(), 1);
+    m_d_viSoc->reshape(m_data.leafCost()->dimPerNode(), m_data.leafCost()->numNodes(), 1);
 }
 
 template<typename T>
 void Cache<T>::initialiseProjectable() {
-    /* II */
+    /* Dual II */
     m_nnocNonleaf = std::make_unique<NonnegativeOrthantCone<T>>(m_tree.numNonleafNodes());
-    /* IV */
-    m_socsNonleaf = std::make_unique<SocProjection<T>>(*m_d_ivSoc);
-    m_d_socsNonleafHalves = std::make_unique<DTensor<T>>(m_tree.numStatesAndInputs() + 2, 1, m_tree.numNodes());
-    std::vector<T> nonleafHalves(m_tree.numStatesAndInputs() + 2, 0.);
-    nonleafHalves[m_tree.numStatesAndInputs()] = -.5;
-    nonleafHalves[m_tree.numStatesAndInputs() + 1] = .5;
-    for (size_t i = 1; i < m_tree.numNodes(); i++) {
-        DTensor<T> node(*m_d_socsNonleafHalves, m_matAxis, i, i);
-        node.upload(nonleafHalves);
-    }
-    /* VI */
-    m_socsLeaf = std::make_unique<SocProjection<T>>(*m_d_viSoc);
-    m_d_socsLeafHalves = std::make_unique<DTensor<T>>(m_tree.numStates() + 2, 1, m_tree.numLeafNodes());
-    std::vector<T> leafHalves(m_tree.numStates() + 2, 0.);
-    leafHalves[m_tree.numStates()] = -.5;
-    leafHalves[m_tree.numStates() + 1] = .5;
-    for (size_t i = 0; i < m_tree.numLeafNodes(); i++) {
-        DTensor<T> node(*m_d_socsLeafHalves, m_matAxis, i, i);
-        node.upload(leafHalves);
-    }
     /* QR */
     m_andQRFactor = std::make_unique<QRFactoriser<T>>(*m_d_andQR);
 }
@@ -513,7 +481,7 @@ void Cache<T>::initialiseState(std::vector<T> &initState) {
     if (initState.size() != m_tree.numStates()) {
         err << "[initialiseState] Error initialising state: problem setup for " << m_tree.numStates()
             << " but given " << initState.size() << " states" << "\n";
-        throw std::invalid_argument(err.str());
+        throw ERR;
     }
     m_d_initState->upload(initState);
 }
@@ -580,8 +548,8 @@ void Cache<T>::projectPrimalWorkspaceOnKernels() {
 
 template<typename T>
 void Cache<T>::translateSocs() {
-    *m_d_iv += *m_d_socsNonleafHalves;
-    *m_d_vi += *m_d_socsLeafHalves;
+    m_data.nonleafCost()->translate(*m_d_iv);
+    m_data.leafCost()->translate(*m_d_vi);
 }
 
 template<typename T>
@@ -591,13 +559,13 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
     /* II */
     m_nnocNonleaf->project(*m_d_ii);
     /* III */
-    m_data.nonleafConstraint()->constrain(*m_d_iii);
+    m_data.nonleafConstraint()->project(*m_d_iii);
     /* IV */
-    m_socsNonleaf->project(*m_d_ivSoc);
+    m_data.nonleafCost()->project(*m_d_ivSoc);
     /* V */
-    m_data.leafConstraint()->constrain(*m_d_v);
+    m_data.leafConstraint()->project(*m_d_v);
     /* VI */
-    m_socsLeaf->project(*m_d_viSoc);
+    m_data.leafCost()->project(*m_d_viSoc);
 }
 
 /**
@@ -783,7 +751,7 @@ void Cache<T>::updateDirection(size_t idx) {
             DTensor<int> status = m_andQRFactor->info();
             if (status(0, 0, 0) != 0) {
                 err << "[updateDirection] QR factorisation returned status code: " << m_status << "\n";
-                throw std::invalid_argument(err.str());
+                throw ERR;
             }
         }
         /* Least squares */
@@ -792,7 +760,7 @@ void Cache<T>::updateDirection(size_t idx) {
             DTensor<int> status = m_andQRFactor->info();
             if (status(0, 0, 0) != 0) {
                 err << "[updateDirection] QR least squares returned status code: " << m_status << "\n";
-                throw std::invalid_argument(err.str());
+                throw ERR;
             }
         }
         /* Compute new direction */

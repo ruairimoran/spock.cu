@@ -15,14 +15,13 @@ class Problem:
     Risk-averse optimal control problem and offline cache storage
     """
 
-    def __init__(self, scenario_tree: treeFactory.Tree, num_states, num_inputs, state_dyn, input_dyn,
+    def __init__(self, scenario_tree: treeFactory.Tree, num_states, num_inputs, dynamics,
                  nonleaf_cost, leaf_cost, nonleaf_constraint, leaf_constraint, risk, test):
         """
         :param scenario_tree: instance of ScenarioTree
         :param num_states: number of system states
         :param num_inputs: number of system inputs
-        :param state_dyn: list of state dynamics matrices (size: num_nodes, used: 1 to num_nodes)
-        :param input_dyn: list of input dynamics matrices (size: num_nodes, used: 1 to num_nodes)
+        :param dynamics: list of dynamics (size: num_nodes, used: 1 to num_nodes)
         :param nonleaf_cost: list of nonleaf costs (size: num_nodes, used: 1 to num_nodes)
         :param leaf_cost: list of leaf cost (size: num_leaf_nodes, used: all)
         :param nonleaf_constraint: state-input constraint class (size: 1)
@@ -35,9 +34,7 @@ class Problem:
         self.__tree = scenario_tree
         self.__num_states = num_states
         self.__num_inputs = num_inputs
-        self.__list_of_state_dynamics = state_dyn
-        self.__list_of_input_dynamics = input_dyn
-        self.__list_of_state_input_dynamics = [np.hstack((A, B)) for A, B in zip(state_dyn, input_dyn)]
+        self.__list_of_dynamics = dynamics
         self.__list_of_nonleaf_costs = nonleaf_cost
         self.__list_of_leaf_costs = leaf_cost
         self.__list_of_risks = risk
@@ -83,11 +80,8 @@ class Problem:
         self.__print()
 
     # GETTERS
-    def state_dynamics_at_node(self, idx):
-        return self.__list_of_state_dynamics[idx]
-
-    def input_dynamics_at_node(self, idx):
-        return self.__list_of_input_dynamics[idx]
+    def dynamics_at_node(self, idx):
+        return self.__list_of_dynamics[idx]
 
     def nonleaf_cost_at_node(self, idx):
         return self.__list_of_nonleaf_costs[idx]
@@ -124,6 +118,7 @@ class Problem:
                                  num_stages=self.__tree.num_stages,
                                  num_states=self.__num_states,
                                  num_inputs=self.__num_inputs,
+                                 dynamics=self.__list_of_dynamics[0],
                                  nonleaf_constraint=self.__nonleaf_constraint,
                                  leaf_constraint=self.__leaf_constraint,
                                  risk=self.__list_of_risks[0],
@@ -138,33 +133,38 @@ class Problem:
         fh.write(output)
         fh.close()
         # Generate stacks
-        stack_input_dyn_tr = np.dstack([a.T for a in self.__list_of_input_dynamics])
-        stack_AB_dyn = np.dstack(self.__list_of_state_input_dynamics)
+        stack_input_dyn_tr = np.dstack([a.input.T for a in self.__list_of_dynamics])
+        stack_AB_dyn = np.dstack([a.state_input for a in self.__list_of_dynamics])
         stack_sqrt_state_cost = np.dstack([cost.sqrt_Q for cost in self.__list_of_nonleaf_costs])
         stack_sqrt_input_cost = np.dstack([cost.sqrt_R for cost in self.__list_of_nonleaf_costs])
         stack_sqrt_terminal_cost = np.dstack([cost.sqrt_Q for cost in self.__list_of_leaf_costs])
         stack_P = np.dstack(self.__P)
         stack_K = np.dstack(self.__K)
-        stack_low_chol = np.dstack(self.__cholesky_lower)
         stack_dyn_tr = np.dstack(self.__sum_of_dynamics_tr)
         stack_APB = np.dstack(self.__At_P_B)
+        stack_low_chol = np.dstack(self.__cholesky_lower)
         stack_null = np.dstack(self.__nullspace_projection_matrix)
         stack_b = np.dstack(self.__padded_b)
         # Create tensor dict
         tensors = {
-            "inputDynTr": stack_input_dyn_tr,
-            "AB_dyn": stack_AB_dyn,
+            "dynamics_BTr": stack_input_dyn_tr,
+            "dynamics_AB": stack_AB_dyn,
+            "dynamics_P": stack_P,
+            "dynamics_K": stack_K,
+            "dynamics_ABKTr": stack_dyn_tr,
+            "dynamics_APB": stack_APB,
+            "dynamics_lowCholesky": stack_low_chol,
             "sqrtStateCost": stack_sqrt_state_cost,
             "sqrtInputCost": stack_sqrt_input_cost,
             "sqrtTerminalCost": stack_sqrt_terminal_cost,
-            "P": stack_P,
-            "K": stack_K,
-            "lowChol": stack_low_chol,
-            "dynTr": stack_dyn_tr,
-            "APB": stack_APB,
-            "NNtr": stack_null,
-            "b": stack_b
+            "risk_NNtr": stack_null,
+            "risk_b": stack_b
         }
+        if self.__list_of_dynamics[0].is_affine:
+            stack_affine_dyn = np.dstack([dyn.affine for dyn in self.__list_of_dynamics])
+            tensors.update({
+                "dynamics_e": stack_affine_dyn
+            })
         l_con = [self.__nonleaf_constraint, self.__leaf_constraint]
         l_txt = ["nonleafConstraint", "leafConstraint"]
         for i in range(len(l_con)):
@@ -236,18 +236,18 @@ class Problem:
             sum_for_k = 0
             for j in children_of_i:
                 sum_for_r = sum_for_r \
-                            + self.__list_of_input_dynamics[j].T @ self.__P[j] @ self.__list_of_input_dynamics[j]
+                            + self.__list_of_dynamics[j].input.T @ self.__P[j] @ self.__list_of_dynamics[j].input
                 sum_for_k = sum_for_k \
-                            + self.__list_of_input_dynamics[j].T @ self.__P[j] @ self.__list_of_state_dynamics[j]
+                            + self.__list_of_dynamics[j].input.T @ self.__P[j] @ self.__list_of_dynamics[j].state
             r_tilde = np.eye(self.__num_inputs) + sum_for_r
             self.__cholesky_lower[i] = sp.linalg.cholesky(r_tilde, lower=self.__lower, check_finite=True)
             self.__K[i] = sp.linalg.cho_solve((self.__cholesky_lower[i], self.__lower), -sum_for_k)
             sum_for_p = 0
             for j in children_of_i:
-                sum_of_dynamics = self.__list_of_state_dynamics[j] + self.__list_of_input_dynamics[j] @ self.__K[i]
+                sum_of_dynamics = self.__list_of_dynamics[j].state + self.__list_of_dynamics[j].input @ self.__K[i]
                 self.__sum_of_dynamics_tr[j] = sum_of_dynamics.T
                 sum_for_p = sum_for_p + self.__sum_of_dynamics_tr[j] @ self.__P[j] @ sum_of_dynamics
-                self.__At_P_B[j] = self.__sum_of_dynamics_tr[j] @ self.__P[j] @ self.__list_of_input_dynamics[j]
+                self.__At_P_B[j] = self.__sum_of_dynamics_tr[j] @ self.__P[j] @ self.__list_of_dynamics[j].input
             self.__P[i] = np.eye(self.__num_states) + self.__K[i].T @ self.__K[i] + sum_for_p
 
     def __offline_projection_kernel(self):
@@ -283,8 +283,9 @@ class Problem:
             cost += cvx.sum_squares(x[:, node] - x_bar[:, node]) + cvx.sum_squares(u[:, node] - u_bar[:, node])
             for ch in self.__tree.children_of_node(node):
                 constraints += [x[:, ch] ==
-                                self.__list_of_state_dynamics[ch] @ x[:, node] +
-                                self.__list_of_input_dynamics[ch] @ u[:, node]]
+                                self.__list_of_dynamics[ch].state @ x[:, node] +
+                                self.__list_of_dynamics[ch].input @ u[:, node] +
+                                self.__list_of_dynamics[ch].affine.reshape(-1)]  # affine=zeros if linear dynamics
 
         # Leaf nodes
         for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
@@ -499,8 +500,7 @@ class ProblemFactory:
         self.__tree = scenario_tree
         self.__num_states = num_states
         self.__num_inputs = num_inputs
-        self.__list_of_state_dynamics = [None] * self.__tree.num_nodes
-        self.__list_of_input_dynamics = [None] * self.__tree.num_nodes
+        self.__list_of_dynamics = [None] * self.__tree.num_nodes
         self.__list_of_nonleaf_costs = [None] * self.__tree.num_nodes
         self.__list_of_leaf_costs = [None] * self.__tree.num_leaf_nodes
         self.__nonleaf_constraint = [None] * self.__tree.num_nonleaf_nodes
@@ -516,25 +516,44 @@ class ProblemFactory:
     # --------------------------------------------------------
     # Dynamics
     # --------------------------------------------------------
-    def with_markovian_dynamics(self, state_dynamics, input_dynamics):
-        self.__check_markovian("dynamics")
+    def with_markovian_linear_dynamics(self, state_dynamics, input_dynamics):
+        self.__check_markovian("linear dynamics")
         num_events = len(state_dynamics)
         # check equal number of dynamics given
         if num_events != len(input_dynamics):
-            raise ValueError("Different number of Markovian state and input dynamics given")
-        for i in range(1, num_events):
-            # check all state dynamics have same shape
-            if state_dynamics[i].shape != state_dynamics[0].shape:
-                raise ValueError("Markovian state dynamics matrices are different shapes")
-            # check all control dynamics have same shape
-            if input_dynamics[i].shape != input_dynamics[0].shape:
-                raise ValueError("Markovian input dynamics matrices are different shapes")
-        self.__list_of_state_dynamics[0] = np.zeros((state_dynamics[0].shape[0], state_dynamics[0].shape[1]))
-        self.__list_of_input_dynamics[0] = np.zeros((input_dynamics[0].shape[0], input_dynamics[0].shape[1]))
+            raise ValueError("Different number of Markovian linear state and input dynamics given")
+        # check dynamics are compatible
+        if state_dynamics[0].shape[0] != input_dynamics[0].shape[0]:
+            raise ValueError("Markovian linear state and input dynamics are incompatible")
+        self.__list_of_dynamics[0] = build.Linear(np.zeros(state_dynamics[0].shape),
+                                                  np.zeros(input_dynamics[0].shape))
         for i in range(1, self.__tree.num_nodes):
             event = self.__tree.event_of_node(i)
-            self.__list_of_state_dynamics[i] = deepcopy(state_dynamics[event])
-            self.__list_of_input_dynamics[i] = deepcopy(input_dynamics[event])
+            self.__list_of_dynamics[i] = build.Linear(deepcopy(state_dynamics[event]),
+                                                      deepcopy(input_dynamics[event]))
+        return self
+
+    def with_markovian_affine_dynamics(self, state_dynamics, input_dynamics, affine_dynamics):
+        self.__check_markovian("affine dynamics")
+        num_events = len(state_dynamics)
+        # check equal number of dynamics given
+        if num_events != len(input_dynamics):
+            raise ValueError("Different number of Markovian affine state and input dynamics given")
+        if num_events != len(affine_dynamics):
+            raise ValueError("Different number of Markovian affine state and input dynamics given")
+        # check dynamics are compatible
+        if state_dynamics[0].shape[0] != input_dynamics[0].shape[0]:
+            raise ValueError("Markovian affine state and input dynamics are incompatible")
+        if state_dynamics[0].shape[0] != affine_dynamics[0].shape[0]:
+            raise ValueError("Markovian affine state and affine dynamics are incompatible")
+        self.__list_of_dynamics[0] = build.Affine(np.zeros(state_dynamics[0].shape),
+                                                  np.zeros(input_dynamics[0].shape),
+                                                  np.zeros(affine_dynamics[0].shape))
+        for i in range(1, self.__tree.num_nodes):
+            event = self.__tree.event_of_node(i)
+            self.__list_of_dynamics[i] = build.Affine(deepcopy(state_dynamics[event]),
+                                                      deepcopy(input_dynamics[event]),
+                                                      deepcopy(affine_dynamics[event]))
         return self
 
     # --------------------------------------------------------
@@ -609,8 +628,7 @@ class ProblemFactory:
         problem = Problem(self.__tree,
                           self.__num_states,
                           self.__num_inputs,
-                          self.__list_of_state_dynamics,
-                          self.__list_of_input_dynamics,
+                          self.__list_of_dynamics,
                           self.__list_of_nonleaf_costs,
                           self.__list_of_leaf_costs,
                           self.__nonleaf_constraint,

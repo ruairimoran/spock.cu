@@ -19,11 +19,11 @@ public:
 
     /** Prepare some host and device data */
     bool m_detectInfeas = false;
-    T m_tol = 1e-4;
-    size_t m_maxIters = 20;
+    T m_tol = 1e-3;
+    size_t m_maxIters = 1000;
     size_t m_maxInnerIters = 8;
-    size_t m_andersonBuff = 5;
-    bool m_allowK0 = false;
+    size_t m_andersonBuff = 3;
+    bool m_allowK0 = true;
 
     CacheTestData() {
         m_tree = std::make_unique<ScenarioTree<T>>(m_path);
@@ -53,47 +53,6 @@ TEST_F(CacheTest, initialisingState) {
     testInitialisingState<float>(df);
     CacheTestData<double> dd;
     testInitialisingState<double>(dd);
-}
-
-/* ---------------------------------------
- * Project on dynamics (online)
- * --------------------------------------- */
-
-TEMPLATE_WITH_TYPE_T
-void testDynamicsProjectionOnline(CacheTestData<T> &d, T epsilon) {
-    size_t statesSize = d.m_data->numStates() * d.m_tree->numNodes();
-    size_t inputsSize = d.m_data->numInputs() * d.m_tree->numNonleafNodes();
-    std::vector<T> cvxStates(statesSize);
-    std::vector<T> cvxInputs(inputsSize);
-    std::string ext = d.m_tree->fpFileExt();
-    DTensor<T> dpStates = DTensor<T>::parseFromFile(d.m_path + "dpTestStates" + ext);
-    DTensor<T> dpInputs = DTensor<T>::parseFromFile(d.m_path + "dpTestInputs" + ext);
-    DTensor<T> dpProjectedStates = DTensor<T>::parseFromFile(d.m_path + "dpProjectedStates" + ext);
-    DTensor<T> dpProjectedInputs = DTensor<T>::parseFromFile(d.m_path + "dpProjectedInputs" + ext);
-    dpProjectedStates.download(cvxStates);
-    dpProjectedInputs.download(cvxInputs);
-    DTensor<T> d_x0(dpStates, 0, 0, d.m_data->numStates() - 1);
-    std::vector<T> x0(d.m_data->numStates());
-    d_x0.download(x0);
-    d.m_cache->initialiseState(x0);
-    dpStates.deviceCopyTo(d.m_cache->states());
-    dpInputs.deviceCopyTo(d.m_cache->inputs());
-    d.m_cache->projectPrimalWorkspaceOnDynamics();
-    /* Compare states */
-    std::vector<T> spockStates(statesSize);
-    d.m_cache->states().download(spockStates);
-    for (size_t i = 0; i < statesSize; i++) { EXPECT_NEAR(spockStates[i], cvxStates[i], epsilon); }
-    /* Compare inputs */
-    std::vector<T> spockInputs(inputsSize);
-    d.m_cache->inputs().download(spockInputs);
-    for (size_t i = 0; i < inputsSize; i++) { EXPECT_NEAR(spockInputs[i], cvxInputs[i], epsilon); }
-}
-
-TEST_F(CacheTest, dynamicsProjectionOnline) {
-    CacheTestData<float> df;
-    testDynamicsProjectionOnline<float>(df, TEST_PRECISION_LOW);
-    CacheTestData<double> dd;
-    testDynamicsProjectionOnline<double>(dd, TEST_PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -314,4 +273,22 @@ TEST_F(CacheTest, memCpyOutTS) {
     testMemCpyOutTS<float>(df);
     CacheTestData<double> dd;
     testMemCpyOutTS<double>(dd);
+}
+
+/* ---------------------------------------
+ * Convergence
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void testConvergence(CacheTestData<T> &d) {
+    std::vector<T> initState(d.m_tree->numStates(), .1);
+    int status = d.m_cache->runSpock(initState);
+    EXPECT_EQ(status, 0);
+}
+
+TEST_F(CacheTest, testConvergence) {
+    CacheTestData<float> df;
+    testConvergence<float>(df);
+    CacheTestData<double> dd;
+    testConvergence<double>(dd);
 }

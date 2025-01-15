@@ -114,9 +114,6 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_workIterate = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workIteratePrim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workIterateDual = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_workX = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_workU = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_workXU = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workYTS = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workDot = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workDotPrim = nullptr;
@@ -135,8 +132,6 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_v = nullptr;
     std::unique_ptr<DTensor<T>> m_d_vi = nullptr;
     std::unique_ptr<DTensor<T>> m_d_viSoc = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_q = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_d = nullptr;
     /* Projections */
     std::unique_ptr<SocProjection<T>> m_socsNonleaf = nullptr;
     std::unique_ptr<SocProjection<T>> m_socsLeaf = nullptr;
@@ -272,7 +267,7 @@ public:
         m_cacheDistDeltaDual = std::vector<T>(m_maxOuterIters);
         m_cacheSuppDeltaDual = std::vector<T>(m_maxOuterIters);
         /* Allocate memory on device */
-        m_d_initState = std::make_unique<DTensor<T>>(m_data.numStates(), 1, 1, true);
+        m_d_initState = std::make_unique<DTensor<T>>(m_tree.numStates(), 1, 1, true);
         m_d_iterate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_iteratePrev = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_iterateCandidate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
@@ -290,13 +285,8 @@ public:
         m_d_direction = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_directionScaled = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_workIterate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
-        m_d_workX = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
-        m_d_workU = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNodes(), true);
-        m_d_workXU = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs(), 1, m_tree.numNodes(), true);
         m_d_workYTS = std::make_unique<DTensor<T>>(m_data.nullDim(), 1, m_tree.numNonleafNodes(), true);
         m_d_workDot = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
-        m_d_q = std::make_unique<DTensor<T>>(m_data.numStates(), 1, m_tree.numNodes(), true);
-        m_d_d = std::make_unique<DTensor<T>>(m_data.numInputs(), 1, m_tree.numNonleafNodes(), true);
         /* Slice and reshape tensors */
         reshape();
         /* Initialise projectable objects */
@@ -319,18 +309,9 @@ public:
     T timeSp(std::vector<T> &);
 
     /**
-     * Getters
-     */
-    DTensor<T> &inputs() { return *m_d_u; }
-
-    DTensor<T> &states() { return *m_d_x; }
-
-    /**
      * Test functions. As a friend, they can access protected members.
      */
     friend void testInitialisingState<>(CacheTestData<T> &);
-
-    friend void testDynamicsProjectionOnline<>(CacheTestData<T> &, T);
 
     friend void testKernelProjectionOnline<>(CacheTestData<T> &, T);
 
@@ -343,19 +324,20 @@ public:
     friend void testDotM<>(CacheTestData<T> &, T);
 };
 
+/**
+ * Reset iterates and workspaces to zero.
+ * Caution! For offline use only.
+ */
 template<typename T>
 void Cache<T>::reset() {
-    m_L.reset();
+    m_data.dynamics()->resetWorkspace();
+    m_L.resetWorkspace();
     /* Create zero vectors */
-    std::vector<T> numStates(m_data.numStates(), 0);
+    std::vector<T> numStates(m_tree.numStates(), 0);
     std::vector<T> sizeIterate(m_sizeIterate, 0);
     std::vector<T> sizePrim(m_sizePrim, 0);
     std::vector<T> sizeIterateSizeAnd(m_sizeIterate * m_andSize, 0);
-    std::vector<T> numStatesNumNodes(m_data.numStates() * m_tree.numNodes(), 0);
-    std::vector<T> numInputsNumNodes(m_data.numInputs() * m_tree.numNodes(), 0);
-    std::vector<T> numStatesAndInputsNumNodes(m_data.numStatesAndInputs() * m_tree.numNodes(), 0);
     std::vector<T> nullDimNumNonleafNodes(m_data.nullDim() * m_tree.numNonleafNodes(), 0);
-    std::vector<T> numInputsNumNonleafNodes(m_data.numInputs() * m_tree.numNonleafNodes(), 0);
     /* Zero all cached data */
     std::fill(m_cacheCallsToL.begin(), m_cacheCallsToL.end(), 0);
     std::fill(m_cacheError0.begin(), m_cacheError0.end(), 0);
@@ -384,19 +366,14 @@ void Cache<T>::reset() {
     m_d_direction->upload(sizeIterate);
     m_d_directionScaled->upload(sizeIterate);
     m_d_workIterate->upload(sizeIterate);
-    m_d_workX->upload(numStatesNumNodes);
-    m_d_workU->upload(numInputsNumNodes);
-    m_d_workXU->upload(numStatesAndInputsNumNodes);
     m_d_workYTS->upload(nullDimNumNonleafNodes);
     m_d_workDot->upload(sizeIterate);
-    m_d_q->upload(numStatesNumNodes);
-    m_d_d->upload(numInputsNumNonleafNodes);
 }
 
 template<typename T>
 void Cache<T>::initialiseSizes() {
-    m_sizeU = m_tree.numNonleafNodes() * m_data.numInputs();  ///< Inputs of all nonleaf nodes
-    m_sizeX = m_tree.numNodes() * m_data.numStates();  ///< States of all nodes
+    m_sizeU = m_tree.numNonleafNodes() * m_tree.numInputs();  ///< Inputs of all nonleaf nodes
+    m_sizeX = m_tree.numNodes() * m_tree.numStates();  ///< States of all nodes
     m_sizeY = m_tree.numNonleafNodes() * m_data.yDim();  ///< Y for all nonleaf nodes
     m_sizeT = m_tree.numNodes();  ///< T for all child nodes
     m_sizeS = m_tree.numNodes();  ///< S for all child nodes
@@ -404,9 +381,9 @@ void Cache<T>::initialiseSizes() {
     m_sizeI = m_tree.numNonleafNodes() * m_data.yDim();
     m_sizeII = m_tree.numNonleafNodes();
     m_sizeIII = m_data.nonleafConstraint()->dimension();
-    m_sizeIV = m_tree.numNodes() * (m_data.numStatesAndInputs() + 2);
+    m_sizeIV = m_tree.numNodes() * (m_tree.numStatesAndInputs() + 2);
     m_sizeV = m_data.leafConstraint()->dimension();
-    m_sizeVI = m_tree.numLeafNodes() * (m_data.numStates() + 2);
+    m_sizeVI = m_tree.numLeafNodes() * (m_tree.numStates() + 2);
     m_sizeDual = m_sizeI + m_sizeII + m_sizeIII + m_sizeIV + m_sizeV + m_sizeVI;
     m_sizeIterate = m_sizePrim + m_sizeDual;
 }
@@ -446,10 +423,10 @@ void Cache<T>::reshapePrimalWorkspace() {
     m_d_workIteratePrim = std::make_unique<DTensor<T>>(*m_d_workIterate, rowAxis, 0, m_sizePrim - 1);
     size_t start = 0;
     m_d_u = std::make_unique<DTensor<T>>(*m_d_workIteratePrim, rowAxis, start, start + m_sizeU - 1);
-    m_d_u->reshape(m_data.numInputs(), 1, m_tree.numNonleafNodes());
+    m_d_u->reshape(m_tree.numInputs(), 1, m_tree.numNonleafNodes());
     start += m_sizeU;
     m_d_x = std::make_unique<DTensor<T>>(*m_d_workIteratePrim, rowAxis, start, start + m_sizeX - 1);
-    m_d_x->reshape(m_data.numStates(), 1, m_tree.numNodes());
+    m_d_x->reshape(m_tree.numStates(), 1, m_tree.numNodes());
     start += m_sizeX;
     m_d_y = std::make_unique<DTensor<T>>(*m_d_workIteratePrim, rowAxis, start, start + m_sizeY - 1);
     m_d_y->reshape(m_data.yDim(), 1, m_tree.numNonleafNodes());
@@ -481,12 +458,12 @@ void Cache<T>::reshapeDualWorkspace() {
     }
     start += m_sizeIII;
     m_d_iv = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeIV - 1);
-    m_d_iv->reshape(m_data.numStatesAndInputs() + 2, 1, m_tree.numNodes());
+    m_d_iv->reshape(m_tree.numStatesAndInputs() + 2, 1, m_tree.numNodes());
     /*
      * SocProjection requires one matrix, where the columns are the vectors.
      */
     m_d_ivSoc = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeIV - 1);
-    m_d_ivSoc->reshape(m_data.numStatesAndInputs() + 2, m_tree.numNodes(), 1);
+    m_d_ivSoc->reshape(m_tree.numStatesAndInputs() + 2, m_tree.numNodes(), 1);
     start += m_sizeIV;
     if (m_sizeV) {
         m_d_v = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeV - 1);
@@ -494,12 +471,12 @@ void Cache<T>::reshapeDualWorkspace() {
     }
     start += m_sizeV;
     m_d_vi = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeVI - 1);
-    m_d_vi->reshape(m_data.numStates() + 2, 1, m_tree.numLeafNodes());
+    m_d_vi->reshape(m_tree.numStates() + 2, 1, m_tree.numLeafNodes());
     /*
      * SocProjection requires one matrix, where the columns are the vectors.
      */
     m_d_viSoc = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeVI - 1);
-    m_d_viSoc->reshape(m_data.numStates() + 2, m_tree.numLeafNodes(), 1);
+    m_d_viSoc->reshape(m_tree.numStates() + 2, m_tree.numLeafNodes(), 1);
 }
 
 template<typename T>
@@ -508,20 +485,20 @@ void Cache<T>::initialiseProjectable() {
     m_nnocNonleaf = std::make_unique<NonnegativeOrthantCone<T>>(m_tree.numNonleafNodes());
     /* IV */
     m_socsNonleaf = std::make_unique<SocProjection<T>>(*m_d_ivSoc);
-    m_d_socsNonleafHalves = std::make_unique<DTensor<T>>(m_data.numStatesAndInputs() + 2, 1, m_tree.numNodes());
-    std::vector<T> nonleafHalves(m_data.numStatesAndInputs() + 2, 0.);
-    nonleafHalves[m_data.numStatesAndInputs()] = -.5;
-    nonleafHalves[m_data.numStatesAndInputs() + 1] = .5;
+    m_d_socsNonleafHalves = std::make_unique<DTensor<T>>(m_tree.numStatesAndInputs() + 2, 1, m_tree.numNodes());
+    std::vector<T> nonleafHalves(m_tree.numStatesAndInputs() + 2, 0.);
+    nonleafHalves[m_tree.numStatesAndInputs()] = -.5;
+    nonleafHalves[m_tree.numStatesAndInputs() + 1] = .5;
     for (size_t i = 1; i < m_tree.numNodes(); i++) {
         DTensor<T> node(*m_d_socsNonleafHalves, m_matAxis, i, i);
         node.upload(nonleafHalves);
     }
     /* VI */
     m_socsLeaf = std::make_unique<SocProjection<T>>(*m_d_viSoc);
-    m_d_socsLeafHalves = std::make_unique<DTensor<T>>(m_data.numStates() + 2, 1, m_tree.numLeafNodes());
-    std::vector<T> leafHalves(m_data.numStates() + 2, 0.);
-    leafHalves[m_data.numStates()] = -.5;
-    leafHalves[m_data.numStates() + 1] = .5;
+    m_d_socsLeafHalves = std::make_unique<DTensor<T>>(m_tree.numStates() + 2, 1, m_tree.numLeafNodes());
+    std::vector<T> leafHalves(m_tree.numStates() + 2, 0.);
+    leafHalves[m_tree.numStates()] = -.5;
+    leafHalves[m_tree.numStates() + 1] = .5;
     for (size_t i = 0; i < m_tree.numLeafNodes(); i++) {
         DTensor<T> node(*m_d_socsLeafHalves, m_matAxis, i, i);
         node.upload(leafHalves);
@@ -533,8 +510,8 @@ void Cache<T>::initialiseProjectable() {
 template<typename T>
 void Cache<T>::initialiseState(std::vector<T> &initState) {
     /* Set initial state */
-    if (initState.size() != m_data.numStates()) {
-        err << "[initialiseState] Error initialising state: problem setup for " << m_data.numStates()
+    if (initState.size() != m_tree.numStates()) {
+        err << "[initialiseState] Error initialising state: problem setup for " << m_tree.numStates()
             << " but given " << initState.size() << " states" << "\n";
         throw std::invalid_argument(err.str());
     }
@@ -569,97 +546,7 @@ void Cache<T>::proxRootS() {
 
 template<typename T>
 void Cache<T>::projectPrimalWorkspaceOnDynamics() {
-    /*
-     * Set first q
-     */
-    DTensor<T> x_LastStage(*m_d_x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodesMinus1());
-    x_LastStage *= -1.;
-    DTensor<T> q_LastStage(*m_d_q, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodesMinus1());
-    x_LastStage.deviceCopyTo(q_LastStage);
-    /*
-     * Solve for all d at current stage
-     */
-    size_t horizon = m_tree.numStagesMinus1();
-    for (size_t t = 1; t < m_tree.numStages(); t++) {
-        size_t stage = horizon - t;  // Current stage (reverse from N-1 to 0)
-        size_t stageFr = m_tree.stageFrom()[stage];  // First node of current stage
-        size_t stageTo = m_tree.stageTo()[stage];  // Last node of current stage
-        size_t chStage = stage + 1;  // Stage of children of current stage
-        size_t chStageFr = m_tree.stageFrom()[chStage];  // First node of child stage
-        size_t chStageTo = m_tree.stageTo()[chStage];  // Last node of child stage
-        size_t maxCh = m_tree.childMax()[stage];  // Max number of children of any node at current stage
-        /* Compute `Bq` at every child of current stage */
-        DTensor<T> Btr_ChStage(m_data.inputDynamicsTr(), m_matAxis, chStageFr, chStageTo);
-        DTensor<T> q_ChStage(*m_d_q, m_matAxis, chStageFr, chStageTo);
-        DTensor<T> Bq_ChStage(*m_d_workU, m_matAxis, chStageFr, chStageTo);
-        Bq_ChStage.addAB(Btr_ChStage, q_ChStage);
-        /* Sum `Bq` children of each node into `d` at current stage */
-        for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
-            m_tree.memCpyCh2Node(*m_d_d, *m_d_workU, stageFr, stageTo, chIdx, chIdx);
-        }
-        /* Subtract d from u in place */
-        DTensor<T> d_Stage(*m_d_d, m_matAxis, stageFr, stageTo);
-        DTensor<T> u_Stage(*m_d_u, m_matAxis, stageFr, stageTo);
-        d_Stage *= -1.;
-        d_Stage += u_Stage;
-        /* Use Cholesky decomposition for final step of computing all d at current stage */
-        m_data.choleskyBatch()[stage]->solve(d_Stage);
-        /*
-         * Solve for all q at current stage
-         */
-        /* Compute APBdAq_ChStage = A(PBd+q) for each node at child stage. A = (A+B@K).tr */
-        DTensor<T> APB_ChStage(m_data.APB(), m_matAxis, chStageFr, chStageTo);
-        DTensor<T> ABKtr_ChStage(m_data.dynamicsSumTr(), m_matAxis, chStageFr, chStageTo);
-        m_tree.memCpyAnc2Node(*m_d_workU, *m_d_d, chStageFr, chStageTo, m_d_d->numRows(), 0, 0);
-        DTensor<T> q_SumChStage(*m_d_workX, m_matAxis, chStageFr, chStageTo);
-        DTensor<T> d_ExpandedChStage(*m_d_workU, m_matAxis, chStageFr, chStageTo);
-        q_SumChStage.addAB(APB_ChStage, d_ExpandedChStage);
-        q_SumChStage.addAB(ABKtr_ChStage, q_ChStage, 1., 1.);
-        /* Sum `APBdAq` children of each node into `q` at current stage */
-        for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
-            m_tree.memCpyCh2Node(*m_d_q, *m_d_workX, stageFr, stageTo, chIdx, chIdx);
-        }
-        /* Compute Kdux = K.tr(d-u)@x for each node at current stage and add to `q` */
-        DTensor<T> du_Stage(*m_d_workU, m_matAxis, stageFr, stageTo);
-        d_Stage.deviceCopyTo(du_Stage);
-        du_Stage -= u_Stage;
-        DTensor<T> Ktr_Stage(m_data.KTr(), m_matAxis, stageFr, stageTo);
-        DTensor<T> q_Stage(*m_d_q, m_matAxis, stageFr, stageTo);
-        q_Stage.addAB(Ktr_Stage, du_Stage, 1., 1.);
-        DTensor<T> x_Stage(*m_d_x, m_matAxis, stageFr, stageTo);
-        q_Stage -= x_Stage;
-    }
-    /*
-     * Set initial state
-     */
-    DTensor<T> firstState(*m_d_x, m_matAxis, 0, 0);
-    m_d_initState->deviceCopyTo(firstState);
-    for (size_t stage = 0; stage < m_tree.numStagesMinus1(); stage++) {
-        size_t stageFr = m_tree.stageFrom()[stage];
-        size_t stageTo = m_tree.stageTo()[stage];
-        size_t chStage = stage + 1;  // Stage of children of current stage
-        size_t chStageFr = m_tree.stageFrom()[chStage];  // First node of child stage
-        size_t chStageTo = m_tree.stageTo()[chStage];  // Last node of child stage
-        /*
-         * Compute next control action
-         */
-        DTensor<T> uAtStage(*m_d_u, m_matAxis, stageFr, stageTo);
-        DTensor<T> KAtStage(m_data.K(), m_matAxis, stageFr, stageTo);
-        DTensor<T> xAtStage(*m_d_x, m_matAxis, stageFr, stageTo);
-        DTensor<T> dAtStage(*m_d_d, m_matAxis, stageFr, stageTo);
-        uAtStage.addAB(KAtStage, xAtStage);
-        uAtStage += dAtStage;
-        /*
-         * Compute child states
-         */
-        /* Fill `xu` */
-        m_tree.memCpyAnc2Node(*m_d_workXU, *m_d_x, chStageFr, chStageTo, m_data.numStates(), 0, 0);
-        m_tree.memCpyAnc2Node(*m_d_workXU, *m_d_u, chStageFr, chStageTo, m_data.numInputs(), m_data.numStates(), 0);
-        DTensor<T> x_ChStage(*m_d_x, m_matAxis, chStageFr, chStageTo);
-        DTensor<T> AB_ChStage(m_data.stateInputDynamics(), m_matAxis, chStageFr, chStageTo);
-        DTensor<T> xu_ChStage(*m_d_workXU, m_matAxis, chStageFr, chStageTo);
-        x_ChStage.addAB(AB_ChStage, xu_ChStage);
-    }
+    m_data.dynamics()->project(*m_d_initState, *m_d_x, *m_d_u);
 }
 
 template<typename T>
@@ -1215,7 +1102,7 @@ T Cache<T>::timeSp(std::vector<T> &initialState) {
     int status = runSpock(initialState);
     const auto tock = std::chrono::high_resolution_clock::now();
     if (status) {
-        err << "Status error, not converged. [numStages=" << m_tree.numStages() << ", nx=nu=" << m_data.numStates()
+        err << "Status error, not converged. [numStages=" << m_tree.numStages() << ", nx=nu=" << m_tree.numStates()
             << "].\n";
         throw std::runtime_error(err.str());
     }

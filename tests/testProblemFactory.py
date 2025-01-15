@@ -67,7 +67,7 @@ class TestProblem(unittest.TestCase):
             # create problem
             TestProblem.__problem_from_markov = (
                 py.problemFactory.ProblemFactory(tree, TestProblem.__num_states, TestProblem.__num_inputs)
-                .with_markovian_dynamics(set_system, set_control)
+                .with_markovian_linear_dynamics(set_system, set_control)
                 .with_nonleaf_cost(nonleaf_state_weight, control_weight)
                 .with_leaf_cost(leaf_state_weight)
                 .with_nonleaf_constraint(state_input_constraint)
@@ -78,7 +78,7 @@ class TestProblem(unittest.TestCase):
 
             TestProblem.__problem_from_markov_with_markov = (
                 py.problemFactory.ProblemFactory(tree, TestProblem.__num_states, TestProblem.__num_inputs)
-                .with_markovian_dynamics(set_system, set_control)
+                .with_markovian_linear_dynamics(set_system, set_control)
                 .with_markovian_nonleaf_costs(nonleaf_state_weights, control_weights)
                 .with_leaf_cost(leaf_state_weight)
                 .with_nonleaf_constraint(state_input_constraint)
@@ -97,8 +97,7 @@ class TestProblem(unittest.TestCase):
         tree = TestProblem.__tree_from_markov
         problem = TestProblem.__problem_from_markov_with_markov
         for i in range(0, tree.num_nodes):
-            self.assertTrue(problem.state_dynamics_at_node(i) is not None)
-            self.assertTrue(problem.input_dynamics_at_node(i) is not None)
+            self.assertTrue(problem.dynamics_at_node(i) is not None)
 
     def test_markovian_nonleaf_costs_list(self):
         tree = TestProblem.__tree_from_markov

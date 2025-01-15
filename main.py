@@ -1,4 +1,5 @@
 import py
+import py.build as b
 import numpy as np
 import argparse
 
@@ -52,16 +53,20 @@ for w in range(num_events):
 B = 1. * np.eye(num_inputs)
 Bs = [B, B]
 
+dynamics = [b.LinearDynamics(As[0], B), b.LinearDynamics(As[1], B)]
+
 # State cost
 Q = 1e-1 * np.eye(num_states)
-Qs = [Q, Q]
 
 # Input cost
 R = 1. * np.eye(num_inputs)
-Rs = [R, R]
+
+nonleaf_costs = [b.NonleafCost(Q, R), b.NonleafCost(Q, R)]
 
 # Terminal state cost
 T = 1e-1 * np.eye(num_states)
+
+leaf_cost = b.LeafCost(T)
 
 # State-input constraint
 state_lim = 1.
@@ -72,17 +77,17 @@ input_lb = -input_lim * np.ones((num_inputs, 1))
 input_ub = input_lim * np.ones((num_inputs, 1))
 nonleaf_lb = np.vstack((state_lb, input_lb))
 nonleaf_ub = np.vstack((state_ub, input_ub))
-nonleaf_constraint = py.build.Rectangle(nonleaf_lb, nonleaf_ub)
+nonleaf_constraint = b.Rectangle(nonleaf_lb, nonleaf_ub)
 
 # Terminal constraint
 leaf_state_lim = 1.
 leaf_lb = -leaf_state_lim * np.ones((num_states, 1))
 leaf_ub = leaf_state_lim * np.ones((num_states, 1))
-leaf_constraint = py.build.Rectangle(leaf_lb, leaf_ub)
+leaf_constraint = b.Rectangle(leaf_lb, leaf_ub)
 
 # Risk
 alpha = .95
-risk = py.build.AVaR(alpha)
+risk = b.AVaR(alpha)
 
 # Generate problem data
 problem = (
@@ -90,9 +95,9 @@ problem = (
         scenario_tree=tree,
         num_states=num_states,
         num_inputs=num_inputs)
-    .with_markovian_linear_dynamics(As, Bs)
-    .with_markovian_nonleaf_costs(Qs, Rs)
-    .with_leaf_cost(T)
+    .with_markovian_dynamics(dynamics)
+    .with_markovian_nonleaf_costs(nonleaf_costs)
+    .with_leaf_cost(leaf_cost)
     .with_nonleaf_constraint(nonleaf_constraint)
     .with_leaf_constraint(leaf_constraint)
     .with_risk(risk)

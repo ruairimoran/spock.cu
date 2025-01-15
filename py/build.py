@@ -49,7 +49,7 @@ class Dynamics:
 # --------------------------------------------------------
 # Linear
 # --------------------------------------------------------
-class Linear(Dynamics):
+class LinearDynamics(Dynamics):
     """
     Linear dynamics
     """
@@ -66,7 +66,7 @@ class Linear(Dynamics):
 # --------------------------------------------------------
 # Affine
 # --------------------------------------------------------
-class Affine(Dynamics):
+class AffineDynamics(Dynamics):
     """
     Affine dynamics
     """

@@ -52,7 +52,7 @@ for w in range(num_events):
 
 B = 1. * np.ones((num_states, num_inputs))
 
-dynamics = [py.build.Linear(As[0], B), py.build.Linear(As[1], B)]
+dynamics = [py.build.LinearDynamics(As[0], B), py.build.LinearDynamics(As[1], B)]
 
 # Nonleaf costs
 Q = 1e-1 * np.eye(num_states)

@@ -523,12 +523,12 @@ class ProblemFactory:
     def with_markovian_dynamics(self, dynamics):
         self.__check_markovian("dynamics")
         if dynamics[0].is_linear:
-            self.__list_of_dynamics[0] = build.Linear(np.zeros(dynamics[0].state.shape),
-                                                  np.zeros(dynamics[0].input.shape))
+            self.__list_of_dynamics[0] = build.LinearDynamics(np.zeros(dynamics[0].state.shape),
+                                                              np.zeros(dynamics[0].input.shape))
         if dynamics[0].is_affine:
-            self.__list_of_dynamics[0] = build.Affine(np.zeros(dynamics[0].state.shape),
-                                                      np.zeros(dynamics[0].input.shape),
-                                                      np.zeros((dynamics[0].state.shape[0], 1)))
+            self.__list_of_dynamics[0] = build.AffineDynamics(np.zeros(dynamics[0].state.shape),
+                                                              np.zeros(dynamics[0].input.shape),
+                                                              np.zeros((dynamics[0].state.shape[0], 1)))
         for i in range(1, self.__tree.num_nodes):
             event = self.__tree.event_of_node(i)
             self.__list_of_dynamics[i] = deepcopy(dynamics[event])

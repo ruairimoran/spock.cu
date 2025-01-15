@@ -129,7 +129,7 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_vi = nullptr;
     std::unique_ptr<DTensor<T>> m_d_viSoc = nullptr;
     /* Projections */
-    std::unique_ptr<NonnegativeOrthantCone<T>> m_nnocNonleaf = nullptr;
+    std::unique_ptr<NonnegativeOrthantCone<T>> m_nnoc = nullptr;
     /* Caches */
     std::vector<size_t> m_cacheCallsToL;
     std::vector<T> m_cacheError0;
@@ -470,7 +470,7 @@ void Cache<T>::reshapeDualWorkspace() {
 template<typename T>
 void Cache<T>::initialiseProjectable() {
     /* Dual II */
-    m_nnocNonleaf = std::make_unique<NonnegativeOrthantCone<T>>(m_tree.numNonleafNodes());
+    m_nnoc = std::make_unique<NonnegativeOrthantCone<T>>(m_tree.numNonleafNodes());
     /* QR */
     m_andQRFactor = std::make_unique<QRFactoriser<T>>(*m_d_andQR);
 }
@@ -557,7 +557,7 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
     /* I */
     m_data.risk()->projectDual(*m_d_iNnoc);
     /* II */
-    m_nnocNonleaf->project(*m_d_ii);
+    m_nnoc->project(*m_d_ii);
     /* III */
     m_data.nonleafConstraint()->project(*m_d_iii);
     /* IV */

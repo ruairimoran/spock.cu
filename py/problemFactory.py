@@ -149,30 +149,30 @@ class Problem:
         stack_sqrt_terminal_cost = np.dstack(self.__sqrt_leaf_state_costs)
         stack_P = np.dstack(self.__P)
         stack_K = np.dstack(self.__K)
-        stack_low_chol = np.dstack(self.__cholesky_lower)
         stack_dyn_tr = np.dstack(self.__sum_of_dynamics_tr)
         stack_APB = np.dstack(self.__At_P_B)
+        stack_low_chol = np.dstack(self.__cholesky_lower)
         stack_null = np.dstack(self.__nullspace_projection_matrix)
         stack_b = np.dstack(self.__padded_b)
         # Create tensor dict
         tensors = {
-            "dyn_BTr": stack_input_dyn_tr,
-            "dyn_AB": stack_AB_dyn,
-            "dyn_P": stack_P,
-            "dyn_K": stack_K,
-            "dyn_lowCholesky": stack_low_chol,
-            "dyn_ABKTr": stack_dyn_tr,
-            "dyn_APB": stack_APB,
+            "dynamics_BTr": stack_input_dyn_tr,
+            "dynamics_AB": stack_AB_dyn,
+            "dynamics_P": stack_P,
+            "dynamics_K": stack_K,
+            "dynamics_ABKTr": stack_dyn_tr,
+            "dynamics_APB": stack_APB,
+            "dynamics_lowCholesky": stack_low_chol,
             "sqrtStateCost": stack_sqrt_state_cost,
             "sqrtInputCost": stack_sqrt_input_cost,
             "sqrtTerminalCost": stack_sqrt_terminal_cost,
-            "NNtr": stack_null,
-            "b": stack_b
+            "risk_NNtr": stack_null,
+            "risk_b": stack_b
         }
         if self.__list_of_dynamics[0].is_affine:
             stack_affine_dyn = np.dstack([dyn.affine for dyn in self.__list_of_dynamics])
             tensors.update({
-                "dyn_e": stack_affine_dyn
+                "dynamics_e": stack_affine_dyn
             })
         l_con = [self.__nonleaf_constraint, self.__leaf_constraint]
         l_txt = ["nonleafConstraint", "leafConstraint"]

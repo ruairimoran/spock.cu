@@ -39,19 +39,19 @@ protected:
     explicit Dynamics(ScenarioTree<T> &tree) : m_tree(tree) {
         /* Read projection data from files */
         m_d_BTr = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "dyn_BTr" + m_tree.fpFileExt()));
+            DTensor<T>::parseFromFile(m_tree.path() + "dynamics_BTr" + m_tree.fpFileExt()));
         m_d_AB = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "dyn_AB" + m_tree.fpFileExt()));
+            DTensor<T>::parseFromFile(m_tree.path() + "dynamics_AB" + m_tree.fpFileExt()));
         m_d_K = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "dyn_K" + m_tree.fpFileExt()));
+            DTensor<T>::parseFromFile(m_tree.path() + "dynamics_K" + m_tree.fpFileExt()));
         m_d_ABKTr = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "dyn_ABKTr" + m_tree.fpFileExt()));
+            DTensor<T>::parseFromFile(m_tree.path() + "dynamics_ABKTr" + m_tree.fpFileExt()));
         m_d_P = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "dyn_P" + m_tree.fpFileExt()));
+            DTensor<T>::parseFromFile(m_tree.path() + "dynamics_P" + m_tree.fpFileExt()));
         m_d_APB = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "dyn_APB" + m_tree.fpFileExt()));
+            DTensor<T>::parseFromFile(m_tree.path() + "dynamics_APB" + m_tree.fpFileExt()));
         m_d_lowerCholesky = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(m_tree.path() + "dyn_lowCholesky" + m_tree.fpFileExt()));
+            DTensor<T>::parseFromFile(m_tree.path() + "dynamics_lowCholesky" + m_tree.fpFileExt()));
         m_d_KTr = std::make_unique<DTensor<T>>(m_d_K->tr());
         /* Sort Cholesky data */
         m_choleskyStage = std::vector<std::unique_ptr<DTensor<T>>>(m_tree.numStagesMinus1());
@@ -231,7 +231,7 @@ public:
     explicit Affine(ScenarioTree<T> &tree) : Dynamics<T>(tree) {
         this->m_affine = true;
         this->m_d_e = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(this->m_tree.path() + "dyn_e" + this->m_tree.fpFileExt()));
+            DTensor<T>::parseFromFile(this->m_tree.path() + "dynamics_e" + this->m_tree.fpFileExt()));
         this->m_d_Pe = std::make_unique<DTensor<T>>(*this->m_d_P * *this->m_d_e);
     }
 };

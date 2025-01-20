@@ -63,6 +63,7 @@ protected:
     size_t m_callsToL = 0;
     bool m_allowK0 = false;
     bool m_debug = false;
+    bool m_admm = false;
     bool m_errInit = false;
     bool m_status = false;
     /* Sizes */
@@ -104,6 +105,8 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_ellDeltaIteratePrim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_ellDeltaIterateDual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_iterateBackup = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_iterateAdmm = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_iterateCandidateAdmm = nullptr;
     std::unique_ptr<DTensor<T>> m_d_err = nullptr;
     /* Workspaces */
     std::unique_ptr<DTensor<T>> m_d_initState = nullptr;
@@ -205,7 +208,7 @@ protected:
 
     void proximalDual();
 
-    void cpIter();
+    void iter();
 
     void backup();
 
@@ -239,9 +242,10 @@ public:
           size_t maxInnerIters = 8,
           size_t andBuff = 3,
           bool allowK0 = false,
-          bool debug = false) :
+          bool debug = false,
+          bool admm = false) :
         m_tree(tree), m_data(data), m_tolAbs(absTol), m_tolRel(relTol), m_maxOuterIters(maxOuterIters),
-        m_maxInnerIters(maxInnerIters), m_andSize(andBuff), m_allowK0(allowK0), m_debug(debug) {
+        m_maxInnerIters(maxInnerIters), m_andSize(andBuff), m_allowK0(allowK0), m_debug(debug), m_admm(admm) {
         /* Sizes */
         initialiseSizes();
         /* Allocate memory on host */
@@ -259,12 +263,12 @@ public:
         m_d_iterate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_iteratePrev = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_iterateCandidate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
+        m_d_iterateBackup = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_deltaIterate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_ellDeltaIterate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_deltaResidual = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_residual = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_residualPrev = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
-        m_d_iterateBackup = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_err = std::make_unique<DTensor<T>>(m_sizePrim, 1, 1, true);
         m_d_andIterateMatrix = std::make_unique<DTensor<T>>(m_sizeIterate, m_andSize, 1, true);
         m_d_andResidualMatrix = std::make_unique<DTensor<T>>(m_sizeIterate, m_andSize, 1, true);
@@ -275,6 +279,10 @@ public:
         m_d_workIterate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_workYTS = std::make_unique<DTensor<T>>(m_data.nullDim(), 1, m_tree.numNonleafNodes(), true);
         m_d_workDot = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
+        if (m_admm) {
+            m_d_iterateAdmm = std::make_unique<DTensor<T>>(m_sizeDual, 1, 1, true);
+            m_d_iterateCandidateAdmm = std::make_unique<DTensor<T>>(m_sizeDual, 1, 1, true);
+        }
         /* Slice and reshape tensors */
         reshape();
         /* Initialise projectable objects */
@@ -292,7 +300,7 @@ public:
 
     int runSpock(std::vector<T> &, std::vector<T> * = nullptr);
 
-    int timeCp(std::vector<T> &);
+    T timeCp(std::vector<T> &);
 
     T timeSp(std::vector<T> &);
 
@@ -324,6 +332,7 @@ void Cache<T>::reset() {
     std::vector<T> numStates(m_tree.numStates(), 0);
     std::vector<T> sizeIterate(m_sizeIterate, 0);
     std::vector<T> sizePrim(m_sizePrim, 0);
+    std::vector<T> sizeDual(m_sizeDual, 0);
     std::vector<T> sizeIterateSizeAnd(m_sizeIterate * m_andSize, 0);
     std::vector<T> nullDimNumNonleafNodes(m_data.nullDim() * m_tree.numNonleafNodes(), 0);
     /* Zero all cached data */
@@ -340,12 +349,12 @@ void Cache<T>::reset() {
     m_d_iterate->upload(sizeIterate);
     m_d_iteratePrev->upload(sizeIterate);
     m_d_iterateCandidate->upload(sizeIterate);
+    m_d_iterateBackup->upload(sizeIterate);
     m_d_deltaIterate->upload(sizeIterate);
     m_d_ellDeltaIterate->upload(sizeIterate);
     m_d_deltaResidual->upload(sizeIterate);
     m_d_residual->upload(sizeIterate);
     m_d_residualPrev->upload(sizeIterate);
-    m_d_iterateBackup->upload(sizeIterate);
     m_d_err->upload(sizePrim);
     m_d_andIterateMatrix->upload(sizeIterateSizeAnd);
     m_d_andResidualMatrix->upload(sizeIterateSizeAnd);
@@ -356,6 +365,10 @@ void Cache<T>::reset() {
     m_d_workIterate->upload(sizeIterate);
     m_d_workYTS->upload(nullDimNumNonleafNodes);
     m_d_workDot->upload(sizeIterate);
+    if (m_admm) {
+        m_d_iterateAdmm->upload(sizeDual);
+        m_d_iterateCandidateAdmm->upload(sizeDual);
+    }
 }
 
 template<typename T>
@@ -616,10 +629,20 @@ T Cache<T>::normM(DTensor<T> &x, DTensor<T> &y) {
  */
 template<typename T>
 void Cache<T>::modifyPrimal() {
-    m_d_iterateDual->deviceCopyTo(*m_d_workIterateDual);
-    Ltr();
-    *m_d_workIteratePrim *= -m_data.stepSize();
-    *m_d_workIteratePrim += *m_d_iteratePrim;
+    if (m_admm) {
+        m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
+        L();
+        *m_d_workIterateDual -= *m_d_iterateDual;
+        *m_d_workIterateDual += *m_d_iterateAdmm;
+        Ltr();
+        *m_d_workIteratePrim *= -m_data.stepSize();
+        *m_d_workIteratePrim += *m_d_iteratePrim;
+    } else {
+        m_d_iterateDual->deviceCopyTo(*m_d_workIterateDual);
+        Ltr();
+        *m_d_workIteratePrim *= -m_data.stepSize();
+        *m_d_workIteratePrim += *m_d_iteratePrim;
+    }
 }
 
 /**
@@ -638,11 +661,17 @@ void Cache<T>::proximalPrimal() {
  */
 template<typename T>
 void Cache<T>::modifyDual() {
-    *m_d_workIteratePrim *= 2.;
-    *m_d_workIteratePrim -= *m_d_iteratePrim;
-    L();
-    *m_d_workIterateDual *= m_data.stepSize();
-    *m_d_workIterateDual += *m_d_iterateDual;
+    if (m_admm) {
+        L();
+        *m_d_workIterateDual += *m_d_iterateAdmm;
+        m_d_workIterateDual->deviceCopyTo(*m_d_iterateCandidateAdmm); // Save Lx + u for later in iteration
+    } else {
+        *m_d_workIteratePrim *= 2.;
+        *m_d_workIteratePrim -= *m_d_iteratePrim;
+        L();
+        *m_d_workIterateDual *= m_data.stepSize();
+        *m_d_workIterateDual += *m_d_iterateDual;
+    }
 }
 
 /**
@@ -650,12 +679,18 @@ void Cache<T>::modifyDual() {
  */
 template<typename T>
 void Cache<T>::proximalDual() {
-    *m_d_workIterateDual *= m_data.stepSizeRecip();
-    translateSocs();
-    m_d_workIterateDual->deviceCopyTo(*m_d_iterateCandidateDual);
-    projectDualWorkspaceOnConstraints();
-    *m_d_iterateCandidateDual -= *m_d_workIterateDual;
-    *m_d_iterateCandidateDual *= m_data.stepSize();  // Store dual
+    if (m_admm) {
+        translateSocs();
+        projectDualWorkspaceOnConstraints();
+        m_d_workIterateDual->deviceCopyTo(*m_d_iterateCandidateDual);  // Store dual
+    } else {
+        *m_d_workIterateDual *= m_data.stepSizeRecip();
+        translateSocs();
+        m_d_workIterateDual->deviceCopyTo(*m_d_iterateCandidateDual);
+        projectDualWorkspaceOnConstraints();
+        *m_d_iterateCandidateDual -= *m_d_workIterateDual;
+        *m_d_iterateCandidateDual *= m_data.stepSize();  // Store dual
+    }
 }
 
 /**
@@ -663,11 +698,12 @@ void Cache<T>::proximalDual() {
  * Write output to `candidates`.
  */
 template<typename T>
-void Cache<T>::cpIter() {
+void Cache<T>::iter() {
     modifyPrimal();
     proximalPrimal();
     modifyDual();
     proximalDual();
+    if (m_admm) *m_d_iterateCandidateAdmm -= *m_d_iterateCandidateDual;  // Compute auxiliary for ADMM
 }
 
 template<typename T>
@@ -722,6 +758,7 @@ void Cache<T>::saveToPrev() {
 template<typename T>
 void Cache<T>::acceptCandidate() {
     m_d_iterateCandidate->deviceCopyTo(*m_d_iterate);
+    if (m_admm) m_d_iterateCandidateAdmm->deviceCopyTo(*m_d_iterateAdmm);
 }
 
 /**
@@ -827,7 +864,7 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
         /* Save iterate to prev */
         saveToPrev();
         /* Compute CP iteration */
-        cpIter();
+        iter();
         /* Save candidate to accepted iterate */
         acceptCandidate();
         /* Compute change in iterate */
@@ -839,6 +876,8 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
             break;
         }
     }
+//    std::string n = "Cp";
+//    printToJson(n);
     /* Return status */
     if (m_status) {
         std::cout << "\nConverged in " << m_countIterations << " iterations, to a tolerance of " << m_tol << "\n";
@@ -887,7 +926,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             }
         }
         /* START */
-        cpIter();
+        iter();
         backup();
         /* Compute residual */
         computeResidual();
@@ -914,7 +953,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             m_d_direction->deviceCopyTo(*m_d_directionScaled);
             *m_d_directionScaled *= tau;
             *m_d_iterate += *m_d_directionScaled;
-            cpIter();
+            iter();
             computeResidual();
             wTilde = normM(*m_d_residual, *m_d_residual);
             /* Educated update */
@@ -1048,17 +1087,17 @@ void Cache<T>::printToJson(std::string &file) {
  * Time vanilla CP algorithm with a parallelised cache
  */
 template<typename T>
-int Cache<T>::timeCp(std::vector<T> &initialState) {
-    std::cout << "cp timer started" << "\n";
+T Cache<T>::timeCp(std::vector<T> &initialState) {
     const auto tick = std::chrono::high_resolution_clock::now();
-    /* Run vanilla CP algorithm */
     int status = runCp(initialState);
     const auto tock = std::chrono::high_resolution_clock::now();
-    auto durationMilli = std::chrono::duration<double, std::milli>(tock - tick).count();
-    std::cout << "cp timer stopped: " << durationMilli << " ms" << "\n";
-    std::string n = "Cp";
-    printToJson(n);
-    return status;
+    if (status) {
+        err << "Status error, not converged. [numStages=" << m_tree.numStages() << ", nx=nu=" << m_tree.numStates()
+            << "].\n";
+        throw std::runtime_error(err.str());
+    }
+    T durationMilli = std::chrono::duration<T, std::milli>(tock - tick).count();
+    return durationMilli;
 }
 
 /**

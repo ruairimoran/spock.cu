@@ -31,8 +31,9 @@ int main() {
     size_t maxInnerIters = 8;
     size_t andersonBuffer = 3;
     bool allowK0Updates = true;
+    bool admm = false;
     std::cout << "Allocating cache...\n";
-    Cache cache(tree, problem, tol, tol, maxOuterIters, maxInnerIters, andersonBuffer, allowK0Updates, debug);
+    Cache cache(tree, problem, tol, tol, maxOuterIters, maxInnerIters, andersonBuffer, allowK0Updates, debug, admm);
 
     /* TIMING ALGORITHM */
     std::vector<real_t> initState(tree.numStates(), .1);

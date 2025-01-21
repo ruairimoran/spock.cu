@@ -11,15 +11,6 @@ __global__ void k_projectRectangle(size_t, T *, T *, T *);
 
 
 /**
- * Constraint types
- */
-enum ConstraintMode {
-    nonleaf,
-    leaf
-};
-
-
-/**
  * Base constraint class
  */
 TEMPLATE_WITH_TYPE_T
@@ -53,7 +44,7 @@ protected:
         if (d_vec.numEl() != m_dim) {
             err << "[Constraint] Given DTensor has size (" << d_vec.numEl()
                 << "), but constraint has size (" << m_dim << ")\n";
-            throw std::invalid_argument(err.str());
+            throw ERR;
         }
         return true;
     }
@@ -80,7 +71,7 @@ public:
         dual.reshape(dimensionPerNode(), 1, m_numNodes);
     }
 
-    void constrain(DTensor<T> &d_vec) {
+    void project(DTensor<T> &d_vec) {
         if (m_dim)
             k_projectRectangle<<<numBlocks(this->m_dim, TPB), TPB>>>(this->m_dim, d_vec.raw(),
                                                                      m_d_lowerBound->raw(), m_d_upperBound->raw());
@@ -220,14 +211,14 @@ private:
 
 public:
     explicit Polyhedron(std::string path, std::string ext,
-                        size_t numNodes, size_t numStates, size_t numInputs, ConstraintMode mode) :
+                        size_t numNodes, size_t numStates, size_t numInputs, TreePart part) :
         Constraint<T>(numNodes, numStates, numInputs) {
         /* Read matrix and vector */
         DTensor<T> g(DTensor<T>::parseFromFile(path + "Gamma" + ext));
         DTensor<T> lb(DTensor<T>::parseFromFile(path + "GLB" + ext));
         DTensor<T> ub(DTensor<T>::parseFromFile(path + "GUB" + ext));
         /* Create workspace for nonleaf */
-        if (mode == nonleaf)
+        if (part == nonleaf)
             m_d_xuNonleafWorkspace = std::make_unique<DTensor<T>>(this->m_numStates + this->m_numInputs, 1,
                                                                   this->m_numNodes);
         /* Create tensor m_d_gamma = (Γ, Γ, ..., Γ) */

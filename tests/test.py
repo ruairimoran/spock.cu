@@ -1,4 +1,5 @@
 import py
+import py.build as b
 import numpy as np
 import argparse
 
@@ -38,22 +39,24 @@ num_inputs = 2
 
 # State dynamics
 A = np.eye(num_states)
-As = [1.5 * A, A]
 
 # Input dynamics
 B = 0.5 * np.ones((num_states, num_inputs))
-Bs = [1.5 * B, B]
+
+dynamics = [b.LinearDynamics(1.5 * A, 1.5 * B), b.LinearDynamics(A, B)]
 
 # State cost
 Q = np.eye(num_states)
-Qs = [2 * Q, 2 * Q]
 
 # Input cost
 R = np.eye(num_inputs)
-Rs = [1 * R, 1 * R]
+
+nonleaf_costs = [b.NonleafCost(2 * Q, R), b.NonleafCost(2 * Q, R)]
 
 # Terminal state cost
 T = 3 * np.eye(num_states)
+
+leaf_cost = b.LeafCost(T)
 
 # State-input constraint
 state_lim = 10.
@@ -64,17 +67,17 @@ input_lb = -input_lim * np.ones((num_inputs, 1))
 input_ub = input_lim * np.ones((num_inputs, 1))
 si_lb = np.vstack((state_lb, input_lb))
 si_ub = np.vstack((state_ub, input_ub))
-nonleaf_constraint = py.build.Rectangle(si_lb, si_ub)
+nonleaf_constraint = b.Rectangle(si_lb, si_ub)
 
 # Terminal constraint
 leaf_state_lim = 10.
 leaf_state_lb = -leaf_state_lim * np.ones((num_states, 1))
 leaf_state_ub = leaf_state_lim * np.ones((num_states, 1))
-leaf_constraint = py.build.Rectangle(leaf_state_lb, leaf_state_ub)
+leaf_constraint = b.Rectangle(leaf_state_lb, leaf_state_ub)
 
 # Risk
 alpha = .95
-risk = py.build.AVaR(alpha)
+risk = b.AVaR(alpha)
 
 # Generate problem data
 problem = (
@@ -82,9 +85,9 @@ problem = (
         scenario_tree=tree,
         num_states=num_states,
         num_inputs=num_inputs)
-    .with_markovian_linear_dynamics(As, Bs)
-    .with_markovian_nonleaf_costs(Qs, Rs)
-    .with_leaf_cost(T)
+    .with_markovian_dynamics(dynamics)
+    .with_markovian_nonleaf_costs(nonleaf_costs)
+    .with_leaf_cost(leaf_cost)
     .with_nonleaf_constraint(nonleaf_constraint)
     .with_leaf_constraint(leaf_constraint)
     .with_risk(risk)

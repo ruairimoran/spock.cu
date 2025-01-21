@@ -8,6 +8,7 @@
 #include "src/tree.cuh"
 #include "src/problem.cuh"
 #include "src/cache.cuh"
+
 #define real_t double  // templates type defaults to double
 
 
@@ -35,18 +36,18 @@ int main() {
 
     /* TIMING ALGORITHM */
     std::vector<real_t> initState(tree.numStates(), .1);
-    size_t runs = 11;
-    size_t warm = 1;
-    size_t rmw = runs - warm;
-    std::vector<real_t> runTimes(runs, 0.);
-    std::cout << "Computing average solve time over (" << rmw << ") runs...\n";
-    for (size_t i = 0; i < runs; i++) {
+    size_t runs = 10;
+    size_t warm = 5;
+    size_t totalRuns = runs + warm;
+    std::vector<real_t> runTimes(totalRuns, 0.);
+    std::cout << "Computing average solve time over (" << runs << ") runs with (" << warm << ") warm up runs...\n";
+    for (size_t i = 0; i < totalRuns; i++) {
         runTimes[i] = cache.timeSp(initState);
         cache.reset();
         std::cout << "Run (" << i << ") = " << runTimes[i] << " ms.\n";
     }
-    real_t total = std::reduce(runTimes.begin() + warm, runTimes.end());
-    real_t avg = total / rmw;
+    real_t time = std::reduce(runTimes.begin() + warm, runTimes.end());
+    real_t avg = time / runs;
 
     /* SAVE */
     std::ofstream timeScaling;

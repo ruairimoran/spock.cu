@@ -42,7 +42,7 @@ protected:
                 << "], but projection setup for ["
                 << m_numRows << " x " << m_numCols << " x " << m_numMats
                 << "]\n";
-            throw std::invalid_argument(err.str());
+            throw ERR;
         }
         return true;
     }
@@ -79,7 +79,7 @@ public:
         if (this->m_numMats != 1) {
             err << "Trying to setup [SocProjection] with " << d_tensor.numMats()
                 << " matrices. Number of matrices must be 1.\n";
-            throw std::invalid_argument(err.str());
+            throw ERR;
         }
         m_d_lastElementOfSocs = std::make_unique<DTensor<T>>(this->m_numCols);
         m_d_scalingParams = std::make_unique<DTensor<T>>(this->m_numCols, 1, 1, true);

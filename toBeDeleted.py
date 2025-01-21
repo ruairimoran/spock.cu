@@ -1,10 +1,12 @@
+import build
+
 import py
 import numpy as np
 import argparse
 
 parser = argparse.ArgumentParser(description='Problem data generator.')
-parser.add_argument("--nStages", type=int, default=3)
-parser.add_argument("--nStates", type=int, default=2)
+parser.add_argument("--nStages", type=int, default=5)
+parser.add_argument("--nStates", type=int, default=4)
 parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
 dt = args.dt
@@ -35,11 +37,11 @@ print(tree)
 # --------------------------------------------------------
 
 # Sizes
-num_states = 5
+num_states = args.nStates
 num_inputs = 3
 num_events = 2
 
-# State dynamics
+# Dynamics
 off_diag = 0.01 * np.ones((1, num_states - 1))[0]
 As = [None] * num_events
 for w in range(num_events):
@@ -48,40 +50,41 @@ for w in range(num_events):
         diag = 1 + (1 + j / num_states) * w / num_events
         As[w][j][j] = diag
 
-# Input dynamics
 B = 1. * np.ones((num_states, num_inputs))
-Bs = [B, B]
 
-e = 1. * np.ones((num_states, 1))
-es = [.1 * e, .2 * e]
+dynamics = [py.build.LinearDynamics(As[0], B), py.build.LinearDynamics(As[1], B)]
 
-# State cost
+# Nonleaf costs
 Q = 1e-1 * np.eye(num_states)
 Qs = [Q, Q]
+q = 1e-1 * np.ones(num_states)
+qs = [q, q]
 
-# Input cost
 R = 1. * np.eye(num_inputs)
 Rs = [R, R]
+r = 1. * np.ones(num_inputs)
+rs = [r, r]
 
-# Terminal state cost
+nonleaf_costs = [py.build.NonleafCost(Q, R, q, r), py.build.NonleafCost(Q, .9*R, q, r)]
+
+# Leaf costs
 T = 1e-1 * np.eye(num_states)
+t = 1e-1 * np.ones(num_states)
+
+leaf_costs = py.build.LeafCost(Q, q)
 
 # State-input constraint
-state_lim = 1.
-input_lim = 1.5
-state_lb = -state_lim * np.ones((num_states, 1))
-state_ub = state_lim * np.ones((num_states, 1))
-input_lb = -input_lim * np.ones((num_inputs, 1))
-input_ub = input_lim * np.ones((num_inputs, 1))
-nonleaf_lb = np.vstack((state_lb, input_lb))
-nonleaf_ub = np.vstack((state_ub, input_ub))
-nonleaf_constraint = py.build.Rectangle(nonleaf_lb, nonleaf_ub)
+nl_state_lim = 1.
+nl_input_lim = 1.5
+nl_r_ub = np.vstack((nl_state_lim * np.ones((num_states, 1)), nl_input_lim * np.ones((num_inputs, 1))))
+nl_r_lb = -nl_r_ub
+nonleaf_constraint = py.build.Rectangle(nl_r_lb, nl_r_ub)
 
 # Terminal constraint
-leaf_state_lim = 1.
-leaf_lb = -leaf_state_lim * np.ones((num_states, 1))
-leaf_ub = leaf_state_lim * np.ones((num_states, 1))
-leaf_constraint = py.build.Rectangle(leaf_lb, leaf_ub)
+l_state_lim = 1.
+l_r_ub = np.vstack((l_state_lim * np.ones((num_states, 1))))
+l_r_lb = -l_r_ub
+leaf_constraint = py.build.Rectangle(l_r_lb, l_r_ub)
 
 # Risk
 alpha = .95
@@ -93,9 +96,9 @@ problem = (
         scenario_tree=tree,
         num_states=num_states,
         num_inputs=num_inputs)
-    .with_markovian_affine_dynamics(As, Bs, es)
-    .with_markovian_nonleaf_costs(Qs, Rs)
-    .with_leaf_cost(T)
+    .with_markovian_dynamics(dynamics)
+    .with_markovian_nonleaf_costs(nonleaf_costs)
+    .with_leaf_cost(leaf_costs)
     .with_nonleaf_constraint(nonleaf_constraint)
     .with_leaf_constraint(leaf_constraint)
     .with_risk(risk)

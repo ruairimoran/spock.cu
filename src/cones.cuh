@@ -28,7 +28,7 @@ protected:
             err << "[ConvexCone] DTensor is ["
                 << d_vec.numRows() << " x " << d_vec.numCols() << " x " << d_vec.numMats()
                 << "], but cone has total dimension [" << this->m_dimension << "]\n";
-            throw std::invalid_argument(err.str());
+            throw ERR;
         }
         return true;
     }

@@ -2,7 +2,6 @@ import jinja2 as j2
 import os
 import numpy as np
 import scipy as sp
-from scipy.linalg import sqrtm
 from scipy.sparse.linalg import LinearOperator, eigs
 import gputils_api as ga
 import cvxpy as cvx
@@ -17,15 +16,14 @@ class Problem:
     """
 
     def __init__(self, scenario_tree: treeFactory.Tree, num_states, num_inputs, dynamics,
-                 state_cost, input_cost, terminal_cost, nonleaf_constraint, leaf_constraint, risk, test):
+                 nonleaf_cost, leaf_cost, nonleaf_constraint, leaf_constraint, risk, test):
         """
         :param scenario_tree: instance of ScenarioTree
         :param num_states: number of system states
         :param num_inputs: number of system inputs
         :param dynamics: list of dynamics (size: num_nodes, used: 1 to num_nodes)
-        :param state_cost: list of state cost matrices (size: num_nodes, used: 1 to num_nodes)
-        :param input_cost: list of input cost matrices (size: num_nodes, used: 1 to num_nodes)
-        :param terminal_cost: list of terminal cost matrices (size: num_nodes, used: num_nonleaf_nodes to num_nodes)
+        :param nonleaf_cost: list of nonleaf costs (size: num_nodes, used: 1 to num_nodes)
+        :param leaf_cost: list of leaf cost (size: num_leaf_nodes, used: all)
         :param nonleaf_constraint: state-input constraint class (size: 1)
         :param leaf_constraint: state constraint class (size: 1)
         :param risk: list of risk classes (size: num_nonleaf_nodes, used: all)
@@ -37,9 +35,8 @@ class Problem:
         self.__num_states = num_states
         self.__num_inputs = num_inputs
         self.__list_of_dynamics = dynamics
-        self.__list_of_nonleaf_state_costs = state_cost
-        self.__list_of_nonleaf_input_costs = input_cost
-        self.__list_of_leaf_state_costs = terminal_cost
+        self.__list_of_nonleaf_costs = nonleaf_cost
+        self.__list_of_leaf_costs = leaf_cost
         self.__list_of_risks = risk
         self.__nonleaf_constraint = nonleaf_constraint
         self.__leaf_constraint = leaf_constraint
@@ -74,9 +71,6 @@ class Problem:
         self.__y_size = 2 * self.__tree.num_events + 1
         self.__step_size = 0
         self.__padded_b = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
-        self.__sqrt_nonleaf_state_costs = [np.zeros((0, 0))] * self.__tree.num_nodes
-        self.__sqrt_nonleaf_input_costs = [np.zeros((0, 0))] * self.__tree.num_nodes
-        self.__sqrt_leaf_state_costs = [np.zeros((0, 0))] * self.__tree.num_leaf_nodes
         # Generate data and files
         print("Computing offline data...")
         self.__generate_offline()
@@ -89,14 +83,11 @@ class Problem:
     def dynamics_at_node(self, idx):
         return self.__list_of_dynamics[idx]
 
-    def nonleaf_state_cost_at_node(self, idx):
-        return self.__list_of_nonleaf_state_costs[idx]
+    def nonleaf_cost_at_node(self, idx):
+        return self.__list_of_nonleaf_costs[idx]
 
-    def nonleaf_input_cost_at_node(self, idx):
-        return self.__list_of_nonleaf_input_costs[idx]
-
-    def leaf_state_cost_at_node(self, idx):
-        return self.__list_of_leaf_state_costs[idx]
+    def leaf_cost_at_node(self, idx):
+        return self.__list_of_leaf_costs[idx]
 
     def nonleaf_constraint(self):
         return self.__nonleaf_constraint
@@ -144,9 +135,11 @@ class Problem:
         # Generate stacks
         stack_input_dyn_tr = np.dstack([a.input.T for a in self.__list_of_dynamics])
         stack_AB_dyn = np.dstack([a.state_input for a in self.__list_of_dynamics])
-        stack_sqrt_state_cost = np.dstack(self.__sqrt_nonleaf_state_costs)
-        stack_sqrt_input_cost = np.dstack(self.__sqrt_nonleaf_input_costs)
-        stack_sqrt_terminal_cost = np.dstack(self.__sqrt_leaf_state_costs)
+        stack_sqrt_state_cost = np.dstack([cost.sqrt_Q for cost in self.__list_of_nonleaf_costs])
+        stack_sqrt_input_cost = np.dstack([cost.sqrt_R for cost in self.__list_of_nonleaf_costs])
+        stack_sqrt_terminal_cost = np.dstack([cost.sqrt_Q for cost in self.__list_of_leaf_costs])
+        stack_nonleaf_translation = np.dstack([cost.t for cost in self.__list_of_nonleaf_costs])
+        stack_leaf_translation = np.dstack([cost.t for cost in self.__list_of_leaf_costs])
         stack_P = np.dstack(self.__P)
         stack_K = np.dstack(self.__K)
         stack_dyn_tr = np.dstack(self.__sum_of_dynamics_tr)
@@ -163,9 +156,11 @@ class Problem:
             "dynamics_ABKTr": stack_dyn_tr,
             "dynamics_APB": stack_APB,
             "dynamics_lowCholesky": stack_low_chol,
-            "sqrtStateCost": stack_sqrt_state_cost,
-            "sqrtInputCost": stack_sqrt_input_cost,
-            "sqrtTerminalCost": stack_sqrt_terminal_cost,
+            "nonleafCost_sqrtQ": stack_sqrt_state_cost,
+            "nonleafCost_sqrtR": stack_sqrt_input_cost,
+            "leafCost_sqrtQ": stack_sqrt_terminal_cost,
+            "nonleafCost_translation": stack_nonleaf_translation,
+            "leafCost_translation": stack_leaf_translation,
             "risk_NNtr": stack_null,
             "risk_b": stack_b
         }
@@ -230,7 +225,6 @@ class Problem:
         self.__offline_projection_dynamics()
         self.__offline_projection_kernel()
         self.__pad_b()
-        self.__sqrt_costs()
         self.__get_step_size()
         if self.__test:
             self.__test_dynamic_programming()
@@ -314,14 +308,6 @@ class Problem:
             self.__padded_b[i] = np.pad(self.__list_of_risks[i].b, [(0, pad), (0, 0)], mode="constant",
                                         constant_values=0.)
 
-    def __sqrt_costs(self):
-        for i in range(self.__tree.num_nodes):
-            self.__sqrt_nonleaf_state_costs[i] = sqrtm(self.__list_of_nonleaf_state_costs[i])
-            self.__sqrt_nonleaf_input_costs[i] = sqrtm(self.__list_of_nonleaf_input_costs[i])
-
-        for i in range(self.__tree.num_leaf_nodes):
-            self.__sqrt_leaf_state_costs[i] = sqrtm(self.__list_of_leaf_state_costs[i])
-
     @staticmethod
     def __flatten(list_of_vectors):
         return np.hstack(np.vstack(list_of_vectors)).tolist()
@@ -360,8 +346,8 @@ class Problem:
         for i in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(i)
             half_t = t[i] * 0.5
-            iv[i] = np.vstack((self.__sqrt_nonleaf_state_costs[i] @ x[anc],
-                               self.__sqrt_nonleaf_input_costs[i] @ u[anc],
+            iv[i] = np.vstack((self.__list_of_nonleaf_costs[i].sqrt_Q @ x[anc],
+                               self.__list_of_nonleaf_costs[i].sqrt_R @ u[anc],
                                half_t, half_t))
 
         # -> v
@@ -371,7 +357,7 @@ class Problem:
         vi = [np.zeros((self.__num_states + 2, 1))] * self.__tree.num_leaf_nodes
         for i in range(self.__tree.num_leaf_nodes):
             half_s = s[i + self.__tree.num_nonleaf_nodes] * 0.5
-            vi[i] = np.vstack((self.__sqrt_leaf_state_costs[i] @ x[i + self.__tree.num_nonleaf_nodes],
+            vi[i] = np.vstack((self.__list_of_leaf_costs[i].sqrt_Q @ x[i + self.__tree.num_nonleaf_nodes],
                                half_s, half_s))
 
         # Gather dual
@@ -416,8 +402,8 @@ class Problem:
         # -> x (nonleaf) and u
         for i in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(i)
-            x[anc] += self.__sqrt_nonleaf_state_costs[i] @ iv[i][:self.__num_states]
-            u[anc] += self.__sqrt_nonleaf_input_costs[i] @ iv[i][self.__num_states:num_si]
+            x[anc] += self.__list_of_nonleaf_costs[i].sqrt_Q @ iv[i][:self.__num_states]
+            u[anc] += self.__list_of_nonleaf_costs[i].sqrt_R @ iv[i][self.__num_states:num_si]
 
         # -> t
         t = [0.] * self.__tree.num_nodes
@@ -430,7 +416,7 @@ class Problem:
 
         # -> x (leaf)
         for i in range(self.__tree.num_leaf_nodes):
-            x[i + self.__tree.num_nonleaf_nodes] += self.__sqrt_leaf_state_costs[i] @ vi[i][:self.__num_states]
+            x[i + self.__tree.num_nonleaf_nodes] += self.__list_of_leaf_costs[i].sqrt_Q @ vi[i][:self.__num_states]
 
         # -> s (leaf)
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
@@ -519,9 +505,8 @@ class ProblemFactory:
         self.__num_states = num_states
         self.__num_inputs = num_inputs
         self.__list_of_dynamics = [None] * self.__tree.num_nodes
-        self.__list_of_nonleaf_state_costs = [None] * self.__tree.num_nodes
-        self.__list_of_nonleaf_input_costs = [None] * self.__tree.num_nodes
-        self.__list_of_leaf_state_costs = [None] * self.__tree.num_leaf_nodes
+        self.__list_of_nonleaf_costs = [None] * self.__tree.num_nodes
+        self.__list_of_leaf_costs = [None] * self.__tree.num_leaf_nodes
         self.__nonleaf_constraint = [None] * self.__tree.num_nonleaf_nodes
         self.__leaf_constraint = [None] * self.__tree.num_leaf_nodes
         self.__list_of_risks = [None] * self.__tree.num_nonleaf_nodes
@@ -535,74 +520,42 @@ class ProblemFactory:
     # --------------------------------------------------------
     # Dynamics
     # --------------------------------------------------------
-    def with_markovian_linear_dynamics(self, state_dynamics, input_dynamics):
-        self.__check_markovian("linear dynamics")
-        num_events = len(state_dynamics)
-        # check equal number of dynamics given
-        if num_events != len(input_dynamics):
-            raise ValueError("Different number of Markovian linear state and input dynamics given")
-        # check dynamics are compatible
-        if state_dynamics[0].shape[0] != input_dynamics[0].shape[0]:
-            raise ValueError("Markovian linear state and input dynamics are incompatible")
-        self.__list_of_dynamics[0] = build.Linear(np.zeros(state_dynamics[0].shape),
-                                                  np.zeros(input_dynamics[0].shape))
+    def with_markovian_dynamics(self, dynamics):
+        self.__check_markovian("dynamics")
+        if dynamics[0].is_linear:
+            self.__list_of_dynamics[0] = build.LinearDynamics(np.zeros(dynamics[0].state.shape),
+                                                              np.zeros(dynamics[0].input.shape))
+        if dynamics[0].is_affine:
+            self.__list_of_dynamics[0] = build.AffineDynamics(np.zeros(dynamics[0].state.shape),
+                                                              np.zeros(dynamics[0].input.shape),
+                                                              np.zeros((dynamics[0].state.shape[0], 1)))
         for i in range(1, self.__tree.num_nodes):
             event = self.__tree.event_of_node(i)
-            self.__list_of_dynamics[i] = build.Linear(deepcopy(state_dynamics[event]),
-                                                      deepcopy(input_dynamics[event]))
-        return self
-
-    def with_markovian_affine_dynamics(self, state_dynamics, input_dynamics, affine_dynamics):
-        self.__check_markovian("affine dynamics")
-        num_events = len(state_dynamics)
-        # check equal number of dynamics given
-        if num_events != len(input_dynamics):
-            raise ValueError("Different number of Markovian affine state and input dynamics given")
-        if num_events != len(affine_dynamics):
-            raise ValueError("Different number of Markovian affine state and input dynamics given")
-        # check dynamics are compatible
-        if state_dynamics[0].shape[0] != input_dynamics[0].shape[0]:
-            raise ValueError("Markovian affine state and input dynamics are incompatible")
-        if state_dynamics[0].shape[0] != affine_dynamics[0].shape[0]:
-            raise ValueError("Markovian affine state and affine dynamics are incompatible")
-        self.__list_of_dynamics[0] = build.Affine(np.zeros(state_dynamics[0].shape),
-                                                  np.zeros(input_dynamics[0].shape),
-                                                  np.zeros(affine_dynamics[0].shape))
-        for i in range(1, self.__tree.num_nodes):
-            event = self.__tree.event_of_node(i)
-            self.__list_of_dynamics[i] = build.Affine(deepcopy(state_dynamics[event]),
-                                                      deepcopy(input_dynamics[event]),
-                                                      deepcopy(affine_dynamics[event]))
+            self.__list_of_dynamics[i] = deepcopy(dynamics[event])
         return self
 
     # --------------------------------------------------------
     # Costs
     # --------------------------------------------------------
-    def with_markovian_nonleaf_costs(self, state_costs, input_costs):
+    def with_markovian_nonleaf_costs(self, costs):
         self.__check_markovian("costs")
-        self.__list_of_nonleaf_state_costs[0] = np.zeros((state_costs[0].shape[0], state_costs[0].shape[1]))
-        self.__list_of_nonleaf_input_costs[0] = np.zeros((input_costs[0].shape[0], input_costs[0].shape[1]))
+        self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(costs[0].sqrt_Q.shape),
+                                                            np.zeros(costs[0].sqrt_R.shape), None, None, False)
         for i in range(1, self.__tree.num_nodes):
             event = self.__tree.event_of_node(i)
-            self.__list_of_nonleaf_state_costs[i] = deepcopy(state_costs[event])
-            self.__list_of_nonleaf_input_costs[i] = deepcopy(input_costs[event])
+            self.__list_of_nonleaf_costs[i] = deepcopy(costs[event])
         return self
 
-    def with_nonleaf_cost(self, state_cost, input_cost):
-        try:
-            self.__list_of_nonleaf_state_costs[0] = np.zeros((state_cost[0].shape[0], state_cost[0].shape[1]))
-            self.__list_of_nonleaf_input_costs[0] = np.zeros((input_cost[0].shape[0], input_cost[0].shape[1]))
-        except:
-            self.__list_of_nonleaf_state_costs[0] = np.zeros((state_cost[0].shape[0], state_cost[0].shape[0]))
-            self.__list_of_nonleaf_input_costs[0] = np.zeros((input_cost[0].shape[0], input_cost[0].shape[0]))
+    def with_nonleaf_cost(self, cost):
+        self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(cost.sqrt_Q.shape),
+                                                            np.zeros(cost.sqrt_R.shape), None, None, False)
         for i in range(1, self.__tree.num_nodes):
-            self.__list_of_nonleaf_state_costs[i] = deepcopy(state_cost)
-            self.__list_of_nonleaf_input_costs[i] = deepcopy(input_cost)
+            self.__list_of_nonleaf_costs[i] = deepcopy(cost)
         return self
 
-    def with_leaf_cost(self, state_cost):
+    def with_leaf_cost(self, cost):
         for i in range(self.__tree.num_leaf_nodes):
-            self.__list_of_leaf_state_costs[i] = deepcopy(state_cost)
+            self.__list_of_leaf_costs[i] = deepcopy(cost)
         return self
 
     # --------------------------------------------------------
@@ -648,9 +601,8 @@ class ProblemFactory:
                           self.__num_states,
                           self.__num_inputs,
                           self.__list_of_dynamics,
-                          self.__list_of_nonleaf_state_costs,
-                          self.__list_of_nonleaf_input_costs,
-                          self.__list_of_leaf_state_costs,
+                          self.__list_of_nonleaf_costs,
+                          self.__list_of_leaf_costs,
                           self.__nonleaf_constraint,
                           self.__leaf_constraint,
                           self.__list_of_risks,

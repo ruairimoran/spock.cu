@@ -2,6 +2,84 @@ import numpy as np
 
 
 # =====================================================================================================================
+# Dynamics
+# =====================================================================================================================
+
+# --------------------------------------------------------
+# Base
+# --------------------------------------------------------
+class Dynamics:
+    """
+    Base class for dynamics
+    """
+
+    def __init__(self, state_dyn, input_dyn, affine_dyn):
+        self.__state_dyn_matrix = state_dyn
+        self.__input_dyn_matrix = input_dyn
+        self.__affine_dyn_vector = affine_dyn
+        self.__state_input_dyn_matrix = np.hstack((self.__state_dyn_matrix, self.__input_dyn_matrix))
+
+    # TYPES
+    @property
+    def is_linear(self):
+        return False
+
+    @property
+    def is_affine(self):
+        return False
+
+    @property
+    def state(self):
+        return self.__state_dyn_matrix
+
+    @property
+    def input(self):
+        return self.__input_dyn_matrix
+
+    @property
+    def affine(self):
+        return self.__affine_dyn_vector
+
+    @property
+    def state_input(self):
+        return self.__state_input_dyn_matrix
+
+
+# --------------------------------------------------------
+# Linear
+# --------------------------------------------------------
+class Linear(Dynamics):
+    """
+    Linear dynamics
+    """
+
+    def __init__(self, state_dyn, input_dyn):
+        super().__init__(state_dyn, input_dyn, np.zeros((state_dyn.shape[0], 1)))
+
+    # TYPES
+    @property
+    def is_linear(self):
+        return True
+
+
+# --------------------------------------------------------
+# Affine
+# --------------------------------------------------------
+class Affine(Dynamics):
+    """
+    Affine dynamics
+    """
+
+    def __init__(self, state_dyn, input_dyn, affine_dyn):
+        super().__init__(state_dyn, input_dyn, affine_dyn)
+
+    # TYPES
+    @property
+    def is_affine(self):
+        return True
+
+
+# =====================================================================================================================
 # Constraints
 # =====================================================================================================================
 

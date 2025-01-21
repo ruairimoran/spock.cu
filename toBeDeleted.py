@@ -3,8 +3,8 @@ import numpy as np
 import argparse
 
 parser = argparse.ArgumentParser(description='Problem data generator.')
-parser.add_argument("--nStages", type=int, default=5)
-parser.add_argument("--nStates", type=int, default=50)
+parser.add_argument("--nStages", type=int, default=3)
+parser.add_argument("--nStates", type=int, default=2)
 parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
 dt = args.dt
@@ -35,8 +35,8 @@ print(tree)
 # --------------------------------------------------------
 
 # Sizes
-num_states = args.nStates
-num_inputs = 20
+num_states = 5
+num_inputs = 3
 num_events = 2
 
 # State dynamics
@@ -52,6 +52,9 @@ for w in range(num_events):
 B = 1. * np.ones((num_states, num_inputs))
 Bs = [B, B]
 
+e = 1. * np.ones((num_states, 1))
+es = [.1 * e, .2 * e]
+
 # State cost
 Q = 1e-1 * np.eye(num_states)
 Qs = [Q, Q]
@@ -63,38 +66,22 @@ Rs = [R, R]
 # Terminal state cost
 T = 1e-1 * np.eye(num_states)
 
-# State-input constraint (rectangle to constrain states, poly to constrain inputs)
-nl_state_lim = 1.
-nl_r_ub = np.vstack((nl_state_lim * np.ones((num_states, 1)), np.Inf * np.ones((num_inputs, 1))))
-nl_r_lb = -nl_r_ub
-nl_r = py.build.Rectangle(nl_r_lb, nl_r_ub)
+# State-input constraint
+state_lim = 1.
+input_lim = 1.5
+state_lb = -state_lim * np.ones((num_states, 1))
+state_ub = state_lim * np.ones((num_states, 1))
+input_lb = -input_lim * np.ones((num_inputs, 1))
+input_ub = input_lim * np.ones((num_inputs, 1))
+nonleaf_lb = np.vstack((state_lb, input_lb))
+nonleaf_ub = np.vstack((state_ub, input_ub))
+nonleaf_constraint = py.build.Rectangle(nonleaf_lb, nonleaf_ub)
 
-nl_input_lim = 1.5
-nl_p_ub = nl_input_lim * np.ones((num_inputs, 1))
-nl_p_lb = -nl_p_ub
-nl_g = np.zeros((num_inputs, num_states + num_inputs))
-for i in range(num_inputs):
-    nl_g[i, num_states + i] = 1
-nl_p = py.build.Polyhedron(nl_g, nl_p_lb, nl_p_ub)
-
-nonleaf_constraint = py.build.PolyhedronWithIdentity(nl_r, nl_p)
-
-# Terminal constraint (rectangle to constrain first half of states, poly to constrain other half)
-half = int(np.floor(num_states / 2))
-other_half = int(num_states - half)
-l_state_lim = 1.
-l_r_ub = np.vstack((l_state_lim * np.ones((half, 1)), np.Inf * np.ones((other_half, 1))))
-l_r_lb = -l_r_ub
-l_r = py.build.Rectangle(l_r_lb, l_r_ub)
-
-l_p_ub = l_state_lim * np.ones((other_half, 1))
-l_p_lb = -l_p_ub
-l_g = np.zeros((other_half, num_states))
-for i in range(other_half):
-    l_g[i, half + i] = 1
-l_p = py.build.Polyhedron(l_g, l_p_lb, l_p_ub)
-
-leaf_constraint = py.build.PolyhedronWithIdentity(l_r, l_p)
+# Terminal constraint
+leaf_state_lim = 1.
+leaf_lb = -leaf_state_lim * np.ones((num_states, 1))
+leaf_ub = leaf_state_lim * np.ones((num_states, 1))
+leaf_constraint = py.build.Rectangle(leaf_lb, leaf_ub)
 
 # Risk
 alpha = .95
@@ -106,7 +93,7 @@ problem = (
         scenario_tree=tree,
         num_states=num_states,
         num_inputs=num_inputs)
-    .with_markovian_dynamics(As, Bs)
+    .with_markovian_affine_dynamics(As, Bs, es)
     .with_markovian_nonleaf_costs(Qs, Rs)
     .with_leaf_cost(T)
     .with_nonleaf_constraint(nonleaf_constraint)

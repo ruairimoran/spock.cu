@@ -3,7 +3,6 @@ import os
 import numpy as np
 import scipy as sp
 from scipy.sparse.linalg import LinearOperator, eigs
-import gputils_api as ga
 import cvxpy as cvx
 from copy import deepcopy
 from . import treeFactory
@@ -42,35 +41,40 @@ class Problem:
         self.__leaf_constraint = leaf_constraint
         self.__test = test
         # Dynamics projection
-        self.__P = [np.zeros((self.__num_states, self.__num_states))] * self.__tree.num_nodes
-        self.__q = [np.zeros((self.__num_states, 1))] * self.__tree.num_nodes
-        self.__K = [np.zeros((self.__num_states, self.__num_states))] * self.__tree.num_nonleaf_nodes
-        self.__d = [np.zeros((self.__num_states, 1))] * self.__tree.num_nonleaf_nodes
+        self.__P = [np.zeros((self.__num_states, self.__num_states)) for _ in range(self.__tree.num_nodes)]
+        self.__q = [np.zeros((self.__num_states, 1)) for _ in range(self.__tree.num_nodes)]
+        self.__K = [np.zeros((self.__num_states, self.__num_states)) for _ in range(self.__tree.num_nonleaf_nodes)]
+        self.__d = [np.zeros((self.__num_states, 1)) for _ in range(self.__tree.num_nonleaf_nodes)]
         self.__lower = True  # Do not change!
-        self.__cholesky_lower = [None] * self.__tree.num_nonleaf_nodes
-        self.__sum_of_dynamics_tr = [np.zeros((num_states, num_states))] * self.__tree.num_nodes  # A+B@K
-        self.__At_P_B = [np.zeros((num_states, num_inputs))] * self.__tree.num_nodes  # At@P@B
+        self.__cholesky_lower = [None for _ in range(self.__tree.num_nonleaf_nodes)]
+        self.__sum_of_dynamics_tr = [np.zeros((num_states, num_states)) for _ in range(self.__tree.num_nodes)]  # A+B@K
+        self.__At_P_B = [np.zeros((num_states, num_inputs)) for _ in range(self.__tree.num_nodes)]  # At@P@B
         self.__dp_test_init_state = []
         self.__dp_test_states = []
         self.__dp_test_inputs = []
         self.__dp_projected_states = []
         self.__dp_projected_inputs = []
         # Kernel projection
-        self.__kernel_constraint_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
-        self.__nullspace_projection_matrix = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
+        self.__kernel_constraint_matrix = [np.zeros((0, 0)) for _ in range(self.__tree.num_nonleaf_nodes)]
+        self.__nullspace_projection_matrix = [np.zeros((0, 0)) for _ in range(self.__tree.num_nonleaf_nodes)]
         self.__kernel_constraint_matrix_rows = []
         self.__max_nullspace_dim = self.__tree.num_events * 4 + 1
-        self.__projected_ns = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
+        self.__projected_ns = [np.zeros((0, 0)) for _ in range(self.__tree.num_nonleaf_nodes)]
         # L operator and adjoint testing
         self.__prim_before_op = []
         self.__dual_after_op_before_adj = []
         self.__prim_after_adj = []
+        self.__prim_random = None
+        self.__dual_random = None
+        self.__test_is_adjoint_result = None
         self.__dot_vector = []
         self.__dot_result = []
         # Other
         self.__y_size = 2 * self.__tree.num_events + 1
         self.__step_size = 0
-        self.__padded_b = [np.zeros((0, 0))] * self.__tree.num_nonleaf_nodes
+        self.__prim_size = 0
+        self.__dual_size = 0
+        self.__padded_b = [np.zeros((0, 0)) for _ in range(self.__tree.num_nonleaf_nodes)]
         # Generate data and files
         print("Computing offline data...")
         self.__generate_offline()
@@ -97,6 +101,14 @@ class Problem:
 
     def risk_at_node(self, idx):
         return self.__list_of_risks[idx]
+
+    @property
+    def size_prim(self):
+        return self.__prim_size
+
+    @property
+    def size_dual(self):
+        return self.__dual_size
 
     def __generate_problem_files(self):
         # Setup jinja environment
@@ -209,6 +221,9 @@ class Problem:
                 "primBeforeOp": np.array(self.__prim_before_op),
                 "dualAfterOpBeforeAdj": np.array(self.__dual_after_op_before_adj),
                 "primAfterAdj": np.array(self.__prim_after_adj),
+                "adjRandomPrim": self.__prim_random,
+                "adjRandomDual": self.__dual_random,
+                "adjRandomResult": np.array([self.__test_is_adjoint_result]),
                 "dotVector": np.array(self.__dot_vector),
                 "dotResult": np.array([self.__dot_result])
             }
@@ -229,6 +244,7 @@ class Problem:
         if self.__test:
             self.__test_dynamic_programming()
             self.__test_op_and_adj()
+            self.__test_is_adjoint()  # Must be after `get_step_size()`
             self.__test_dot()  # Must be after `get_step_size()`
 
     def __offline_projection_dynamics(self):
@@ -334,7 +350,7 @@ class Problem:
         i_ = deepcopy(y)
 
         # -> ii
-        ii = [0.] * self.__tree.num_nonleaf_nodes
+        ii = [0. for _ in range(self.__tree.num_nonleaf_nodes)]
         for i in range(self.__tree.num_nonleaf_nodes):
             ii[i] = s[i] - self.__padded_b[i].T @ y[i]
 
@@ -342,7 +358,7 @@ class Problem:
         iii = self.__nonleaf_constraint.op_nonleaf(x, self.__tree.num_nonleaf_nodes, u)
 
         # -> iv
-        iv = [np.zeros((num_si + 2, 1))] * self.__tree.num_nodes
+        iv = [np.zeros((num_si + 2, 1)) for _ in range(self.__tree.num_nodes)]
         for i in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(i)
             half_t = t[i] * 0.5
@@ -354,7 +370,7 @@ class Problem:
         v = self.__leaf_constraint.op_leaf(x[self.__tree.num_nonleaf_nodes:], self.__tree.num_leaf_nodes)
 
         # -> vi
-        vi = [np.zeros((self.__num_states + 2, 1))] * self.__tree.num_leaf_nodes
+        vi = [np.zeros((self.__num_states + 2, 1)) for _ in range(self.__tree.num_leaf_nodes)]
         for i in range(self.__tree.num_leaf_nodes):
             half_s = s[i + self.__tree.num_nonleaf_nodes] * 0.5
             vi[i] = np.vstack((self.__list_of_leaf_costs[i].sqrt_Q @ x[i + self.__tree.num_nonleaf_nodes],
@@ -387,17 +403,17 @@ class Problem:
             vi_size, 1) for i in range(self.__tree.num_leaf_nodes)]
 
         # -> s (nonleaf)
-        s = [0.] * self.__tree.num_nodes
+        s = [0. for _ in range(self.__tree.num_nodes)]
         s[:self.__tree.num_nonleaf_nodes] = ii
 
         # -> y
-        y = [np.zeros((self.__y_size, 1))] * self.__tree.num_nonleaf_nodes
+        y = [np.zeros((self.__y_size, 1)) for _ in range(self.__tree.num_nonleaf_nodes)]
         for i in range(self.__tree.num_nonleaf_nodes):
             y[i] = i_[i] - self.__padded_b[i] * ii[i]
 
         # -> x (nonleaf) and u:Gamma
-        x = [np.zeros((self.__num_states, 1))] * self.__tree.num_nodes
-        u = [np.zeros((self.__num_inputs, 1))] * self.__tree.num_nonleaf_nodes
+        x = [np.zeros((self.__num_states, 1)) for _ in range(self.__tree.num_nodes)]
+        u = [np.zeros((self.__num_inputs, 1)) for _ in range(self.__tree.num_nonleaf_nodes)]
         x, u = self.__nonleaf_constraint.adj_nonleaf(iii, x, self.__tree.num_nonleaf_nodes, u)
         # -> x (nonleaf) and u
         for i in range(1, self.__tree.num_nodes):
@@ -406,7 +422,7 @@ class Problem:
             u[anc] += self.__list_of_nonleaf_costs[i].sqrt_R @ iv[i][self.__num_states:num_si]
 
         # -> t
-        t = [0.] * self.__tree.num_nodes
+        t = [0. for _ in range(self.__tree.num_nodes)]
         for i in range(1, self.__tree.num_nodes):
             t[i] = 0.5 * (iv[i][num_si] + iv[i][num_si + 1])
 
@@ -435,7 +451,7 @@ class Problem:
         f = 10
         u = [f * np.random.randn(self.__num_inputs, 1) for _ in range(self.__tree.num_nonleaf_nodes)]
         x = [f * np.random.randn(self.__num_states, 1) for _ in range(self.__tree.num_nodes)]
-        y = [None] * self.__tree.num_nonleaf_nodes
+        y = [None for _ in range(self.__tree.num_nonleaf_nodes)]
         for i in range(self.__tree.num_nonleaf_nodes):
             num_ch = len(self.__tree.children_of_node(i))
             size_y = 2 * num_ch + 1
@@ -451,16 +467,30 @@ class Problem:
         prim = self.__adj(dual)
         self.__prim_after_adj = deepcopy(prim)
 
+    def __test_is_adjoint(self):
+        m = 100
+        self.__prim_random = m * np.random.randn(self.__prim_size, 1)
+        self.__dual_random = m * np.random.randn(self.__dual_size, 1)
+        # y'Lx
+        Lx = np.array(self.__op(self.__prim_random)).reshape(-1, 1)
+        uno = (self.__dual_random.T @ Lx)[0, 0]
+        # (L'y)'x
+        Ly = np.array(self.__adj(self.__dual_random)).reshape(-1, 1)
+        dos = (Ly.T @ self.__prim_random)[0, 0]
+        if np.linalg.norm(uno - dos) > 1e-4:
+            raise Exception("[test_is_adjoint] Adjoint does not match operator.\n")
+        self.__test_is_adjoint_result = uno
+
     def __get_step_size(self):
-        prim_size = (
+        self.__prim_size = (
                 (self.__num_inputs + self.__y_size) * self.__tree.num_nonleaf_nodes +  # u, y
                 (self.__num_states + 2) * self.__tree.num_nodes  # x, t, s
         )
-        p = np.zeros(prim_size)
+        p = np.zeros(self.__prim_size)
         d = self.__op(p)
-        dual_size = len(d)
-        op = LinearOperator(dtype=self.__tree.dtype, shape=(dual_size, prim_size), matvec=self.__op)
-        adj = LinearOperator(dtype=self.__tree.dtype, shape=(prim_size, dual_size), matvec=self.__adj)
+        self.__dual_size = len(d)
+        op = LinearOperator(dtype=self.__tree.dtype, shape=(self.__dual_size, self.__prim_size), matvec=self.__op)
+        adj = LinearOperator(dtype=self.__tree.dtype, shape=(self.__prim_size, self.__dual_size), matvec=self.__adj)
         adj_op = adj * op
         eigen, _ = eigs(adj_op)
         max_eigen = np.real(max(eigen))
@@ -504,12 +534,12 @@ class ProblemFactory:
         self.__tree = scenario_tree
         self.__num_states = num_states
         self.__num_inputs = num_inputs
-        self.__list_of_dynamics = [None] * self.__tree.num_nodes
-        self.__list_of_nonleaf_costs = [None] * self.__tree.num_nodes
-        self.__list_of_leaf_costs = [None] * self.__tree.num_leaf_nodes
-        self.__nonleaf_constraint = [None] * self.__tree.num_nonleaf_nodes
-        self.__leaf_constraint = [None] * self.__tree.num_leaf_nodes
-        self.__list_of_risks = [None] * self.__tree.num_nonleaf_nodes
+        self.__list_of_dynamics = [None for _ in range(self.__tree.num_nodes)]
+        self.__list_of_nonleaf_costs = [None for _ in range(self.__tree.num_nodes)]
+        self.__list_of_leaf_costs = [None for _ in range(self.__tree.num_leaf_nodes)]
+        self.__nonleaf_constraint = [None for _ in range(self.__tree.num_nonleaf_nodes)]
+        self.__leaf_constraint = [None for _ in range(self.__tree.num_leaf_nodes)]
+        self.__list_of_risks = [None for _ in range(self.__tree.num_nonleaf_nodes)]
         self.__test = False
         self.__preload_constraints()
 

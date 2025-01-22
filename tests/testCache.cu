@@ -20,16 +20,17 @@ public:
     /** Prepare some host and device data */
     bool m_detectInfeas = false;
     T m_tol = 1e-3;
-    size_t m_maxIters = 1000;
+    size_t m_maxIters = 1500;
     size_t m_maxInnerIters = 8;
     size_t m_andersonBuff = 3;
     bool m_allowK0 = true;
+    bool m_debug = false;
 
     CacheTestData() {
         m_tree = std::make_unique<ScenarioTree<T>>(m_path);
         m_data = std::make_unique<ProblemData<T>>(*m_tree);
         m_cache = std::make_unique<Cache<T>>(*m_tree, *m_data, m_detectInfeas, m_tol, m_maxIters,
-                                             m_maxInnerIters, m_andersonBuff, m_allowK0);
+                                             m_maxInnerIters, m_andersonBuff, m_allowK0, m_debug);
     };
 
     virtual ~CacheTestData() = default;
@@ -276,19 +277,37 @@ TEST_F(CacheTest, memCpyOutTS) {
 }
 
 /* ---------------------------------------
- * Convergence
+ * Convergence (CP)
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
-void testConvergence(CacheTestData<T> &d) {
+void testConvergenceCP(CacheTestData<T> &d) {
+    std::vector<T> initState(d.m_tree->numStates(), .1);
+    int status = d.m_cache->runCp(initState);
+    EXPECT_EQ(status, 0);
+}
+
+TEST_F(CacheTest, testConvergenceCP) {
+    CacheTestData<float> df;
+    testConvergenceCP<float>(df);
+    CacheTestData<double> dd;
+    testConvergenceCP<double>(dd);
+}
+
+/* ---------------------------------------
+ * Convergence (SPOCK)
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void testConvergenceSP(CacheTestData<T> &d) {
     std::vector<T> initState(d.m_tree->numStates(), .1);
     int status = d.m_cache->runSpock(initState);
     EXPECT_EQ(status, 0);
 }
 
-TEST_F(CacheTest, testConvergence) {
+TEST_F(CacheTest, testConvergenceSP) {
     CacheTestData<float> df;
-    testConvergence<float>(df);
+    testConvergenceSP<float>(df);
     CacheTestData<double> dd;
-    testConvergence<double>(dd);
+    testConvergenceSP<double>(dd);
 }

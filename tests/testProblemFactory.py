@@ -133,6 +133,21 @@ class TestProblem(unittest.TestCase):
         for i in range(tree.num_nonleaf_nodes):
             self.assertTrue(problem.risk_at_node(i) is not None)
 
+    def test_operator(self):
+        _ = TestProblem.__tree_from_markov
+        problem = TestProblem.__problem_from_markov
+        m = 100
+        prim = m * np.random.randn(problem.size_prim, 1)
+        dual = m * np.random.randn(problem.size_dual, 1)
+        # y'Lx
+        Lx = np.array(problem._Problem__op(prim)).reshape(-1, 1)
+        uno = (dual.T @ Lx)[0, 0]
+        # (L'y)'x
+        Ly = np.array(problem._Problem__adj(dual)).reshape(-1, 1)
+        dos = (Ly.T @ prim)[0, 0]
+        # Compare results
+        self.assertAlmostEqual(uno, dos)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -85,3 +85,35 @@ TEST_F(OperatorTest, adj) {
     testAdjoint<double>(dd, TEST_PRECISION_HIGH);
 }
 
+/* ---------------------------------------
+ * Operator L' is the adjoint of L
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void testIsItReallyTheAdjoint(OperatorTestData<T> &d, T epsilon) {
+    std::string ext = d.m_tree->fpFileExt();
+    DTensor<T> prim = DTensor<T>::parseFromFile(d.m_path + "adjRandomPrim" + ext);
+    DTensor<T> dual = DTensor<T>::parseFromFile(d.m_path + "adjRandomDual" + ext);
+    DTensor<T> result = DTensor<T>::parseFromFile(d.m_path + "adjRandomResult" + ext);
+    Cache<T> &c = *d.m_cache;
+    /* y'Lx */
+    prim.deviceCopyTo(*d.m_cache->m_d_workIteratePrim);
+    c.L();
+    T uno = d.m_cache->m_d_workIterateDual->dotF(dual);
+    /* Reset */
+    d.m_cache->m_d_workIterate->upload(std::vector<T>(d.m_cache->m_sizeIterate, 0.));
+    /* (L'y)'x */
+    dual.deviceCopyTo(*d.m_cache->m_d_workIterateDual);
+    c.Ltr();
+    T dos = d.m_cache->m_d_workIteratePrim->dotF(prim);
+    /* Compare results */
+    EXPECT_NEAR(uno, dos, epsilon);
+    EXPECT_NEAR(uno, result(0, 0, 0), epsilon);
+}
+
+TEST_F(OperatorTest, testIsItReallyTheAdjoint) {
+    OperatorTestData<float> df;
+    testIsItReallyTheAdjoint<float>(df, TEST_PRECISION_LOW);
+    OperatorTestData<double> dd;
+    testIsItReallyTheAdjoint<double>(dd, TEST_PRECISION_HIGH);
+}

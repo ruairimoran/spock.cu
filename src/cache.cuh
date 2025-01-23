@@ -864,8 +864,8 @@ bool Cache<T>::computeError(size_t idx) {
             if (m_debug) {
                 m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
                 *m_d_workIteratePrim -= *m_d_iterateCandidatePrim;
-                m_cacheError0[idx] = m_d_workIteratePrim->normF();
-                m_cacheError1[idx] = m_d_admmErrPrim->normF();
+                m_cacheError1[idx] = m_d_workIteratePrim->normF();
+                m_cacheError0[idx] = m_d_admmErrPrim->normF();
                 m_cacheError2[idx] = m_d_admmErrDual->normF();
                 m_cacheCallsToL[idx] = m_callsToL;
             }
@@ -941,7 +941,6 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
         printToJson(n);
         m_d_iterateCandidatePrim->deviceCopyTo(*m_d_workIteratePrim);
         std::cout << *m_d_x;
-        std::cout << *m_d_u;
     }
     if (m_stop) {
         if (m_debug)
@@ -1054,7 +1053,6 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         printToJson(n);
         m_d_iterateCandidatePrim->deviceCopyTo(*m_d_workIteratePrim);
         std::cout << *m_d_x;
-        std::cout << *m_d_u;
     }
     /* Return status */
     if (m_stop) {

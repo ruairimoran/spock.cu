@@ -543,15 +543,15 @@ class ProblemFactory:
         self.__test = False
         self.__preload_constraints()
 
-    def __check_markovian(self, section):
-        if not self.__tree.is_markovian:
-            raise ValueError("Markovian " + section + " provided but scenario tree is not Markovian")
+    def __check_stochastic(self, section):
+        if not self.__tree.is_stochastic:
+            raise ValueError("Stochastic " + section + " provided but scenario tree is not stochastic")
 
     # --------------------------------------------------------
     # Dynamics
     # --------------------------------------------------------
-    def with_markovian_dynamics(self, dynamics):
-        self.__check_markovian("dynamics")
+    def with_stochastic_dynamics(self, dynamics):
+        self.__check_stochastic("dynamics")
         if dynamics[0].is_linear:
             self.__list_of_dynamics[0] = build.LinearDynamics(np.zeros(dynamics[0].state.shape),
                                                               np.zeros(dynamics[0].input.shape))
@@ -564,11 +564,23 @@ class ProblemFactory:
             self.__list_of_dynamics[i] = deepcopy(dynamics[event])
         return self
 
+    def with_dynamics(self, dynamics):
+        if dynamics.is_linear:
+            self.__list_of_dynamics[0] = build.LinearDynamics(np.zeros(dynamics.state.shape),
+                                                              np.zeros(dynamics.input.shape))
+        if dynamics.is_affine:
+            self.__list_of_dynamics[0] = build.AffineDynamics(np.zeros(dynamics.state.shape),
+                                                              np.zeros(dynamics.input.shape),
+                                                              np.zeros((dynamics.state.shape[0], 1)))
+        for i in range(1, self.__tree.num_nodes):
+            self.__list_of_dynamics[i] = deepcopy(dynamics)
+        return self
+
     # --------------------------------------------------------
     # Costs
     # --------------------------------------------------------
-    def with_markovian_nonleaf_costs(self, costs):
-        self.__check_markovian("costs")
+    def with_stochastic_nonleaf_costs(self, costs):
+        self.__check_stochastic("costs")
         self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(costs[0].sqrt_Q.shape),
                                                             np.zeros(costs[0].sqrt_R.shape), None, None, False)
         for i in range(1, self.__tree.num_nodes):

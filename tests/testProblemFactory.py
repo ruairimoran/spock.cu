@@ -5,38 +5,35 @@ import py.build as b
 
 
 class TestProblem(unittest.TestCase):
-    __tree_from_markov = None
-    __tree_from_iid = None
-    __problem_from_markov = None
-    __problem_from_markov_with_markov = None
-    __problem_from_iid = None
+    __tree = None
+    __problem = None
     __num_states = 3
     __num_inputs = 2
 
     @staticmethod
-    def _construct_tree_from_markov():
-        if TestProblem.__tree_from_markov is None:
+    def _construct_tree():
+        if TestProblem.__tree is None:
             p = np.array([[0.1, 0.8, 0.1],
-                          [0.4, 0.6, 0],
+                          [0.4, 0.6, 0.],
                           [0, 0.3, 0.7]])
             v = np.array([0.5, 0.4, 0.1])
             (N, tau) = (4, 3)
-            TestProblem.__tree_from_markov = \
+            TestProblem.__tree = \
                 py.treeFactory.TreeFactoryMarkovChain(p, v, N, tau).generate_tree()
 
     @staticmethod
-    def _construct_problem_from_markov():
-        if TestProblem.__problem_from_markov is None:
-            tree = TestProblem.__tree_from_markov
+    def _construct_problem():
+        if TestProblem.__problem is None:
+            tree = TestProblem.__tree
 
-            # construct markovian set of system and control dynamics
-            system = np.random.randn(TestProblem.__num_states * TestProblem.__num_states).reshape(
-                TestProblem.__num_states, TestProblem.__num_states)
-            control = np.random.randn(TestProblem.__num_states * TestProblem.__num_inputs).reshape(
-                TestProblem.__num_states, TestProblem.__num_inputs)
-            dynamics = [b.LinearDynamics(system, control),
-                        b.LinearDynamics(2 * system, 2 * control),
-                        b.LinearDynamics(3 * system, 3 * control)]
+            # construct stochastic set of system and control dynamics
+            system = np.random.randn(TestProblem.__num_states, TestProblem.__num_states)
+            systems = [system, 2 * system, 3 * system]
+            control = np.random.randn(TestProblem.__num_states, TestProblem.__num_inputs)
+            controls = [control, 2 * control, 3 * control]
+            dynamics = [b.LinearDynamics(systems[0], controls[0]),
+                        b.LinearDynamics(systems[1], controls[1]),
+                        b.LinearDynamics(systems[2], controls[2])]
 
             # construct cost weight matrices
             nonleaf_state_weight = 10 * np.eye(TestProblem.__num_states)  # n x n matrix
@@ -48,7 +45,7 @@ class TestProblem(unittest.TestCase):
                              b.NonleafCost(nonleaf_state_weights[2], control_weights[2])]
             leaf_cost = b.LeafCost(5 * np.eye(TestProblem.__num_states))
 
-            # State-input constraint
+            # state-input constraint
             state_lim = 6
             input_lim = 0.3
             state_lb = -state_lim * np.ones((TestProblem.__num_states, 1))
@@ -59,21 +56,20 @@ class TestProblem(unittest.TestCase):
             si_ub = np.vstack((state_ub, input_ub))
             state_input_constraint = b.Rectangle(si_lb, si_ub)
 
-            # Terminal constraint
+            # terminal constraint
             leaf_state_lim = 0.1
             leaf_state_lb = -leaf_state_lim * np.ones((TestProblem.__num_states, 1))
             leaf_state_ub = leaf_state_lim * np.ones((TestProblem.__num_states, 1))
             leaf_state_constraint = b.Rectangle(leaf_state_lb, leaf_state_ub)
 
             # define risks
-            alpha = 0.5
+            alpha = 0.95
             risks = b.AVaR(alpha)
 
-            # create problem
-            TestProblem.__problem_from_markov = (
+            TestProblem.__problem = (
                 py.problemFactory.ProblemFactory(tree, TestProblem.__num_states, TestProblem.__num_inputs)
-                .with_markovian_dynamics(dynamics)
-                .with_nonleaf_cost(nonleaf_costs[0])
+                .with_stochastic_dynamics(dynamics)
+                .with_stochastic_nonleaf_costs(nonleaf_costs)
                 .with_leaf_cost(leaf_cost)
                 .with_nonleaf_constraint(state_input_constraint)
                 .with_leaf_constraint(leaf_state_constraint)
@@ -81,10 +77,11 @@ class TestProblem(unittest.TestCase):
                 .with_tests()
             ).generate_problem()
 
-            TestProblem.__problem_from_markov_with_markov = (
+            # test if deterministic problem data can be generated
+            _ = (
                 py.problemFactory.ProblemFactory(tree, TestProblem.__num_states, TestProblem.__num_inputs)
-                .with_markovian_dynamics(dynamics)
-                .with_markovian_nonleaf_costs(nonleaf_costs)
+                .with_dynamics(dynamics[0])
+                .with_nonleaf_cost(nonleaf_costs[0])
                 .with_leaf_cost(leaf_cost)
                 .with_nonleaf_constraint(state_input_constraint)
                 .with_leaf_constraint(leaf_state_constraint)
@@ -95,47 +92,46 @@ class TestProblem(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
-        TestProblem._construct_tree_from_markov()
-        TestProblem._construct_problem_from_markov()
+        TestProblem._construct_tree()
+        TestProblem._construct_problem()
 
-    def test_markovian_dynamics_list(self):
-        tree = TestProblem.__tree_from_markov
-        problem = TestProblem.__problem_from_markov_with_markov
+    def test_stochastic_dynamics_list(self):
+        tree = TestProblem.__tree
+        problem = TestProblem.__problem
         for i in range(0, tree.num_nodes):
             self.assertTrue(problem.dynamics_at_node(i) is not None)
 
-    def test_markovian_nonleaf_costs_list(self):
-        tree = TestProblem.__tree_from_markov
-        problem = TestProblem.__problem_from_markov_with_markov
+    def test_stochastic_nonleaf_costs_list(self):
+        tree = TestProblem.__tree
+        problem = TestProblem.__problem
         for i in range(tree.num_nodes):
             self.assertTrue(problem.nonleaf_cost_at_node(i) is not None)
 
-    def test_all_nonleaf_costs_list(self):
-        tree = TestProblem.__tree_from_markov
-        problem = TestProblem.__problem_from_markov
+    def test_stochastic_all_nonleaf_costs_list(self):
+        tree = TestProblem.__tree
+        problem = TestProblem.__problem
         for i in range(tree.num_nodes):
             self.assertTrue(problem.nonleaf_cost_at_node(i) is not None)
 
-    def test_leaf_costs_list(self):
-        tree = TestProblem.__tree_from_markov
-        problem = TestProblem.__problem_from_markov
+    def test_stochastic_leaf_costs_list(self):
+        tree = TestProblem.__tree
+        problem = TestProblem.__problem
         for i in range(tree.num_leaf_nodes):
             self.assertTrue(problem.leaf_cost_at_node(i) is not None)
 
-    def test_no_constraints_loaded(self):
-        problem = TestProblem.__problem_from_markov_with_markov
+    def test_stochastic_no_constraints_loaded(self):
+        problem = TestProblem.__problem
         self.assertTrue(problem.nonleaf_constraint() is not None)
         self.assertTrue(problem.leaf_constraint() is not None)
 
-    def test_risks_list(self):
-        tree = TestProblem.__tree_from_markov
-        problem = TestProblem.__problem_from_markov
+    def test_stochastic_risks_list(self):
+        tree = TestProblem.__tree
+        problem = TestProblem.__problem
         for i in range(tree.num_nonleaf_nodes):
             self.assertTrue(problem.risk_at_node(i) is not None)
 
-    def test_operator(self):
-        _ = TestProblem.__tree_from_markov
-        problem = TestProblem.__problem_from_markov
+    def test_stochastic_operator(self):
+        problem = TestProblem.__problem
         m = 100
         prim = m * np.random.randn(problem.size_prim, 1)
         dual = m * np.random.randn(problem.size_dual, 1)

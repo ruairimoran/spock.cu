@@ -13,9 +13,9 @@ dt = args.dt
 # Generate scenario tree
 # --------------------------------------------------------
 
-p = np.array([[0.5, 0.5], [0.5, 0.5]])
+p = np.array([[0.3, 0.7], [0.3, 0.7]])
 
-v = np.array([0.8, 0.2])
+v = np.array([0.3, 0.7])
 
 (horizon, stopping_stage) = (3, 2)
 tree = py.treeFactory.TreeFactoryMarkovChain(
@@ -85,8 +85,8 @@ problem = (
         scenario_tree=tree,
         num_states=num_states,
         num_inputs=num_inputs)
-    .with_markovian_dynamics(dynamics)
-    .with_markovian_nonleaf_costs(nonleaf_costs)
+    .with_stochastic_dynamics(dynamics)
+    .with_stochastic_nonleaf_costs(nonleaf_costs)
     .with_leaf_cost(leaf_cost)
     .with_nonleaf_constraint(nonleaf_constraint)
     .with_leaf_constraint(leaf_constraint)

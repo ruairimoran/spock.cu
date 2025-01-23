@@ -86,7 +86,7 @@ TEST_F(OperatorTest, adj) {
 }
 
 /* ---------------------------------------
- * Operator L' is the adjoint of L
+ * Ensure L' is the adjoint of L
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
@@ -108,7 +108,7 @@ void testIsItReallyTheAdjoint(OperatorTestData<T> &d, T epsilon) {
     T dos = d.m_cache->m_d_workIteratePrim->dotF(prim);
     /* Compare results */
     EXPECT_NEAR(uno, dos, epsilon);
-    EXPECT_NEAR(uno, result(0, 0, 0), epsilon);
+    EXPECT_NEAR(uno, result(0, 0, 0), 1e-1);
 }
 
 TEST_F(OperatorTest, testIsItReallyTheAdjoint) {

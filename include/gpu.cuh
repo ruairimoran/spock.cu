@@ -19,7 +19,7 @@
  * Define defaults
  */
 #define TPB 512
-#define TEST_PRECISION_LOW 1e-1
+#define TEST_PRECISION_LOW 1e-3
 #define TEST_PRECISION_HIGH 1e-4
 #define ERR std::invalid_argument(err.str())
 static std::ostringstream err;

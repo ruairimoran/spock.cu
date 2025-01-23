@@ -82,7 +82,7 @@ TEST_F(MarkovTreeTest, getAncestor) {
 TEMPLATE_WITH_TYPE_T
 void testGetProbability(MarkovTreeTestData<T> &d) {
     d.m_mockTree->d_probabilities().download(d.m_realNumNodes);
-    EXPECT_FLOAT_EQ(d.m_realNumNodes[4], 0.4);
+    EXPECT_FLOAT_EQ(d.m_realNumNodes[4], 0.21);
 }
 
 TEST_F(MarkovTreeTest, getProbability) {
@@ -95,7 +95,7 @@ TEST_F(MarkovTreeTest, getProbability) {
 TEMPLATE_WITH_TYPE_T
 void testGetCondProb(MarkovTreeTestData<T> &d) {
     d.m_mockTree->d_conditionalProbabilities().download(d.m_realNumNodes);
-    EXPECT_FLOAT_EQ(d.m_realNumNodes[5], 0.5);
+    EXPECT_FLOAT_EQ(d.m_realNumNodes[5], 0.3);
 }
 
 TEST_F(MarkovTreeTest, getCondProb) {

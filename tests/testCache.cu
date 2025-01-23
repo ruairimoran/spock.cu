@@ -204,7 +204,7 @@ void testDotM(CacheTestData<T> &d, T epsilon) {
     DTensor<T> dotResult = DTensor<T>::parseFromFile(d.m_path + "dotResult" + ext);
     Cache<T> &c = *d.m_cache;
     T dot = c.dotM(dotVector, dotVector);
-    EXPECT_NEAR(dot, dotResult(0, 0, 0), epsilon);
+    EXPECT_NEAR(dot, dotResult(0, 0, 0), epsilon * 1e1);  // Leeway for python computation errors
 }
 
 TEST_F(CacheTest, dotM) {

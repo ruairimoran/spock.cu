@@ -108,7 +108,7 @@ void testIsItReallyTheAdjoint(OperatorTestData<T> &d, T epsilon) {
     T dos = d.m_cache->m_d_workIteratePrim->dotF(prim);
     /* Compare results */
     EXPECT_NEAR(uno, dos, epsilon);
-    EXPECT_NEAR(uno, result(0, 0, 0), 1e-1);
+    EXPECT_NEAR(uno, result(0, 0, 0), 1e-1);  // Leeway for python computation errors
 }
 
 TEST_F(OperatorTest, testIsItReallyTheAdjoint) {

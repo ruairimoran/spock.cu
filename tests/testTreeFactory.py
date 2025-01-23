@@ -18,7 +18,7 @@ class TestScenarioTree(unittest.TestCase):
             v = np.array([0.5, 0.5, 0.0])
             (N, tau) = (4, 3)
             TestScenarioTree.__tree_from_markov = \
-                factories.TreeFactoryMarkovChain(p, v, N, tau).generate_tree()
+                factories.MarkovChain(p, v, N, tau).generate_tree()
 
     @staticmethod
     def __construct_tree_from_iid():
@@ -26,7 +26,7 @@ class TestScenarioTree(unittest.TestCase):
             v = np.array([0.1, 0.2, 0.7])
             (N, tau) = (4, 2)
             TestScenarioTree.__tree_from_iid = \
-                factories.TreeFactoryIid(v, N, tau).generate_tree()
+                factories.IidProcess(v, N, tau).generate_tree()
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -166,7 +166,7 @@ class TestScenarioTree(unittest.TestCase):
         v = np.random.rand(n, )
         v /= sum(v)
         (N, tau) = (20, 5)
-        tree = factories.TreeFactoryMarkovChain(p, v, N, tau).generate_tree()
+        tree = factories.MarkovChain(p, v, N, tau).generate_tree()
         for stage in range(tree.num_stages - 1):  # 0, 1, ..., N-1
             for node_idx in tree.nodes_of_stage(stage):
                 prob_child = tree.cond_prob_of_children_of_node(node_idx)
@@ -182,7 +182,7 @@ class TestScenarioTree(unittest.TestCase):
         v /= sum(v)
         (N, tau) = (4, 5)
         with self.assertRaises(ValueError):
-            _ = factories.TreeFactoryMarkovChain(p, v, N, tau).generate_tree()
+            _ = factories.MarkovChain(p, v, N, tau).generate_tree()
 
     def test_markov_stage_and_stop_is_one(self):
         p = np.array([[0.1, 0.8, 0.1],
@@ -190,7 +190,7 @@ class TestScenarioTree(unittest.TestCase):
                       [0, 0.3, 0.7]])
         v = np.array([0.5, 0.4, 0.1])
         (N, tau) = (1, 1)
-        _ = factories.TreeFactoryMarkovChain(p, v, N, tau).generate_tree()
+        _ = factories.MarkovChain(p, v, N, tau).generate_tree()
 
     def test_markov_stop_is_one(self):
         p = np.array([[0.1, 0.8, 0.1],
@@ -198,7 +198,7 @@ class TestScenarioTree(unittest.TestCase):
                       [0, 0.3, 0.7]])
         v = np.array([0.5, 0.4, 0.1])
         (N, tau) = (3, 1)
-        _ = factories.TreeFactoryMarkovChain(p, v, N, tau).generate_tree()
+        _ = factories.MarkovChain(p, v, N, tau).generate_tree()
 
     """
     Iid tests
@@ -331,7 +331,7 @@ class TestScenarioTree(unittest.TestCase):
         v = np.random.rand(n,)
         v /= sum(v)
         (N, tau) = (20, 5)
-        tree = factories.TreeFactoryIid(v, N, tau).generate_tree()
+        tree = factories.IidProcess(v, N, tau).generate_tree()
         for stage in range(tree.num_stages - 1):  # 0, 1, ..., N-1
             for node_idx in tree.nodes_of_stage(stage):
                 prob_child = tree.cond_prob_of_children_of_node(node_idx)
@@ -344,17 +344,17 @@ class TestScenarioTree(unittest.TestCase):
         v /= sum(v)
         (N, tau) = (4, 5)
         with self.assertRaises(ValueError):
-            _ = factories.TreeFactoryIid(v, N, tau).generate_tree()
+            _ = factories.IidProcess(v, N, tau).generate_tree()
 
     def test_iid_stage_and_stop_is_one(self):
         v = np.array([0.5, 0.4, 0.1])
         (N, tau) = (1, 1)
-        _ = factories.TreeFactoryIid(v, N, tau).generate_tree()
+        _ = factories.IidProcess(v, N, tau).generate_tree()
 
     def test_iid_stop_is_one(self):
         v = np.array([0.5, 0.4, 0.1])
         (N, tau) = (3, 1)
-        _ = factories.TreeFactoryIid(v, N, tau).generate_tree()
+        _ = factories.IidProcess(v, N, tau).generate_tree()
 
 
 if __name__ == '__main__':

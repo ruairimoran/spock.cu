@@ -19,7 +19,7 @@ class TestProblem(unittest.TestCase):
             v = np.array([0.5, 0.4, 0.1])
             (N, tau) = (4, 3)
             TestProblem.__tree = \
-                py.treeFactory.TreeFactoryMarkovChain(p, v, N, tau).generate_tree()
+                py.treeFactory.MarkovChain(p, v, N, tau).generate_tree()
 
     @staticmethod
     def _construct_problem():
@@ -116,7 +116,7 @@ class TestProblem(unittest.TestCase):
     def test_stochastic_leaf_costs_list(self):
         tree = TestProblem.__tree
         problem = TestProblem.__problem
-        for i in range(tree.num_leaf_nodes):
+        for i in range(tree.num_nonleaf_nodes, tree.num_nodes):
             self.assertTrue(problem.leaf_cost_at_node(i) is not None)
 
     def test_stochastic_no_constraints_loaded(self):

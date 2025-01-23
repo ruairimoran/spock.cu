@@ -84,6 +84,14 @@ class Problem:
         self.__print()
 
     # GETTERS
+    @property
+    def num_states(self):
+        return self.__num_states
+
+    @property
+    def num_inputs(self):
+        return self.__num_states
+
     def dynamics_at_node(self, idx):
         return self.__list_of_dynamics[idx]
 
@@ -91,7 +99,7 @@ class Problem:
         return self.__list_of_nonleaf_costs[idx]
 
     def leaf_cost_at_node(self, idx):
-        return self.__list_of_leaf_costs[idx]
+        return self.__list_of_leaf_costs[idx - self.__tree.num_nonleaf_nodes]
 
     def nonleaf_constraint(self):
         return self.__nonleaf_constraint

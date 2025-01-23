@@ -290,7 +290,7 @@ class Tree:
         wn.mainloop()
 
 
-class TreeFactoryMarkovChain:
+class MarkovChain:
     """
     Factory class to construct scenario trees from stopped Markov chains
     """
@@ -418,7 +418,7 @@ class TreeFactoryMarkovChain:
         return tree
 
 
-class TreeFactoryIid:
+class IidProcess:
     """
     Factory class to construct n-ary scenario trees from i.i.d. processes
     """

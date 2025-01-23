@@ -18,7 +18,7 @@ p = np.array([[0.3, 0.7], [0.3, 0.7]])
 v = np.array([0.3, 0.7])
 
 (horizon, stopping_stage) = (3, 2)
-tree = py.treeFactory.TreeFactoryMarkovChain(
+tree = py.treeFactory.MarkovChain(
     transition_prob=p,
     initial_distribution=v,
     horizon=horizon,

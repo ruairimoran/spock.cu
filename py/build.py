@@ -93,9 +93,20 @@ class Cost:
     """
 
     def __init__(self, Q, R=None):
+        self.__Q = Q
+        self.__R = R if R is not None else None
         self.__sqrt_Q = sqrtm(Q)
         self.__sqrt_R = sqrtm(R) if R is not None else None
         self.__t = None
+        self.__lin = False
+
+    @property
+    def state(self):
+        return self.__Q
+
+    @property
+    def input(self):
+        return self.__R
 
     @property
     def sqrt_Q(self):
@@ -112,6 +123,14 @@ class Cost:
     @t.setter
     def t(self, t):
         self.__t = t
+
+    @property
+    def is_linear(self):
+        return self.__lin
+
+    @is_linear.setter
+    def is_linear(self, lin):
+        self.__lin = lin
 
 
 # --------------------------------------------------------
@@ -132,6 +151,7 @@ class NonleafCost(Cost):
         super().__init__(Q, R)
         lin_q = q is not None
         lin_r = r is not None
+        self.lin = lin_q or lin_r
         nrm_q = q.T @ np.linalg.solve(Q, q) if lin_q else 0
         nrm_r = r.T @ np.linalg.solve(R, r) if lin_r else 0
         scaled_nrm = .125 * (nrm_q + nrm_r)
@@ -156,10 +176,10 @@ class LeafCost(Cost):
         :param q: linear state cost vector
         """
         super().__init__(Q)
-        lin_q = q is not None
-        nrm_q = q.T @ np.linalg.solve(Q, q) if lin_q else 0
+        self.lin = q is not None
+        nrm_q = q.T @ np.linalg.solve(Q, q) if self.lin else 0
         scaled_nrm = .125 * nrm_q
-        a = np.linalg.solve(self.sqrt_Q, q).reshape(-1, 1) if lin_q else np.zeros((Q.shape[0], 1))
+        a = np.linalg.solve(self.sqrt_Q, q).reshape(-1, 1) if self.lin else np.zeros((Q.shape[0], 1))
         c = -.5 + scaled_nrm
         d = .5 + scaled_nrm
         self.t = np.vstack((a, c, d))

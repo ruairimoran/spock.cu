@@ -21,7 +21,7 @@ v = np.array([0.3, 0.7])
 
 num_stages = args.nStages
 (final_stage, stop_branching_stage) = (num_stages - 1, num_stages - 1)
-tree = py.treeFactory.TreeFactoryMarkovChain(
+tree = py.treeFactory.MarkovChain(
     transition_prob=p,
     initial_distribution=v,
     horizon=final_stage,

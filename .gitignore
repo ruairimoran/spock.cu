@@ -1,5 +1,7 @@
 # Custom
 misc/timeScaling.csv
+misc/cacheCp.json
+misc/cacheSp.json
 data/
 .vscode
 venv*

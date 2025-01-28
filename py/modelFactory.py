@@ -23,7 +23,20 @@ class Model:
         self.__constraints.append(self.__x[self.__node_to_x(0)] == x0)
         self.__cvx = cp.Problem(self.__objective, self.__constraints)
         self.__constraints.pop()
-        return self.__cvx.solve(solver=solver, eps=tol)
+        if solver == cp.MOSEK:
+            return self.__cvx.solve(solver=solver,
+                                    mosek_params={"MSK_DPAR_INTPNT_TOL_REL_GAP":tol,
+                                                  "MSK_DPAR_INTPNT_CO_TOL_REL_GAP":tol,
+                                                  "MSK_DPAR_INTPNT_QO_TOL_REL_GAP":tol
+                                                  }
+                                    )
+        elif solver == cp.GUROBI:
+            return self.__cvx.solve(solver=solver,
+                                    FeasibilityTol=tol,
+                                    OptimalityTol=tol)
+        else:
+            return self.__cvx.solve(solver=solver,
+                                    eps=tol)
 
     @property
     def states(self):

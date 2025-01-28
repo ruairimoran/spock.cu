@@ -3,12 +3,12 @@ import cvxpy as cp
 
 
 class Model:
-    def __init__(self, tree, problem, x0):
+    def __init__(self, tree, problem):
         self.__tree = tree
         self.__problem = problem
         self.__nx = self.__problem.num_states
         self.__nu = self.__problem.num_inputs
-        self.__x0 = x0
+        self.__x0 = None
         self.__x = None
         self.__u = None
         self.__y = None
@@ -19,12 +19,10 @@ class Model:
         self.__cvx = None
         self.__build()
 
-    def solve(self, x0=None, solver=cp.SCS, tol=1e-3):
-        if self.__x is None:
-            raise Exception("[Model] model has not been built.\n")
-        x = x0 if x0 is not None else [0. for _ in range(self.__nx)]
-        self.__constraints.append(self.__x[self.__node_to_x(0)] == x)
+    def solve(self, x0, solver=cp.SCS, tol=1e-3):
+        self.__constraints.append(self.__x[self.__node_to_x(0)] == x0)
         self.__cvx = cp.Problem(self.__objective, self.__constraints)
+        self.__constraints.pop()
         return self.__cvx.solve(solver=solver, eps=tol)
 
     @property
@@ -34,6 +32,10 @@ class Model:
     @property
     def inputs(self):
         return np.array(self.__u.value).reshape(-1, 1)
+
+    @property
+    def solve_time(self):
+        return self.__cvx._solve_time
 
     def __build(self):
         """Build an optimisation model using CVXPY."""

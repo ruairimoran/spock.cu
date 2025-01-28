@@ -2,6 +2,7 @@
 misc/timeScaling.csv
 misc/cacheCp.json
 misc/cacheSp.json
+misc/timeCvxpy.csv
 data/
 .vscode
 venv*

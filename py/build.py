@@ -141,12 +141,13 @@ class NonleafCost(Cost):
     Nonleaf costs.
     """
 
-    def __init__(self, Q, R, q=None, r=None, dud=False):
+    def __init__(self, Q, R, q=None, r=None, node_zero=False):
         """
         :param Q: quadratic state cost matrix
         :param R: quadratic input cost matrix
         :param q: linear state cost vector
         :param r: linear input cost vector
+        :param node_zero: whether this is for node zero (setup with all zeros)
         """
         super().__init__(Q, R)
         lin_q = q is not None
@@ -157,8 +158,8 @@ class NonleafCost(Cost):
         scaled_nrm = .125 * (nrm_q + nrm_r)
         a = np.linalg.solve(self.sqrt_Q, q).reshape(-1, 1) if lin_q else np.zeros((Q.shape[0], 1))
         b = np.linalg.solve(self.sqrt_R, r).reshape(-1, 1) if lin_r else np.zeros((R.shape[0], 1))
-        c = -.5 + scaled_nrm if not dud else 0
-        d = .5 + scaled_nrm if not dud else 0
+        c = -.5 + scaled_nrm if not node_zero else 0
+        d = .5 + scaled_nrm if not node_zero else 0
         self.t = np.vstack((a, b, c, d))
 
 

@@ -590,7 +590,7 @@ class ProblemFactory:
     def with_stochastic_nonleaf_costs(self, costs):
         self.__check_stochastic("costs")
         self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(costs[0].sqrt_Q.shape),
-                                                            np.zeros(costs[0].sqrt_R.shape), None, None, False)
+                                                            np.zeros(costs[0].sqrt_R.shape), None, None, True)
         for i in range(1, self.__tree.num_nodes):
             event = self.__tree.event_of_node(i)
             self.__list_of_nonleaf_costs[i] = deepcopy(costs[event])
@@ -598,7 +598,7 @@ class ProblemFactory:
 
     def with_nonleaf_cost(self, cost):
         self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(cost.sqrt_Q.shape),
-                                                            np.zeros(cost.sqrt_R.shape), None, None, False)
+                                                            np.zeros(cost.sqrt_R.shape), None, None, True)
         for i in range(1, self.__tree.num_nodes):
             self.__list_of_nonleaf_costs[i] = deepcopy(cost)
         return self

@@ -43,6 +43,27 @@ void testDotM(CacheTestData<T> &, T);
 
 
 /**
+ * Sanity check for non-finite values in vector.
+ * Caution! For debugging only.
+ */
+template<typename T>
+static void isFinite(std::vector<T> &vec) {
+    for (const T &value : vec) {
+        if (!std::isfinite(value)) throw std::invalid_argument("[isFinite] vector has entries that are not finite.\n");
+    }
+}
+
+template<typename T>
+static void isFinite(DTensor<T> &d_vec) {
+    std::vector<T> vec(d_vec.numEl());
+    d_vec.download(vec);
+    for (const T &value : vec) {
+        if (!std::isfinite(value)) throw std::invalid_argument("[isFinite] DTensor has entries that are not finite.\n");
+    }
+}
+
+
+/**
  * Cache of methods for proximal algorithms
  *
  * Note: `d_` indicates a device pointer
@@ -146,6 +167,7 @@ protected:
     std::vector<T> m_cacheError0;
     std::vector<T> m_cacheError1;
     std::vector<T> m_cacheError2;
+    std::vector<T> m_cacheError3;
     std::vector<T> m_cacheDeltaPrim;
     std::vector<T> m_cacheDeltaDual;
     std::vector<T> m_cacheNrmLtrDeltaDual;
@@ -263,6 +285,7 @@ public:
         m_cacheError0 = std::vector<T>(m_maxOuterIters);
         m_cacheError1 = std::vector<T>(m_maxOuterIters);
         m_cacheError2 = std::vector<T>(m_maxOuterIters);
+        m_cacheError3 = std::vector<T>(m_maxOuterIters);
         m_cacheDeltaPrim = std::vector<T>(m_maxOuterIters);
         m_cacheDeltaDual = std::vector<T>(m_maxOuterIters);
         m_cacheNrmLtrDeltaDual = std::vector<T>(m_maxOuterIters);
@@ -840,6 +863,7 @@ void Cache<T>::updateDirection(size_t idx) {
 template<typename T>
 bool Cache<T>::computeError(size_t idx) {
     cudaDeviceSynchronize();  // DO NOT REMOVE !!!
+    isFinite(*m_d_iterateCandidate);
     if (m_admm) {
         m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
         Ltr();
@@ -862,12 +886,20 @@ bool Cache<T>::computeError(size_t idx) {
         } else {
             m_status = (m_d_admmErrPrim->normF() <= m_admmTolPrim && m_d_admmErrDual->normF() <= m_admmTolDual);
             if (m_debug) {
+                isFinite(*m_d_admmIterateCandidate);
+
+                m_cacheCallsToL[idx] = m_callsToL;
                 m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
                 *m_d_workIteratePrim -= *m_d_iterateCandidatePrim;
-                m_cacheError1[idx] = m_d_workIteratePrim->normF();
                 m_cacheError0[idx] = m_d_admmErrPrim->normF();
+                m_cacheError1[idx] = m_d_workIteratePrim->normF();
                 m_cacheError2[idx] = m_d_admmErrDual->normF();
-                m_cacheCallsToL[idx] = m_callsToL;
+
+                /* err3 = Lz+ - n+ */
+                m_d_iterateCandidatePrim->deviceCopyTo(*m_d_workIteratePrim);
+                L();
+                *m_d_workIterateDual -= *m_d_iterateCandidateDual;
+                m_cacheError3[idx] = m_d_workIterateDual->normF();
             }
         }
     } else {
@@ -1080,24 +1112,17 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
 }
 
 /**
- * Add a vector to a .json file with a referenced name
+ * Add a vector to a .json file
  */
 template<typename T>
 static void
-addArrayToJsonRef(rapidjson::Document &doc, rapidjson::GenericStringRef<char> const &name, std::vector<T> &vec) {
-    rapidjson::Value array(rapidjson::kArrayType);
-    for (size_t i = 0; i < vec.size(); i++) {
-        array.PushBack(vec[i], doc.GetAllocator());
+addArray(rapidjson::Document &doc, std::string const &name, std::vector<T> &vec) {
+    for (const T &value : vec) {
+        if (!std::isfinite(value)) {
+            err << "[Cache::addArray] array (" << name << ") has entries that are not finite.\n";
+            throw ERR;
+        }
     }
-    doc.AddMember(name, array, doc.GetAllocator());
-}
-
-/**
- * Add a vector to a .json file with a literal name
- */
-template<typename T>
-static void
-addArrayToJsonStr(rapidjson::Document &doc, std::string const &name, std::vector<T> &vec) {
     rapidjson::Value array(rapidjson::kArrayType);
     for (size_t i = 0; i < vec.size(); i++) {
         array.PushBack(vec[i], doc.GetAllocator());
@@ -1127,32 +1152,21 @@ void Cache<T>::printToJson(std::string &file) {
         doc.AddMember("admmTolPrim", m_admmTolPrim, doc.GetAllocator());
         doc.AddMember("admmTolDual", m_admmTolDual, doc.GetAllocator());
     }
-//    std::vector<T> solution(m_sizePrim);
-//    m_d_iteratePrim->download(solution);
-//    rapidjson::GenericStringRef<char> nSol = "sol";
-//    addArrayToJsonRef(doc, nSol, solution);
-    rapidjson::GenericStringRef<char> nCallsL = "callsL";
-    addArrayToJsonRef(doc, nCallsL, m_cacheCallsToL);
-    rapidjson::GenericStringRef<char> nErr0 = "err0";
-    addArrayToJsonRef(doc, nErr0, m_cacheError0);
-    rapidjson::GenericStringRef<char> nErr1 = "err1";
-    addArrayToJsonRef(doc, nErr1, m_cacheError1);
-    rapidjson::GenericStringRef<char> nErr2 = "err2";
-    addArrayToJsonRef(doc, nErr2, m_cacheError2);
-//    rapidjson::GenericStringRef<char> nDeltaPrim = "deltaPrim";
-//    addArrayToJsonRef(doc, nDeltaPrim, m_cacheDeltaPrim);
-//    rapidjson::GenericStringRef<char> nDeltaDual = "deltaDual";
-//    addArrayToJsonRef(doc, nDeltaDual, m_cacheDeltaDual);
-//    rapidjson::GenericStringRef<char> nNrmLtrDeltaDual = "nrmLtrDeltaDual";
-//    addArrayToJsonRef(doc, nNrmLtrDeltaDual, m_cacheNrmLtrDeltaDual);
+    addArray(doc, "callsL", m_cacheCallsToL);
+    addArray(doc, "err0", m_cacheError0);
+    addArray(doc, "err1", m_cacheError1);
+    addArray(doc, "err2", m_cacheError2);
+    addArray(doc, "err3", m_cacheError3);
     typedef rapidjson::GenericStringBuffer<rapidjson::UTF8<>, rapidjson::MemoryPoolAllocator<>> StringBuffer;
-    StringBuffer buffer(&allocator);
-    rapidjson::Writer<StringBuffer> writer(buffer, reinterpret_cast<rapidjson::CrtAllocator *>(&allocator));
+    StringBuffer buffer(&doc.GetAllocator());
+    rapidjson::Writer<StringBuffer> writer(buffer, reinterpret_cast<rapidjson::CrtAllocator *>(&doc.GetAllocator()));
     doc.Accept(writer);
     std::string json(buffer.GetString(), buffer.GetSize());
     std::ofstream of("/home/biggirl/Documents/remote_host/raocp-parallel/misc/cache" + file + ".json");
+    if (!of.is_open()) throw std::runtime_error("[Cache::printToJson] Failed to open file for writing.\n");
     of << json;
-    if (!of.good()) throw std::runtime_error("[Cache::printToJson] Can't write the JSON string to the file!");
+    of.close();
+    if (!of.good()) throw std::runtime_error("[Cache::printToJson] Can't write the JSON string to the file.\n");
 }
 
 /**

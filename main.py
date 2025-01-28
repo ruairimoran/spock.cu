@@ -1,12 +1,15 @@
 import py.treeFactory as treeFactory
 import py.build as build
 import py.problemFactory as problemFactory
+import py.modelFactory as modelFactory
 import numpy as np
+import cvxpy as cp
 import argparse
 
 parser = argparse.ArgumentParser(description='Time cvxpy solvers.')
-parser.add_argument("--nStages", type=int, default=3)
 parser.add_argument("--nEvents", type=int, default=2)
+parser.add_argument("--nStages", type=int, default=3)
+parser.add_argument("--stop", type=int, default=1)
 parser.add_argument("--nStates", type=int, default=5)
 parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
@@ -15,16 +18,23 @@ dt = args.dt
 # Sizes
 num_stages = args.nStages
 num_events = args.nEvents
+stopping = args.stop
 num_states = args.nStates
 num_inputs = num_states
+
+# Solvers
+x0 = [.1 for _ in range(num_states)]
+solvers = [cp.MOSEK]
+s = len(solvers) + 1
+cache = [0. for _ in range(s)]
 
 # --------------------------------------------------------
 # Generate scenario tree
 # --------------------------------------------------------
 
-v = np.array([0.3, 0.7])
+v = np.ones(num_events) * 1 / num_events
 
-(final_stage, stop_branching_stage) = (num_stages - 1, 2)
+(final_stage, stop_branching_stage) = (num_stages - 1, stopping)
 tree = treeFactory.IidProcess(
     distribution=v,
     horizon=final_stage,
@@ -37,36 +47,34 @@ print(tree)
 # --------------------------------------------------------
 # Generate problem data
 # --------------------------------------------------------
-num_events = v.size
-
 # State dynamics
 A = .1 * np.eye(num_states)
 
 # Input dynamics
-B = 1. * np.ones((num_states, num_inputs))
+B = 1. * np.eye(num_inputs)
 
 dynamics = []
 for i in range(num_events):
-    dynamics += [build.LinearDynamics(A * (i+1), B)]
+    dynamics += [build.LinearDynamics(A * (i + 1), B)]
 
 # State cost
-Q = 10 * np.eye(num_states)
+Q = .1 * np.eye(num_states)
 
 # Input cost
 R = 1. * np.eye(num_inputs)
 
 nonleaf_costs = []
 for i in range(num_events):
-    nonleaf_costs += [build.NonleafCost(Q * (i + 1), R)]
+    nonleaf_costs += [build.NonleafCost(Q, R)]
 
 # Terminal state cost
-T = 100 * np.eye(num_states)
+T = .1 * np.eye(num_states)
 
 leaf_cost = build.LeafCost(T)
 
 # State-input constraint
-state_lim = 10.
-input_lim = 2.
+state_lim = 1.
+input_lim = .5
 state_lb = -state_lim * np.ones((num_states, 1))
 state_ub = state_lim * np.ones((num_states, 1))
 input_lb = -input_lim * np.ones((num_inputs, 1))
@@ -76,7 +84,7 @@ nonleaf_ub = np.vstack((state_ub, input_ub))
 nonleaf_constraint = build.Rectangle(nonleaf_lb, nonleaf_ub)
 
 # Terminal constraint
-leaf_state_lim = 10.
+leaf_state_lim = 1.
 leaf_lb = -leaf_state_lim * np.ones((num_states, 1))
 leaf_ub = leaf_state_lim * np.ones((num_states, 1))
 leaf_constraint = build.Rectangle(leaf_lb, leaf_ub)
@@ -99,3 +107,16 @@ problem = (
     .with_risk(risk)
     .generate_problem()
 )
+
+# Cache
+cache[0] = tree.num_nodes
+for i in range(1, s):
+    model = modelFactory.Model(tree, problem)
+    print("Solving...")
+    model.solve(x0=x0, solver=solvers[i - 1], tol=1e-3)
+    cache[i] = model.solve_time * 1e3
+    print(cache[i], " ms")
+
+# Save to csv
+with open('misc/timeCvxpy.csv', "a") as f:
+    np.savetxt(fname=f, X=np.array(cache).reshape(1, -1), fmt='%.5f', delimiter=', ', newline='\n')

@@ -27,7 +27,7 @@ int main() {
 
     /* CACHE */
     real_t tol = 1e-3;
-    size_t maxOuterIters = 1000;
+    size_t maxOuterIters = 2000;
     size_t maxInnerIters = 8;
     size_t andersonBuffer = 3;
     bool allowK0Updates = true;
@@ -37,7 +37,7 @@ int main() {
 
     /* TIMING ALGORITHM */
     std::vector<real_t> initState(tree.numStates(), .1);
-    size_t runs = 10;
+    size_t runs = 5;
     size_t warm = 5;
     size_t totalRuns = runs + warm;
     std::vector<real_t> runTimes(totalRuns, 0.);
@@ -53,7 +53,7 @@ int main() {
     /* SAVE */
     std::ofstream timeScaling;
     timeScaling.open("misc/timeScaling.csv", std::ios::app);
-    timeScaling << tree.numStages() << ", " << tree.numStates() << ", " << avg << std::endl;
+    timeScaling << tree.numNodes() << ", " << tree.numStates() << ", " << avg << std::endl;
     timeScaling.close();
     std::cout << "Saved (avg = " << avg << " ms)." << std::endl;
 

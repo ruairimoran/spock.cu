@@ -13,7 +13,7 @@
 
 
 int main() {
-    bool debug = false;
+    bool debug = true;
 
     /* SCENARIO TREE */
     std::cout << "Reading tree files...\n";
@@ -27,7 +27,7 @@ int main() {
 
     /* CACHE */
     real_t tol = 1e-3;
-    size_t maxOuterIters = 2000;
+    size_t maxOuterIters = 1000;
     size_t maxInnerIters = 8;
     size_t andersonBuffer = 3;
     bool allowK0Updates = true;
@@ -36,9 +36,9 @@ int main() {
     Cache cache(tree, problem, tol, tol, maxOuterIters, maxInnerIters, andersonBuffer, allowK0Updates, debug, admm);
 
     /* TIMING ALGORITHM */
-    std::vector<real_t> initState(tree.numStates(), .1);
-    size_t runs = 5;
-    size_t warm = 5;
+    std::vector<real_t> initState(tree.numStates(), 3.9);
+    size_t runs = 1;
+    size_t warm = 0;
     size_t totalRuns = runs + warm;
     std::vector<real_t> runTimes(totalRuns, 0.);
     std::cout << "Computing average solve time over (" << runs << ") runs with (" << warm << ") warm up runs...\n";

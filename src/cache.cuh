@@ -160,6 +160,8 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_v = nullptr;
     std::unique_ptr<DTensor<T>> m_d_vi = nullptr;
     std::unique_ptr<DTensor<T>> m_d_viSoc = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_input = nullptr;
+    std::vector<T> m_input;
     /* Projections */
     std::unique_ptr<NonnegativeOrthantCone<T>> m_nnoc = nullptr;
     /* Caches */
@@ -281,6 +283,7 @@ public:
         /* Sizes */
         initialiseSizes();
         /* Allocate memory on host */
+        m_input = std::vector<T>(m_tree.numInputs());
         m_cacheCallsToL = std::vector<size_t>(m_maxOuterIters);
         m_cacheError0 = std::vector<T>(m_maxOuterIters);
         m_cacheError1 = std::vector<T>(m_maxOuterIters);
@@ -326,11 +329,6 @@ public:
 
     ~Cache() = default;
 
-    /**
-     * Public methods
-     */
-    void reset();  // For testing.
-
     int runCp(std::vector<T> &, std::vector<T> * = nullptr);
 
     int runSpock(std::vector<T> &, std::vector<T> * = nullptr);
@@ -338,6 +336,29 @@ public:
     T timeCp(std::vector<T> &);
 
     T timeSp(std::vector<T> &);
+
+    std::vector<T> &input() {
+        m_d_input->download(m_input);
+    }
+
+    /**
+     * Debug functions (slow).
+     */
+    void reset();
+
+    std::vector<T> inputs() {
+        m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
+        std::vector<T> inputs(m_sizeU);
+        m_d_u->download(inputs);
+        return inputs;
+    }
+
+    std::vector<T> states() {
+        m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
+        std::vector<T> states(m_sizeX);
+        m_d_x->download(states);
+        return states;
+    }
 
     /**
      * Test functions. As a friend, they can access protected members.
@@ -428,6 +449,7 @@ void Cache<T>::initialiseSizes() {
 
 template<typename T>
 void Cache<T>::reshape() {
+    m_d_input = std::make_unique<DTensor<T>>(*m_d_iterate, m_rowAxis, 0, m_tree.numInputs() - 1);
     m_d_iteratePrim = std::make_unique<DTensor<T>>(*m_d_iterate, m_rowAxis, 0, m_sizePrim - 1);
     m_d_iterateDual = std::make_unique<DTensor<T>>(*m_d_iterate, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
     m_d_iteratePrevPrim = std::make_unique<DTensor<T>>(*m_d_iteratePrev, m_rowAxis, 0, m_sizePrim - 1);
@@ -971,8 +993,8 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
     if (m_debug) {
         std::string n = "Cp";
         printToJson(n);
-        m_d_iterateCandidatePrim->deviceCopyTo(*m_d_workIteratePrim);
-        std::cout << *m_d_x;
+//        m_d_iterateCandidatePrim->deviceCopyTo(*m_d_workIteratePrim);
+//        std::cout << *m_d_x;
     }
     if (m_stop) {
         if (m_debug)
@@ -1019,6 +1041,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         /* Check error (residual computed internally) */
         m_stop = computeError(iOut);
         if (m_stop) {
+            acceptCandidate();
             m_countIterations = iOut;
             break;
         }
@@ -1083,8 +1106,8 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     if (m_debug) {
         std::string n = "Sp";
         printToJson(n);
-        m_d_iterateCandidatePrim->deviceCopyTo(*m_d_workIteratePrim);
-        std::cout << *m_d_x;
+//        m_d_iterateCandidatePrim->deviceCopyTo(*m_d_workIteratePrim);
+//        std::cout << *m_d_x;
     }
     /* Return status */
     if (m_stop) {
@@ -1145,9 +1168,13 @@ void Cache<T>::printToJson(std::string &file) {
     doc.SetObject();
     doc.AddMember("maxIters", m_maxOuterIters, doc.GetAllocator());
     doc.AddMember("tol", m_tol, doc.GetAllocator());
+    doc.AddMember("horizon", m_tree.numStages() - 1, doc.GetAllocator());
+    auto idx = find(m_tree.childMax().begin(), m_tree.childMax().end(), 1);
+    doc.AddMember("branchFactor", idx - m_tree.childMax().begin(), doc.GetAllocator());
+    doc.AddMember("numEvents", m_tree.numEvents(), doc.GetAllocator());
+    doc.AddMember("numStates", m_tree.numStates(), doc.GetAllocator());
+    doc.AddMember("numInputs", m_tree.numInputs(), doc.GetAllocator());
     doc.AddMember("sizeCache", m_maxOuterIters, doc.GetAllocator());
-    doc.AddMember("sizePrim", m_sizePrim, doc.GetAllocator());
-    doc.AddMember("sizeDual", m_sizeDual, doc.GetAllocator());
     if (m_admm) {
         doc.AddMember("admmTolPrim", m_admmTolPrim, doc.GetAllocator());
         doc.AddMember("admmTolDual", m_admmTolDual, doc.GetAllocator());
@@ -1157,6 +1184,10 @@ void Cache<T>::printToJson(std::string &file) {
     addArray(doc, "err1", m_cacheError1);
     addArray(doc, "err2", m_cacheError2);
     addArray(doc, "err3", m_cacheError3);
+    std::vector<T> x = this->states();
+    addArray(doc, "states", x);
+    std::vector<T> u = this->inputs();
+    addArray(doc, "inputs", u);
     typedef rapidjson::GenericStringBuffer<rapidjson::UTF8<>, rapidjson::MemoryPoolAllocator<>> StringBuffer;
     StringBuffer buffer(&doc.GetAllocator());
     rapidjson::Writer<StringBuffer> writer(buffer, reinterpret_cast<rapidjson::CrtAllocator *>(&doc.GetAllocator()));

@@ -7,10 +7,10 @@ import cvxpy as cp
 import argparse
 
 parser = argparse.ArgumentParser(description='Time cvxpy solvers.')
-parser.add_argument("--nEvents", type=int, default=2)
-parser.add_argument("--nStages", type=int, default=3)
-parser.add_argument("--stop", type=int, default=1)
-parser.add_argument("--nStates", type=int, default=5)
+parser.add_argument("--nEvents", type=int, default=10)
+parser.add_argument("--nStages", type=int, default=10)
+parser.add_argument("--stop", type=int, default=2)
+parser.add_argument("--nStates", type=int, default=2)
 parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
 dt = args.dt
@@ -73,7 +73,7 @@ T = .1 * np.eye(num_states)
 leaf_cost = build.LeafCost(T)
 
 # State-input constraint
-state_lim = 1.
+state_lim = 4.
 input_lim = .5
 state_lb = -state_lim * np.ones((num_states, 1))
 state_ub = state_lim * np.ones((num_states, 1))
@@ -84,7 +84,7 @@ nonleaf_ub = np.vstack((state_ub, input_ub))
 nonleaf_constraint = build.Rectangle(nonleaf_lb, nonleaf_ub)
 
 # Terminal constraint
-leaf_state_lim = 1.
+leaf_state_lim = .1
 leaf_lb = -leaf_state_lim * np.ones((num_states, 1))
 leaf_ub = leaf_state_lim * np.ones((num_states, 1))
 leaf_constraint = build.Rectangle(leaf_lb, leaf_ub)
@@ -108,15 +108,15 @@ problem = (
     .generate_problem()
 )
 
-# Cache
-cache[0] = tree.num_nodes
-for i in range(1, s):
-    model = modelFactory.Model(tree, problem)
-    print("Solving...")
-    model.solve(x0=x0, solver=solvers[i - 1], tol=1e-3)
-    cache[i] = model.solve_time * 1e3
-    print(cache[i], " ms")
-
-# Save to csv
-with open('misc/timeCvxpy.csv', "a") as f:
-    np.savetxt(fname=f, X=np.array(cache).reshape(1, -1), fmt='%.5f', delimiter=', ', newline='\n')
+# # Cache
+# cache[0] = tree.num_nodes
+# for i in range(1, s):
+#     model = modelFactory.Model(tree, problem)
+#     print("Solving...")
+#     model.solve(x0=x0, solver=solvers[i - 1], tol=1e-3)
+#     cache[i] = model.solve_time * 1e3
+#     print(cache[i], " ms")
+#
+# # Save to csv
+# with open('misc/timeCvxpy.csv', "a") as f:
+#     np.savetxt(fname=f, X=np.array(cache).reshape(1, -1), fmt='%.5f', delimiter=', ', newline='\n')

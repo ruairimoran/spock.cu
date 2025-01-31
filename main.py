@@ -47,15 +47,25 @@ print(tree)
 # --------------------------------------------------------
 # Generate problem data
 # --------------------------------------------------------
-# State dynamics
-A = .1 * np.eye(num_states)
 
-# Input dynamics
+
+def Ar(a, b):
+    return np.array([[a, b], [-b, a]])
+
+
+# Dynamics
 B = 1. * np.eye(num_inputs)
-
 dynamics = []
+np.random.seed(2)
 for i in range(num_events):
-    dynamics += [build.LinearDynamics(A * (i + 1), B)]
+    A = .1 * Ar(np.random.randn(1)[0], np.random.randn(1)[0])
+    T = np.array(np.random.randn(num_states * num_states)).reshape(num_states, num_states)
+    A = np.linalg.solve(T, (A @ T))
+    eigen, _ = np.linalg.eig(A)
+    max_eigen = np.real(max(eigen))
+    if max_eigen > .9:
+        raise Exception("[main.py] eigs too big")
+    dynamics += [build.LinearDynamics(A, B)]
 
 # State cost
 Q = .1 * np.eye(num_states)
@@ -73,8 +83,8 @@ T = .1 * np.eye(num_states)
 leaf_cost = build.LeafCost(T)
 
 # State-input constraint
-state_lim = 4.
-input_lim = .5
+state_lim = 100.
+input_lim = 1.
 state_lb = -state_lim * np.ones((num_states, 1))
 state_ub = state_lim * np.ones((num_states, 1))
 input_lb = -input_lim * np.ones((num_inputs, 1))

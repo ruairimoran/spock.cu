@@ -280,7 +280,7 @@ TEST_F(CacheTest, memCpyOutTS) {
 
 TEMPLATE_WITH_TYPE_T
 void testConvergenceCP(CacheTestData<T> &d) {
-    std::vector<T> initState(d.m_tree->numStates(), .1);
+    std::vector<T> initState(d.m_tree->numStates(), 1.1);
     int status = d.m_cache->runCp(initState);
     EXPECT_EQ(status, 0);
 }
@@ -298,7 +298,7 @@ TEST_F(CacheTest, testConvergenceCP) {
 
 TEMPLATE_WITH_TYPE_T
 void testConvergenceSP(CacheTestData<T> &d) {
-    std::vector<T> initState(d.m_tree->numStates(), .1);
+    std::vector<T> initState(d.m_tree->numStates(), 1.1);
     int status = d.m_cache->runSpock(initState);
     EXPECT_EQ(status, 0);
 }

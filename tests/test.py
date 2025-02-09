@@ -59,7 +59,7 @@ T = 3 * np.eye(num_states)
 leaf_cost = b.LeafCost(T)
 
 # State-input constraint
-state_lim = 10.
+state_lim = 1.
 input_lim = 5.
 state_lb = -state_lim * np.ones((num_states, 1))
 state_ub = state_lim * np.ones((num_states, 1))
@@ -70,7 +70,7 @@ si_ub = np.vstack((state_ub, input_ub))
 nonleaf_constraint = b.Rectangle(si_lb, si_ub)
 
 # Terminal constraint
-leaf_state_lim = 10.
+leaf_state_lim = .1
 leaf_state_lb = -leaf_state_lim * np.ones((num_states, 1))
 leaf_state_ub = leaf_state_lim * np.ones((num_states, 1))
 leaf_constraint = b.Rectangle(leaf_state_lb, leaf_state_ub)

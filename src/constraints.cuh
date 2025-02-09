@@ -131,7 +131,7 @@ private:
 
 public:
     explicit Rectangle(std::string path, std::string ext,
-                       size_t numNodes, size_t numStates, size_t numInputs) :
+                       size_t numNodes, size_t numStates, size_t numInputs, TreePart part) :
         Constraint<T>(numNodes, numStates, numInputs) {
         DTensor<T> lb(DTensor<T>::parseFromFile(path + "ILB" + ext));
         DTensor<T> ub(DTensor<T>::parseFromFile(path + "IUB" + ext));
@@ -141,8 +141,14 @@ public:
         for (size_t i = 0; i < numNodes; i++) {
             DTensor<T> lbNode(*this->m_d_lowerBound, this->m_matAxis, i, i);
             DTensor<T> ubNode(*this->m_d_upperBound, this->m_matAxis, i, i);
-            lb.deviceCopyTo(lbNode);
-            ub.deviceCopyTo(ubNode);
+            if (part == nonleaf && i == 0) {
+                size_t n = numStates + numInputs;
+                lbNode.upload(std::vector<T>(n, -INFINITY));
+                ubNode.upload(std::vector<T>(n, INFINITY));
+            } else {
+                lb.deviceCopyTo(lbNode);
+                ub.deviceCopyTo(ubNode);
+            }
         }
     }
 
@@ -311,7 +317,7 @@ private:
 
 public:
     explicit PolyhedronWithIdentity(std::string path, std::string ext,
-                                    size_t numNodes, size_t numStates, size_t numInputs) :
+                                    size_t numNodes, size_t numStates, size_t numInputs, TreePart part) :
         Constraint<T>(numNodes, numStates, numInputs) {
         /* Read matrix and vectors */
         DTensor<T> ilb(DTensor<T>::parseFromFile(path + "ILB" + ext));
@@ -347,8 +353,14 @@ public:
         for (size_t i = 0; i < this->m_numNodes; i++) {
             DTensor<T> ilbNode(ilbSlice, this->m_matAxis, i, i);
             DTensor<T> iubNode(iubSlice, this->m_matAxis, i, i);
-            ilb.deviceCopyTo(ilbNode);
-            iub.deviceCopyTo(iubNode);
+            if (part == nonleaf && i == 0) {
+                size_t n = numStates + numInputs;
+                ilbNode.upload(std::vector<T>(n, -INFINITY));
+                iubNode.upload(std::vector<T>(n, INFINITY));
+            } else {
+                ilb.deviceCopyTo(ilbNode);
+                iub.deviceCopyTo(iubNode);
+            }
             DTensor<T> glbNode(glbSlice, this->m_matAxis, i, i);
             DTensor<T> gubNode(gubSlice, this->m_matAxis, i, i);
             glb.deviceCopyTo(glbNode);

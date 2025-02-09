@@ -4,7 +4,7 @@ import numpy as np
 import argparse
 
 parser = argparse.ArgumentParser(description='Problem data generator.')
-parser.add_argument("--nStages", type=int, default=3)
+parser.add_argument("--nStages", type=int, default=5)
 parser.add_argument("--nStates", type=int, default=2)
 parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
@@ -70,7 +70,7 @@ leaf_cost = b.LeafCost(T)
 
 # State-input constraint
 state_lim = 1.
-input_lim = 1.5
+input_lim = 10.
 state_lb = -state_lim * np.ones((num_states, 1))
 state_ub = state_lim * np.ones((num_states, 1))
 input_lb = -input_lim * np.ones((num_inputs, 1))
@@ -80,7 +80,7 @@ nonleaf_ub = np.vstack((state_ub, input_ub))
 nonleaf_constraint = b.Rectangle(nonleaf_lb, nonleaf_ub)
 
 # Terminal constraint
-leaf_state_lim = 1.
+leaf_state_lim = 10.
 leaf_lb = -leaf_state_lim * np.ones((num_states, 1))
 leaf_ub = leaf_state_lim * np.ones((num_states, 1))
 leaf_constraint = b.Rectangle(leaf_lb, leaf_ub)

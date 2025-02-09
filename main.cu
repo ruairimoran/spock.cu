@@ -27,7 +27,7 @@ int main() {
 
     /* CACHE */
     real_t tol = 1e-3;
-    size_t maxOuterIters = 1000;
+    size_t maxOuterIters = 1500;
     size_t maxInnerIters = 8;
     size_t andersonBuffer = 3;
     bool allowK0Updates = true;

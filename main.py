@@ -7,10 +7,10 @@ import cvxpy as cp
 import argparse
 
 parser = argparse.ArgumentParser(description='Time cvxpy solvers.')
-parser.add_argument("--nEvents", type=int, default=10)
-parser.add_argument("--nStages", type=int, default=10)
+parser.add_argument("--nEvents", type=int, default=2)
+parser.add_argument("--nStages", type=int, default=3)
 parser.add_argument("--stop", type=int, default=2)
-parser.add_argument("--nStates", type=int, default=2)
+parser.add_argument("--nStates", type=int, default=10)
 parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
 dt = args.dt
@@ -32,7 +32,8 @@ cache = [0. for _ in range(s)]
 # Generate scenario tree
 # --------------------------------------------------------
 
-v = np.ones(num_events) * 1 / num_events
+r = np.random.rand(num_events)
+v = r / sum(r)
 
 (final_stage, stop_branching_stage) = (num_stages - 1, stopping)
 tree = treeFactory.IidProcess(
@@ -83,8 +84,8 @@ T = .1 * np.eye(num_states)
 leaf_cost = build.LeafCost(T)
 
 # State-input constraint
-state_lim = 100.
-input_lim = 1.
+state_lim = 1.
+input_lim = 1.5
 state_lb = -state_lim * np.ones((num_states, 1))
 state_ub = state_lim * np.ones((num_states, 1))
 input_lb = -input_lim * np.ones((num_inputs, 1))
@@ -94,7 +95,7 @@ nonleaf_ub = np.vstack((state_ub, input_ub))
 nonleaf_constraint = build.Rectangle(nonleaf_lb, nonleaf_ub)
 
 # Terminal constraint
-leaf_state_lim = .1
+leaf_state_lim = 1.
 leaf_lb = -leaf_state_lim * np.ones((num_states, 1))
 leaf_ub = leaf_state_lim * np.ones((num_states, 1))
 leaf_constraint = build.Rectangle(leaf_lb, leaf_ub)

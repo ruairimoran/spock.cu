@@ -341,6 +341,8 @@ public:
         m_d_input->download(m_input);
     }
 
+    size_t iters() { return m_countIterations; }
+
     /**
      * Debug functions (slow).
      */

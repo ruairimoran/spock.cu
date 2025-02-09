@@ -35,7 +35,7 @@ int main() {
     Cache cache(tree, problem, tol, tol, maxOuterIters, maxInnerIters, andersonBuffer, allowK0Updates, debug);
 
     /* TIMING ALGORITHM */
-    std::vector<real_t> initState(tree.numStates(), .1);
+    std::vector<real_t> initState(tree.numStates(), 1.1);
     size_t runs = 10;
     size_t warm = 5;
     size_t totalRuns = runs + warm;

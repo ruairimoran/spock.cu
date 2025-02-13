@@ -74,6 +74,8 @@ class Model:
         """Impose dynamic constraints on the optimisation model."""
         for node in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(node)
+            print(self.__problem.dynamics_at_node(node).input.shape)
+            print(self.__u[self.__node_to_u(anc)])
             self.__constraints.append(
                 self.__x[self.__node_to_x(node)] ==
                 self.__problem.dynamics_at_node(node).state @ self.__x[self.__node_to_x(anc)] +

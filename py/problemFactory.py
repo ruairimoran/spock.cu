@@ -90,7 +90,7 @@ class Problem:
 
     @property
     def num_inputs(self):
-        return self.__num_states
+        return self.__num_inputs
 
     def dynamics_at_node(self, idx):
         return self.__list_of_dynamics[idx]

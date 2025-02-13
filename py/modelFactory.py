@@ -19,23 +19,26 @@ class Model:
         self.__cvx = None
         self.__build()
 
-    def solve(self, x0, solver=cp.SCS, tol=1e-3):
+    def solve(self, x0, solver=cp.SCS, tol=1e-3, warm_start=False):
         self.__constraints.append(self.__x[self.__node_to_x(0)] == x0)
         self.__cvx = cp.Problem(self.__objective, self.__constraints)
         self.__constraints.pop()
         if solver == cp.MOSEK:
-            return self.__cvx.solve(solver=solver,
+            return self.__cvx.solve(solver=solver, 
+                                    warm_start=warm_start,
                                     mosek_params={"MSK_DPAR_INTPNT_TOL_REL_GAP":tol,
                                                   "MSK_DPAR_INTPNT_CO_TOL_REL_GAP":tol,
                                                   "MSK_DPAR_INTPNT_QO_TOL_REL_GAP":tol
                                                   }
                                     )
         elif solver == cp.GUROBI:
-            return self.__cvx.solve(solver=solver,
+            return self.__cvx.solve(solver=solver, 
+                                    warm_start=warm_start,
                                     FeasibilityTol=tol,
                                     OptimalityTol=tol)
         else:
-            return self.__cvx.solve(solver=solver,
+            return self.__cvx.solve(solver=solver, 
+                                    warm_start=warm_start,
                                     eps=tol)
 
     @property
@@ -74,8 +77,6 @@ class Model:
         """Impose dynamic constraints on the optimisation model."""
         for node in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(node)
-            print(self.__problem.dynamics_at_node(node).input.shape)
-            print(self.__u[self.__node_to_u(anc)])
             self.__constraints.append(
                 self.__x[self.__node_to_x(node)] ==
                 self.__problem.dynamics_at_node(node).state @ self.__x[self.__node_to_x(anc)] +

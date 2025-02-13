@@ -15,51 +15,52 @@
 int main() {
     bool debug = false;
 
-    /* SCENARIO TREE */
-    std::cout << "Reading tree files...\n";
-    ScenarioTree<real_t> tree;
-    if (debug) std::cout << tree;
+    real_t avgTime = 0.;
+    try {
+        /* SCENARIO TREE */
+        std::cout << "Reading tree files...\n";
+        ScenarioTree<real_t> tree;
+        if (debug) std::cout << tree;
 
-    /* PROBLEM DATA */
-    std::cout << "Reading problem files...\n";
-    ProblemData<real_t> problem(tree);
-    if (debug) std::cout << problem;
+        /* PROBLEM DATA */
+        std::cout << "Reading problem files...\n";
+        ProblemData<real_t> problem(tree);
+        if (debug) std::cout << problem;
 
-    /* CACHE */
-    real_t tol = 1e-3;
-    size_t maxOuterIters = 50000;
-    size_t maxInnerIters = 8;
-    size_t andersonBuffer = 3;
-    bool allowK0Updates = true;
-    bool admm = false;
-    std::cout << "Allocating cache...\n";
-    Cache cache(tree, problem, tol, tol, maxOuterIters, maxInnerIters, andersonBuffer, allowK0Updates, debug, admm);
+        /* CACHE */
+        real_t tol = 1e-3;
+        size_t maxOuterIters = 50000;
+        size_t maxInnerIters = 8;
+        size_t andersonBuffer = 3;
+        bool allowK0Updates = true;
+        bool admm = false;
+        std::cout << "Allocating cache...\n";
+        Cache cache(tree, problem, tol, tol, maxOuterIters, maxInnerIters, andersonBuffer, allowK0Updates, debug, admm);
 
-    /* TIMING ALGORITHM */
-    std::vector<real_t> initState(tree.numStates(), .9);
-    size_t runs = 3;
-    size_t warm = 5;
-    size_t totalRuns = runs + warm;
-    std::vector<real_t> runTimes(totalRuns, 0.);
-    std::vector<size_t> runIters(totalRuns, 0);
-    std::cout << "Computing average solve time over (" << runs << ") runs with (" << warm << ") warm up runs...\n";
-    for (size_t i = 0; i < totalRuns; i++) {
-        runTimes[i] = cache.timeSp(initState);
-        runIters[i] = cache.iters();
-        cache.reset();
-        std::cout << "Run (" << i << ") : " << runIters[i] << " iters in " << runTimes[i] << " ms.\n";
+        /* TIMING ALGORITHM */
+        std::vector<real_t> initState(tree.numStates(), .9);
+        size_t runs = 3;
+        size_t warm = 5;
+        size_t totalRuns = runs + warm;
+        std::vector<real_t> runTimes(totalRuns, 0.);
+        std::cout << "Computing average solve time over (" << runs << ") runs with (" << warm << ") warm up runs...\n";
+        for (size_t i = 0; i < totalRuns; i++) {
+            runTimes[i] = cache.timeSp(initState) * 1e-3;
+            cache.reset();
+            std::cout << "Run (" << i << ") : " << runTimes[i] << " s.\n";
+        }
+        real_t time = std::reduce(runTimes.begin() + warm, runTimes.end());
+        avgTime = time / runs;
+    } catch (...) {
+        std::cout << "SPOCK failed!\n";
     }
-    real_t time = std::reduce(runTimes.begin() + warm, runTimes.end());
-    real_t avgTime = time / runs;
-    size_t iter = std::reduce(runIters.begin() + warm, runIters.end());
-    size_t avgIter = iter / runs;
 
     /* SAVE */
     std::ofstream timeScaling;
-    timeScaling.open("misc/timeScaling.csv", std::ios::app);
-    timeScaling << tree.numNodes() << ", " << tree.numStates() << ", " << avgIter << ", " << avgTime << std::endl;
+    timeScaling.open("misc/timeCvxpy.csv", std::ios::app);
+    timeScaling << avgTime << std::endl;
     timeScaling.close();
-    std::cout << "Saved (avgIter = " << avgIter << ", avgTime = " << avgTime << " ms).\n";
+    std::cout << "Saved (avgTime = " << avgTime << " s).\n";
 
     return 0;
 }

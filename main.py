@@ -37,7 +37,7 @@ dt = args.dt
 # num_inputs = num_states
 
 # Sizes::random
-rng = np.random.default_rng()
+rng = np.random.default_rng(1)
 num_events = np.random.randint(2, 5)
 num_stages = np.random.randint(3, 4)
 stopping = np.random.randint(1, num_stages - 1)
@@ -118,23 +118,30 @@ problem = (
     .generate_problem()
 )
 
-# Initial state
-x0 = np.zeros(num_states)
-for i in range(num_states):
-    con = .5 * nonleaf_state_ub[i]
-    x0[i] = rng.uniform(-con, con)
-
 # Cache solvers
-solvers = []#[cp.MOSEK]
+solvers = [cp.MOSEK]
 s = len(solvers) + 1
 cache = [0. for _ in range(s)]
 cache[0] = tree.num_nodes
 for i in range(1, s):
-    model = modelFactory.Model(tree, problem)
+    times = []
     print("Solving...")
-    model.solve(x0=x0, solver=solvers[i - 1], tol=1e-3)
-    cache[i] = model.solve_time * 1e3
-    print(cache[i], " ms")
+    for j in range(3):
+        model = modelFactory.Model(tree, problem)
+        # Initial state
+        x0 = np.zeros(num_states)
+        for k in range(num_states):
+            con = .5 * nonleaf_state_ub[k]
+            x0[k] = rng.uniform(-con, con)
+        try:
+            model.solve(x0=x0, solver=solvers[i - 1], tol=1e-3, warm_start=False)
+            time = model.solve_time
+        except:
+            time = 0.
+        if j != 0:
+            times += [time]
+    cache[i] = sum(times) / len(times)
+    print(cache[i], " s")
 
 # Save to csv
 with open('misc/timeCvxpy.csv', "a") as f:

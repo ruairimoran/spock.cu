@@ -20,31 +20,24 @@ def enforce_contraction(A_):
         return A_ / (rho_ + 1e-3)  # Scale A to ensure contraction
 
 
+def is_pos_def(cost):
+    # We know matrices are symmetric
+    return np.all(np.linalg.eigvals(cost) > 0)
+
+
 parser = argparse.ArgumentParser(description='Time cvxpy solvers.')
-# parser.add_argument("--nEvents", type=int, default=2)
-# parser.add_argument("--nStages", type=int, default=3)
-# parser.add_argument("--stop", type=int, default=2)
-# parser.add_argument("--nStates", type=int, default=10)
 parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
 dt = args.dt
-
-# Sizes
-# num_stages = args.nStages
-# num_events = args.nEvents
-# stopping = args.stop
-# num_states = args.nStates
-# num_inputs = num_states
 
 # Sizes::random
 rng = np.random.default_rng(1)
 num_events = np.random.randint(2, 5)
 num_stages = np.random.randint(3, 4)
 stopping = np.random.randint(1, num_stages - 1)
-num_inputs = np.random.randint(2, 10)
+num_inputs = 2  # np.random.randint(2, 10)
 num_states = num_inputs
-
-print(num_events, num_stages, stopping, num_inputs, num_states)
+zero = 1e-6
 
 # --------------------------------------------------------
 # Generate scenario tree
@@ -69,7 +62,7 @@ print(tree)
 # Dynamics
 dynamics = []
 for i in range(num_events):
-    A = np.eye(num_states) - (np.random.rand(num_states, num_states) * .01)
+    A = np.eye(num_states) + (np.random.rand(num_states, num_states) * .01)
     A = enforce_contraction(A)
     B = np.random.rand(num_states, num_inputs)
     dynamics += [build.LinearDynamics(A, B)]
@@ -77,25 +70,38 @@ for i in range(num_events):
 # Costs
 nonleaf_costs = []
 for i in range(num_events):
-    flat_Q = rng.uniform(0., 10., num_states)
-    flat_R = rng.uniform(0., 1, num_inputs)
-    Q = np.diagflat(flat_Q)
-    R = np.diagflat(flat_R)
+    pos_def_nonleaf = False
+    Q = None
+    R = None
+    while not pos_def_nonleaf:
+        flat_Q = rng.uniform(zero, 10., num_states)
+        flat_R = rng.uniform(zero, .1, num_inputs)
+        Q = np.diagflat(flat_Q)
+        R = np.diagflat(flat_R)
+        pos_def_nonleaf = is_pos_def(Q) and is_pos_def(R)
+        if not pos_def_nonleaf:
+            raise Exception("Nonleaf costs not positive definite!")
     nonleaf_costs += [build.NonleafCost(Q, R)]
 
-flat_T = rng.uniform(10., 100., num_states)
-T = np.diagflat(flat_T)
+pos_def_leaf = False
+T = None
+while not pos_def_leaf:
+    flat_T = rng.uniform(zero, 10., num_states)
+    T = np.diagflat(flat_T)
+    pos_def_leaf = is_pos_def(T)
+    if not pos_def_leaf:
+        raise Exception("Leaf cost not positive definite!")
 leaf_cost = build.LeafCost(T)
 
 # Constraints
 nonleaf_state_ub = rng.uniform(1., 2., num_states)
 nonleaf_state_lb = -nonleaf_state_ub
-nonleaf_input_ub = rng.uniform(0., .1, num_inputs)
+nonleaf_input_ub = rng.uniform(zero, .1, num_inputs)
 nonleaf_input_lb = -nonleaf_input_ub
 nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
 nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))
 nonleaf_constraint = build.Rectangle(nonleaf_lb, nonleaf_ub)
-leaf_ub = rng.uniform(.01, .1, num_states)
+leaf_ub = rng.uniform(1., 2., num_states)
 leaf_lb = -leaf_ub
 leaf_constraint = build.Rectangle(leaf_lb, leaf_ub)
 

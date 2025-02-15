@@ -19,24 +19,27 @@ class Model:
         self.__cvx = None
         self.__build()
 
-    def solve(self, x0, solver=cp.SCS, tol=1e-3):
+    def solve(self, x0, solver=cp.SCS, tol=1e-3, max_time=np.inf):
         self.__constraints.append(self.__x[self.__node_to_x(0)] == x0)
         self.__cvx = cp.Problem(self.__objective, self.__constraints)
         self.__constraints.pop()
         if solver == cp.MOSEK:
             return self.__cvx.solve(solver=solver,
-                                    mosek_params={"MSK_DPAR_INTPNT_TOL_REL_GAP":tol,
-                                                  "MSK_DPAR_INTPNT_CO_TOL_REL_GAP":tol,
-                                                  "MSK_DPAR_INTPNT_QO_TOL_REL_GAP":tol
+                                    mosek_params={"MSK_DPAR_INTPNT_TOL_REL_GAP": tol,
+                                                  "MSK_DPAR_INTPNT_CO_TOL_REL_GAP": tol,
+                                                  "MSK_DPAR_INTPNT_QO_TOL_REL_GAP": tol,
+                                                  'MSK_DPAR_OPTIMIZER_MAX_TIME': max_time,
                                                   }
                                     )
         elif solver == cp.GUROBI:
             return self.__cvx.solve(solver=solver,
                                     FeasibilityTol=tol,
-                                    OptimalityTol=tol)
+                                    OptimalityTol=tol,
+                                    TimeLimit=max_time)
         else:
             return self.__cvx.solve(solver=solver,
-                                    eps=tol)
+                                    eps=tol,
+                                    TimeLimit=max_time)
 
     @property
     def states(self):

@@ -135,6 +135,8 @@ tree.write_to_file_fp("initialState", x0)
 
 # Cache solvers
 solvers = [cp.MOSEK, cp.GUROBI, cp.SCS]
+minute = 60  # seconds
+max_time = minute * 20  # minutes
 s = len(solvers) + 1
 cache = [0. for _ in range(s)]
 cache[0] = tree.num_nodes
@@ -143,7 +145,7 @@ for i in range(1, s):
     print("Solving (", solvers[i-1].__str__(), ") ...")
     model = modelFactory.Model(tree, problem)
     try:
-        model.solve(x0=x0, solver=solvers[i - 1], tol=1e-3)
+        model.solve(x0=x0, solver=solvers[i - 1], tol=1e-3, max_time=max_time)
         time = model.solve_time
     except:
         time = 0.

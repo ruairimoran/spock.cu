@@ -3,26 +3,19 @@ import py.build as build
 import py.problemFactory as problemFactory
 import py.modelFactory as modelFactory
 import numpy as np
-import scipy as sp
 import cvxpy as cp
 import argparse
 
 
 def enforce_contraction(A_):
-    Q_ = np.eye(A_.shape[0])  # Choose Q = I (identity matrix)
-    P_ = sp.linalg.solve_discrete_lyapunov(A_.T, -Q_)  # Solve Atr @ P @ A - P = -Q
-    if np.all(np.linalg.eigvals(P_) > 0):  # Check if P is positive definite
-        print("Matrix is already firmly nonexpansive.")
+    if np.linalg.eigvals(A_).all() > 0:  # Check if A is positive definite
+        # print("Matrix is already firmly nonexpansive.")
         return A_
     else:
-        print("Modifying A to ensure firmly nonexpansive...")
+        # print("Modifying A to ensure firmly nonexpansive...")
         rho_ = max(abs(np.linalg.eigvals(A_)))  # Compute spectral radius
-        return A_ / (rho_ + 1e-3)  # Scale A to ensure contraction
-
-
-def is_pos_def(cost):
-    # We know matrices are symmetric
-    return np.all(np.linalg.eigvals(cost) > 0)
+        A_ = A_ / (rho_ + 1e-1)  # Scale A to ensure contraction
+        return A_
 
 
 parser = argparse.ArgumentParser(description='Time cvxpy solvers.')
@@ -31,19 +24,34 @@ args = parser.parse_args()
 dt = args.dt
 
 # Sizes::random
-rng = np.random.default_rng(1)
-num_events = np.random.randint(2, 5)
-num_stages = np.random.randint(3, 4)
-stopping = np.random.randint(1, num_stages - 1)
-num_inputs = 2  # np.random.randint(2, 10)
-num_states = num_inputs
-zero = 1e-6
+num_events = 0
+num_stages = 0
+stopping = 0
+num_inputs = 0
+num_states = 0
+rng = np.random.default_rng()
+num_nodes = np.inf
+while num_nodes > 1e5:
+    num_events = rng.integers(2, 10, endpoint=True)
+    num_stages = rng.integers(3, 15, endpoint=True)
+    stopping = rng.integers(1, min(num_stages, 4))
+    num_inputs = rng.integers(5, 250, endpoint=True)
+    num_states = num_inputs * 2
+    v = 1 / num_events * np.ones(num_events)
+    (final_stage, stop_branching_stage) = (num_stages - 1, stopping)
+    tree_test = treeFactory.IidProcess(
+        distribution=v,
+        horizon=final_stage,
+        stopping_stage=stop_branching_stage
+    ).generate_tree(files=False)
+    num_nodes = tree_test.num_nodes
+    print(num_nodes)
 
 # --------------------------------------------------------
 # Generate scenario tree
 # --------------------------------------------------------
 
-r = np.random.rand(num_events)
+r = rng.uniform(size=num_events)
 v = r / sum(r)
 
 (final_stage, stop_branching_stage) = (num_stages - 1, stopping)
@@ -62,41 +70,27 @@ print(tree)
 # Dynamics
 dynamics = []
 for i in range(num_events):
-    A = np.eye(num_states) + (np.random.rand(num_states, num_states) * .01)
+    A = np.eye(num_states) + rng.normal(0., .01, size=(num_states, num_states))
     A = enforce_contraction(A)
-    B = np.random.rand(num_states, num_inputs)
+    B = rng.normal(0., 1., size=(num_states, num_inputs))
     dynamics += [build.LinearDynamics(A, B)]
 
 # Costs
 nonleaf_costs = []
 for i in range(num_events):
-    pos_def_nonleaf = False
-    Q = None
-    R = None
-    while not pos_def_nonleaf:
-        flat_Q = rng.uniform(zero, 10., num_states)
-        flat_R = rng.uniform(zero, .1, num_inputs)
-        Q = np.diagflat(flat_Q)
-        R = np.diagflat(flat_R)
-        pos_def_nonleaf = is_pos_def(Q) and is_pos_def(R)
-        if not pos_def_nonleaf:
-            raise Exception("Nonleaf costs not positive definite!")
+    flat_Q = rng.uniform(0., 10., num_states)
+    flat_R = rng.uniform(0., .1, num_inputs)
+    Q = np.diagflat(flat_Q)
+    R = np.diagflat(flat_R)
     nonleaf_costs += [build.NonleafCost(Q, R)]
-
-pos_def_leaf = False
-T = None
-while not pos_def_leaf:
-    flat_T = rng.uniform(zero, 10., num_states)
-    T = np.diagflat(flat_T)
-    pos_def_leaf = is_pos_def(T)
-    if not pos_def_leaf:
-        raise Exception("Leaf cost not positive definite!")
+flat_T = rng.uniform(0., 10., num_states)
+T = np.diagflat(flat_T)
 leaf_cost = build.LeafCost(T)
 
 # Constraints
 nonleaf_state_ub = rng.uniform(1., 2., num_states)
 nonleaf_state_lb = -nonleaf_state_ub
-nonleaf_input_ub = rng.uniform(zero, .1, num_inputs)
+nonleaf_input_ub = rng.uniform(0., .1, num_inputs)
 nonleaf_input_lb = -nonleaf_input_ub
 nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
 nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))
@@ -124,30 +118,29 @@ problem = (
     .generate_problem()
 )
 
+# Initial state
+x0 = np.zeros(num_states)
+for k in range(num_states):
+    con = .5 * nonleaf_state_ub[k]
+    x0[k] = rng.uniform(-con, con)
+tree.write_to_file_fp("initialState", x0)
+
 # Cache solvers
-solvers = [cp.MOSEK]
+solvers = [cp.MOSEK, cp.GUROBI, cp.SCS]
 s = len(solvers) + 1
 cache = [0. for _ in range(s)]
 cache[0] = tree.num_nodes
 for i in range(1, s):
     times = []
-    print("Solving...")
-    for j in range(3):
-        model = modelFactory.Model(tree, problem)
-        # Initial state
-        x0 = np.zeros(num_states)
-        for k in range(num_states):
-            con = .5 * nonleaf_state_ub[k]
-            x0[k] = rng.uniform(-con, con)
-        try:
-            model.solve(x0=x0, solver=solvers[i - 1], tol=1e-3, warm_start=False)
-            time = model.solve_time
-        except:
-            time = 0.
-        if j != 0:
-            times += [time]
-    cache[i] = sum(times) / len(times)
-    print(cache[i], " s")
+    print("Solving (", solvers[i-1].__str__(), ") ...")
+    model = modelFactory.Model(tree, problem)
+    try:
+        model.solve(x0=x0, solver=solvers[i - 1], tol=1e-3)
+        time = model.solve_time
+    except:
+        time = 0.
+    cache[i] = time
+    print("Saved (solver = ", solvers[i-1].__str__(), ", time = ", cache[i], " s).")
 
 # Save to csv
 with open('misc/timeCvxpy.csv', "a") as f:

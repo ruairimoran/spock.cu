@@ -13,7 +13,7 @@
 
 
 int main() {
-    bool debug = true;
+    bool debug = false;
 
     real_t avgTime = 0.;
     try {
@@ -29,7 +29,7 @@ int main() {
 
         /* CACHE */
         real_t tol = 1e-3;
-        size_t maxOuterIters = 20000;
+        size_t maxOuterIters = 50000;
         size_t maxInnerIters = 8;
         size_t andersonBuffer = 3;
         bool allowK0Updates = true;
@@ -38,7 +38,9 @@ int main() {
         Cache cache(tree, problem, tol, tol, maxOuterIters, maxInnerIters, andersonBuffer, allowK0Updates, debug, admm);
 
         /* TIMING ALGORITHM */
-        std::vector<real_t> initState(tree.numStates(), .9);
+        DTensor<real_t> d_initState = DTensor<real_t>::parseFromFile(tree.path() + "initialState" + tree.fpFileExt());
+        std::vector<real_t> initState(tree.numStates());
+        d_initState.download(initState);
         size_t runs = 3;
         size_t warm = 5;
         size_t totalRuns = runs + warm;

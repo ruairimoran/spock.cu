@@ -45,7 +45,15 @@ while num_nodes > 1e5:
         stopping_stage=stop_branching_stage
     ).generate_tree(files=False)
     num_nodes = tree_test.num_nodes
-    print(num_nodes)
+
+print(
+    "\n",
+    "Events:", num_events, "\n",
+    "Stages:", num_stages, "\n",
+    "Stop branch:", stopping, "\n",
+    "States:", num_states, "\n",
+    "Inputs:", num_inputs, "\n",
+)
 
 # --------------------------------------------------------
 # Generate scenario tree

@@ -31,11 +31,11 @@ num_inputs = 0
 num_states = 0
 rng = np.random.default_rng()
 num_nodes = np.inf
-while num_nodes > 1e5:
+while num_nodes > 1e2:
     num_events = rng.integers(2, 10, endpoint=True)
     num_stages = rng.integers(3, 15, endpoint=True)
     stopping = rng.integers(1, min(num_stages, 4))
-    num_inputs = rng.integers(5, 250, endpoint=True)
+    num_inputs = rng.integers(5, 10, endpoint=True)
     num_states = num_inputs * 2
     v = 1 / num_events * np.ones(num_events)
     (final_stage, stop_branching_stage) = (num_stages - 1, stopping)
@@ -77,19 +77,23 @@ print(tree)
 # --------------------------------------------------------
 # Dynamics
 dynamics = []
+A_base = np.eye(num_states)
+B_base = rng.normal(0., 1., size=(num_states, num_inputs))
 for i in range(num_events):
-    A = np.eye(num_states) + rng.normal(0., .01, size=(num_states, num_states))
+    A = A_base + rng.normal(0., .1, size=(num_states, num_states))
     A = enforce_contraction(A)
-    B = rng.normal(0., 1., size=(num_states, num_inputs))
+    B = B_base + rng.normal(0., .1, size=(num_states, num_inputs))
     dynamics += [build.LinearDynamics(A, B)]
 
 # Costs
 nonleaf_costs = []
+Q_base = rng.uniform(0., 10., num_states)
+R_base = rng.uniform(0., .1, num_inputs)
 for i in range(num_events):
-    flat_Q = rng.uniform(0., 10., num_states)
-    flat_R = rng.uniform(0., .1, num_inputs)
-    Q = np.diagflat(flat_Q)
-    R = np.diagflat(flat_R)
+    Q_flat = Q_base + rng.normal(0., .1, num_states)
+    R_flat = R_base + rng.normal(0., .1, num_inputs)
+    Q = np.diagflat(Q_flat)
+    R = np.diagflat(R_flat)
     nonleaf_costs += [build.NonleafCost(Q, R)]
 flat_T = rng.uniform(0., 10., num_states)
 T = np.diagflat(flat_T)
@@ -136,7 +140,7 @@ tree.write_to_file_fp("initialState", x0)
 # Cache solvers
 solvers = [cp.MOSEK, cp.GUROBI, cp.SCS]
 minute = 60  # seconds
-max_time = minute * 20  # minutes
+max_time = minute * .5  # minutes
 s = len(solvers) + 1
 cache = [0. for _ in range(s)]
 cache[0] = tree.num_nodes

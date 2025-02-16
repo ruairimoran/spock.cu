@@ -28,6 +28,7 @@ draw = [
 ]
 test = [
     'cvxpy',
+    'gurobipy'
 ]
 
 [project.urls]

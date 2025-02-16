@@ -87,15 +87,15 @@ for i in range(num_events):
 
 # Costs
 nonleaf_costs = []
-Q_base = rng.uniform(0., 10., num_states)
+Q_base = rng.uniform(0., 1., num_states)
 R_base = rng.uniform(0., .1, num_inputs)
 for i in range(num_events):
-    Q_flat = Q_base + rng.normal(0., .1, num_states)
-    R_flat = R_base + rng.normal(0., .1, num_inputs)
+    Q_flat = Q_base + np.power(rng.normal(0., .01, num_states), 2)
+    R_flat = R_base + np.power(rng.normal(0., .01, num_inputs), 2)
     Q = np.diagflat(Q_flat)
     R = np.diagflat(R_flat)
     nonleaf_costs += [build.NonleafCost(Q, R)]
-flat_T = rng.uniform(0., 10., num_states)
+flat_T = rng.uniform(0., 1., num_states)
 T = np.diagflat(flat_T)
 leaf_cost = build.LeafCost(T)
 
@@ -151,7 +151,8 @@ for i in range(1, s):
     try:
         model.solve(x0=x0, solver=solvers[i - 1], tol=1e-3, max_time=max_time)
         time = model.solve_time
-    except:
+    except Exception as e:
+        print(e)
         time = 0.
     cache[i] = time
     print("Saved (solver = ", solvers[i-1].__str__(), ", time = ", cache[i], " s).")

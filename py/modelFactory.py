@@ -52,7 +52,7 @@ class Model:
                 "time_limit_secs": max_time,
             }
             return self.__cvx.solve(solver=solver,
-                                    scs_params=scs_params,
+                                    **scs_params,
                                     )
         else:
             return self.__cvx.solve(solver=solver,

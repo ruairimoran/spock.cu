@@ -1,6 +1,6 @@
 module modelFactory
 
-using JSON
+using JSON, JuMP
 
 """
     Filing system
@@ -45,42 +45,82 @@ export read_tensor_from_binary
     Json::DataStructure
 """
 struct JSON_DATA
-    num_events :: Int
-    num_nonleaf_nodes :: Int
-    num_nodes :: Int
-    num_stages :: Int
-    num_states :: Int
-    num_inputs :: Int
+    num_events :: UInt
+    num_nonleaf_nodes :: UInt
+    num_nodes :: UInt
+    num_stages :: UInt
+    num_states :: UInt
+    num_inputs :: UInt
     dynamics_type :: String
+    dynamics_A :: Array
+    dynamics_B :: Array
+    dynamics_c :: Array
     constraint_nonleaf :: String
     constraint_leaf :: String
     risk_type :: String
     risk_alpha :: Real
-    risk_rowsS2 :: Int
-    risk_rowsNNtr :: Int
+    risk_rowsS2 :: UInt
+    risk_rowsNNtr :: UInt
     step_size :: Real
+    ancestors :: Array
+end
+
+"""
+    Indexing
+"""
+
+function node_to_x(data :: JSON_DATA, node :: UInt)
+    return collect(
+        (node - 1) * data.num_states + 1 : node * data.num_states
+    )
+end
+
+function node_to_u(data :: JSON_DATA, node :: UInt)
+    return collect(
+        (node - 1) * data.num_inputs + 1 : node * data.num_inputs
+    )
+end
+
+"""
+    Build::Dynamics
+"""
+
+function impose_dynamics(
+    model :: Model,
+    d :: JSON_DATA,
+    )
+    x = model[:x]
+    u = model[:u]
+
+    @constraint(
+    model,
+    dynamics[i=2:d.num_nodes],  # non-root nodes, so all except i = 1
+    x[node_to_x(d, i)] .==
+        d.dynamics_A[:, :, i] * x[node_to_x(d, d.ancestors[i])]
+        + d.dynamics_B[:, :, i] * u[node_to_u(d, d.ancestors[i])]
+        + d.dynamics_c[:, :, i]
+    )
 end
 
 # """
 #     Build::Cost
 # """
-#
+
 # function impose_cost(
 #     model :: Model,
-#     problem_definition :: GENERIC_PROBLEM_DEFINITION,
+#     data :: JSON_DATA,
 #     )
-#     anc_mapping = problem_definition.scen_tree.anc_mapping
 #     x = model[:x]
 #     u = model[:u]
+#     t = model[:t]
 #     s = model[:s]
-#     tau = model[:tau]
-#
+
 #     @constraint(
 #     model,
 #     nonleaf_cost[node = 2:problem_definition.scen_tree.n],
 #     (x[node_to_x(problem_definition, anc_mapping[node])]' * problem_definition.cost.Q[node - 1] * x[node_to_x(problem_definition, anc_mapping[node])] + u[node_to_u(problem_definition, anc_mapping[node])]' * problem_definition.cost.R[node - 1] * u[node_to_u(problem_definition, anc_mapping[node])]) <= model[:tau][node - 1]
 #     )
-#
+
 #     @constraint(
 #     model,
 #     leaf_cost[i = problem_definition.scen_tree.leaf_node_min_index : problem_definition.scen_tree.leaf_node_max_index],
@@ -88,28 +128,6 @@ end
 #     )
 # end
 
-# """
-#     Build::Dynamics
-# """
-#
-# function impose_dynamics(
-#     model :: Model,
-#     problem_definition :: GENERIC_PROBLEM_DEFINITION,
-#     )
-#     x = model[:x]
-#     u = model[:u]
-#
-#     @constraint(
-#       model,
-#       dynamics[i=2:problem_definition.scen_tree.n], # Non-root nodes, so all except i = 1
-#       x[
-#           node_to_x(problem_definition, i)
-#       ] .==
-#           problem_definition.dynamics.A[problem_definition.scen_tree.node_info[i].w] * x[node_to_x(problem_definition, problem_definition.scen_tree.anc_mapping[i])]
-#           + problem_definition.dynamics.B[problem_definition.scen_tree.node_info[i].w] * u[node_to_u(problem_definition, problem_definition.scen_tree.anc_mapping[i])]
-#     )
-# end
-#
 # """
 #     Build::StateInputConstraints
 # """
@@ -211,12 +229,7 @@ end
 """
 
 function build_model(
-#     solver :: Solver,
-#     scen_tree :: ScenarioTree,
-#     cost :: Cost,
-#     dynamics :: Dynamics,
-#     rms :: Vector{RiskMeasure},
-#     constraints :: UniformRectangle
+    solver,
     )
 
     json = JSON.parse(read(folder * "data.json", String))
@@ -228,6 +241,9 @@ function build_model(
         json["numStates"],
         json["numInputs"],
         json["dynamics"]["type"],
+        read_tensor_from_binary(T, folder * "dynamics_A" * file_ext_t),
+        read_tensor_from_binary(T, folder * "dynamics_B" * file_ext_t),
+        read_tensor_from_binary(T, folder * "dynamics_c" * file_ext_t),
         json["constraint"]["nonleaf"],
         json["constraint"]["leaf"],
         json["risk"]["type"],
@@ -235,24 +251,25 @@ function build_model(
         json["rowsS2"],
         json["rowsNNtr"],
         json["stepSize"],
+        read_tensor_from_binary(U, folder * "ancestors" * file_ext_u),
     )
 
-#     model = Model(solver.Optimizer)
-#     set_silent(model)
-#
-#     @variable(model, x[i=1:num_nodes * num_states])
-#     @variable(model, u[i=1:num_nonleaf_nodes * num_inputs])
-#     @variable(model, t[i=1:num_nodes - 1])
-#     @variable(model, s[i=1:num_nodes])
-#
-#     @objective(model, Min, s[1])
-#
-#     impose_dynamics(model, problem_definition)
+    model = Model(solver)
+    set_silent(model)
+
+    @variable(model, x[i=1:data.num_nodes * data.num_states])
+    @variable(model, u[i=1:data.num_nonleaf_nodes * data.num_inputs])
+    @variable(model, t[i=1:data.num_nodes - 1])
+    @variable(model, s[i=1:data.num_nodes])
+
+    @objective(model, Min, s[1])
+
+    impose_dynamics(model, data)
 #     impose_cost(model, problem_definition)
 #     impose_state_input_constraints(model, problem_definition)
 #     add_risk_epi_constraints(model, problem_definition)
-#
-#     return model
+
+    return model
 
 end
 

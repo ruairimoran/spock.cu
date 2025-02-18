@@ -2,11 +2,10 @@ import Pkg
 Pkg.activate("tests/julia/modelFactory")
 Pkg.instantiate()
 include("modelFactory/src/modelFactory.jl")
-using .modelFactory  # , MosekTools, Gurobi, Ipopt, SeDuMi, COSMO
+using .modelFactory, Gurobi, MosekTools, Ipopt, SeDuMi, COSMO
 
-arrU = read_tensor_from_binary(U, folder * "ancestors" * file_ext_u)
-arrT = read_tensor_from_binary(T, folder * "dynamics_AB" * file_ext_t)
-build_model()
+
+model_g = build_model(Gurobi.Optimizer)
 
 
 # N_min = 5
@@ -78,4 +77,4 @@ build_model()
 # end
 
 status = 0
-exit(status)
+# exit(status)

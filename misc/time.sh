@@ -7,6 +7,7 @@ main() {
     source venv/bin/activate
     for _ in {1..3}; do
         python main.py --dt="d"
+        julia tests/julia/test.jl
         exit_code=$?
         if [ $exit_code -eq 0 ]; then
             cmake -S . -B ./build -Wno-dev

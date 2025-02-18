@@ -70,11 +70,11 @@ class Model:
 
     @property
     def solve_time(self):
-        return self.__cvx._solve_time
+        return self.__cvx.solve_time
     
     @property
     def status(self):
-        return self.__cvx._status
+        return self.__cvx.status
 
     def __build(self):
         """Build an optimisation model using CVXPY."""

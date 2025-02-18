@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "../include/gpu.cuh"
+#include "../../include/gpu.cuh"
 
 
 TEMPLATE_WITH_TYPE_T

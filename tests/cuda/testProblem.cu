@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "../src/problem.cuh"
+#include "problem.cuh"
 #include <fstream>
 
 

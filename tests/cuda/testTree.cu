@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "../src/tree.cuh"
+#include "tree.cuh"
 
 
 class MarkovTreeTest : public testing::Test {

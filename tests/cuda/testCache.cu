@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "../src/cache.cuh"
+#include "cache.cuh"
 #include <filesystem>
 #include <iostream>
 

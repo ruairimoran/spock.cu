@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <numeric>
-#include "../src/cones.cuh"
+#include "cones.cuh"
 
 
 class ConesTest : public testing::Test {

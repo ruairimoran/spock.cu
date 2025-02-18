@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <numeric>
-#include "../src/projections.cuh"
-#include "../src/tree.cuh"
+#include "projections.cuh"
+#include "tree.cuh"
 
 
 class ProjectionsTest : public testing::Test {

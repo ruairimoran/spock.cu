@@ -12,14 +12,14 @@ enable_testing()
 add_executable(spock_tests)
 target_sources(spock_tests  # add files
     PRIVATE
-    testKernels.cu
-    testTree.cu
-    testCones.cu
-    testRisks.cu
-    testProblem.cu
-    testProjections.cu
-    testCache.cu
-    testOperator.cu
+    cuda/testKernels.cu
+    cuda/testTree.cu
+    cuda/testCones.cu
+    cuda/testRisks.cu
+    cuda/testProblem.cu
+    cuda/testProjections.cu
+    cuda/testCache.cu
+    cuda/testOperator.cu
 )
 target_link_libraries(spock_tests
     PRIVATE

@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include "../src/risks.cuh"
-#include "../src/tree.cuh"
+#include "risks.cuh"
+#include "tree.cuh"
 
 
 class RisksTest : public testing::Test {

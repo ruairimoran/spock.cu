@@ -15,7 +15,7 @@ class Problem:
     """
 
     def __init__(self, scenario_tree: treeFactory.Tree, num_states, num_inputs, dynamics,
-                 nonleaf_cost, leaf_cost, nonleaf_constraint, leaf_constraint, risk, test):
+                 nonleaf_cost, leaf_cost, nonleaf_constraint, leaf_constraint, risk, test, julia):
         """
         :param scenario_tree: instance of ScenarioTree
         :param num_states: number of system states
@@ -27,6 +27,7 @@ class Problem:
         :param leaf_constraint: state constraint class (size: 1)
         :param risk: list of risk classes (size: num_nonleaf_nodes, used: all)
         :param test: whether to compute test data
+        :param julia: whether to compute julia data
 
         Note: avoid using this constructor directly; use a factory instead
         """
@@ -40,6 +41,7 @@ class Problem:
         self.__nonleaf_constraint = nonleaf_constraint
         self.__leaf_constraint = leaf_constraint
         self.__test = test
+        self.__julia = julia
         # Dynamics projection
         self.__P = [np.zeros((self.__num_states, self.__num_states)) for _ in range(self.__tree.num_nodes)]
         self.__q = [np.zeros((self.__num_states, 1)) for _ in range(self.__tree.num_nodes)]
@@ -184,10 +186,10 @@ class Problem:
             "risk_NNtr": stack_null,
             "risk_b": stack_b
         }
-        if self.__list_of_dynamics[0].is_affine:
+        if self.__list_of_dynamics[0].is_affine or self.__julia:
             stack_affine_dyn = np.dstack([dyn.affine for dyn in self.__list_of_dynamics])
             tensors.update({
-                "dynamics_e": stack_affine_dyn
+                "dynamics_e": stack_affine_dyn,
             })
         l_con = [self.__nonleaf_constraint, self.__leaf_constraint]
         l_txt = ["nonleafConstraint", "leafConstraint"]
@@ -197,13 +199,13 @@ class Problem:
             if con.is_rectangle:
                 tensors.update({
                     txt + "ILB": con.lower_bound,
-                    txt + "IUB": con.upper_bound
+                    txt + "IUB": con.upper_bound,
                 })
             if con.is_polyhedron:
                 tensors.update({
                     txt + "Gamma": con.matrix,
                     txt + "GLB": con.lower_bound,
-                    txt + "GUB": con.upper_bound
+                    txt + "GUB": con.upper_bound,
                 })
             if con.is_polyhedron_with_identity:
                 tensors.update({
@@ -211,7 +213,7 @@ class Problem:
                     txt + "IUB": con.rect.upper_bound,
                     txt + "Gamma": con.poly.matrix,
                     txt + "GLB": con.poly.lower_bound,
-                    txt + "GUB": con.poly.upper_bound
+                    txt + "GUB": con.poly.upper_bound,
                 })
         # Generate files
         for name, tensor in tensors.items():
@@ -219,7 +221,7 @@ class Problem:
         if self.__test:
             stack_ker_con = np.dstack(self.__kernel_constraint_matrix)
             test_tensors = {
-                "S2": stack_ker_con
+                "S2": stack_ker_con,
             }
             test_vectors = {
                 "dpTestStates": self.__dp_test_states.reshape(-1),
@@ -233,11 +235,24 @@ class Problem:
                 "adjRandomDual": self.__dual_random,
                 "adjRandomResult": np.array([self.__test_is_adjoint_result]),
                 "dotVector": np.array(self.__dot_vector),
-                "dotResult": np.array([self.__dot_result])
+                "dotResult": np.array([self.__dot_result]),
             }
             for name, tensor in test_tensors.items():
                 self.__tree.write_to_file_fp(name, tensor)
             for name, vector in test_vectors.items():
+                self.__tree.write_to_file_fp(name, vector)
+        if self.__julia:
+            stack_dyn_A = np.dstack([dyn.state for dyn in self.__list_of_dynamics])
+            stack_dyn_B = np.dstack([dyn.input for dyn in self.__list_of_dynamics])
+            julia_tensors = {
+                "dynamics_A": stack_dyn_A,
+                "dynamics_B": stack_dyn_B,
+            }
+            julia_vectors = {
+            }
+            for name, tensor in julia_tensors.items():
+                self.__tree.write_to_file_fp(name, tensor)
+            for name, vector in julia_vectors.items():
                 self.__tree.write_to_file_fp(name, vector)
 
     # --------------------------------------------------------
@@ -549,6 +564,7 @@ class ProblemFactory:
         self.__leaf_constraint = [None for _ in range(self.__tree.num_leaf_nodes)]
         self.__list_of_risks = [None for _ in range(self.__tree.num_nonleaf_nodes)]
         self.__test = False
+        self.__julia = False
         self.__preload_constraints()
 
     def __check_stochastic(self, section):
@@ -641,20 +657,30 @@ class ProblemFactory:
         return self
 
     # --------------------------------------------------------
+    # Julia data
+    # --------------------------------------------------------
+    def with_julia(self):
+        self.__julia = True
+        return self
+
+    # --------------------------------------------------------
     # Generate
     # --------------------------------------------------------
     def generate_problem(self):
         """
         Generates problem data from the given build
         """
-        problem = Problem(self.__tree,
-                          self.__num_states,
-                          self.__num_inputs,
-                          self.__list_of_dynamics,
-                          self.__list_of_nonleaf_costs,
-                          self.__list_of_leaf_costs,
-                          self.__nonleaf_constraint,
-                          self.__leaf_constraint,
-                          self.__list_of_risks,
-                          self.__test)
+        problem = Problem(
+            self.__tree,
+            self.__num_states,
+            self.__num_inputs,
+            self.__list_of_dynamics,
+            self.__list_of_nonleaf_costs,
+            self.__list_of_leaf_costs,
+            self.__nonleaf_constraint,
+            self.__leaf_constraint,
+            self.__list_of_risks,
+            self.__test,
+            self.__julia,
+        )
         return problem

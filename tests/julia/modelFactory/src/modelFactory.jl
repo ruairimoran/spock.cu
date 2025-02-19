@@ -19,24 +19,34 @@ end
 export TI, TR, folder, file_ext_i, file_ext_r
 
 """
-Read a binary file into an array where:
-1) The first three 64-bit unsigned integers (UInt64) represent the dimensions (m, n, k).
-2) The remaining data are the array elements of type `T` (in column-major format).
-Returns an array of size (m, n, k) with element type `T`.
+Read a binary file.
+Return: array of file data, array dimensions.
 """
-function read_array_from_binary(::Type{T}, filename) where {T}
+function read_binary(::Type{T}, filename) where {T}
+    dims = Array{UInt64}(undef, 3)
+    data = Array{T}(undef, 0)
     open(filename, "r") do io
         # Read the first three UInt64 values for dimensions
-        dims = Array{UInt64}(undef, 3)
         read!(io, dims)
         # Compute total number of elements
         num_el = prod(dims)
         # Read the remaining binary data
         data = Array{T}(undef, num_el)
         read!(io, data)
-        # Reshape into an array
-        return reshape(data, Int.(dims)...)
     end
+    return data, dims
+end
+
+"""
+Read a binary file into an array where:
+1) The first three 64-bit unsigned integers (UInt64) represent the dimensions (m, n, k).
+2) The remaining data are the array elements of type `T` (in column-major format).
+Returns an array of size (m, n, k) with element type `T`.
+"""
+function read_array_from_binary(::Type{T}, filename) where {T}
+    data, dims = read_binary(T, filename)
+    # Reshape into an array
+    return reshape(data, Int.(dims)...)
 end
 
 """
@@ -46,22 +56,31 @@ Read a binary file into a tensor where:
 Returns a vector of matrices of size ((m, n), k) with element type `T`.
 """
 function read_tensor_from_binary(::Type{T}, filename) where {T}
-    open(filename, "r") do io
-        # Read the first three UInt64 values for dimensions
-        dims = Array{UInt64}(undef, 3)
-        read!(io, dims)
-        # Compute total number of elements
-        num_el = prod(dims)
-        # Read the remaining binary data
-        data = Array{T}(undef, num_el)
-        read!(io, data)
-        # Reshape into a tensor
-        arr = reshape(data, Int.(dims)...)
-        return collect(eachslice(arr, dims=3))
+    data, dims = read_binary(T, filename)
+    # Reshape into a tensor
+    arr = reshape(data, Int.(dims)...)
+    return collect(eachslice(arr, dims=3))
+end
+
+"""
+Read a binary file into a vector where:
+1) The first three 64-bit unsigned integers (UInt64) represent the dimensions (m, 1, 1).
+2) The remaining data are the vector elements of type `T`.
+Returns a vector of size (m, 1) with element type `T64`.
+"""
+function read_vector_from_binary(::Type{T}, filename) where {T}
+    data, _ = read_binary(T, filename)
+    # Reshape into a vector
+    if T <: Int
+        return Vector{Int64}(data)
+    elseif T <: Real
+        return Vector{Float64}(data)
+    else
+        throw("The type ($(T)) is not an int or real!")
     end
 end
 
-export read_array_from_binary, read_tensor_from_binary
+export read_array_from_binary, read_tensor_from_binary, read_vector_from_binary
 
 """
     Json::DataStructure
@@ -82,6 +101,10 @@ struct JSON_DATA
     cost_leaf_Q :: Vector{Matrix{TR}}
     constraint_nonleaf :: String
     constraint_leaf :: String
+    constraint_nonleaf_min :: Vector{TR}
+    constraint_nonleaf_max :: Vector{TR}
+    constraint_leaf_min :: Vector{TR}
+    constraint_leaf_max :: Vector{TR}
     risk_type :: String
     risk_alpha :: TR
     risk_rowsS2 :: TI
@@ -156,47 +179,45 @@ function impose_cost(
     )
 end
 
-# """
-#     Build::StateInputConstraints
-# """
-#
-# function impose_state_input_constraints(
-#     model :: Model,
-#     problem_definition :: GENERIC_PROBLEM_DEFINITION,
-#     )
-#     x = model[:x]
-#     u = model[:u]
-#
-#     x_min = problem_definition.constraints.x_min
-#     x_max = problem_definition.constraints.x_max
-#     u_min = problem_definition.constraints.u_min
-#     u_max = problem_definition.constraints.u_max
-#
-#     @constraint(
-#     model,
-#     x_box_min[i=1:problem_definition.scen_tree.n],
-#     x[node_to_x(problem_definition, i)] .>= x_min
-#     )
-#
-#     @constraint(
-#     model,
-#     x_box_max[i=1:problem_definition.scen_tree.n],
-#     x[node_to_x(problem_definition, i)] .<= x_max
-#     )
-#
-#     @constraint(
-#     model,
-#     u_box_min[i=1:problem_definition.scen_tree.n_non_leaf_nodes],
-#     u[node_to_u(problem_definition, i)] .>= u_min
-#     )
-#
-#     @constraint(
-#     model,
-#     u_box_max[i=1:problem_definition.scen_tree.n_non_leaf_nodes],
-#     u[node_to_u(problem_definition, i)] .<= u_max
-#     )
-# end
-#
+"""
+    Build::StateInputConstraints
+"""
+
+function impose_state_input_constraints(
+    model :: Model,
+    d :: JSON_DATA,
+    )
+    x = model[:x]
+    u = model[:u]
+
+    if d.constraint_nonleaf != "rectangle" || d.constraint_leaf != "rectangle"
+        throw("Constraint type not supported!")
+    end
+
+    nonleaf_x_min = d.constraint_nonleaf_min[1:d.num_states]
+    nonleaf_x_max = d.constraint_nonleaf_max[1:d.num_states]
+    nonleaf_u_min = d.constraint_nonleaf_min[d.num_states+1:end]
+    nonleaf_u_max = d.constraint_nonleaf_max[d.num_states+1:end]
+
+    @constraint(
+    model,
+    nonleaf_state_rectangle[node=2:d.num_nonleaf_nodes],
+    nonleaf_x_min .<= x[node_to_x(d, node)] .<= nonleaf_x_max
+    )
+
+    @constraint(
+    model,
+    nonleaf_input_rectangle[node=1:d.num_nonleaf_nodes],
+    nonleaf_u_min .<= u[node_to_u(d, node)] .<= nonleaf_u_max
+    )
+
+    @constraint(
+    model,
+    leaf_state_rectangle[node=d.num_nonleaf_nodes+1:d.num_nodes],
+    d.constraint_leaf_min .<= x[node_to_x(d, node)] .<= d.constraint_leaf_max
+    )
+end
+
 # """
 #     Build::Risk
 # """
@@ -277,6 +298,10 @@ function build_model(
         read_tensor_from_binary(TR, folder * "cost_leafQ" * file_ext_r),
         json["constraint"]["nonleaf"],
         json["constraint"]["leaf"],
+        read_vector_from_binary(TR, folder * "nonleafConstraintILB" * file_ext_r),
+        read_vector_from_binary(TR, folder * "nonleafConstraintIUB" * file_ext_r),
+        read_vector_from_binary(TR, folder * "leafConstraintILB" * file_ext_r),
+        read_vector_from_binary(TR, folder * "leafConstraintIUB" * file_ext_r),
         json["risk"]["type"],
         json["risk"]["alpha"],
         json["rowsS2"],
@@ -297,7 +322,7 @@ function build_model(
 
     impose_dynamics(model, data)
     impose_cost(model, data)
-    # impose_state_input_constraints(model, problem_definition)
+    impose_state_input_constraints(model, data)
     # add_risk_epi_constraints(model, problem_definition)
 
     return model

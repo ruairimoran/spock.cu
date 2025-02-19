@@ -33,11 +33,11 @@ num_states = 0
 rng = np.random.default_rng()
 num_nodes = np.inf
 while num_nodes > 1e4:
-    num_events = rng.integers(2, 10, endpoint=True)
-    num_stages = rng.integers(3, 10, endpoint=True)
-    stopping = rng.integers(1, min(num_stages, 3))
-    num_inputs = rng.integers(5, 20, endpoint=True)
-    num_states = num_inputs * 2
+    num_events = 2  # rng.integers(2, 10, endpoint=True)
+    num_stages = 3  # rng.integers(3, 10, endpoint=True)
+    stopping = 1  # rng.integers(1, min(num_stages, 3))
+    num_inputs = 2  # rng.integers(5, 20, endpoint=True)
+    num_states = 3  # num_inputs * 2
     v = 1 / num_events * np.ones(num_events)
     (final_stage, stop_branching_stage) = (num_stages - 1, stopping)
     tree_test = treeFactory.IidProcess(

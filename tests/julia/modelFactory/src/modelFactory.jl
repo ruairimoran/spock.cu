@@ -94,11 +94,11 @@ function impose_dynamics(
 
     @constraint(
     model,
-    dynamics[i=2:d.num_nodes],  # non-root nodes, so all except i = 1
-    x[node_to_x(d, i)] .==
-        d.dynamics_A[:, :, i] * x[node_to_x(d, d.ancestors[i])]
-        + d.dynamics_B[:, :, i] * u[node_to_u(d, d.ancestors[i])]
-        + d.dynamics_c[:, :, i]
+    dynamics[node=2:d.num_nodes, row=1:d.num_states],
+    x[node_to_x(d, node)[row]] ==
+        sum(d.dynamics_A[row, col, node] * x[node_to_x(d, d.ancestors[node])[col]] for col in 1:d.num_states)
+        + sum(d.dynamics_B[row, col, node] * u[node_to_u(d, d.ancestors[node])[col]] for col in 1:d.num_inputs)
+        + d.dynamics_c[row, 1, node]
     )
 end
 
@@ -243,7 +243,7 @@ function build_model(
         json["dynamics"]["type"],
         read_tensor_from_binary(T, folder * "dynamics_A" * file_ext_t),
         read_tensor_from_binary(T, folder * "dynamics_B" * file_ext_t),
-        read_tensor_from_binary(T, folder * "dynamics_c" * file_ext_t),
+        read_tensor_from_binary(T, folder * "dynamics_e" * file_ext_t),
         json["constraint"]["nonleaf"],
         json["constraint"]["leaf"],
         json["risk"]["type"],
@@ -251,7 +251,7 @@ function build_model(
         json["rowsS2"],
         json["rowsNNtr"],
         json["stepSize"],
-        read_tensor_from_binary(U, folder * "ancestors" * file_ext_u),
+        read_tensor_from_binary(U, folder * "ancestors" * file_ext_u) .+ 1,
     )
 
     model = Model(solver)

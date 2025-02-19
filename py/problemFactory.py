@@ -244,9 +244,15 @@ class Problem:
         if self.__julia:
             stack_dyn_A = np.dstack([dyn.state for dyn in self.__list_of_dynamics])
             stack_dyn_B = np.dstack([dyn.input for dyn in self.__list_of_dynamics])
+            stack_cost_nonleaf_Q = np.dstack([cost.state for cost in self.__list_of_nonleaf_costs])
+            stack_cost_nonleaf_R = np.dstack([cost.input for cost in self.__list_of_nonleaf_costs])
+            stack_cost_leaf_Q = np.dstack([cost.state for cost in self.__list_of_leaf_costs])
             julia_tensors = {
                 "dynamics_A": stack_dyn_A,
                 "dynamics_B": stack_dyn_B,
+                "cost_nonleafQ": stack_cost_nonleaf_Q,
+                "cost_nonleafR": stack_cost_nonleaf_R,
+                "cost_leafQ": stack_cost_leaf_Q,
             }
             julia_vectors = {
             }

@@ -5,24 +5,45 @@ using JSON, JuMP
 """
     Filing system
 """
-U = UInt64  # unsigned ints
-T = Float64  # double precision
+TI = Int64  # ints
+TR = Float64  # double
 folder = "data/"
 file_type = ".bt"
-file_ext_u = "_u" * file_type
-if T == Float32
-    file_ext_t = "_f" * file_type
+file_ext_i = "_u" * file_type
+if TR == Float32
+    file_ext_r = "_f" * file_type
 else
-    file_ext_t = "_d" * file_type
+    file_ext_r = "_d" * file_type
 end
 
-export U, T, folder, file_ext_u, file_ext_t
+export TI, TR, folder, file_ext_i, file_ext_r
 
 """
-Read a binary file where:
+Read a binary file into an array where:
 1) The first three 64-bit unsigned integers (UInt64) represent the dimensions (m, n, k).
 2) The remaining data are the array elements of type `T` (in column-major format).
-Returns a tensor of size (m, n, k) with element type `T`.
+Returns an array of size (m, n, k) with element type `T`.
+"""
+function read_array_from_binary(::Type{T}, filename) where {T}
+    open(filename, "r") do io
+        # Read the first three UInt64 values for dimensions
+        dims = Array{UInt64}(undef, 3)
+        read!(io, dims)
+        # Compute total number of elements
+        num_el = prod(dims)
+        # Read the remaining binary data
+        data = Array{T}(undef, num_el)
+        read!(io, data)
+        # Reshape into an array
+        return reshape(data, Int.(dims)...)
+    end
+end
+
+"""
+Read a binary file into a tensor where:
+1) The first three 64-bit unsigned integers (UInt64) represent the dimensions (m, n, k).
+2) The remaining data are the tensor elements of type `T` (in column-major format).
+Returns a vector of matrices of size ((m, n), k) with element type `T`.
 """
 function read_tensor_from_binary(::Type{T}, filename) where {T}
     open(filename, "r") do io
@@ -31,54 +52,58 @@ function read_tensor_from_binary(::Type{T}, filename) where {T}
         read!(io, dims)
         # Compute total number of elements
         num_el = prod(dims)
-        # Read the remaining binary data as a Vector{T}
+        # Read the remaining binary data
         data = Array{T}(undef, num_el)
         read!(io, data)
         # Reshape into a tensor
-        return reshape(data, Int.(dims)...)
+        arr = reshape(data, Int.(dims)...)
+        return collect(eachslice(arr, dims=3))
     end
 end
 
-export read_tensor_from_binary
+export read_array_from_binary, read_tensor_from_binary
 
 """
     Json::DataStructure
 """
 struct JSON_DATA
-    num_events :: UInt
-    num_nonleaf_nodes :: UInt
-    num_nodes :: UInt
-    num_stages :: UInt
-    num_states :: UInt
-    num_inputs :: UInt
+    num_events :: TI
+    num_nonleaf_nodes :: TI
+    num_nodes :: TI
+    num_stages :: TI
+    num_states :: TI
+    num_inputs :: TI
     dynamics_type :: String
-    dynamics_A :: Array
-    dynamics_B :: Array
-    dynamics_c :: Array
+    dynamics_A :: Vector{Matrix{TR}}
+    dynamics_B :: Vector{Matrix{TR}}
+    dynamics_c :: Vector{Matrix{TR}}
+    cost_nonleaf_Q :: Vector{Matrix{TR}}
+    cost_nonleaf_R :: Vector{Matrix{TR}}
+    cost_leaf_Q :: Vector{Matrix{TR}}
     constraint_nonleaf :: String
     constraint_leaf :: String
     risk_type :: String
-    risk_alpha :: Real
-    risk_rowsS2 :: UInt
-    risk_rowsNNtr :: UInt
-    step_size :: Real
-    ancestors :: Array
+    risk_alpha :: TR
+    risk_rowsS2 :: TI
+    risk_rowsNNtr :: TI
+    step_size :: TR
+    ancestors :: Array{TI}
 end
 
 """
     Indexing
 """
 
-function node_to_x(data :: JSON_DATA, node :: UInt)
-    return collect(
+function node_to_x(data :: JSON_DATA, node :: TI)
+    return Vector{Int64}(collect(
         (node - 1) * data.num_states + 1 : node * data.num_states
-    )
+    ))
 end
 
-function node_to_u(data :: JSON_DATA, node :: UInt)
-    return collect(
+function node_to_u(data :: JSON_DATA, node :: TI)
+    return Vector{Int64}(collect(
         (node - 1) * data.num_inputs + 1 : node * data.num_inputs
-    )
+    ))
 end
 
 """
@@ -94,39 +119,42 @@ function impose_dynamics(
 
     @constraint(
     model,
-    dynamics[node=2:d.num_nodes, row=1:d.num_states],
-    x[node_to_x(d, node)[row]] ==
-        sum(d.dynamics_A[row, col, node] * x[node_to_x(d, d.ancestors[node])[col]] for col in 1:d.num_states)
-        + sum(d.dynamics_B[row, col, node] * u[node_to_u(d, d.ancestors[node])[col]] for col in 1:d.num_inputs)
-        + d.dynamics_c[row, 1, node]
+    dynamics[node=2:d.num_nodes],
+    x[node_to_x(d, node)] .==
+        d.dynamics_A[node] * x[node_to_x(d, d.ancestors[node])]
+        + d.dynamics_B[node] * u[node_to_u(d, d.ancestors[node])]
+        + d.dynamics_c[node]
     )
 end
 
-# """
-#     Build::Cost
-# """
+"""
+    Build::Cost
+"""
 
-# function impose_cost(
-#     model :: Model,
-#     data :: JSON_DATA,
-#     )
-#     x = model[:x]
-#     u = model[:u]
-#     t = model[:t]
-#     s = model[:s]
+function impose_cost(
+    model :: Model,
+    d :: JSON_DATA,
+    )
+    x = model[:x]
+    u = model[:u]
+    t = model[:t]
+    s = model[:s]
 
-#     @constraint(
-#     model,
-#     nonleaf_cost[node = 2:problem_definition.scen_tree.n],
-#     (x[node_to_x(problem_definition, anc_mapping[node])]' * problem_definition.cost.Q[node - 1] * x[node_to_x(problem_definition, anc_mapping[node])] + u[node_to_u(problem_definition, anc_mapping[node])]' * problem_definition.cost.R[node - 1] * u[node_to_u(problem_definition, anc_mapping[node])]) <= model[:tau][node - 1]
-#     )
+    @constraint(
+    model,
+    nonleaf_cost[node=2:d.num_nodes],
+    (x[node_to_x(d, d.ancestors[node])]' * d.cost_nonleaf_Q[node] * x[node_to_x(d, d.ancestors[node])] 
+    + u[node_to_u(d, d.ancestors[node])]' * d.cost_nonleaf_R[node] * u[node_to_u(d, d.ancestors[node])]) 
+    <= model[:t][node - 1]
+    )
 
-#     @constraint(
-#     model,
-#     leaf_cost[i = problem_definition.scen_tree.leaf_node_min_index : problem_definition.scen_tree.leaf_node_max_index],
-#     x[node_to_x(problem_definition, i)]' * problem_definition.cost.QN[i - problem_definition.scen_tree.leaf_node_min_index + 1] * x[node_to_x(problem_definition, i)] <= model[:s][i]
-#     )
-# end
+    @constraint(
+    model,
+    leaf_cost[node=d.num_nonleaf_nodes+1:d.num_nodes],
+    x[node_to_x(d, node)]' * d.cost_leaf_Q[node - d.num_nonleaf_nodes] * x[node_to_x(d, node)] 
+    <= model[:s][node]
+    )
+end
 
 # """
 #     Build::StateInputConstraints
@@ -241,9 +269,12 @@ function build_model(
         json["numStates"],
         json["numInputs"],
         json["dynamics"]["type"],
-        read_tensor_from_binary(T, folder * "dynamics_A" * file_ext_t),
-        read_tensor_from_binary(T, folder * "dynamics_B" * file_ext_t),
-        read_tensor_from_binary(T, folder * "dynamics_e" * file_ext_t),
+        read_tensor_from_binary(TR, folder * "dynamics_A" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "dynamics_B" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "dynamics_e" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "cost_nonleafQ" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "cost_nonleafR" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "cost_leafQ" * file_ext_r),
         json["constraint"]["nonleaf"],
         json["constraint"]["leaf"],
         json["risk"]["type"],
@@ -251,7 +282,7 @@ function build_model(
         json["rowsS2"],
         json["rowsNNtr"],
         json["stepSize"],
-        read_tensor_from_binary(U, folder * "ancestors" * file_ext_u) .+ 1,
+        read_array_from_binary(TI, folder * "ancestors" * file_ext_i) .+ 1,
     )
 
     model = Model(solver)
@@ -265,9 +296,9 @@ function build_model(
     @objective(model, Min, s[1])
 
     impose_dynamics(model, data)
-#     impose_cost(model, problem_definition)
-#     impose_state_input_constraints(model, problem_definition)
-#     add_risk_epi_constraints(model, problem_definition)
+    impose_cost(model, data)
+    # impose_state_input_constraints(model, problem_definition)
+    # add_risk_epi_constraints(model, problem_definition)
 
     return model
 

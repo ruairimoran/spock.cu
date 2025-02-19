@@ -218,60 +218,54 @@ function impose_state_input_constraints(
     )
 end
 
-# """
-#     Build::Risk
-# """
-#
-# function add_risk_epi_constraints(
-#     model::Model,
-#     problem_definition :: GENERIC_PROBLEM_DEFINITION,
-#     )
-#     ny = 0
-#     for i = 1:length(problem_definition.rms)
-#     ny += length(problem_definition.rms[i].b)
-#     end
-#     @variable(model, y[i=1:ny])
-#
-#     y = model[:y]
-#     s = model[:s]
-#     tau = model[:tau]
-#
-#     y_offset = 0
-#     for i = 1:problem_definition.scen_tree.n_non_leaf_nodes
-#         # y in K^*
-#         dim_offset = 0
-#         for j = 1:1#length(problem_definition.rms[i].K.subcones)
-#           dim = MOI.dimension(problem_definition.rms[i].K.subcones[j])
-#           @constraint(model, in(y[y_offset + dim_offset + 1 : y_offset + dim_offset + dim], MOI.dual_set(problem_definition.rms[i].K.subcones[j])))
-#           dim_offset += dim
-#         end
-#
-#         # y' * b <= s
-#         @constraint(
-#           model,
-#           y[y_offset + 1 : y_offset + length(problem_definition.rms[i].b)]' * problem_definition.rms[i].b <= s[i]
-#         )
-#
-#
-#         # E^i' * y = tau + s
-#         for j in problem_definition.scen_tree.child_mapping[i]
-#           @constraint(
-#             model,
-#             problem_definition.rms[i].E' * y[y_offset + 1 : y_offset + length(problem_definition.rms[i].b)] .== tau[j - 1] + s[j]
-#           )
-#         end
-#
-#
-#         # F' y = 0
-#         @constraint(
-#           model,
-#           problem_definition.rms[i].F' * y[y_offset + 1 : y_offset + length(problem_definition.rms[i].b)] .== 0.
-#         )
-#
-#
-#         y_offset += length(problem_definition.rms[i].b)
-#     end
-# end
+"""
+    Build::Risk
+"""
+
+function impose_risk(
+    model::Model,
+    d :: JSON_DATA,
+    )
+    ny = 0
+    for i = 1:length(d.rms)
+        ny += length(d.rms[i].b)
+    end
+    @variable(model, y[i=1:ny])
+
+    y = model[:y]
+    s = model[:s]
+    tau = model[:tau]
+
+    y_offset = 0
+    for i = 1:problem_definition.scen_tree.n_non_leaf_nodes
+        # y in K^*
+        dim_offset = 0
+        for j = 1:1#length(problem_definition.rms[i].K.subcones)
+            dim = MOI.dimension(problem_definition.rms[i].K.subcones[j])
+            @constraint(model, in(y[y_offset + dim_offset + 1 : y_offset + dim_offset + dim], MOI.dual_set(problem_definition.rms[i].K.subcones[j])))
+            dim_offset += dim
+        end
+        # y' * b <= s
+        @constraint(
+            model,
+            y[y_offset + 1 : y_offset + length(problem_definition.rms[i].b)]' * problem_definition.rms[i].b <= s[i]
+        )
+        # E^i' * y = tau + s
+        for j in problem_definition.scen_tree.child_mapping[i]
+            @constraint(
+                model,
+                problem_definition.rms[i].E' * y[y_offset + 1 : y_offset + length(problem_definition.rms[i].b)] .== tau[j - 1] + s[j]
+            )
+        end
+        # F' y = 0
+        @constraint(
+            model,
+            problem_definition.rms[i].F' * y[y_offset + 1 : y_offset + length(problem_definition.rms[i].b)] .== 0.
+        )
+        # Add y dimension
+        y_offset += length(problem_definition.rms[i].b)
+    end
+end
 
 """
     Build::Model
@@ -323,7 +317,7 @@ function build_model(
     impose_dynamics(model, data)
     impose_cost(model, data)
     impose_state_input_constraints(model, data)
-    # add_risk_epi_constraints(model, problem_definition)
+    impose_risk(model, data)
 
     return model
 

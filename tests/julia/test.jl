@@ -5,7 +5,41 @@ include("modelFactory/src/modelFactory.jl")
 using .modelFactory, Gurobi, MosekTools, Ipopt, SeDuMi, COSMO
 
 
-model_g = build_model(Gurobi.Optimizer)
+json = JSON.parse(read(folder * "data.json", String))
+data = Data(
+    json["numEvents"],
+    json["numNonleafNodes"],
+    json["numNodes"],
+    json["numStages"],
+    json["numStates"],
+    json["numInputs"],
+    json["dynamics"]["type"],
+    read_tensor_from_binary(TR, folder * "dynamics_A" * file_ext_r),
+    read_tensor_from_binary(TR, folder * "dynamics_B" * file_ext_r),
+    read_tensor_from_binary(TR, folder * "dynamics_e" * file_ext_r),
+    read_tensor_from_binary(TR, folder * "cost_nonleafQ" * file_ext_r),
+    read_tensor_from_binary(TR, folder * "cost_nonleafR" * file_ext_r),
+    read_tensor_from_binary(TR, folder * "cost_leafQ" * file_ext_r),
+    json["constraint"]["nonleaf"],
+    json["constraint"]["leaf"],
+    read_vector_from_binary(TR, folder * "nonleafConstraintILB" * file_ext_r),
+    read_vector_from_binary(TR, folder * "nonleafConstraintIUB" * file_ext_r),
+    read_vector_from_binary(TR, folder * "leafConstraintILB" * file_ext_r),
+    read_vector_from_binary(TR, folder * "leafConstraintIUB" * file_ext_r),
+    json["risk"]["type"],
+    json["risk"]["alpha"],
+    json["rowsS2"],
+    json["rowsNNtr"],
+    json["stepSize"],
+    read_vector_from_binary(TI, folder * "ancestors" * file_ext_i) .+ 1,
+    read_vector_from_binary(TI, folder * "numChildren" * file_ext_i) .+ 1,
+    read_vector_from_binary(TI, folder * "childrenFrom" * file_ext_i) .+ 1,
+    read_vector_from_binary(TI, folder * "childrenTo" * file_ext_i) .+ 1,
+    read_vector_from_binary(TR, folder * "conditionalProbabilities" * file_ext_r),
+)
+risks = [Risk(data, node) for node in 1:data.num_nonleaf_nodes]
+
+model_g = build_model(Gurobi.Optimizer, data, risks)
 
 
 # N_min = 5

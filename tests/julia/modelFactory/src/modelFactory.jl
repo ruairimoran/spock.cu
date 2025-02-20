@@ -1,6 +1,8 @@
 module modelFactory
 
-using JSON, JuMP
+using JSON, JuMP, LinearAlgebra, MathOptInterface
+const LA = LinearAlgebra
+const MOI = MathOptInterface
 
 """
     Filing system
@@ -38,18 +40,6 @@ function read_binary(::Type{T}, filename) where {T}
 end
 
 """
-Read a binary file into an array where:
-1) The first three 64-bit unsigned integers (UInt64) represent the dimensions (m, n, k).
-2) The remaining data are the array elements of type `T` (in column-major format).
-Returns an array of size (m, n, k) with element type `T`.
-"""
-function read_array_from_binary(::Type{T}, filename) where {T}
-    data, dims = read_binary(T, filename)
-    # Reshape into an array
-    return reshape(data, Int.(dims)...)
-end
-
-"""
 Read a binary file into a tensor where:
 1) The first three 64-bit unsigned integers (UInt64) represent the dimensions (m, n, k).
 2) The remaining data are the tensor elements of type `T` (in column-major format).
@@ -59,7 +49,7 @@ function read_tensor_from_binary(::Type{T}, filename) where {T}
     data, dims = read_binary(T, filename)
     # Reshape into a tensor
     arr = reshape(data, Int.(dims)...)
-    return collect(eachslice(arr, dims=3))
+    return collect(eachslice(arr, dims = 3))
 end
 
 """
@@ -83,9 +73,9 @@ end
 export read_array_from_binary, read_tensor_from_binary, read_vector_from_binary
 
 """
-    Json::DataStructure
+    Problem Data
 """
-struct JSON_DATA
+struct Data
     num_events :: TI
     num_nonleaf_nodes :: TI
     num_nodes :: TI
@@ -110,43 +100,49 @@ struct JSON_DATA
     risk_rowsS2 :: TI
     risk_rowsNNtr :: TI
     step_size :: TR
-    ancestors :: Array{TI}
+    ancestors :: Vector{TI}
+    ch_num :: Vector{TI}
+    ch_from :: Vector{TI}
+    ch_to :: Vector{TI}
+    conditional_probabilities :: Vector{TR}
 end
+
+export Data
 
 """
     Indexing
 """
 
-function node_to_x(data :: JSON_DATA, node :: TI)
-    return Vector{Int64}(collect(
-        (node - 1) * data.num_states + 1 : node * data.num_states
-    ))
-end
+node_to_x(d :: Data, node :: TI) = Vector{Int64}(collect(
+    (node - 1) * d.num_states + 1 : node * d.num_states
+))
 
-function node_to_u(data :: JSON_DATA, node :: TI)
-    return Vector{Int64}(collect(
-        (node - 1) * data.num_inputs + 1 : node * data.num_inputs
-    ))
-end
+node_to_u(d :: Data, node :: TI) = Vector{Int64}(collect(
+    (node - 1) * d.num_inputs + 1 : node * d.num_inputs
+))
+
+node_to_ch(d :: Data, node :: TI) = Vector{Int64}(collect(
+    d.ch_from[node] : d.chTo[node]
+))
 
 """
     Build::Dynamics
 """
 
 function impose_dynamics(
-    model :: Model,
-    d :: JSON_DATA,
+    model :: Model, 
+    d :: Data, 
     )
     x = model[:x]
     u = model[:u]
 
     @constraint(
-    model,
-    dynamics[node=2:d.num_nodes],
-    x[node_to_x(d, node)] .==
-        d.dynamics_A[node] * x[node_to_x(d, d.ancestors[node])]
-        + d.dynamics_B[node] * u[node_to_u(d, d.ancestors[node])]
-        + d.dynamics_c[node]
+        model,
+        dynamics[node=2:d.num_nodes],
+        x[node_to_x(d, node)] .==
+            d.dynamics_A[node] * x[node_to_x(d, d.ancestors[node])]
+            + d.dynamics_B[node] * u[node_to_u(d, d.ancestors[node])]
+            + d.dynamics_c[node]
     )
 end
 
@@ -155,8 +151,8 @@ end
 """
 
 function impose_cost(
-    model :: Model,
-    d :: JSON_DATA,
+    model :: Model, 
+    d :: Data, 
     )
     x = model[:x]
     u = model[:u]
@@ -164,18 +160,18 @@ function impose_cost(
     s = model[:s]
 
     @constraint(
-    model,
-    nonleaf_cost[node=2:d.num_nodes],
-    (x[node_to_x(d, d.ancestors[node])]' * d.cost_nonleaf_Q[node] * x[node_to_x(d, d.ancestors[node])] 
-    + u[node_to_u(d, d.ancestors[node])]' * d.cost_nonleaf_R[node] * u[node_to_u(d, d.ancestors[node])]) 
-    <= model[:t][node - 1]
+        model,
+        nonleaf_cost[node=2:d.num_nodes],
+        (x[node_to_x(d, d.ancestors[node])]' * d.cost_nonleaf_Q[node] * x[node_to_x(d, d.ancestors[node])]
+        + u[node_to_u(d, d.ancestors[node])]' * d.cost_nonleaf_R[node] * u[node_to_u(d, d.ancestors[node])])
+        <= model[:t][node - 1]
     )
 
     @constraint(
-    model,
-    leaf_cost[node=d.num_nonleaf_nodes+1:d.num_nodes],
-    x[node_to_x(d, node)]' * d.cost_leaf_Q[node - d.num_nonleaf_nodes] * x[node_to_x(d, node)] 
-    <= model[:s][node]
+        model,
+        leaf_cost[node=d.num_nonleaf_nodes+1:d.num_nodes],
+        x[node_to_x(d, node)]' * d.cost_leaf_Q[node - d.num_nonleaf_nodes] * x[node_to_x(d, node)]
+        <= model[:s][node]
     )
 end
 
@@ -184,8 +180,8 @@ end
 """
 
 function impose_state_input_constraints(
-    model :: Model,
-    d :: JSON_DATA,
+    model :: Model, 
+    d :: Data, 
     )
     x = model[:x]
     u = model[:u]
@@ -196,25 +192,25 @@ function impose_state_input_constraints(
 
     nonleaf_x_min = d.constraint_nonleaf_min[1:d.num_states]
     nonleaf_x_max = d.constraint_nonleaf_max[1:d.num_states]
-    nonleaf_u_min = d.constraint_nonleaf_min[d.num_states+1:end]
-    nonleaf_u_max = d.constraint_nonleaf_max[d.num_states+1:end]
+    nonleaf_u_min = d.constraint_nonleaf_min[d.num_states + 1:end]
+    nonleaf_u_max = d.constraint_nonleaf_max[d.num_states + 1:end]
 
     @constraint(
-    model,
-    nonleaf_state_rectangle[node=2:d.num_nonleaf_nodes],
-    nonleaf_x_min .<= x[node_to_x(d, node)] .<= nonleaf_x_max
+        model,
+        nonleaf_state_rectangle[node=2:d.num_nonleaf_nodes],
+        nonleaf_x_min .<= x[node_to_x(d, node)] .<= nonleaf_x_max
     )
 
     @constraint(
-    model,
-    nonleaf_input_rectangle[node=1:d.num_nonleaf_nodes],
-    nonleaf_u_min .<= u[node_to_u(d, node)] .<= nonleaf_u_max
+        model,
+        nonleaf_input_rectangle[node=1:d.num_nonleaf_nodes],
+        nonleaf_u_min .<= u[node_to_u(d, node)] .<= nonleaf_u_max
     )
 
     @constraint(
-    model,
-    leaf_state_rectangle[node=d.num_nonleaf_nodes+1:d.num_nodes],
-    d.constraint_leaf_min .<= x[node_to_x(d, node)] .<= d.constraint_leaf_max
+        model,
+        leaf_state_rectangle[node=d.num_nonleaf_nodes+1:d.num_nodes],
+        d.constraint_leaf_min .<= x[node_to_x(d, node)] .<= d.constraint_leaf_max
     )
 end
 
@@ -222,48 +218,71 @@ end
     Build::Risk
 """
 
-function impose_risk(
-    model::Model,
-    d :: JSON_DATA,
-    )
-    ny = 0
-    for i = 1:length(d.rms)
-        ny += length(d.rms[i].b)
-    end
-    @variable(model, y[i=1:ny])
+struct Risk
+    dim :: TI
+    E :: Matrix{TR}
+    F :: Union{Nothing, Matrix{TR}}
+    K :: MOI.AbstractSet
+    b :: Vector{TR}
 
-    y = model[:y]
-    s = model[:s]
-    tau = model[:tau]
+    function Risk(
+        d :: Data, 
+        node :: TI, 
+        )
+        if d.risk_type == "avar"
+            alpha = d.risk_alpha
+            ch_num = d.ch_num[node]
+            ch_probs = d.conditional_probabilities[node_to_ch(node)]  # Conditional probabilities of children
+            eye = I(ch_num)  # Identity matrix
+            E = vcat(alpha * eye, -eye, ones(1, ch_num))
+            F = nothing  # Matrix F is not applicable for AVaR
+            K = MOI.CartesianProductCone(MOI.Nonnegatives(ch_num * 2), MOI.ZeroCone(1))
+            b = vcat(ch_probs, zeros(ch_num), 1)
+            dim = MOI.dimension(K)
 
-    y_offset = 0
-    for i = 1:problem_definition.scen_tree.n_non_leaf_nodes
-        # y in K^*
-        dim_offset = 0
-        for j = 1:1#length(problem_definition.rms[i].K.subcones)
-            dim = MOI.dimension(problem_definition.rms[i].K.subcones[j])
-            @constraint(model, in(y[y_offset + dim_offset + 1 : y_offset + dim_offset + dim], MOI.dual_set(problem_definition.rms[i].K.subcones[j])))
-            dim_offset += dim
+            return new(dim, E, F, K, b)
+        else
+            throw("Risk type ($(d.risk_type)) not supported.")
         end
+    end
+end
+
+export Risk
+
+function impose_risk(
+    model::Model, 
+    d :: Data,
+    risks :: Vector{Risk},
+    )
+    y = model[:y]
+    t = model[:t]
+    s = model[:s]
+
+    y_idx = 0
+    for node = 1:d.num_nonleaf_nodes
+        dim = risks[node].dim
+        y_node = y[y_idx + 1 : y_idx + dim]
+        # y in K^*
+        @constraint(
+            model,
+            in(y_node, MOI.dual_set(risks[node].K)))
         # y' * b <= s
         @constraint(
             model,
-            y[y_offset + 1 : y_offset + length(problem_definition.rms[i].b)]' * problem_definition.rms[i].b <= s[i]
+            y_node' * d.risks[node].b <= s[node]
         )
-        # E^i' * y = tau + s
-        for j in problem_definition.scen_tree.child_mapping[i]
-            @constraint(
-                model,
-                problem_definition.rms[i].E' * y[y_offset + 1 : y_offset + length(problem_definition.rms[i].b)] .== tau[j - 1] + s[j]
-            )
-        end
-        # F' y = 0
+        # E' * y = t + s
         @constraint(
             model,
-            problem_definition.rms[i].F' * y[y_offset + 1 : y_offset + length(problem_definition.rms[i].b)] .== 0.
+            risks[node].E' * y .== t[node_to_ch(node) .- 1] + s[node_to_ch(node)]
         )
+#         # F' y = 0
+#         @constraint(
+#             model,
+#             problem_definition.rms[i].F' * y[y_idx + 1 : y_idx + length(problem_definition.rms[i].b)] .== 0.
+#         )
         # Add y dimension
-        y_offset += length(problem_definition.rms[i].b)
+        y_idx += dim
     end
 end
 
@@ -273,51 +292,29 @@ end
 
 function build_model(
     solver,
+    d :: Data,
+    risks :: Vector{Risk},
     )
-
-    json = JSON.parse(read(folder * "data.json", String))
-    data = JSON_DATA(
-        json["numEvents"],
-        json["numNonleafNodes"],
-        json["numNodes"],
-        json["numStages"],
-        json["numStates"],
-        json["numInputs"],
-        json["dynamics"]["type"],
-        read_tensor_from_binary(TR, folder * "dynamics_A" * file_ext_r),
-        read_tensor_from_binary(TR, folder * "dynamics_B" * file_ext_r),
-        read_tensor_from_binary(TR, folder * "dynamics_e" * file_ext_r),
-        read_tensor_from_binary(TR, folder * "cost_nonleafQ" * file_ext_r),
-        read_tensor_from_binary(TR, folder * "cost_nonleafR" * file_ext_r),
-        read_tensor_from_binary(TR, folder * "cost_leafQ" * file_ext_r),
-        json["constraint"]["nonleaf"],
-        json["constraint"]["leaf"],
-        read_vector_from_binary(TR, folder * "nonleafConstraintILB" * file_ext_r),
-        read_vector_from_binary(TR, folder * "nonleafConstraintIUB" * file_ext_r),
-        read_vector_from_binary(TR, folder * "leafConstraintILB" * file_ext_r),
-        read_vector_from_binary(TR, folder * "leafConstraintIUB" * file_ext_r),
-        json["risk"]["type"],
-        json["risk"]["alpha"],
-        json["rowsS2"],
-        json["rowsNNtr"],
-        json["stepSize"],
-        read_array_from_binary(TI, folder * "ancestors" * file_ext_i) .+ 1,
-    )
-
     model = Model(solver)
     set_silent(model)
 
-    @variable(model, x[i=1:data.num_nodes * data.num_states])
-    @variable(model, u[i=1:data.num_nonleaf_nodes * data.num_inputs])
-    @variable(model, t[i=1:data.num_nodes - 1])
-    @variable(model, s[i=1:data.num_nodes])
+    dim_y = 0
+    for node = 1:d.num_nonleaf_nodes
+        dim_y += risks[node].dim
+    end
+
+    @variable(model, x[i = 1 : d.num_nodes * d.num_states])
+    @variable(model, u[i = 1 : d.num_nonleaf_nodes * d.num_inputs])
+    @variable(model, y[i = 1 : dim_y])
+    @variable(model, t[i = 1 : d.num_nodes - 1])
+    @variable(model, s[i = 1 : d.num_nodes])
 
     @objective(model, Min, s[1])
 
-    impose_dynamics(model, data)
-    impose_cost(model, data)
-    impose_state_input_constraints(model, data)
-    impose_risk(model, data)
+    impose_dynamics(model, d)
+    impose_cost(model, d)
+    impose_state_input_constraints(model, d)
+    impose_risk(model, d)
 
     return model
 

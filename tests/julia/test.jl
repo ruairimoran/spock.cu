@@ -2,113 +2,71 @@ import Pkg
 Pkg.activate("tests/julia/modelFactory")
 Pkg.instantiate()
 include("modelFactory/src/modelFactory.jl")
-using .modelFactory, Gurobi, MosekTools, Ipopt, SeDuMi, COSMO
+using .modelFactory, JuMP, Gurobi, MosekTools, Ipopt, COSMO
 
 
-json = JSON.parse(read(folder * "data.json", String))
-data = Data(
-    json["numEvents"],
-    json["numNonleafNodes"],
-    json["numNodes"],
-    json["numStages"],
-    json["numStates"],
-    json["numInputs"],
-    json["dynamics"]["type"],
-    read_tensor_from_binary(TR, folder * "dynamics_A" * file_ext_r),
-    read_tensor_from_binary(TR, folder * "dynamics_B" * file_ext_r),
-    read_tensor_from_binary(TR, folder * "dynamics_e" * file_ext_r),
-    read_tensor_from_binary(TR, folder * "cost_nonleafQ" * file_ext_r),
-    read_tensor_from_binary(TR, folder * "cost_nonleafR" * file_ext_r),
-    read_tensor_from_binary(TR, folder * "cost_leafQ" * file_ext_r),
-    json["constraint"]["nonleaf"],
-    json["constraint"]["leaf"],
-    read_vector_from_binary(TR, folder * "nonleafConstraintILB" * file_ext_r),
-    read_vector_from_binary(TR, folder * "nonleafConstraintIUB" * file_ext_r),
-    read_vector_from_binary(TR, folder * "leafConstraintILB" * file_ext_r),
-    read_vector_from_binary(TR, folder * "leafConstraintIUB" * file_ext_r),
-    json["risk"]["type"],
-    json["risk"]["alpha"],
-    json["rowsS2"],
-    json["rowsNNtr"],
-    json["stepSize"],
-    read_vector_from_binary(TI, folder * "ancestors" * file_ext_i) .+ 1,
-    read_vector_from_binary(TI, folder * "numChildren" * file_ext_i) .+ 1,
-    read_vector_from_binary(TI, folder * "childrenFrom" * file_ext_i) .+ 1,
-    read_vector_from_binary(TI, folder * "childrenTo" * file_ext_i) .+ 1,
-    read_vector_from_binary(TR, folder * "conditionalProbabilities" * file_ext_r),
-)
-risks = [Risk(data, node) for node in 1:data.num_nonleaf_nodes]
+data = read_data()
+risk = build_risk(data)
+x0 = read_vector_from_binary(TR, folder * "initialState" * file_ext_r)
+tol::Float64 = 1e-3
+max_time::Float64 = 5 * minute
+status::TI = 1
 
-model_g = build_model(Gurobi.Optimizer, data, risks)
+model_g = build_model(Gurobi.Optimizer, data, risk)
+set_attribute(model_g, "FeasibilityTol", tol)
+set_attribute(model_g, "OptimalityTol", tol)
+set_attribute(model_g, "TimeLimit", max_time)
+println("(Gurobi) Solving ...")
+time_g = @elapsed solve_this(model_g, x0)
+if time_g > max_time
+    time_g = 0.
+end
+println("(Gurobi) Done! ($(time_g) s)")
+status_g = termination_status(model_g)
+if status_g == MOI.OPTIMAL || status_g == MOI.TIME_LIMIT
+    status = 0
+end
 
+if status == 0
+    model_m = build_model(Mosek.Optimizer, data, risk)
+    set_attribute(model_m, "MSK_DPAR_INTPNT_TOL_REL_GAP", tol)
+    set_attribute(model_m, "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", tol)
+    set_attribute(model_m, "MSK_DPAR_INTPNT_QO_TOL_REL_GAP", tol)
+    set_attribute(model_m, "MSK_DPAR_OPTIMIZER_MAX_TIME", max_time)
+    println("(Mosek) Solving...")
+    time_m = @elapsed solve_this(model_m, x0)
+    if time_m > max_time
+        time_m = 0.
+    end
+    println("(Mosek) Done! ($(time_m) s)")
 
-# N_min = 5
-# N_max = 15
-# s = N_max - N_min + 1
-# # Dimensions of state and input vectors
-# nx = 10
-# x0 = [.9 for i = 1:nx]
-# d = 3
-# TOL = 1e-3
-#
-# scen_tree, cost, dynamics, rms, constraints = get_server_heat_specs(N, nx, d)
-#
-# num_nodes[idx] = scen_tree.n
-#
-# model = spock.build_model(scen_tree, cost, dynamics, rms, constraints, spock.SolverOptions(spock.SP, nothing))
-#
-# model_mosek = spock.build_model_mosek(scen_tree, cost, dynamics, rms, constraints)
-# set_optimizer_attribute(model_mosek, "MSK_DPAR_INTPNT_TOL_REL_GAP", TOL)
-# set_optimizer_attribute(model_mosek, "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", TOL)
-# set_optimizer_attribute(model_mosek, "MSK_DPAR_INTPNT_QO_TOL_REL_GAP", TOL)
-#
-# model_gurobi = spock.build_model_gurobi(scen_tree, cost, dynamics, rms, constraints)
-# set_optimizer_attribute(model_gurobi, "FeasibilityTol", TOL)
-# set_optimizer_attribute(model_gurobi, "OptimalityTol", TOL)
-#
-# model_ipopt = spock.build_model_ipopt(scen_tree, cost, dynamics, rms, constraints)
-# set_optimizer_attribute(model_ipopt, "tol", TOL)
-#
-# model_sedumi = spock.build_model_sedumi(scen_tree, cost, dynamics, rms, constraints)
-#
-# model_cosmo = spock.build_model_cosmo(scen_tree, cost, dynamics, rms, constraints)
-# set_optimizer_attribute(model_cosmo, "eps_abs", TOL)
-# set_optimizer_attribute(model_cosmo, "eps_rel", TOL)
-#
-# ##########################################
-# ###  Solution
-# ##########################################
-#
-# println("solving...")
-#
-# if maximum(model_timings) <= t_max
-#   model_timings[idx] += @elapsed spock.solve_model!(model, x0, tol=TOL)
-# end
-# if maximum(mosek_timings) <= t_max
-#   mosek_timings[N - 2] += @elapsed spock.solve_model(model_mosek, x0)
-# end
-# if maximum(gurobi_timings) <= t_max
-#   gurobi_timings[N - 2] += @elapsed spock.solve_model(model_gurobi, x0)
-# end
-# if maximum(ipopt_timings) <= t_max && N <= 12
-#   ipopt_timings[N - 2] += @elapsed spock.solve_model(model_ipopt, x0)
-# end
-# if maximum(cosmo_timings) <= t_max
-#   cosmo_timings[N - 2] += @elapsed spock.solve_model(model_cosmo, x0)
-# end
-# if maximum(sedumi_timings) <= t_max
-#   sedumi_timings[N - 2] += @elapsed spock.solve_model(model_sedumi, x0)
-# end
-#
-# mosek_timings = filter(>(0.), mosek_timings)
-# gurobi_timings = filter(>(0.), gurobi_timings)
-# ipopt_timings = filter(>(0.), ipopt_timings)
-# sedumi_timings = filter(>(0.), sedumi_timings)
-# cosmo_timings = filter(>(0.), cosmo_timings)
-#
-# open("misc/timeCvxpy.csv", "a") do f
-#   write(f, "$(num_nodes), $(t_gurob), $(t_mosek), $(t_ipopt), $(t_sedum), $(t_cosmo)")
-# end
+    model_i = build_model(Ipopt.Optimizer, data, risk)
+    set_attribute(model_i, "tol", tol)
+    set_attribute(model_i, "max_cpu_time", max_time)
+    set_attribute(model_i, "sb", "yes")
+    println("(Ipopt) Solving...")
+    time_i = @elapsed solve_this(model_i, x0)
+    if time_i > max_time
+        time_i = 0.
+    end
+    println("(Ipopt) Done! ($(time_i) s)")
 
-status = 0
-# exit(status)
+    model_c = build_model(COSMO.Optimizer, data, risk)
+    set_attribute(model_c, "eps_abs", tol)
+    set_attribute(model_c, "eps_rel", tol)
+    set_attribute(model_c, "time_limit", max_time)
+    println("(Cosmo) Solving...")
+    time_c = @elapsed solve_this(model_c, x0)
+    if time_c > max_time
+        time_c = 0.
+    end
+    println("(Cosmo) Done! ($(time_c) s)")
+
+    println("Saving julia times ...")
+    open("misc/timeCvxpy.csv", "a") do f
+        write(f, "$(data.num_nodes), $(time_g), $(time_m), $(time_i), $(time_c), ")
+    end
+    println("Saved!")
+end
+
+exit(status)

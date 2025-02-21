@@ -3,22 +3,24 @@ module modelFactory
 using JSON, JuMP, LinearAlgebra, MathOptInterface
 const LA = LinearAlgebra
 const MOI = MathOptInterface
+const MOIU = MathOptInterface.Utilities
 
 """
     Filing system
 """
-TI = Int64  # ints
-TR = Float64  # double
-folder = "data/"
-file_type = ".bt"
-file_ext_i = "_u" * file_type
+const TI = Int64  # ints
+const TR = Float64  # double
+const folder = "data/"
+const file_type = ".bt"
+const file_ext_i = "_u" * file_type
 if TR == Float32
-    file_ext_r = "_f" * file_type
+    const file_ext_r = "_f" * file_type
 else
-    file_ext_r = "_d" * file_type
+    const file_ext_r = "_d" * file_type
 end
+const minute = 60
 
-export TI, TR, folder, file_ext_i, file_ext_r
+export TI, TR, folder, file_ext_r, minute
 
 """
 Read a binary file.
@@ -70,7 +72,7 @@ function read_vector_from_binary(::Type{T}, filename) where {T}
     end
 end
 
-export read_array_from_binary, read_tensor_from_binary, read_vector_from_binary
+export read_vector_from_binary
 
 """
     Problem Data
@@ -107,7 +109,42 @@ struct Data
     conditional_probabilities :: Vector{TR}
 end
 
-export Data
+function read_data()
+    json = JSON.parse(read(folder * "data.json", String))
+    return Data(
+        json["numEvents"],
+        json["numNonleafNodes"],
+        json["numNodes"],
+        json["numStages"],
+        json["numStates"],
+        json["numInputs"],
+        json["dynamics"]["type"],
+        read_tensor_from_binary(TR, folder * "dynamics_A" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "dynamics_B" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "dynamics_e" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "cost_nonleafQ" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "cost_nonleafR" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "cost_leafQ" * file_ext_r),
+        json["constraint"]["nonleaf"],
+        json["constraint"]["leaf"],
+        read_vector_from_binary(TR, folder * "nonleafConstraintILB" * file_ext_r),
+        read_vector_from_binary(TR, folder * "nonleafConstraintIUB" * file_ext_r),
+        read_vector_from_binary(TR, folder * "leafConstraintILB" * file_ext_r),
+        read_vector_from_binary(TR, folder * "leafConstraintIUB" * file_ext_r),
+        json["risk"]["type"],
+        json["risk"]["alpha"],
+        json["rowsS2"],
+        json["rowsNNtr"],
+        json["stepSize"],
+        read_vector_from_binary(TI, folder * "ancestors" * file_ext_i) .+ 1,
+        read_vector_from_binary(TI, folder * "numChildren" * file_ext_i),
+        read_vector_from_binary(TI, folder * "childrenFrom" * file_ext_i) .+ 1,
+        read_vector_from_binary(TI, folder * "childrenTo" * file_ext_i) .+ 1,
+        read_vector_from_binary(TR, folder * "conditionalProbabilities" * file_ext_r),
+    )
+end
+
+export read_data
 
 """
     Indexing
@@ -122,7 +159,7 @@ node_to_u(d :: Data, node :: TI) = Vector{Int64}(collect(
 ))
 
 node_to_ch(d :: Data, node :: TI) = Vector{Int64}(collect(
-    d.ch_from[node] : d.chTo[node]
+    d.ch_from[node] : d.ch_to[node]
 ))
 
 """
@@ -218,11 +255,13 @@ end
     Build::Risk
 """
 
+@enum RiskType AVaR
+
 struct Risk
+    type :: RiskType
     dim :: TI
     E :: Matrix{TR}
     F :: Union{Nothing, Matrix{TR}}
-    K :: MOI.AbstractSet
     b :: Vector{TR}
 
     function Risk(
@@ -230,27 +269,53 @@ struct Risk
         node :: TI, 
         )
         if d.risk_type == "avar"
+            type = AVaR
+        else
+            throw("Risk type ($(d.risk_type)) not supported!")
+        end
+
+        if type == AVaR
             alpha = d.risk_alpha
             ch_num = d.ch_num[node]
-            ch_probs = d.conditional_probabilities[node_to_ch(node)]  # Conditional probabilities of children
+            ch_probs = d.conditional_probabilities[node_to_ch(d, node)]  # Conditional probabilities of children
             eye = I(ch_num)  # Identity matrix
+            dim = ch_num * 2 + 1
             E = vcat(alpha * eye, -eye, ones(1, ch_num))
             F = nothing  # Matrix F is not applicable for AVaR
-            K = MOI.CartesianProductCone(MOI.Nonnegatives(ch_num * 2), MOI.ZeroCone(1))
             b = vcat(ch_probs, zeros(ch_num), 1)
-            dim = MOI.dimension(K)
-
-            return new(dim, E, F, K, b)
+            return new(type, dim, E, F, b)
         else
-            throw("Risk type ($(d.risk_type)) not supported.")
+            throw("Risk type not implemented!")
         end
     end
 end
 
-export Risk
+function build_risk(
+    d :: Data,
+    )
+    return [Risk(d, node) for node in 1:d.num_nonleaf_nodes]
+end
+
+export build_risk
+
+function risk_add_dual_cone_constraint(
+    this :: Risk,
+    model :: Model,
+    y :: Vector{VariableRef},
+    )
+    if this.type == AVaR
+        @constraint(
+        model,
+        in(y[1:this.dim-1], MOI.Nonnegatives(this.dim - 1))
+        )
+        # No need to project y[dim] on Reals
+    else
+        throw("Risk type not implemented!")
+    end
+end
 
 function impose_risk(
-    model::Model, 
+    model :: Model, 
     d :: Data,
     risks :: Vector{Risk},
     )
@@ -262,25 +327,23 @@ function impose_risk(
     for node = 1:d.num_nonleaf_nodes
         dim = risks[node].dim
         y_node = y[y_idx + 1 : y_idx + dim]
-        # y in K^*
-        @constraint(
-            model,
-            in(y_node, MOI.dual_set(risks[node].K)))
+        # y in K*
+        risk_add_dual_cone_constraint(risks[node], model, y_node)
         # y' * b <= s
         @constraint(
             model,
-            y_node' * d.risks[node].b <= s[node]
+            y_node' * risks[node].b <= s[node]
         )
-        # E' * y = t + s
+        # E' * y = t[ch] + s[ch]
         @constraint(
             model,
-            risks[node].E' * y .== t[node_to_ch(node) .- 1] + s[node_to_ch(node)]
+            risks[node].E' * y_node .== t[node_to_ch(d, node) .- 1] + s[node_to_ch(d, node)]
         )
-#         # F' y = 0
-#         @constraint(
-#             model,
-#             problem_definition.rms[i].F' * y[y_idx + 1 : y_idx + length(problem_definition.rms[i].b)] .== 0.
-#         )
+        # F' y = 0
+        # @constraint(
+        #     model,
+        #     risks[node].F' * y_node .== 0.
+        # )
         # Add y dimension
         y_idx += dim
     end
@@ -293,14 +356,14 @@ end
 function build_model(
     solver,
     d :: Data,
-    risks :: Vector{Risk},
+    risk :: Vector{Risk},
     )
     model = Model(solver)
     set_silent(model)
 
     dim_y = 0
     for node = 1:d.num_nonleaf_nodes
-        dim_y += risks[node].dim
+        dim_y += risk[node].dim
     end
 
     @variable(model, x[i = 1 : d.num_nodes * d.num_states])
@@ -314,7 +377,7 @@ function build_model(
     impose_dynamics(model, d)
     impose_cost(model, d)
     impose_state_input_constraints(model, d)
-    impose_risk(model, d)
+    impose_risk(model, d, risk)
 
     return model
 
@@ -322,18 +385,28 @@ end
 
 export build_model
 
-# """
-#     JuMP::Solve
-# """
-# function solve(model :: REFERENCE_MODEL, x0 :: AbstractArray{TF, 1}) where {TF <: Real}
-#     # Add initial state constraint
-# #     @constraint(model, initial_condition[i=1:length(x0)], model[:x][i] .== x0[i])
-# #     # Solve problem
-# #     optimize!(model)
-# #     # Return states and inputs
-# #     return value.(model[:x]), value.(model[:u])
-# end
-#
-# export solve
+"""
+    JuMP::Solve
+"""
+
+function solve_this(
+    model :: Model, 
+    x0 :: Vector{TR},
+    )
+    x = model[:x]
+    u = model[:u]
+    # Add initial state constraint
+    @constraint(
+        model, 
+        initial_condition[element = 1 : length(x0)], 
+        x[element] .== x0[element]
+    )
+    # Solve problem
+    optimize!(model)
+    # Return states and inputs
+    return value.(x), value.(u)
+end
+
+export solve_this
 
 end  # End of module

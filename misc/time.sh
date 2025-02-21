@@ -5,7 +5,7 @@ set -ux pipefail  # removed e, o
 main() {
     export PYTHONPATH=.
     source venv/bin/activate
-    for _ in {1..3}; do
+    for _ in {1..2}; do
         python main.py --dt="d"
         julia tests/julia/test.jl
         exit_code=$?

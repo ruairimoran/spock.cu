@@ -14,6 +14,7 @@
 
 int main() {
     bool debug = false;
+    real_t minute = 60;
 
     real_t avgTime = 0.;
     try {
@@ -34,6 +35,7 @@ int main() {
         size_t andersonBuffer = 3;
         bool allowK0Updates = true;
         bool admm = false;
+        real_t maxTime = 5 * minute;
         std::cout << "Allocating cache...\n";
         Cache cache(tree, problem, tol, tol, maxOuterIters, maxInnerIters, andersonBuffer, allowK0Updates, debug, admm);
 
@@ -53,6 +55,7 @@ int main() {
         }
         real_t time = std::reduce(runTimes.begin() + warm, runTimes.end());
         avgTime = time / runs;
+        if (avgTime > maxTime) avgTime = 0.;
     } catch (...) {
         std::cout << "SPOCK failed!\n";
     }

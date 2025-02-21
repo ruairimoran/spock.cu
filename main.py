@@ -1,11 +1,8 @@
 import py.treeFactory as treeFactory
 import py.build as build
 import py.problemFactory as problemFactory
-import py.modelFactory as modelFactory
 import numpy as np
-import cvxpy as cp
 import argparse
-import sys
 
 
 def enforce_contraction(A_):
@@ -136,34 +133,3 @@ for k in range(num_states):
     con = .5 * nonleaf_state_ub[k]
     x0[k] = rng.uniform(-con, con)
 tree.write_to_file_fp("initialState", x0)
-
-# # Cache solvers
-# solvers = [cp.GUROBI, cp.MOSEK, cp.SCS]
-# minute = 60  # seconds
-# max_time = minute * 20  # minutes
-# s = len(solvers) + 1
-# cache = [0. for _ in range(s)]
-# cache[0] = tree.num_nodes
-# status = 0
-# for i in range(1, s):
-#     times = []
-#     print("Solving (", solvers[i-1].__str__(), ") ...")
-#     model = modelFactory.Model(tree, problem)
-#     solver = solvers[i - 1]
-#     try:
-#         model.solve(x0=x0, solver=solver, tol=1e-3, max_time=max_time)
-#         time = model.solve_time
-#         if solver == cp.GUROBI and model.status == "infeasible_or_unbounded":
-#             status = 1
-#             break
-#     except Exception as e:
-#         print(e)
-#         time = 0.
-#     cache[i] = time
-#     print("Saved (solver = ", solvers[i-1].__str__(), ", time = ", cache[i], " s).")
-#
-# if not status:  # Save to csv
-#     with open('misc/timeCvxpy.csv', "a") as f:
-#         np.savetxt(fname=f, X=np.array(cache).reshape(1, -1), fmt='%.5f', delimiter=', ', newline=', ')
-#
-# sys.exit(status)

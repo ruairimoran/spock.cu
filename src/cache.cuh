@@ -928,39 +928,41 @@ bool Cache<T>::computeError(size_t idx) {
         }
     } else {
         computeResidual();
-        /* L(residualPrim) and L'(residualDual) */
-        m_d_residualDual->deviceCopyTo(*m_d_workIterateDual);
-        Ltr();
-        m_d_workIteratePrim->deviceCopyTo(*m_d_ellResidualPrim);
-        m_d_residualPrim->deviceCopyTo(*m_d_workIteratePrim);
-        L();
-        m_d_workIterateDual->deviceCopyTo(*m_d_ellResidualDual);
-        /* residual/step - ell(residual) */
-        m_d_residual->deviceCopyTo(*m_d_workIterate);
-        *m_d_workIterate *= m_data.stepSizeRecip();
-        *m_d_workIterate -= *m_d_ellResidual;
-        if (m_errInit) {
-            m_tol = std::max(m_tolAbs, m_tolRel * m_d_workIterate->maxAbs());
-            m_errInit = false;
-            m_status = false;
-        } else {
-            m_errAbs = m_d_workIterate->maxAbs();
-            m_status = (m_errAbs <= m_tol);
-            if (m_debug) {
-                m_cacheError1[idx] = m_d_workIteratePrim->maxAbs();
-                m_cacheError2[idx] = m_d_workIterateDual->maxAbs();
-                m_cacheCallsToL[idx] = m_callsToL;
-                /* errPrim + L'(errDual) */
+        if (idx % 25 == 0) {
+            /* L(residualPrim) and L'(residualDual) */
+            m_d_residualDual->deviceCopyTo(*m_d_workIterateDual);
+            Ltr();
+            m_d_workIteratePrim->deviceCopyTo(*m_d_ellResidualPrim);
+            m_d_residualPrim->deviceCopyTo(*m_d_workIteratePrim);
+            L();
+            m_d_workIterateDual->deviceCopyTo(*m_d_ellResidualDual);
+            /* residual/step - ell(residual) */
+            m_d_residual->deviceCopyTo(*m_d_workIterate);
+            *m_d_workIterate *= m_data.stepSizeRecip();
+            *m_d_workIterate -= *m_d_ellResidual;
+            if (m_errInit) {
+                m_tol = std::max(m_tolAbs, m_tolRel * m_d_workIterate->maxAbs());
+                m_errInit = false;
+                m_status = false;
+            } else {
+                m_errAbs = m_d_workIterate->maxAbs();
+                m_status = (m_errAbs <= m_tol);
+                if (m_debug) {
+                    m_cacheError1[idx] = m_d_workIteratePrim->maxAbs();
+                    m_cacheError2[idx] = m_d_workIterateDual->maxAbs();
+                    m_cacheCallsToL[idx] = m_callsToL;
+                    /* errPrim + L'(errDual) */
 //                m_d_workIteratePrim->deviceCopyTo(*m_d_err);
 //                Ltr();
 //                *m_d_err += *m_d_workIteratePrim;
 //                m_cacheError0[idx] = m_d_err->maxAbs();
 
-                m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
-                Ltr();
-                *m_d_err *= -1.;
-                *m_d_err += *m_d_iterateCandidatePrim;
-                m_cacheError0[idx] = m_d_err->normF();
+                    m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
+                    Ltr();
+                    *m_d_err *= -1.;
+                    *m_d_err += *m_d_iterateCandidatePrim;
+                    m_cacheError0[idx] = m_d_err->normF();
+                }
             }
         }
     }

@@ -12,18 +12,28 @@ tol::Float64 = 1e-3
 max_time::Float64 = 5 * minute
 status::TI = 1
 
+time_g = 0.
+time_m = 0.
+time_i = 0.
+time_c = 0.
+
 model_g = build_model(Gurobi.Optimizer, data, risk)
 set_attribute(model_g, "FeasibilityTol", tol)
 set_attribute(model_g, "OptimalityTol", tol)
 set_attribute(model_g, "TimeLimit", max_time)
 println("(Gurobi) Solving ...")
-time_g = @elapsed solve_this(model_g, x0)
+try
+    global time_g = @elapsed solve_this(model_g, x0)
+catch e
+    global time_g = 0.
+    println(e)
+end
 if time_g > max_time
     time_g = 0.
 end
-println("(Gurobi) Done! ($(time_g) s)")
 status_g = termination_status(model_g)
-if status_g == MOI.OPTIMAL || status_g == MOI.TIME_LIMIT
+println("(Gurobi) Done! ($(time_g) s) ($(status_g))")
+if status_g == MOI.OPTIMAL || status_g == MOI.LOCALLY_SOLVED || status_g == MOI.TIME_LIMIT
     status = 0
 end
 
@@ -34,7 +44,12 @@ if status == 0
     set_attribute(model_m, "MSK_DPAR_INTPNT_QO_TOL_REL_GAP", tol)
     set_attribute(model_m, "MSK_DPAR_OPTIMIZER_MAX_TIME", max_time)
     println("(Mosek) Solving...")
-    time_m = @elapsed solve_this(model_m, x0)
+    try
+        global time_m = @elapsed solve_this(model_m, x0)
+    catch e
+        global time_m = 0.
+        println(e)
+    end
     if time_m > max_time
         time_m = 0.
     end
@@ -45,7 +60,12 @@ if status == 0
     set_attribute(model_i, "max_cpu_time", max_time)
     set_attribute(model_i, "sb", "yes")
     println("(Ipopt) Solving...")
-    time_i = @elapsed solve_this(model_i, x0)
+    try
+        global time_i = @elapsed solve_this(model_i, x0)
+    catch e
+        global time_i = 0.
+        println(e)
+    end
     if time_i > max_time
         time_i = 0.
     end
@@ -56,7 +76,12 @@ if status == 0
     set_attribute(model_c, "eps_rel", tol)
     set_attribute(model_c, "time_limit", max_time)
     println("(Cosmo) Solving...")
-    time_c = @elapsed solve_this(model_c, x0)
+    try
+        global time_c = @elapsed solve_this(model_c, x0)
+    catch e
+        global time_c = 0.
+        println(e)
+    end
     if time_c > max_time
         time_c = 0.
     end

@@ -22,32 +22,22 @@ args = parser.parse_args()
 dt = args.dt
 
 # Sizes::random
-num_events = 0
-num_stages = 0
-stopping = 0
-num_inputs = 0
-num_states = 0
+horizon, num_events, stopping, num_inputs, num_states = 0, 0, 0, 0, 0
 rng = np.random.default_rng()
 num_vars = np.inf
-while num_vars > 1e6:
+while num_vars > 4e3:
+    horizon = rng.integers(5, 15, endpoint=True)
+    stopping = rng.integers(1, 3, endpoint=True)
     num_events = rng.integers(2, 10, endpoint=True)
-    num_stages = rng.integers(5, 15, endpoint=True)
-    stopping = rng.integers(1, 3)
-    num_inputs = rng.integers(10, 250, endpoint=True)
+    num_inputs = rng.integers(10, 150, endpoint=True)
     num_states = num_inputs * 2
-    v = 1 / num_events * np.ones(num_events)
-    (final_stage, stop_branching_stage) = (num_stages - 1, stopping)
-    tree_test = treeFactory.IidProcess(
-        distribution=v,
-        horizon=final_stage,
-        stopping_stage=stop_branching_stage
-    ).generate_tree(files=False)
-    num_vars = tree_test.num_nodes * (num_states + num_inputs)
+    num_nodes = ((num_events**(stopping + 1) - 1) / (num_events - 1)) + ((num_events**stopping) * (horizon - stopping))
+    num_vars = num_nodes * (num_states + num_inputs)
 
 print(
     "\n",
     "Events:", num_events, "\n",
-    "Stages:", num_stages, "\n",
+    "Horizon:", horizon, "\n",
     "Stop branch:", stopping, "\n",
     "States:", num_states, "\n",
     "Inputs:", num_inputs, "\n",
@@ -61,7 +51,7 @@ print(
 r = rng.uniform(size=num_events)
 v = r / sum(r)
 
-(final_stage, stop_branching_stage) = (num_stages - 1, stopping)
+(final_stage, stop_branching_stage) = (horizon, stopping)
 tree = treeFactory.IidProcess(
     distribution=v,
     horizon=final_stage,
@@ -79,21 +69,23 @@ dynamics = []
 A_base = np.eye(num_states)
 B_base = rng.normal(0., 1., size=(num_states, num_inputs))
 for i in range(num_events):
-    A = A_base + rng.normal(0., .1, size=(num_states, num_states))
-    A = enforce_contraction(A)
-    B = B_base + rng.normal(0., .1, size=(num_states, num_inputs))
+    A = A_base + rng.normal(0., .01, size=(num_states, num_states))
+    # A = enforce_contraction(A)
+    B = B_base + rng.normal(0., .01, size=(num_states, num_inputs))
     dynamics += [build.LinearDynamics(A, B)]
 
 # Costs
 nonleaf_costs = []
+Q_base = np.diagflat(rng.uniform(0., 10., num_states))
+R_base = np.diagflat(rng.uniform(0., .1, num_inputs))
 for i in range(num_events):
-    Q_flat = rng.uniform(0., 10., num_states)
-    R_flat = rng.uniform(0., .1, num_inputs)
-    Q = np.diagflat(Q_flat)
-    R = np.diagflat(R_flat)
+    Q_bar = rng.normal(0., .01, size=(num_states, num_states))
+    R_bar = rng.normal(0., .01, size=(num_inputs, num_inputs))
+    Q = np.linalg.solve(Q_bar, Q_base) @ Q_bar
+    R = np.linalg.solve(R_bar, R_base) @ R_bar
     nonleaf_costs += [build.NonleafCost(Q, R)]
-flat_T = rng.uniform(0., 10., num_states)
-T = np.diagflat(flat_T)
+T_bar = rng.normal(0., .01, size=(num_states, num_states))
+T = np.linalg.solve(T_bar, Q_base) @ T_bar
 leaf_cost = build.LeafCost(T)
 
 # Constraints

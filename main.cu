@@ -30,7 +30,7 @@ int main() {
 
         /* CACHE */
         real_t tol = 1e-3;
-        real_t maxTime = 15 * minute;
+        real_t maxTime = 5 * minute;
         std::cout << "Allocating cache...\n";
         CacheBuilder builder(tree, problem);
         Cache cache = builder

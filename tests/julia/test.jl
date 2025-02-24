@@ -85,8 +85,9 @@ if status == 0
     status_c, time_c = check_status(model_c, time_c, max_time)
 
     println("Saving julia times ...")
+    num_vars = data.num_nodes * (data.num_states + data.num_inputs)
     open("misc/timeCvxpy.csv", "a") do f
-        write(f, "$(data.num_nodes), $(time_g), $(time_m), $(time_i), $(time_c), ")
+        write(f, "$(num_vars), $(time_g), $(time_m), $(time_i), $(time_c), ")
     end
     println("Saved!")
 end

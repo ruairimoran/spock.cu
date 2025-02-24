@@ -201,14 +201,14 @@ function impose_cost(
         nonleaf_cost[node=2:d.num_nodes],
         (x[node_to_x(d, d.ancestors[node])]' * d.cost_nonleaf_Q[node] * x[node_to_x(d, d.ancestors[node])]
         + u[node_to_u(d, d.ancestors[node])]' * d.cost_nonleaf_R[node] * u[node_to_u(d, d.ancestors[node])])
-        <= model[:t][node - 1]
+        <= t[node - 1]
     )
 
     @constraint(
         model,
         leaf_cost[node=d.num_nonleaf_nodes+1:d.num_nodes],
         x[node_to_x(d, node)]' * d.cost_leaf_Q[node - d.num_nonleaf_nodes] * x[node_to_x(d, node)]
-        <= model[:s][node]
+        <= s[node]
     )
 end
 

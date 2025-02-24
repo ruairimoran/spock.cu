@@ -56,8 +56,10 @@ int main() {
         real_t time = std::reduce(runTimes.begin() + warm, runTimes.end());
         avgTime = time / runs;
         if (avgTime > maxTime) avgTime = 0.;
+    } catch (const std::runtime_error& e) {
+        std::cout << "SPOCK failed! : " << e.what() << std::endl;
     } catch (...) {
-        std::cout << "SPOCK failed!\n";
+        std::cout << "SPOCK failed! : No error info.\n";
     }
 
     /* SAVE */

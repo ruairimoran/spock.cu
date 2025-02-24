@@ -5,7 +5,8 @@ set -ux pipefail  # removed e, o
 main() {
     export PYTHONPATH=.
     source venv/bin/activate
-    for _ in {1..1000}; do
+    for i in {1..1000}; do
+        printf "\n\nProblem #$i.\n\n"
         python main.py --dt="d"
         julia tests/julia/test.jl
         exit_code=$?
@@ -14,7 +15,7 @@ main() {
             cmake --build ./build
             ./build/spock_main
         else
-            echo "Skipping bad problem."
+            printf "Skipping bad problem."
         fi
     done
 }

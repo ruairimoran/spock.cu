@@ -48,7 +48,7 @@ void testDotM(CacheTestData<T> &, T);
  */
 template<typename T>
 static void isFinite(std::vector<T> &vec) {
-    for (const T &value : vec) {
+    for (const T &value: vec) {
         if (!std::isfinite(value)) throw std::invalid_argument("[isFinite] vector has entries that are not finite.\n");
     }
 }
@@ -57,7 +57,7 @@ template<typename T>
 static void isFinite(DTensor<T> &d_vec) {
     std::vector<T> vec(d_vec.numEl());
     d_vec.download(vec);
-    for (const T &value : vec) {
+    for (const T &value: vec) {
         if (!std::isfinite(value)) throw std::invalid_argument("[isFinite] DTensor has entries that are not finite.\n");
     }
 }
@@ -65,8 +65,6 @@ static void isFinite(DTensor<T> &d_vec) {
 
 /**
  * Cache of methods for proximal algorithms
- *
- * Note: `d_` indicates a device pointer
  */
 TEMPLATE_WITH_TYPE_T
 class Cache {
@@ -78,19 +76,21 @@ protected:
     T m_tolRel = 0;
     T m_tol = 0;
     T m_errAbs = 0;
+    T m_maxTimeSecs = 0;
     size_t m_maxOuterIters = 0;
-    size_t m_andSize = 0;
+    size_t m_andBuff = 0;
     size_t m_countIterations = 0;
     size_t m_rowAxis = 0;
     size_t m_colAxis = 1;
     size_t m_matAxis = 2;
     size_t m_callsToL = 0;
-    bool m_allowK0 = false;
     bool m_debug = false;
     bool m_admm = false;
     bool m_errInit = false;  ///< Whether to initialise tolerances
     bool m_status = false;  ///< General status use
-    bool m_stop = false;  ///< Stopping criteria met
+    int m_exitCode = -1;  ///< Algorithm exit code: -1=notRun, 0=converged, 1=outOfIters, 2=outOfTime
+    std::chrono::high_resolution_clock::time_point m_timeStart;
+    T m_timeElapsed;
     /* Sizes */
     size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
     size_t m_sizeX = 0;  ///< States of all nodes
@@ -260,26 +260,28 @@ protected:
 
     void updateDirection(size_t);
 
-    bool computeError(size_t);
+    void computeError(size_t);
 
     void printToJson(std::string &);
 
 public:
     /**
      * Constructor
+     * Caution! Preferably use builder pattern.
      */
     Cache(ScenarioTree<T> &tree,
           ProblemData<T> &data,
           T absTol = 1e-3,
           T relTol = 0.,
+          T maxTimeSecs = 0.,
           size_t maxOuterIters = 1000,
           size_t maxInnerIters = 8,
           size_t andBuff = 3,
-          bool allowK0 = false,
           bool debug = false,
           bool admm = false) :
-        m_tree(tree), m_data(data), m_tolAbs(absTol), m_tolRel(relTol), m_maxOuterIters(maxOuterIters),
-        m_maxInnerIters(maxInnerIters), m_andSize(andBuff), m_allowK0(allowK0), m_debug(debug), m_admm(admm) {
+        m_tree(tree), m_data(data), m_tolAbs(absTol), m_tolRel(relTol), m_maxTimeSecs(maxTimeSecs),
+        m_maxOuterIters(maxOuterIters), m_maxInnerIters(maxInnerIters), m_andBuff(andBuff),
+        m_debug(debug), m_admm(admm) {
         /* Sizes */
         initialiseSizes();
         /* Allocate memory on host */
@@ -306,9 +308,9 @@ public:
         m_d_residual = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_residualPrev = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_err = std::make_unique<DTensor<T>>(m_sizePrim, 1, 1, true);
-        m_d_andIterateMatrix = std::make_unique<DTensor<T>>(m_sizeIterate, m_andSize, 1, true);
-        m_d_andResidualMatrix = std::make_unique<DTensor<T>>(m_sizeIterate, m_andSize, 1, true);
-        m_d_andQR = std::make_unique<DTensor<T>>(m_sizeIterate, m_andSize, 1, true);
+        m_d_andIterateMatrix = std::make_unique<DTensor<T>>(m_sizeIterate, m_andBuff, 1, true);
+        m_d_andResidualMatrix = std::make_unique<DTensor<T>>(m_sizeIterate, m_andBuff, 1, true);
+        m_d_andQR = std::make_unique<DTensor<T>>(m_sizeIterate, m_andBuff, 1, true);
         m_d_andQRGammaFull = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_direction = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_directionScaled = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
@@ -341,7 +343,9 @@ public:
         m_d_input->download(m_input);
     }
 
-    size_t iters() { return m_countIterations; }
+    size_t solveIter() { return m_countIterations; }
+
+    T solveTime() { return m_timeElapsed; }
 
     /**
      * Debug functions (slow).
@@ -393,7 +397,7 @@ void Cache<T>::reset() {
     std::vector<T> sizeIterate(m_sizeIterate, 0);
     std::vector<T> sizePrim(m_sizePrim, 0);
     std::vector<T> sizeDual(m_sizeDual, 0);
-    std::vector<T> sizeIterateSizeAnd(m_sizeIterate * m_andSize, 0);
+    std::vector<T> sizeIterateSizeAnd(m_sizeIterate * m_andBuff, 0);
     std::vector<T> nullDimNumNonleafNodes(m_data.nullDim() * m_tree.numNonleafNodes(), 0);
     /* Zero all cached data */
     std::fill(m_cacheCallsToL.begin(), m_cacheCallsToL.end(), 0);
@@ -467,14 +471,14 @@ void Cache<T>::reshape() {
     m_d_deltaIterateDual = std::make_unique<DTensor<T>>(*m_d_deltaIterate, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
     m_d_ellResidualPrim = std::make_unique<DTensor<T>>(*m_d_ellResidual, m_rowAxis, 0, m_sizePrim - 1);
     m_d_ellResidualDual = std::make_unique<DTensor<T>>(*m_d_ellResidual, m_rowAxis, m_sizePrim,
-                                                           m_sizeIterate - 1);
-    m_d_andIterateMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 0, m_andSize - 2);
-    m_d_andIterateMatrixRight = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 1, m_andSize - 1);
+                                                       m_sizeIterate - 1);
+    m_d_andIterateMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 0, m_andBuff - 2);
+    m_d_andIterateMatrixRight = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 1, m_andBuff - 1);
     m_d_andIterateMatrixCol0 = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 0, 0);
-    m_d_andResidualMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 0, m_andSize - 2);
-    m_d_andResidualMatrixRight = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 1, m_andSize - 1);
+    m_d_andResidualMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 0, m_andBuff - 2);
+    m_d_andResidualMatrixRight = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 1, m_andBuff - 1);
     m_d_andResidualMatrixCol0 = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 0, 0);
-    m_d_andQRGamma = std::make_unique<DTensor<T>>(*m_d_andQRGammaFull, m_rowAxis, 0, m_andSize - 1);
+    m_d_andQRGamma = std::make_unique<DTensor<T>>(*m_d_andQRGammaFull, m_rowAxis, 0, m_andBuff - 1);
     reshapePrimalWorkspace();
     reshapeDualWorkspace();
 }
@@ -850,7 +854,7 @@ void Cache<T>::updateDirection(size_t idx) {
      * 2. Compute least squares `m_d_andResidualMatrix \ m_d_residual`.
      * 4. Compute Anderson's direction.
      */
-    if (idx >= m_andSize) {
+    if (idx >= m_andBuff) {
         /* QR decomposition */
         m_d_andResidualMatrix->deviceCopyTo(*m_d_andQR);
         m_d_residual->deviceCopyTo(*m_d_andQRGammaFull);
@@ -885,7 +889,7 @@ void Cache<T>::updateDirection(size_t idx) {
  * Compute errors for termination check.
  */
 template<typename T>
-bool Cache<T>::computeError(size_t idx) {
+void Cache<T>::computeError(size_t idx) {
     cudaDeviceSynchronize();  // DO NOT REMOVE !!!
     isFinite(*m_d_iterateCandidate);
     if (m_admm) {
@@ -942,11 +946,24 @@ bool Cache<T>::computeError(size_t idx) {
             *m_d_workIterate -= *m_d_ellResidual;
             if (m_errInit) {
                 m_tol = std::max(m_tolAbs, m_tolRel * m_d_workIterate->maxAbs());
+                m_exitCode = -1;
                 m_errInit = false;
-                m_status = false;
             } else {
                 m_errAbs = m_d_workIterate->maxAbs();
-                m_status = (m_errAbs <= m_tol);
+                if (m_errAbs <= m_tol) m_exitCode = 0;
+                if (m_maxOuterIters) {
+                    if (idx >= m_maxOuterIters) m_exitCode = 1;
+                }
+                if (m_maxTimeSecs) {
+                    m_timeElapsed = std::chrono::duration<T>(
+                            std::chrono::high_resolution_clock::now() - m_timeStart).count();
+                    if (m_timeElapsed >= m_maxTimeSecs) m_exitCode = 2;
+                }
+                if (m_exitCode != -1) {
+                    m_countIterations = idx;
+                    m_timeElapsed = std::chrono::duration<T>(
+                            std::chrono::high_resolution_clock::now() - m_timeStart).count();
+                }
                 if (m_debug) {
                     m_cacheError1[idx] = m_d_workIteratePrim->maxAbs();
                     m_cacheError2[idx] = m_d_workIterateDual->maxAbs();
@@ -966,7 +983,6 @@ bool Cache<T>::computeError(size_t idx) {
             }
         }
     }
-    return m_status;
 }
 
 /**
@@ -981,34 +997,32 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
     /* Reset error check */
     m_errInit = true;
     /* Run algorithm */
-    for (size_t i = 0; i < m_maxOuterIters; i++) {
+    for (size_t i = 0; i < SIZE_MAX; i++) {
         /* Compute CP iteration */
         iter();
         /* Check error */
-        m_stop = computeError(i);
+        computeError(i);
         /* Save candidate to accepted iterate */
         acceptCandidate();
         /* Break if termination criteria met */
-        if (m_stop) {
-            m_countIterations = i;
+        if (m_exitCode != -1) {
             break;
         }
     }
     if (m_debug) {
         std::string n = "Cp";
         printToJson(n);
-//        m_d_iterateCandidatePrim->deviceCopyTo(*m_d_workIteratePrim);
-//        std::cout << *m_d_x;
-    }
-    if (m_stop) {
-        if (m_debug)
+        if (m_exitCode == 0) {
             std::cout << "\nConverged in " << m_countIterations << " iterations, to a tolerance of " << m_tol << "\n";
-        return 0;
-    } else {
-        if (m_debug)
-            std::cout << "\nMax iterations (" << m_maxOuterIters << ") reached.\n";
-        return 1;
+        } else if (m_exitCode == 1) {
+            std::cout << "\nOut of iterations (" << m_maxOuterIters << " iters).\n";
+        } else if (m_exitCode == 2) {
+            std::cout << "\nOut of time (" << m_maxTimeSecs << " secs).\n";
+        } else {
+            std::cout << "\nExited.\n";
+        }
     }
+    return m_exitCode;
 }
 
 /**
@@ -1016,6 +1030,7 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
  */
 template<typename T>
 int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSolution) {
+    m_timeStart = std::chrono::high_resolution_clock::now();
     /* Load initial state */
     initialiseState(initState);
     /* Load previous solution if given */
@@ -1035,7 +1050,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     T rho = 0;
     T tau = 0;
     /* Run */
-    for (size_t iOut = 0; iOut < m_maxOuterIters; iOut++) {
+    for (size_t iOut = 0; iOut < SIZE_MAX; iOut++) {
         if (iOut != 0) {
             /* Accept new iterate */
             acceptCandidate();
@@ -1043,10 +1058,9 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         /* START */
         iter();
         /* Check error (residual computed internally) */
-        m_stop = computeError(iOut);
-        if (m_stop) {
+        computeError(iOut);
+        if (m_exitCode != -1) {
             acceptCandidate();
-            m_countIterations = iOut;
             break;
         }
         /* Backup candidate */
@@ -1062,7 +1076,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         /* Compute direction */
         updateDirection(iOut);
         /* Blind update */
-        if (w <= m_c0 * zeta && m_allowK0) {
+        if (w <= m_c0 * zeta) {
             m_d_iteratePrev->deviceCopyTo(*m_d_iterateCandidate);
             *m_d_iterateCandidate += *m_d_direction;
             zeta = w;
@@ -1110,33 +1124,140 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     if (m_debug) {
         std::string n = "Sp";
         printToJson(n);
-//        m_d_iterateCandidatePrim->deviceCopyTo(*m_d_workIteratePrim);
-//        std::cout << *m_d_x;
-    }
-    /* Return status */
-    if (m_stop) {
-        if (m_debug) {
-            std::cout << "\nConverged in " << m_countIterations << " outer iterations, to a tolerance of " << m_tol
+        if (m_exitCode == 0) {
+            std::cout << "\nConverged in " << m_countIterations << " iters and "
+                      << m_timeElapsed << " secs, to a tolerance of " << m_tol
                       << ", [K0: " << countK0
                       << ", K1: " << countK1
                       << ", K2: " << countK2
                       << ", bt: " << countK2bt
                       << ", K3: " << countK3
                       << "].\n";
-        }
-        return 0;
-    } else {
-        if (m_debug) {
+        } else if (m_exitCode == 1) {
             std::cout << "\nMax iterations (" << m_maxOuterIters << ") reached [K0: " << countK0
                       << ", K1: " << countK1
                       << ", K2: " << countK2
                       << ", bt: " << countK2bt
                       << ", K3: " << countK3
                       << "].\n";
+        } else if (m_exitCode == 2) {
+            std::cout << "\nMax time (" << m_maxTimeSecs << "s) reached [K0: " << countK0
+                      << ", K1: " << countK1
+                      << ", K2: " << countK2
+                      << ", bt: " << countK2bt
+                      << ", K3: " << countK3
+                      << "].\n";
+        } else {
+            std::cout << "\nExited.\n";
         }
-        return 1;
     }
+    return m_exitCode;
 }
+
+/**
+ * Builder pattern for Cache
+ */
+TEMPLATE_WITH_TYPE_T
+class CacheBuilder {
+private:
+    ScenarioTree<T> &m_tree;
+    ProblemData<T> &m_data;
+    T m_tolAbs = 0;
+    T m_tolRel = 0;
+    T m_maxTimeSecs = 0;
+    size_t m_maxOuterIters = 0;
+    size_t m_maxInnerIters = 0;
+    size_t m_andBuff = 0;
+    bool m_debug = false;
+    bool m_admm = false;
+
+public:
+    /**
+     * Constructor with default values
+     */
+    CacheBuilder(ScenarioTree<T> &tree, ProblemData<T> &data) :
+        m_tree(tree),
+        m_data(data),
+        m_tolAbs(1e-3),
+        m_tolRel(0.),
+        m_maxTimeSecs(0),
+        m_maxOuterIters(0),
+        m_maxInnerIters(8),
+        m_andBuff(3),
+        m_debug(false),
+        m_admm(false) {};
+
+    /**
+     * Setters
+     */
+    CacheBuilder &toleranceAbsolute(T tol) {
+        m_tolAbs = tol;
+        return *this;
+    }
+
+    CacheBuilder &toleranceRelative(T tol) {
+        m_tolRel = tol;
+        return *this;
+    }
+
+    CacheBuilder &tol(T tol) {
+        m_tolAbs = tol;
+        m_tolRel = tol;
+        return *this;
+    }
+
+    CacheBuilder &maxTimeSecs(T time) {
+        m_maxTimeSecs = time;
+        return *this;
+    }
+
+    CacheBuilder &maxIters(size_t iters) {
+        m_maxOuterIters = iters;
+        return *this;
+    }
+
+    CacheBuilder &maxItersInner(size_t iters) {
+        m_maxInnerIters = iters;
+        return *this;
+    }
+
+    CacheBuilder &andersonBuffer(size_t buffer) {
+        m_andBuff = buffer;
+        return *this;
+    }
+
+    CacheBuilder &enableDebug(bool enable) {
+        if (enable && m_maxOuterIters == 0) {
+            err << "[CacheBuilder] Cannot debug without first setting max number of iterations!\n";
+            throw ERR;
+        }
+        m_debug = enable;
+        return *this;
+    }
+
+    CacheBuilder &enableAdmm(bool enable) {
+        m_admm = enable;
+        return *this;
+    }
+
+    /**
+     * Build Cache
+     */
+    Cache<T> build() {
+        return Cache(
+            m_tree,
+            m_data,
+            m_tolAbs,
+            m_tolRel,
+            m_maxTimeSecs,
+            m_maxOuterIters,
+            m_maxInnerIters,
+            m_andBuff,
+            m_debug,
+            m_admm
+        );
+    }
+};
 
 /**
  * Add a vector to a .json file
@@ -1144,7 +1265,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
 template<typename T>
 static void
 addArray(rapidjson::Document &doc, std::string const &name, std::vector<T> &vec) {
-    for (const T &value : vec) {
+    for (const T &value: vec) {
         if (!std::isfinite(value)) {
             err << "[Cache::addArray] array (" << name << ") has entries that are not finite.\n";
             throw ERR;
@@ -1202,40 +1323,6 @@ void Cache<T>::printToJson(std::string &file) {
     of << json;
     of.close();
     if (!of.good()) throw std::runtime_error("[Cache::printToJson] Can't write the JSON string to the file.\n");
-}
-
-/**
- * Time vanilla CP algorithm with a parallelised cache
- */
-template<typename T>
-T Cache<T>::timeCp(std::vector<T> &initialState) {
-    const auto tick = std::chrono::high_resolution_clock::now();
-    int status = runCp(initialState);
-    const auto tock = std::chrono::high_resolution_clock::now();
-    if (status) {
-        err << "Status error, not converged. [numStages=" << m_tree.numStages() << ", nx=nu=" << m_tree.numStates()
-            << "].\n";
-        throw std::runtime_error(err.str());
-    }
-    T durationMilli = std::chrono::duration<T, std::milli>(tock - tick).count();
-    return durationMilli;
-}
-
-/**
- * Time SPOCK algorithm with a parallelised cache
- */
-template<typename T>
-T Cache<T>::timeSp(std::vector<T> &initialState) {
-    const auto tick = std::chrono::high_resolution_clock::now();
-    int status = runSpock(initialState);
-    const auto tock = std::chrono::high_resolution_clock::now();
-    if (status) {
-        err << "Status error, not converged. [numStages=" << m_tree.numStages() << ", nx=nu=" << m_tree.numStates()
-            << "].\n";
-        throw std::runtime_error(err.str());
-    }
-    T durationMilli = std::chrono::duration<T, std::milli>(tock - tick).count();
-    return durationMilli;
 }
 
 

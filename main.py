@@ -16,6 +16,13 @@ def enforce_contraction(A_):
         return A_
 
 
+def check_spd(mat, name):
+    eigs = np.linalg.eigvals(mat)
+    is_positive_definite = eigs.all() > 0
+    is_symmetric = np.allclose(mat, mat.T)
+    print("Is " + name + " symmetric positive-definite?", is_positive_definite and is_symmetric)
+
+
 parser = argparse.ArgumentParser(description='Time cvxpy solvers.')
 parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
@@ -76,16 +83,19 @@ for i in range(num_events):
 
 # Costs
 nonleaf_costs = []
-Q_base = np.diagflat(rng.uniform(0., 10., num_states))
-R_base = np.diagflat(rng.uniform(0., .1, num_inputs))
+Q_base = rng.normal(0., .2, size=(num_states, num_states))
+R_base = rng.normal(0., .1, size=(num_inputs, num_inputs))
 for i in range(num_events):
-    Q_bar = rng.normal(0., .01, size=(num_states, num_states))
-    R_bar = rng.normal(0., .01, size=(num_inputs, num_inputs))
-    Q = np.linalg.solve(Q_bar, Q_base) @ Q_bar
-    R = np.linalg.solve(R_bar, R_base) @ R_bar
+    Q_w = Q_base + rng.normal(0., .01, size=(num_states, num_states))
+    R_w = R_base + rng.normal(0., .01, size=(num_inputs, num_inputs))
+    Q = Q_w @ Q_w.T
+    R = R_w @ R_w.T
+    # check_spd(Q, "Q")
+    # check_spd(R, "R")
     nonleaf_costs += [build.NonleafCost(Q, R)]
-T_bar = rng.normal(0., .01, size=(num_states, num_states))
-T = np.linalg.solve(T_bar, Q_base) @ T_bar
+
+T = Q_base @ Q_base.T
+# check_spd(T, "T")
 leaf_cost = build.LeafCost(T)
 
 # Constraints

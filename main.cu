@@ -14,7 +14,7 @@
 
 int main() {
     bool debug = false;
-    real_t minute = 60;
+    real_t minute = 60.;
 
     real_t avgTime = 0.;
     try {
@@ -30,14 +30,15 @@ int main() {
 
         /* CACHE */
         real_t tol = 1e-3;
-        size_t maxOuterIters = 10000;
-        size_t maxInnerIters = 8;
-        size_t andersonBuffer = 3;
-        bool allowK0Updates = true;
-        bool admm = false;
-        real_t maxTime = 5 * minute;
+        real_t maxTime = 15 * minute;
         std::cout << "Allocating cache...\n";
-        Cache cache(tree, problem, tol, tol, maxOuterIters, maxInnerIters, andersonBuffer, allowK0Updates, debug, admm);
+        CacheBuilder builder(tree, problem);
+        Cache cache = builder
+            .tol(tol)
+            .maxTimeSecs(maxTime)
+//            .maxIters(1e3)
+//            .enableDebug(debug)
+            .build();
 
         /* TIMING ALGORITHM */
         DTensor<real_t> d_initState = DTensor<real_t>::parseFromFile(tree.path() + "initialState" + tree.fpFileExt());
@@ -49,14 +50,16 @@ int main() {
         std::vector<real_t> runTimes(totalRuns, 0.);
         std::cout << "Computing average solve time over (" << runs << ") runs with (" << warm << ") warm up runs...\n";
         for (size_t i = 0; i < totalRuns; i++) {
-            runTimes[i] = cache.timeSp(initState) * 1e-3;
+            int status = cache.runSpock(initState);
+            if (status == 1) throw std::runtime_error("Out of iterations.");
+            if (status == 2) throw std::runtime_error("Out of time.");
+            runTimes[i] = cache.solveTime();
             cache.reset();
             std::cout << "Run (" << i << ") : " << runTimes[i] << " s.\n";
         }
         real_t time = std::reduce(runTimes.begin() + warm, runTimes.end());
         avgTime = time / runs;
-        if (avgTime > maxTime) avgTime = 0.;
-    } catch (const std::runtime_error& e) {
+    } catch (const std::exception &e) {
         std::cout << "SPOCK failed! : " << e.what() << std::endl;
     } catch (...) {
         std::cout << "SPOCK failed! : No error info.\n";

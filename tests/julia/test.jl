@@ -5,6 +5,16 @@ include("modelFactory/src/modelFactory.jl")
 using .modelFactory, JuMP, Gurobi, MosekTools, Ipopt, COSMO
 
 
+function check_status(model :: Model, time, max_time)
+    status = termination_status(model)
+    if time > max_time || (status != MOI.OPTIMAL && status != MOI.LOCALLY_SOLVED)
+        time = 0.
+    end
+    println("Done! ($(time) s) ($(status))")
+    return status, time
+end
+
+
 data = read_data()
 risk = build_risk(data)
 x0 = read_vector_from_binary(TR, folder * "initialState" * file_ext_r)
@@ -28,11 +38,7 @@ catch e
     global time_g = 0.
     println(e)
 end
-if time_g > max_time
-    time_g = 0.
-end
-status_g = termination_status(model_g)
-println("(Gurobi) Done! ($(time_g) s) ($(status_g))")
+status_g, time_g = check_status(model_g, time_g, max_time)
 if status_g == MOI.OPTIMAL || status_g == MOI.LOCALLY_SOLVED || status_g == MOI.TIME_LIMIT
     status = 0
 end
@@ -50,10 +56,7 @@ if status == 0
         global time_m = 0.
         println(e)
     end
-    if time_m > max_time
-        time_m = 0.
-    end
-    println("(Mosek) Done! ($(time_m) s)")
+    status_m, time_m = check_status(model_m, time_m, max_time)
 
     model_i = build_model(Ipopt.Optimizer, data, risk)
     set_attribute(model_i, "tol", tol)
@@ -66,10 +69,7 @@ if status == 0
         global time_i = 0.
         println(e)
     end
-    if time_i > max_time
-        time_i = 0.
-    end
-    println("(Ipopt) Done! ($(time_i) s)")
+    status_i, time_i = check_status(model_i, time_i, max_time)
 
     model_c = build_model(COSMO.Optimizer, data, risk)
     set_attribute(model_c, "eps_abs", tol)
@@ -82,10 +82,7 @@ if status == 0
         global time_c = 0.
         println(e)
     end
-    if time_c > max_time
-        time_c = 0.
-    end
-    println("(Cosmo) Done! ($(time_c) s)")
+    status_c, time_c = check_status(model_c, time_c, max_time)
 
     println("Saving julia times ...")
     open("misc/timeCvxpy.csv", "a") do f

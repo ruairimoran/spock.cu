@@ -954,7 +954,7 @@ void Cache<T>::computeError(size_t idx) {
                 if (m_maxOuterIters) {
                     if (idx >= m_maxOuterIters) m_exitCode = 1;
                 }
-                if (m_maxTimeSecs) {
+                if (m_maxTimeSecs && idx % 200 == 0) {
                     m_timeElapsed = std::chrono::duration<T>(
                             std::chrono::high_resolution_clock::now() - m_timeStart).count();
                     if (m_timeElapsed >= m_maxTimeSecs) m_exitCode = 2;

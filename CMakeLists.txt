@@ -51,43 +51,6 @@ if (SPOCK_BUILD_TEST)
 endif()
 unset(SPOCK_BUILD_TEST CACHE)
 # ----
-add_executable(spock_main)
-target_sources(spock_main  # add files
-    PRIVATE
-    main.cu
-)
-target_link_libraries(spock_main
-    PRIVATE
-    spock_compiler_flags
-    spock_src
-    cublas
-    cusolver
-    cudadevrt
-)
-target_include_directories(spock_main
-    PRIVATE
-    "${GPUTILS_SOURCE_DIR}/include"  # includes GPUtils directory
-    "${PROJECT_SOURCE_DIR}/src"
-    "${PROJECT_BINARY_DIR}"
-)
-# ----
-add_executable(spock_play)
-target_sources(spock_play
-    PRIVATE
-    playground/play.cu
-)
-target_link_libraries(spock_play
-    PRIVATE
-    spock_compiler_flags
-    spock_src
-    cublas
-    cusolver
-    cudadevrt
-)
-target_include_directories(spock_play
-    PRIVATE
-    "${GPUTILS_SOURCE_DIR}/include"  # includes GPUtils directory
-    "${PROJECT_SOURCE_DIR}/src"
-    "${PROJECT_BINARY_DIR}"
-)
+add_subdirectory(examples/random)
+#add_subdirectory(examples/powerDistribution)
 # ----

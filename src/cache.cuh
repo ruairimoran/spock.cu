@@ -36,13 +36,35 @@ template<typename T>
 void testAdjoint(OperatorTestData<T> &, T);
 
 template<typename T>
+void testIsItReallyTheAdjoint(OperatorTestData<T> &, T);
+
+template<typename T>
 void testDotM(CacheTestData<T> &, T);
 
 
 /**
+ * Sanity check for non-finite values in vector.
+ * Caution! For debugging only.
+ */
+template<typename T>
+static void isFinite(std::vector<T> &vec) {
+    for (const T &value: vec) {
+        if (!std::isfinite(value)) throw std::invalid_argument("[isFinite] vector has entries that are not finite.\n");
+    }
+}
+
+template<typename T>
+static void isFinite(DTensor<T> &d_vec) {
+    std::vector<T> vec(d_vec.numEl());
+    d_vec.download(vec);
+    for (const T &value: vec) {
+        if (!std::isfinite(value)) throw std::invalid_argument("[isFinite] DTensor has entries that are not finite.\n");
+    }
+}
+
+
+/**
  * Cache of methods for proximal algorithms
- *
- * Note: `d_` indicates a device pointer
  */
 TEMPLATE_WITH_TYPE_T
 class Cache {
@@ -54,17 +76,20 @@ protected:
     T m_tolRel = 0;
     T m_tol = 0;
     T m_errAbs = 0;
+    T m_maxTimeSecs = 0;
     size_t m_maxOuterIters = 0;
-    size_t m_andSize = 0;
+    size_t m_andBuff = 0;
     size_t m_countIterations = 0;
     size_t m_rowAxis = 0;
     size_t m_colAxis = 1;
     size_t m_matAxis = 2;
     size_t m_callsToL = 0;
-    bool m_allowK0 = false;
     bool m_debug = false;
-    bool m_errInit = false;
-    bool m_status = false;
+    bool m_errInit = false;  ///< Whether to initialise tolerances
+    bool m_status = false;  ///< General status use
+    int m_exitCode = -1;  ///< Algorithm exit code: -1=notRun, 0=converged, 1=outOfIters, 2=outOfTime
+    std::chrono::high_resolution_clock::time_point m_timeStart;
+    T m_timeElapsed;
     /* Sizes */
     size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
     size_t m_sizeX = 0;  ///< States of all nodes
@@ -90,6 +115,8 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_iterateCandidate = nullptr;
     std::unique_ptr<DTensor<T>> m_d_iterateCandidatePrim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_iterateCandidateDual = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_iterateBackup = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_err = nullptr;
     std::unique_ptr<DTensor<T>> m_d_residual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_residualPrim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_residualDual = nullptr;
@@ -100,11 +127,15 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_deltaIteratePrim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_deltaIterateDual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_deltaResidual = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_ellDeltaIterate = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_ellDeltaIteratePrim = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_ellDeltaIterateDual = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_iterateBackup = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_err = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_ellResidual = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_ellResidualPrim = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_ellResidualDual = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_admmIterate = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_admmIterateCandidate = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_admmErrPrim = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_admmErrDual = nullptr;
+    T m_admmTolPrim = 0;
+    T m_admmTolDual = 0;
     /* Workspaces */
     std::unique_ptr<DTensor<T>> m_d_initState = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workIterate = nullptr;
@@ -128,6 +159,8 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_v = nullptr;
     std::unique_ptr<DTensor<T>> m_d_vi = nullptr;
     std::unique_ptr<DTensor<T>> m_d_viSoc = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_input = nullptr;
+    std::vector<T> m_input;
     /* Projections */
     std::unique_ptr<NonnegativeOrthantCone<T>> m_nnoc = nullptr;
     /* Caches */
@@ -135,6 +168,7 @@ protected:
     std::vector<T> m_cacheError0;
     std::vector<T> m_cacheError1;
     std::vector<T> m_cacheError2;
+    std::vector<T> m_cacheError3;
     std::vector<T> m_cacheDeltaPrim;
     std::vector<T> m_cacheDeltaDual;
     std::vector<T> m_cacheNrmLtrDeltaDual;
@@ -175,6 +209,8 @@ protected:
 
     void initialiseSizes();
 
+    void initialiseIter(std::vector<T> *);
+
     void initialisePrev(std::vector<T> *);
 
     void initialiseState(std::vector<T> &initState);
@@ -191,7 +227,7 @@ protected:
 
     void L(bool = false);
 
-    void Ltr();
+    void Ltr(bool = false);
 
     T dotM(DTensor<T> &, DTensor<T> &);
 
@@ -205,7 +241,7 @@ protected:
 
     void proximalDual();
 
-    void cpIter();
+    void iter();
 
     void backup();
 
@@ -223,32 +259,35 @@ protected:
 
     void updateDirection(size_t);
 
-    bool computeError(size_t);
+    void computeError(size_t);
 
     void printToJson(std::string &);
 
 public:
     /**
      * Constructor
+     * Caution! Preferably use builder pattern.
      */
     Cache(ScenarioTree<T> &tree,
           ProblemData<T> &data,
           T absTol = 1e-3,
           T relTol = 0.,
+          T maxTimeSecs = 0.,
           size_t maxOuterIters = 1000,
           size_t maxInnerIters = 8,
           size_t andBuff = 3,
-          bool allowK0 = false,
           bool debug = false) :
-        m_tree(tree), m_data(data), m_tolAbs(absTol), m_tolRel(relTol), m_maxOuterIters(maxOuterIters),
-        m_maxInnerIters(maxInnerIters), m_andSize(andBuff), m_allowK0(allowK0), m_debug(debug) {
+        m_tree(tree), m_data(data), m_tolAbs(absTol), m_tolRel(relTol), m_maxTimeSecs(maxTimeSecs),
+        m_maxOuterIters(maxOuterIters), m_maxInnerIters(maxInnerIters), m_andBuff(andBuff), m_debug(debug) {
         /* Sizes */
         initialiseSizes();
         /* Allocate memory on host */
+        m_input = std::vector<T>(m_tree.numInputs());
         m_cacheCallsToL = std::vector<size_t>(m_maxOuterIters);
         m_cacheError0 = std::vector<T>(m_maxOuterIters);
         m_cacheError1 = std::vector<T>(m_maxOuterIters);
         m_cacheError2 = std::vector<T>(m_maxOuterIters);
+        m_cacheError3 = std::vector<T>(m_maxOuterIters);
         m_cacheDeltaPrim = std::vector<T>(m_maxOuterIters);
         m_cacheDeltaDual = std::vector<T>(m_maxOuterIters);
         m_cacheNrmLtrDeltaDual = std::vector<T>(m_maxOuterIters);
@@ -259,22 +298,28 @@ public:
         m_d_iterate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_iteratePrev = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_iterateCandidate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
+        m_d_iterateBackup = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_deltaIterate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
-        m_d_ellDeltaIterate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
+        m_d_ellResidual = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_deltaResidual = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_residual = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_residualPrev = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
-        m_d_iterateBackup = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_err = std::make_unique<DTensor<T>>(m_sizePrim, 1, 1, true);
-        m_d_andIterateMatrix = std::make_unique<DTensor<T>>(m_sizeIterate, m_andSize, 1, true);
-        m_d_andResidualMatrix = std::make_unique<DTensor<T>>(m_sizeIterate, m_andSize, 1, true);
-        m_d_andQR = std::make_unique<DTensor<T>>(m_sizeIterate, m_andSize, 1, true);
+        m_d_andIterateMatrix = std::make_unique<DTensor<T>>(m_sizeIterate, m_andBuff, 1, true);
+        m_d_andResidualMatrix = std::make_unique<DTensor<T>>(m_sizeIterate, m_andBuff, 1, true);
+        m_d_andQR = std::make_unique<DTensor<T>>(m_sizeIterate, m_andBuff, 1, true);
         m_d_andQRGammaFull = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_direction = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_directionScaled = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_workIterate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_workYTS = std::make_unique<DTensor<T>>(m_data.nullDim(), 1, m_tree.numNonleafNodes(), true);
         m_d_workDot = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
+//        if (m_admm) {
+//            m_d_admmIterate = std::make_unique<DTensor<T>>(m_sizeDual, 1, 1, true);
+//            m_d_admmIterateCandidate = std::make_unique<DTensor<T>>(m_sizeDual, 1, 1, true);
+//            m_d_admmErrPrim = std::make_unique<DTensor<T>>(m_sizePrim, 1, 1, true);
+//            m_d_admmErrDual = std::make_unique<DTensor<T>>(m_sizePrim, 1, 1, true);
+//        }
         /* Slice and reshape tensors */
         reshape();
         /* Initialise projectable objects */
@@ -283,18 +328,36 @@ public:
 
     ~Cache() = default;
 
-    /**
-     * Public methods
-     */
-    void reset();  // For testing.
-
     int runCp(std::vector<T> &, std::vector<T> * = nullptr);
 
     int runSpock(std::vector<T> &, std::vector<T> * = nullptr);
 
-    int timeCp(std::vector<T> &);
+    std::vector<T> &input() {
+        m_d_input->download(m_input);
+    }
 
-    T timeSp(std::vector<T> &);
+    size_t solveIter() { return m_countIterations; }
+
+    T solveTime() { return m_timeElapsed; }
+
+    /**
+     * Debug functions (slow).
+     */
+    void reset();
+
+    std::vector<T> inputs() {
+        m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
+        std::vector<T> inputs(m_sizeU);
+        m_d_u->download(inputs);
+        return inputs;
+    }
+
+    std::vector<T> states() {
+        m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
+        std::vector<T> states(m_sizeX);
+        m_d_x->download(states);
+        return states;
+    }
 
     /**
      * Test functions. As a friend, they can access protected members.
@@ -308,6 +371,8 @@ public:
     friend void testOperator<>(OperatorTestData<T> &, T);
 
     friend void testAdjoint<>(OperatorTestData<T> &, T);
+
+    friend void testIsItReallyTheAdjoint<>(OperatorTestData<T> &, T);
 
     friend void testDotM<>(CacheTestData<T> &, T);
 };
@@ -324,7 +389,8 @@ void Cache<T>::reset() {
     std::vector<T> numStates(m_tree.numStates(), 0);
     std::vector<T> sizeIterate(m_sizeIterate, 0);
     std::vector<T> sizePrim(m_sizePrim, 0);
-    std::vector<T> sizeIterateSizeAnd(m_sizeIterate * m_andSize, 0);
+    std::vector<T> sizeDual(m_sizeDual, 0);
+    std::vector<T> sizeIterateSizeAnd(m_sizeIterate * m_andBuff, 0);
     std::vector<T> nullDimNumNonleafNodes(m_data.nullDim() * m_tree.numNonleafNodes(), 0);
     /* Zero all cached data */
     std::fill(m_cacheCallsToL.begin(), m_cacheCallsToL.end(), 0);
@@ -340,12 +406,12 @@ void Cache<T>::reset() {
     m_d_iterate->upload(sizeIterate);
     m_d_iteratePrev->upload(sizeIterate);
     m_d_iterateCandidate->upload(sizeIterate);
+    m_d_iterateBackup->upload(sizeIterate);
     m_d_deltaIterate->upload(sizeIterate);
-    m_d_ellDeltaIterate->upload(sizeIterate);
+    m_d_ellResidual->upload(sizeIterate);
     m_d_deltaResidual->upload(sizeIterate);
     m_d_residual->upload(sizeIterate);
     m_d_residualPrev->upload(sizeIterate);
-    m_d_iterateBackup->upload(sizeIterate);
     m_d_err->upload(sizePrim);
     m_d_andIterateMatrix->upload(sizeIterateSizeAnd);
     m_d_andResidualMatrix->upload(sizeIterateSizeAnd);
@@ -356,6 +422,10 @@ void Cache<T>::reset() {
     m_d_workIterate->upload(sizeIterate);
     m_d_workYTS->upload(nullDimNumNonleafNodes);
     m_d_workDot->upload(sizeIterate);
+//    if (m_admm) {
+//        m_d_admmIterate->upload(sizeDual);
+//        m_d_admmIterateCandidate->upload(sizeDual);
+//    }
 }
 
 template<typename T>
@@ -378,6 +448,7 @@ void Cache<T>::initialiseSizes() {
 
 template<typename T>
 void Cache<T>::reshape() {
+    m_d_input = std::make_unique<DTensor<T>>(*m_d_iterate, m_rowAxis, 0, m_tree.numInputs() - 1);
     m_d_iteratePrim = std::make_unique<DTensor<T>>(*m_d_iterate, m_rowAxis, 0, m_sizePrim - 1);
     m_d_iterateDual = std::make_unique<DTensor<T>>(*m_d_iterate, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
     m_d_iteratePrevPrim = std::make_unique<DTensor<T>>(*m_d_iteratePrev, m_rowAxis, 0, m_sizePrim - 1);
@@ -391,16 +462,16 @@ void Cache<T>::reshape() {
     m_d_workDotDual = std::make_unique<DTensor<T>>(*m_d_workDot, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
     m_d_deltaIteratePrim = std::make_unique<DTensor<T>>(*m_d_deltaIterate, m_rowAxis, 0, m_sizePrim - 1);
     m_d_deltaIterateDual = std::make_unique<DTensor<T>>(*m_d_deltaIterate, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
-    m_d_ellDeltaIteratePrim = std::make_unique<DTensor<T>>(*m_d_ellDeltaIterate, m_rowAxis, 0, m_sizePrim - 1);
-    m_d_ellDeltaIterateDual = std::make_unique<DTensor<T>>(*m_d_ellDeltaIterate, m_rowAxis, m_sizePrim,
-                                                           m_sizeIterate - 1);
-    m_d_andIterateMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 0, m_andSize - 2);
-    m_d_andIterateMatrixRight = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 1, m_andSize - 1);
+    m_d_ellResidualPrim = std::make_unique<DTensor<T>>(*m_d_ellResidual, m_rowAxis, 0, m_sizePrim - 1);
+    m_d_ellResidualDual = std::make_unique<DTensor<T>>(*m_d_ellResidual, m_rowAxis, m_sizePrim,
+                                                       m_sizeIterate - 1);
+    m_d_andIterateMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 0, m_andBuff - 2);
+    m_d_andIterateMatrixRight = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 1, m_andBuff - 1);
     m_d_andIterateMatrixCol0 = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 0, 0);
-    m_d_andResidualMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 0, m_andSize - 2);
-    m_d_andResidualMatrixRight = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 1, m_andSize - 1);
+    m_d_andResidualMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 0, m_andBuff - 2);
+    m_d_andResidualMatrixRight = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 1, m_andBuff - 1);
     m_d_andResidualMatrixCol0 = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 0, 0);
-    m_d_andQRGamma = std::make_unique<DTensor<T>>(*m_d_andQRGammaFull, m_rowAxis, 0, m_andSize - 1);
+    m_d_andQRGamma = std::make_unique<DTensor<T>>(*m_d_andQRGammaFull, m_rowAxis, 0, m_andBuff - 1);
     reshapePrimalWorkspace();
     reshapeDualWorkspace();
 }
@@ -484,6 +555,15 @@ void Cache<T>::initialiseState(std::vector<T> &initState) {
         throw ERR;
     }
     m_d_initState->upload(initState);
+}
+
+/**
+ * Initialise iterate.
+ * - If given, load previous solution.
+ */
+template<typename T>
+void Cache<T>::initialiseIter(std::vector<T> *previousSolution) {
+    if (previousSolution) m_d_iterate->upload(*previousSolution);
 }
 
 /**
@@ -572,17 +652,18 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
  * Call operator L on workspace
  */
 template<typename T>
-void Cache<T>::L(bool ignore) {
+void Cache<T>::L(bool add) {
     m_L.op(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
-    if (!ignore && m_debug) { m_callsToL += 1; }
+    if (add && m_debug) { m_callsToL += 1; }
 }
 
 /**
  * Call operator L' on workspace
  */
 template<typename T>
-void Cache<T>::Ltr() {
+void Cache<T>::Ltr(bool add) {
     m_L.adj(*m_d_u, *m_d_x, *m_d_y, *m_d_t, *m_d_s, *m_d_i, *m_d_ii, *m_d_iii, *m_d_iv, *m_d_v, *m_d_vi);
+    if (add && m_debug) { m_callsToL += 1; }
 }
 
 /**
@@ -596,7 +677,7 @@ T Cache<T>::dotM(DTensor<T> &x, DTensor<T> &y) {
     Ltr();
     m_d_workIteratePrim->deviceCopyTo(*m_d_workDotPrim);
     yPrim.deviceCopyTo(*m_d_workIteratePrim);
-    L(true);
+    L();
     m_d_workIterateDual->deviceCopyTo(*m_d_workDotDual);
     *m_d_workDot *= -m_data.stepSize();
     *m_d_workDot += y;
@@ -616,10 +697,20 @@ T Cache<T>::normM(DTensor<T> &x, DTensor<T> &y) {
  */
 template<typename T>
 void Cache<T>::modifyPrimal() {
+//    if (m_admm) {
+//        m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
+//        L(true);
+//        *m_d_workIterateDual -= *m_d_iterateDual;
+//        *m_d_workIterateDual += *m_d_admmIterate;
+//        Ltr(true);
+//        *m_d_workIteratePrim *= -m_data.stepSize();
+//        *m_d_workIteratePrim += *m_d_iteratePrim;
+//    } else {
     m_d_iterateDual->deviceCopyTo(*m_d_workIterateDual);
-    Ltr();
+    Ltr(true);
     *m_d_workIteratePrim *= -m_data.stepSize();
     *m_d_workIteratePrim += *m_d_iteratePrim;
+//    }
 }
 
 /**
@@ -638,11 +729,17 @@ void Cache<T>::proximalPrimal() {
  */
 template<typename T>
 void Cache<T>::modifyDual() {
+//    if (m_admm) {
+//        L(true);
+//        *m_d_workIterateDual += *m_d_admmIterate;
+//        m_d_workIterateDual->deviceCopyTo(*m_d_admmIterateCandidate); // Save (Lz+ + u) for later in iteration
+//    } else {
     *m_d_workIteratePrim *= 2.;
     *m_d_workIteratePrim -= *m_d_iteratePrim;
-    L();
+    L(true);
     *m_d_workIterateDual *= m_data.stepSize();
     *m_d_workIterateDual += *m_d_iterateDual;
+//    }
 }
 
 /**
@@ -650,12 +747,18 @@ void Cache<T>::modifyDual() {
  */
 template<typename T>
 void Cache<T>::proximalDual() {
+//    if (m_admm) {
+//        translateSocs();
+//        projectDualWorkspaceOnConstraints();
+//        m_d_workIterateDual->deviceCopyTo(*m_d_iterateCandidateDual);  // Store dual
+//    } else {
     *m_d_workIterateDual *= m_data.stepSizeRecip();
     translateSocs();
     m_d_workIterateDual->deviceCopyTo(*m_d_iterateCandidateDual);
     projectDualWorkspaceOnConstraints();
     *m_d_iterateCandidateDual -= *m_d_workIterateDual;
     *m_d_iterateCandidateDual *= m_data.stepSize();  // Store dual
+//    }
 }
 
 /**
@@ -663,11 +766,12 @@ void Cache<T>::proximalDual() {
  * Write output to `candidates`.
  */
 template<typename T>
-void Cache<T>::cpIter() {
+void Cache<T>::iter() {
     modifyPrimal();
     proximalPrimal();
     modifyDual();
     proximalDual();
+//    if (m_admm) *m_d_admmIterateCandidate -= *m_d_iterateCandidateDual;  // Compute auxiliary for ADMM
 }
 
 template<typename T>
@@ -722,6 +826,7 @@ void Cache<T>::saveToPrev() {
 template<typename T>
 void Cache<T>::acceptCandidate() {
     m_d_iterateCandidate->deviceCopyTo(*m_d_iterate);
+//    if (m_admm) m_d_admmIterateCandidate->deviceCopyTo(*m_d_admmIterate);
 }
 
 /**
@@ -742,7 +847,7 @@ void Cache<T>::updateDirection(size_t idx) {
      * 2. Compute least squares `m_d_andResidualMatrix \ m_d_residual`.
      * 4. Compute Anderson's direction.
      */
-    if (idx >= m_andSize) {
+    if (idx >= m_andBuff) {
         /* QR decomposition */
         m_d_andResidualMatrix->deviceCopyTo(*m_d_andQR);
         m_d_residual->deviceCopyTo(*m_d_andQRGammaFull);
@@ -777,38 +882,100 @@ void Cache<T>::updateDirection(size_t idx) {
  * Compute errors for termination check.
  */
 template<typename T>
-bool Cache<T>::computeError(size_t idx) {
+void Cache<T>::computeError(size_t idx) {
     cudaDeviceSynchronize();  // DO NOT REMOVE !!!
-    /* L(deltaIteratePrim) and L'(deltaIterateDual) */
-    m_d_deltaIterateDual->deviceCopyTo(*m_d_workIterateDual);
-    Ltr();
-    m_d_workIteratePrim->deviceCopyTo(*m_d_ellDeltaIteratePrim);
-    m_d_deltaIteratePrim->deviceCopyTo(*m_d_workIteratePrim);
-    L(true);
-    m_d_workIterateDual->deviceCopyTo(*m_d_ellDeltaIterateDual);
-    /* -deltaIterate/step + ell(deltaIterate) */
-    m_d_deltaIterate->deviceCopyTo(*m_d_workIterate);
-    *m_d_workIterate *= -m_data.stepSizeRecip();
-    *m_d_workIterate += *m_d_ellDeltaIterate;
-    if (m_errInit) {
-        m_tol = std::max(m_tolAbs, m_tolRel * m_d_workIterate->maxAbs());
-        m_errInit = false;
-        m_status = false;
-    } else {
-        m_errAbs = m_d_workIterate->maxAbs();
-        m_status = (m_errAbs <= m_tol);
-        if (m_debug) {
-            m_cacheError1[idx] = m_d_workIteratePrim->maxAbs();
-            m_cacheError2[idx] = m_d_workIterateDual->maxAbs();
-            m_cacheCallsToL[idx] = m_callsToL;
-            /* errPrim + L'(errDual) */
-            m_d_workIteratePrim->deviceCopyTo(*m_d_err);
-            Ltr();
-            *m_d_err += *m_d_workIteratePrim;
-            m_cacheError0[idx] = m_d_err->maxAbs();
+    isFinite(*m_d_iterateCandidate);
+//    if (m_admm) {
+//        m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
+//        Ltr();
+//        T tol;
+//        if (m_errInit) tol = m_d_workIteratePrim->normF();
+//        *m_d_workIteratePrim *= -1.;
+//        m_d_workIteratePrim->deviceCopyTo(*m_d_admmErrPrim);
+//        m_d_workIteratePrim->deviceCopyTo(*m_d_admmErrDual);
+//        /* prim = z+ - L'n+ */
+//        *m_d_admmErrPrim += *m_d_iterateCandidatePrim;
+//        /* dual = L'n - L'n+ */
+//        m_d_iterateDual->deviceCopyTo(*m_d_workIterateDual);
+//        Ltr();
+//        *m_d_admmErrDual += *m_d_workIteratePrim;
+//        if (m_errInit) {
+//            m_admmTolPrim = m_tolAbs * sqrt(m_sizePrim) + m_tolRel * std::max(m_d_iterateCandidatePrim->normF(), tol);
+//            m_admmTolDual = m_tolAbs * sqrt(m_sizeDual) + m_tolRel * m_d_admmIterateCandidate->normF();
+//            m_errInit = false;
+//            m_status = false;
+//        } else {
+//            m_status = (m_d_admmErrPrim->normF() <= m_admmTolPrim && m_d_admmErrDual->normF() <= m_admmTolDual);
+//            if (m_debug) {
+//                isFinite(*m_d_admmIterateCandidate);
+//
+//                m_cacheCallsToL[idx] = m_callsToL;
+//                m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
+//                *m_d_workIteratePrim -= *m_d_iterateCandidatePrim;
+//                m_cacheError0[idx] = m_d_admmErrPrim->normF();
+//                m_cacheError1[idx] = m_d_workIteratePrim->normF();
+//                m_cacheError2[idx] = m_d_admmErrDual->normF();
+//
+//                /* err3 = Lz+ - n+ */
+//                m_d_iterateCandidatePrim->deviceCopyTo(*m_d_workIteratePrim);
+//                L();
+//                *m_d_workIterateDual -= *m_d_iterateCandidateDual;
+//                m_cacheError3[idx] = m_d_workIterateDual->normF();
+//            }
+//        }
+//    } else {
+    computeResidual();
+    if (idx % 25 == 0) {
+        /* L(residualPrim) and L'(residualDual) */
+        m_d_residualDual->deviceCopyTo(*m_d_workIterateDual);
+        Ltr();
+        m_d_workIteratePrim->deviceCopyTo(*m_d_ellResidualPrim);
+        m_d_residualPrim->deviceCopyTo(*m_d_workIteratePrim);
+        L();
+        m_d_workIterateDual->deviceCopyTo(*m_d_ellResidualDual);
+        /* residual/step - ell(residual) */
+        m_d_residual->deviceCopyTo(*m_d_workIterate);
+        *m_d_workIterate *= m_data.stepSizeRecip();
+        *m_d_workIterate -= *m_d_ellResidual;
+        if (m_errInit) {
+            m_tol = std::max(m_tolAbs, m_tolRel * m_d_workIterate->maxAbs());
+            m_exitCode = -1;
+            m_errInit = false;
+        } else {
+            m_errAbs = m_d_workIterate->maxAbs();
+            if (m_errAbs <= m_tol) m_exitCode = 0;
+            if (m_maxOuterIters) {
+                if (idx >= m_maxOuterIters) m_exitCode = 1;
+            }
+            if (m_maxTimeSecs && idx % 200 == 0) {
+                m_timeElapsed = std::chrono::duration<T>(
+                        std::chrono::high_resolution_clock::now() - m_timeStart).count();
+                if (m_timeElapsed >= m_maxTimeSecs) m_exitCode = 2;
+            }
+            if (m_exitCode != -1) {
+                m_countIterations = idx;
+                m_timeElapsed = std::chrono::duration<T>(
+                        std::chrono::high_resolution_clock::now() - m_timeStart).count();
+            }
+            if (m_debug) {
+                m_cacheError1[idx] = m_d_workIteratePrim->maxAbs();
+                m_cacheError2[idx] = m_d_workIterateDual->maxAbs();
+                m_cacheCallsToL[idx] = m_callsToL;
+                /* errPrim + L'(errDual) */
+//                m_d_workIteratePrim->deviceCopyTo(*m_d_err);
+//                Ltr();
+//                *m_d_err += *m_d_workIteratePrim;
+//                m_cacheError0[idx] = m_d_err->maxAbs();
+
+                m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
+                Ltr();
+                *m_d_err *= -1.;
+                *m_d_err += *m_d_iterateCandidatePrim;
+                m_cacheError0[idx] = m_d_err->normF();
+            }
         }
     }
-    return m_status;
+//    }
 }
 
 /**
@@ -819,34 +986,36 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
     /* Load initial state */
     initialiseState(initState);
     /* Load previous solution if given */
-    initialisePrev(previousSolution);
+    initialiseIter(previousSolution);
     /* Reset error check */
     m_errInit = true;
     /* Run algorithm */
-    for (size_t i = 0; i < m_maxOuterIters; i++) {
-        /* Save iterate to prev */
-        saveToPrev();
+    for (size_t i = 0; i < SIZE_MAX; i++) {
         /* Compute CP iteration */
-        cpIter();
+        iter();
+        /* Check error */
+        computeError(i);
         /* Save candidate to accepted iterate */
         acceptCandidate();
-        /* Compute change in iterate */
-        computeDeltaIterate();
-        /* Check error */
-        m_status = computeError(i);
-        if (m_status) {
-            m_countIterations = i;
+        /* Break if termination criteria met */
+        if (m_exitCode != -1) {
             break;
         }
     }
-    /* Return status */
-    if (m_status) {
-        std::cout << "\nConverged in " << m_countIterations << " iterations, to a tolerance of " << m_tol << "\n";
-        return 0;
-    } else {
-        std::cout << "\nMax iterations (" << m_maxOuterIters << ") reached.\n";
-        return 1;
+    if (m_debug) {
+        std::string n = "Cp";
+        printToJson(n);
+        if (m_exitCode == 0) {
+            std::cout << "\nConverged in " << m_countIterations << " iterations, to a tolerance of " << m_tol << "\n";
+        } else if (m_exitCode == 1) {
+            std::cout << "\nOut of iterations (" << m_maxOuterIters << " iters).\n";
+        } else if (m_exitCode == 2) {
+            std::cout << "\nOut of time (" << m_maxTimeSecs << " secs).\n";
+        } else {
+            std::cout << "\nExited.\n";
+        }
     }
+    return m_exitCode;
 }
 
 /**
@@ -854,6 +1023,7 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
  */
 template<typename T>
 int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSolution) {
+    m_timeStart = std::chrono::high_resolution_clock::now();
     /* Load initial state */
     initialiseState(initState);
     /* Load previous solution if given */
@@ -873,26 +1043,25 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     T rho = 0;
     T tau = 0;
     /* Run */
-    for (size_t iOut = 0; iOut < m_maxOuterIters; iOut++) {
+    for (size_t iOut = 0; iOut < SIZE_MAX; iOut++) {
         if (iOut != 0) {
             /* Accept new iterate */
             acceptCandidate();
-            /* Compute change of iterate */
-            computeDeltaIterate();
-            /* Check error */
-            m_status = computeError(iOut);
-            if (m_status) {
-                m_countIterations = iOut;
-                break;
-            }
         }
         /* START */
-        cpIter();
+        iter();
+        /* Check error (residual computed internally) */
+        computeError(iOut);
+        if (m_exitCode != -1) {
+            acceptCandidate();
+            break;
+        }
+        /* Backup candidate */
         backup();
-        /* Compute residual */
-        computeResidual();
         /* Compute residual norm */
         w = normM(*m_d_residual, *m_d_residual);
+        /* Compute change of iterate */
+        computeDeltaIterate();
         /* Compute change of residual */
         computeDeltaResidual();
         /* Save iterate and residual to prev */
@@ -900,7 +1069,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         /* Compute direction */
         updateDirection(iOut);
         /* Blind update */
-        if (w <= m_c0 * zeta && m_allowK0) {
+        if (w <= m_c0 * zeta) {
             m_d_iteratePrev->deviceCopyTo(*m_d_iterateCandidate);
             *m_d_iterateCandidate += *m_d_direction;
             zeta = w;
@@ -914,7 +1083,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             m_d_direction->deviceCopyTo(*m_d_directionScaled);
             *m_d_directionScaled *= tau;
             *m_d_iterate += *m_d_directionScaled;
-            cpIter();
+            iter();
             computeResidual();
             wTilde = normM(*m_d_residual, *m_d_residual);
             /* Educated update */
@@ -945,52 +1114,172 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             }
         }
     }
-//    std::string n = "Sp";
-//    printToJson(n);
-    /* Return status */
-    if (m_status) {
-        if (m_debug) {
-            std::cout << "\nConverged in " << m_countIterations << " outer iterations, to a tolerance of " << m_tol
+    if (m_debug) {
+        std::string n = "Sp";
+        printToJson(n);
+        if (m_exitCode == 0) {
+            std::cout << "\nConverged in " << m_countIterations << " iters and "
+                      << m_timeElapsed << " secs, to a tolerance of " << m_tol
                       << ", [K0: " << countK0
                       << ", K1: " << countK1
                       << ", K2: " << countK2
                       << ", bt: " << countK2bt
                       << ", K3: " << countK3
                       << "].\n";
-        }
-        return 0;
-    } else {
-        if (m_debug) {
+        } else if (m_exitCode == 1) {
             std::cout << "\nMax iterations (" << m_maxOuterIters << ") reached [K0: " << countK0
                       << ", K1: " << countK1
                       << ", K2: " << countK2
                       << ", bt: " << countK2bt
                       << ", K3: " << countK3
                       << "].\n";
+        } else if (m_exitCode == 2) {
+            std::cout << "\nMax time (" << m_maxTimeSecs << "s) reached [K0: " << countK0
+                      << ", K1: " << countK1
+                      << ", K2: " << countK2
+                      << ", bt: " << countK2bt
+                      << ", K3: " << countK3
+                      << "].\n";
+        } else {
+            std::cout << "\nExited.\n";
         }
-        return 1;
     }
+    return m_exitCode;
 }
 
 /**
- * Add a vector to a .json file with a referenced name
+ * Builder pattern for Cache
  */
-template<typename T>
-static void
-addArrayToJsonRef(rapidjson::Document &doc, rapidjson::GenericStringRef<char> const &name, std::vector<T> &vec) {
-    rapidjson::Value array(rapidjson::kArrayType);
-    for (size_t i = 0; i < vec.size(); i++) {
-        array.PushBack(vec[i], doc.GetAllocator());
+TEMPLATE_WITH_TYPE_T
+class CacheBuilder {
+private:
+    ScenarioTree<T> &m_tree;
+    ProblemData<T> &m_data;
+    T m_tolAbs = 0;
+    T m_tolRel = 0;
+    T m_maxTimeSecs = 0;
+    size_t m_maxOuterIters = 0;
+    size_t m_maxInnerIters = 0;
+    size_t m_andBuff = 0;
+    bool m_debug = false;
+    bool m_admm = false;
+
+public:
+    /**
+     * Constructor with default values
+     */
+    CacheBuilder(ScenarioTree<T> &tree, ProblemData<T> &data) :
+        m_tree(tree),
+        m_data(data),
+        m_tolAbs(1e-3),
+        m_tolRel(0.),
+        m_maxTimeSecs(0),
+        m_maxOuterIters(0),
+        m_maxInnerIters(8),
+        m_andBuff(3),
+        m_debug(false),
+        m_admm(false) {};
+
+    /**
+     * Setters
+     */
+    CacheBuilder<T> &toleranceAbsolute(T tol) {
+        m_tolAbs = tol;
+        return *this;
     }
-    doc.AddMember(name, array, doc.GetAllocator());
-}
+
+    CacheBuilder<T> &toleranceRelative(T tol) {
+        m_tolRel = tol;
+        return *this;
+    }
+
+    CacheBuilder<T> &tol(T tol) {
+        m_tolAbs = tol;
+        m_tolRel = tol;
+        return *this;
+    }
+
+    CacheBuilder<T> &maxTimeSecs(T time) {
+        m_maxTimeSecs = time;
+        return *this;
+    }
+
+    CacheBuilder<T> &maxIters(size_t iters) {
+        m_maxOuterIters = iters;
+        return *this;
+    }
+
+    CacheBuilder<T> &maxItersInner(size_t iters) {
+        m_maxInnerIters = iters;
+        return *this;
+    }
+
+    CacheBuilder<T> &andersonBuffer(size_t buffer) {
+        m_andBuff = buffer;
+        return *this;
+    }
+
+    CacheBuilder<T> &enableDebug(bool enable) {
+        if (enable && m_maxOuterIters == 0) {
+            err << "[CacheBuilder] Cannot debug without first setting max number of iterations!\n";
+            throw ERR;
+        }
+        m_debug = enable;
+        return *this;
+    }
+
+//    CacheBuilder<T> &enableAdmm(bool enable) {
+//        m_admm = enable;
+//        return *this;
+//    }
+
+    /**
+     * Build Cache
+     */
+    Cache<T> build() {
+        return Cache<T>(
+            m_tree,
+            m_data,
+            m_tolAbs,
+            m_tolRel,
+            m_maxTimeSecs,
+            m_maxOuterIters,
+            m_maxInnerIters,
+            m_andBuff,
+            m_debug
+        );
+    }
+
+    /**
+     * Build unique_ptr to Cache
+     */
+    std::unique_ptr<Cache<T>> make_unique() {
+        return std::make_unique<Cache<T>>(
+            m_tree,
+            m_data,
+            m_tolAbs,
+            m_tolRel,
+            m_maxTimeSecs,
+            m_maxOuterIters,
+            m_maxInnerIters,
+            m_andBuff,
+            m_debug
+        );
+    }
+};
 
 /**
- * Add a vector to a .json file with a literal name
+ * Add a vector to a .json file
  */
 template<typename T>
 static void
-addArrayToJsonStr(rapidjson::Document &doc, std::string const &name, std::vector<T> &vec) {
+addArray(rapidjson::Document &doc, std::string const &name, std::vector<T> &vec) {
+    for (const T &value: vec) {
+        if (!std::isfinite(value)) {
+            err << "[Cache::addArray] array (" << name << ") has entries that are not finite.\n";
+            throw ERR;
+        }
+    }
     rapidjson::Value array(rapidjson::kArrayType);
     for (size_t i = 0; i < vec.size(); i++) {
         array.PushBack(vec[i], doc.GetAllocator());
@@ -1013,69 +1302,36 @@ void Cache<T>::printToJson(std::string &file) {
     doc.SetObject();
     doc.AddMember("maxIters", m_maxOuterIters, doc.GetAllocator());
     doc.AddMember("tol", m_tol, doc.GetAllocator());
+    doc.AddMember("horizon", m_tree.numStages() - 1, doc.GetAllocator());
+    auto idx = find(m_tree.childMax().begin(), m_tree.childMax().end(), 1);
+    doc.AddMember("branchFactor", idx - m_tree.childMax().begin(), doc.GetAllocator());
+    doc.AddMember("numEvents", m_tree.numEvents(), doc.GetAllocator());
+    doc.AddMember("numStates", m_tree.numStates(), doc.GetAllocator());
+    doc.AddMember("numInputs", m_tree.numInputs(), doc.GetAllocator());
     doc.AddMember("sizeCache", m_maxOuterIters, doc.GetAllocator());
-    doc.AddMember("sizePrim", m_sizePrim, doc.GetAllocator());
-    doc.AddMember("sizeDual", m_sizeDual, doc.GetAllocator());
-//    std::vector<T> solution(m_sizePrim);
-//    m_d_iteratePrim->download(solution);
-//    rapidjson::GenericStringRef<char> nSol = "sol";
-//    addArrayToJsonRef(doc, nSol, solution);
-    rapidjson::GenericStringRef<char> nCallsL = "callsL";
-    addArrayToJsonRef(doc, nCallsL, m_cacheCallsToL);
-    rapidjson::GenericStringRef<char> nErr0 = "err0";
-    addArrayToJsonRef(doc, nErr0, m_cacheError0);
-    rapidjson::GenericStringRef<char> nErr1 = "err1";
-    addArrayToJsonRef(doc, nErr1, m_cacheError1);
-    rapidjson::GenericStringRef<char> nErr2 = "err2";
-    addArrayToJsonRef(doc, nErr2, m_cacheError2);
-//    rapidjson::GenericStringRef<char> nDeltaPrim = "deltaPrim";
-//    addArrayToJsonRef(doc, nDeltaPrim, m_cacheDeltaPrim);
-//    rapidjson::GenericStringRef<char> nDeltaDual = "deltaDual";
-//    addArrayToJsonRef(doc, nDeltaDual, m_cacheDeltaDual);
-//    rapidjson::GenericStringRef<char> nNrmLtrDeltaDual = "nrmLtrDeltaDual";
-//    addArrayToJsonRef(doc, nNrmLtrDeltaDual, m_cacheNrmLtrDeltaDual);
+//    if (m_admm) {
+//        doc.AddMember("admmTolPrim", m_admmTolPrim, doc.GetAllocator());
+//        doc.AddMember("admmTolDual", m_admmTolDual, doc.GetAllocator());
+//    }
+    addArray(doc, "callsL", m_cacheCallsToL);
+    addArray(doc, "err0", m_cacheError0);
+    addArray(doc, "err1", m_cacheError1);
+    addArray(doc, "err2", m_cacheError2);
+    addArray(doc, "err3", m_cacheError3);
+    std::vector<T> x = this->states();
+    addArray(doc, "states", x);
+    std::vector<T> u = this->inputs();
+    addArray(doc, "inputs", u);
     typedef rapidjson::GenericStringBuffer<rapidjson::UTF8<>, rapidjson::MemoryPoolAllocator<>> StringBuffer;
-    StringBuffer buffer(&allocator);
-    rapidjson::Writer<StringBuffer> writer(buffer, reinterpret_cast<rapidjson::CrtAllocator *>(&allocator));
+    StringBuffer buffer(&doc.GetAllocator());
+    rapidjson::Writer<StringBuffer> writer(buffer, reinterpret_cast<rapidjson::CrtAllocator *>(&doc.GetAllocator()));
     doc.Accept(writer);
     std::string json(buffer.GetString(), buffer.GetSize());
     std::ofstream of("/home/biggirl/Documents/remote_host/raocp-parallel/misc/cache" + file + ".json");
+    if (!of.is_open()) throw std::runtime_error("[Cache::printToJson] Failed to open file for writing.\n");
     of << json;
-    if (!of.good()) throw std::runtime_error("[Cache::printToJson] Can't write the JSON string to the file!");
-}
-
-/**
- * Time vanilla CP algorithm with a parallelised cache
- */
-template<typename T>
-int Cache<T>::timeCp(std::vector<T> &initialState) {
-    std::cout << "cp timer started" << "\n";
-    const auto tick = std::chrono::high_resolution_clock::now();
-    /* Run vanilla CP algorithm */
-    int status = runCp(initialState);
-    const auto tock = std::chrono::high_resolution_clock::now();
-    auto durationMilli = std::chrono::duration<double, std::milli>(tock - tick).count();
-    std::cout << "cp timer stopped: " << durationMilli << " ms" << "\n";
-    std::string n = "Cp";
-    printToJson(n);
-    return status;
-}
-
-/**
- * Time SPOCK algorithm with a parallelised cache
- */
-template<typename T>
-T Cache<T>::timeSp(std::vector<T> &initialState) {
-    const auto tick = std::chrono::high_resolution_clock::now();
-    int status = runSpock(initialState);
-    const auto tock = std::chrono::high_resolution_clock::now();
-    if (status) {
-        err << "Status error, not converged. [numStages=" << m_tree.numStages() << ", nx=nu=" << m_tree.numStates()
-            << "].\n";
-        throw std::runtime_error(err.str());
-    }
-    T durationMilli = std::chrono::duration<T, std::milli>(tock - tick).count();
-    return durationMilli;
+    of.close();
+    if (!of.good()) throw std::runtime_error("[Cache::printToJson] Can't write the JSON string to the file.\n");
 }
 
 

@@ -12,10 +12,10 @@ test_python() {
     pip install virtualenv
 
     # -- create virtualenv
-    virtualenv -p python3.10 venv@3.10
+    virtualenv -p python3.10 .venv
 
     # -- activate venv
-    source venv@3.10/bin/activate
+    source .venv/bin/activate
 
     # -- upgrade pip within venv
     pip install --upgrade pip
@@ -24,12 +24,12 @@ test_python() {
     pip install '.[test]'
 
     # -- run the python tests
-    python -W ignore tests/testTreeFactory.py -v
-    python -W ignore tests/testProblemFactory.py -v
+    python -W ignore tests/python/testTreeFactory.py -v
+    python -W ignore tests/python/testProblemFactory.py -v
 
     # -- run the test file to create float- and double-type data for C++ testing
-    python tests/test.py --dt='f'
-    python tests/test.py --dt='d'
+    python tests/cuda/test.py --dt='f'
+    python tests/cuda/test.py --dt='d'
 }
 
 # ------------------------------------

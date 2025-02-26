@@ -1,5 +1,9 @@
 # Custom
 misc/timeScaling.csv
+misc/cacheCp.json
+misc/cacheSp.json
+misc/timeCvxpy.csv
+Manifest.toml
 data/
 .vscode
 venv*

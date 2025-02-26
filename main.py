@@ -20,7 +20,8 @@ def check_spd(mat, name):
     eigs = np.linalg.eigvals(mat)
     is_positive_definite = eigs.all() > 0
     is_symmetric = np.allclose(mat, mat.T)
-    print("Is " + name + " symmetric positive-definite?", is_positive_definite and is_symmetric)
+    print("Is " + name + " symmetric positive-definite?", is_positive_definite and is_symmetric,
+          " with norm (", np.linalg.norm(mat), ").")
 
 
 parser = argparse.ArgumentParser(description='Time cvxpy solvers.')

@@ -18,6 +18,7 @@ protected:
     size_t m_dim = 0;
     std::string m_prefix = "Cost_";
     std::unique_ptr<DTensor<T>> m_d_sqrtQ = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_sqrtR = nullptr;
     std::unique_ptr<DTensor<T>> m_d_translation = nullptr;
     std::unique_ptr<SocProjection<T>> m_socs = nullptr;
 
@@ -54,7 +55,7 @@ public:
 
     DTensor<T> &sqrtQ() { return *m_d_sqrtQ; }
 
-    virtual DTensor<T> &sqrtR() { err << "[Cost::sqrtR] this is a leaf cost\n"; throw ERR; }
+    virtual DTensor<T> &sqrtR() { err << "[Cost::sqrtR] No R, this must be a leaf cost.\n"; throw ERR; }
 
     void translate(DTensor<T> &d_vec) {
         d_vec += *m_d_translation;
@@ -86,18 +87,14 @@ public:
  */
 template<typename T>
 class CostNonleaf : public Cost<T> {
-
-protected:
-    std::unique_ptr<DTensor<T>> m_d_sqrtR = nullptr;
-
 public:
     explicit CostNonleaf(ScenarioTree<T> &tree) :
         Cost<T>(tree, nonleaf, tree.numStatesAndInputs() + 2, tree.numNodes()) {
-        m_d_sqrtR = std::make_unique<DTensor<T>>(
+        this->m_d_sqrtR = std::make_unique<DTensor<T>>(
             DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "sqrtR" + tree.fpFileExt()));
     }
 
-    DTensor<T> &sqrtR() { return *m_d_sqrtR; }
+    DTensor<T> &sqrtR() { return *this->m_d_sqrtR; }
 };
 
 

@@ -4,10 +4,7 @@
  * $ cmake -S . -B ./build -Wno-dev && cmake --build ./build && ./build/spock
 */
 
-#include "include/gpu.cuh"
-#include "src/tree.cuh"
-#include "src/problem.cuh"
-#include "src/cache.cuh"
+#include <spock.cuh>
 
 #define real_t double  // templates type defaults to double
 

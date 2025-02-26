@@ -117,7 +117,7 @@ risk = build.AVaR(alpha)
 
 # Generate problem data
 problem = (
-    problemFactory.ProblemFactory(
+    problemFactory.Factory(
         scenario_tree=tree,
         num_states=num_states,
         num_inputs=num_inputs)

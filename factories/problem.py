@@ -3,18 +3,21 @@ import os
 import numpy as np
 import scipy as sp
 from scipy.sparse.linalg import LinearOperator, eigs
-import cvxpy as cvx
 from copy import deepcopy
-from . import treeFactory
+from . import tree
 from . import build
-
+try:
+    import cvxpy
+except ImportError:
+    cvxpy = None  # cvxpy is only needed for testing purposes
+    
 
 class Problem:
     """
     Risk-averse optimal control problem and offline cache storage
     """
 
-    def __init__(self, scenario_tree: treeFactory.Tree, num_states, num_inputs, dynamics,
+    def __init__(self, scenario_tree: tree.Tree, num_states, num_inputs, dynamics,
                  nonleaf_cost, leaf_cost, nonleaf_constraint, leaf_constraint, risk, test, julia):
         """
         :param scenario_tree: instance of ScenarioTree
@@ -122,7 +125,8 @@ class Problem:
 
     def __generate_problem_files(self):
         # Setup jinja environment
-        file_loader = j2.FileSystemLoader(searchpath=["py/"])
+        template_dir = os.path.dirname(os.path.abspath(__file__))
+        file_loader = j2.FileSystemLoader(template_dir)
         env = j2.Environment(loader=file_loader,
                              trim_blocks=True,
                              lstrip_blocks=True,
@@ -132,7 +136,6 @@ class Problem:
                              variable_end_string="~\\",
                              comment_start_string="\#",
                              comment_end_string="#\\")
-        # Generate "problemData.json" from template "problemTemplate.json.jinja2"
         template = env.get_template("data.json.jinja2")
         output = template.render(num_events=self.__tree.num_events,
                                  num_nonleaf_nodes=self.__tree.num_nonleaf_nodes,
@@ -321,15 +324,15 @@ class Problem:
         # Solve with cvxpy
         x_bar = 10 * np.random.randn(self.__num_states, self.__tree.num_nodes)
         u_bar = 10 * np.random.randn(self.__num_inputs, self.__tree.num_nonleaf_nodes)
-        x = cvx.Variable((self.__num_states, self.__tree.num_nodes))
-        u = cvx.Variable((self.__num_inputs, self.__tree.num_nonleaf_nodes))
+        x = cvxpy.Variable((self.__num_states, self.__tree.num_nodes))
+        u = cvxpy.Variable((self.__num_inputs, self.__tree.num_nonleaf_nodes))
         self.__dp_test_init_state = x_bar[:, 0]
         # Sum problem objectives and concatenate constraints
         cost = 0
         constraints = [x[:, 0] == x_bar[:, 0]]
         # Nonleaf nodes
         for node in range(self.__tree.num_nonleaf_nodes):
-            cost += cvx.sum_squares(x[:, node] - x_bar[:, node]) + cvx.sum_squares(u[:, node] - u_bar[:, node])
+            cost += cvxpy.sum_squares(x[:, node] - x_bar[:, node]) + cvxpy.sum_squares(u[:, node] - u_bar[:, node])
             for ch in self.__tree.children_of_node(node):
                 constraints += [x[:, ch] ==
                                 self.__list_of_dynamics[ch].state @ x[:, node] +
@@ -338,9 +341,9 @@ class Problem:
 
         # Leaf nodes
         for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
-            cost += cvx.sum_squares(x[:, node] - x_bar[:, node])
+            cost += cvxpy.sum_squares(x[:, node] - x_bar[:, node])
 
-        problem = cvx.Problem(cvx.Minimize(cost), constraints)
+        problem = cvxpy.Problem(cvxpy.Minimize(cost), constraints)
         problem.solve()
         self.__dp_test_states = x_bar.T
         self.__dp_test_inputs = u_bar.T
@@ -551,12 +554,12 @@ class Problem:
         return self
 
 
-class ProblemFactory:
+class Factory:
     """
     Risk-averse optimal control problem builder
     """
 
-    def __init__(self, scenario_tree: treeFactory.Tree, num_states, num_inputs):
+    def __init__(self, scenario_tree: tree.Tree, num_states, num_inputs):
         """
         :param scenario_tree: instance of ScenarioTree
         """

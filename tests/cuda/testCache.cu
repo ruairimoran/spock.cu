@@ -18,19 +18,14 @@ public:
     std::unique_ptr<Cache<T>> m_cache;
 
     /** Prepare some host and device data */
-    bool m_detectInfeas = false;
     T m_tol = 1e-3;
     size_t m_maxIters = 1500;
-    size_t m_maxInnerIters = 8;
-    size_t m_andersonBuff = 3;
-    bool m_allowK0 = true;
-    bool m_debug = false;
 
     CacheTestData() {
         m_tree = std::make_unique<ScenarioTree<T>>(m_path);
         m_data = std::make_unique<ProblemData<T>>(*m_tree);
-        m_cache = std::make_unique<Cache<T>>(*m_tree, *m_data, m_detectInfeas, m_tol, m_maxIters,
-                                             m_maxInnerIters, m_andersonBuff, m_allowK0, m_debug);
+        CacheBuilder<T> builder(*m_tree, *m_data);
+        m_cache = builder.tol(m_tol).maxIters(m_maxIters).make_unique();
     };
 
     virtual ~CacheTestData() = default;

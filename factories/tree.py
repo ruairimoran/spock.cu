@@ -526,7 +526,7 @@ class IidProcess:
 
         return probs
 
-    def generate_tree(self, files=True):
+    def generate_tree(self):
         """
         Generates a scenario tree from the given n-ary distribution
         """
@@ -535,7 +535,6 @@ class IidProcess:
         probs = self.__make_probability_values(ancestors, values, stages)
         stochastic = self.__n > 1
         tree = Tree(self.__dt, stages, ancestors, probs, values, is_stochastic=stochastic)
-        if files:
-            print("Generating tree files...")
-            tree.generate_tree_files()
+        print("Generating tree files...")
+        tree.generate_tree_files()
         return tree

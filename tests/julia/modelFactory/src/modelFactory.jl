@@ -269,12 +269,12 @@ struct Risk
         node :: TI, 
         )
         if d.risk_type == "avar"
-            type = AVaR
+            type_ = AVaR
         else
             throw("Risk type ($(d.risk_type)) not supported!")
         end
 
-        if type == AVaR
+        if type_ == AVaR
             alpha = d.risk_alpha
             ch_num = d.ch_num[node]
             ch_probs = d.conditional_probabilities[node_to_ch(d, node)]  # Conditional probabilities of children
@@ -283,18 +283,14 @@ struct Risk
             E = vcat(alpha * eye, -eye, ones(1, ch_num))
             F = nothing  # Matrix F is not applicable for AVaR
             b = vcat(ch_probs, zeros(ch_num), 1)
-            return new(type, dim, E, F, b)
+            return new(type_, dim, E, F, b)
         else
             throw("Risk type not implemented!")
         end
     end
 end
 
-function build_risk(
-    d :: Data,
-    )
-    return [Risk(d, node) for node in 1:d.num_nonleaf_nodes]
-end
+build_risk(d :: Data) = [Risk(d, node) for node in 1:d.num_nonleaf_nodes]
 
 export build_risk
 

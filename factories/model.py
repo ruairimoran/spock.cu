@@ -1,6 +1,6 @@
 import numpy as np
-import cvxpy as cp
-import gurobipy as gp
+import cvxpy
+import gurobipy
 
 
 class Model:
@@ -20,12 +20,12 @@ class Model:
         self.__cvx = None
         self.__build()
 
-    def solve(self, x0, solver=cp.SCS, tol=1e-3, max_time=np.inf):
+    def solve(self, x0, solver=cvxpy.SCS, tol=1e-3, max_time=np.inf):
         # time limit in seconds
         self.__constraints.append(self.__x[self.__node_to_x(0)] == x0)
-        self.__cvx = cp.Problem(self.__objective, self.__constraints)
+        self.__cvx = cvxpy.Problem(self.__objective, self.__constraints)
         self.__constraints.pop()
-        if solver == cp.MOSEK:
+        if solver == cvxpy.MOSEK:
             mosek_params = {
                 "MSK_DPAR_INTPNT_TOL_REL_GAP": tol,
                 "MSK_DPAR_INTPNT_CO_TOL_REL_GAP": tol,
@@ -36,15 +36,15 @@ class Model:
             return self.__cvx.solve(solver=solver,
                                     mosek_params=mosek_params,
                                     )
-        elif solver == cp.GUROBI:
-            env = gp.Env()
+        elif solver == cvxpy.GUROBI:
+            env = gurobipy.Env()
             env.setParam('FeasibilityTol', tol)
             env.setParam('OptimalityTol',tol)
             env.setParam('TimeLimit', max_time)
             return self.__cvx.solve(solver=solver,
                                     env=env,
                                     )
-        elif solver == cp.SCS:
+        elif solver == cvxpy.SCS:
             scs_params = {
                 "eps_abs": tol,
                 "eps_rel": tol,
@@ -78,13 +78,13 @@ class Model:
 
     def __build(self):
         """Build an optimisation model using CVXPY."""
-        self.__x = cp.Variable((self.__tree.num_nodes * self.__problem.num_states,))
-        self.__u = cp.Variable((self.__tree.num_nonleaf_nodes * self.__problem.num_inputs,))
-        self.__y = cp.Variable((sum(self.__problem.risk_at_node(i).b.size
+        self.__x = cvxpy.Variable((self.__tree.num_nodes * self.__problem.num_states,))
+        self.__u = cvxpy.Variable((self.__tree.num_nonleaf_nodes * self.__problem.num_inputs,))
+        self.__y = cvxpy.Variable((sum(self.__problem.risk_at_node(i).b.size
                                     for i in range(self.__tree.num_nonleaf_nodes))), )
-        self.__t = cp.Variable((self.__tree.num_nodes - 1,))
-        self.__s = cp.Variable((self.__tree.num_nodes,))
-        self.__objective = cp.Minimize(self.__s[0])
+        self.__t = cvxpy.Variable((self.__tree.num_nodes - 1,))
+        self.__s = cvxpy.Variable((self.__tree.num_nodes,))
+        self.__objective = cvxpy.Minimize(self.__s[0])
         self.__impose_dynamics()
         self.__impose_cost()
         self.__impose_rectangle()
@@ -117,14 +117,14 @@ class Model:
         for node in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(node)
             self.__constraints.append(
-                cp.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost_at_node(node).state) +
-                cp.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost_at_node(node).input)
+                cvxpy.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost_at_node(node).state) +
+                cvxpy.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost_at_node(node).input)
                 <= self.__t[node - 1]
             )
         # leaf
         for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
             self.__constraints.append(
-                cp.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost_at_node(node).state)
+                cvxpy.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost_at_node(node).state)
                 <= self.__s[node]
             )
 

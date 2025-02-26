@@ -1,5 +1,4 @@
-import py
-import py.build as b
+import factories as f
 import numpy as np
 import argparse
 
@@ -18,7 +17,7 @@ p = np.array([[0.3, 0.7], [0.3, 0.7]])
 v = np.array([0.3, 0.7])
 
 (horizon, stopping_stage) = (3, 2)
-tree = py.treeFactory.MarkovChain(
+tree = f.tree.MarkovChain(
     transition_prob=p,
     initial_distribution=v,
     horizon=horizon,
@@ -43,7 +42,7 @@ A = np.eye(num_states)
 # Input dynamics
 B = 0.5 * np.ones((num_states, num_inputs))
 
-dynamics = [b.LinearDynamics(1.5 * A, 1.5 * B), b.LinearDynamics(A, B)]
+dynamics = [f.build.LinearDynamics(1.5 * A, 1.5 * B), f.build.LinearDynamics(A, B)]
 
 # State cost
 Q = np.eye(num_states)
@@ -51,12 +50,12 @@ Q = np.eye(num_states)
 # Input cost
 R = np.eye(num_inputs)
 
-nonleaf_costs = [b.NonleafCost(2 * Q, R), b.NonleafCost(2 * Q, R)]
+nonleaf_costs = [f.build.NonleafCost(2 * Q, R), f.build.NonleafCost(2 * Q, R)]
 
 # Terminal state cost
 T = 3 * np.eye(num_states)
 
-leaf_cost = b.LeafCost(T)
+leaf_cost = f.build.LeafCost(T)
 
 # State-input constraint
 state_lim = 1.
@@ -67,21 +66,21 @@ input_lb = -input_lim * np.ones((num_inputs, 1))
 input_ub = input_lim * np.ones((num_inputs, 1))
 si_lb = np.vstack((state_lb, input_lb))
 si_ub = np.vstack((state_ub, input_ub))
-nonleaf_constraint = b.Rectangle(si_lb, si_ub)
+nonleaf_constraint = f.build.Rectangle(si_lb, si_ub)
 
 # Terminal constraint
 leaf_state_lim = .1
 leaf_state_lb = -leaf_state_lim * np.ones((num_states, 1))
 leaf_state_ub = leaf_state_lim * np.ones((num_states, 1))
-leaf_constraint = b.Rectangle(leaf_state_lb, leaf_state_ub)
+leaf_constraint = f.build.Rectangle(leaf_state_lb, leaf_state_ub)
 
 # Risk
 alpha = .95
-risk = b.AVaR(alpha)
+risk = f.build.AVaR(alpha)
 
 # Generate problem data
 problem = (
-    py.problemFactory.ProblemFactory(
+    f.problem.Factory(
         scenario_tree=tree,
         num_states=num_states,
         num_inputs=num_inputs)

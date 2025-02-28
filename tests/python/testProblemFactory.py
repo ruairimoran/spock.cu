@@ -18,7 +18,7 @@ class TestProblem(unittest.TestCase):
             v = np.array([0.5, 0.4, 0.1])
             (N, tau) = (4, 3)
             TestProblem.__tree = \
-                f.tree.MarkovChain(p, v, N, tau).generate_tree()
+                f.tree.MarkovChain(p, v, N, tau).build()
 
     @staticmethod
     def _construct_problem():

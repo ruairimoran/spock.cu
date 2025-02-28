@@ -151,8 +151,7 @@ class Problem:
                                  null_dim=self.__max_nullspace_dim,
                                  step_size=self.__step_size
                                  )
-        path = os.path.join(os.getcwd(), self.__tree.folder)
-        os.makedirs(path, exist_ok=True)
+        path = self.__tree.get_folder_path
         output_file = os.path.join(path, "data.json")
         fh = open(output_file, "w")
         fh.write(output)

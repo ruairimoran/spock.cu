@@ -23,7 +23,7 @@ tree = f.tree.MarkovChain(
     horizon=horizon,
     stopping_stage=stopping_stage,
     dt=dt
-).generate_tree()
+).build()
 
 # tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')  # requires python-tk@3.x installation
 print(tree)

@@ -62,7 +62,7 @@ tree = f.tree.IidProcess(
     distribution=v,
     horizon=final_stage,
     stopping_stage=stop_branching_stage
-).generate_tree()
+).build()
 
 # tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')  # requires python-tk@3.x installation
 print(tree)

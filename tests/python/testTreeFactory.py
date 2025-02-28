@@ -8,6 +8,7 @@ import numpy as np
 class TestScenarioTree(unittest.TestCase):
     __tree_from_markov = None
     __tree_from_iid = None
+    __tree_from_data = None
 
     @staticmethod
     def __construct_tree_from_markov():
@@ -18,7 +19,7 @@ class TestScenarioTree(unittest.TestCase):
             v = np.array([0.5, 0.5, 0.0])
             (N, tau) = (4, 3)
             TestScenarioTree.__tree_from_markov = \
-                tree_factory.MarkovChain(p, v, N, tau).generate_tree()
+                tree_factory.MarkovChain(p, v, N, tau).build()
 
     @staticmethod
     def __construct_tree_from_iid():
@@ -26,13 +27,25 @@ class TestScenarioTree(unittest.TestCase):
             v = np.array([0.1, 0.2, 0.7])
             (N, tau) = (4, 2)
             TestScenarioTree.__tree_from_iid = \
-                tree_factory.IidProcess(v, N, tau).generate_tree()
+                tree_factory.IidProcess(v, N, tau).build()
+
+    @staticmethod
+    def __construct_tree_from_data():
+        if TestScenarioTree.__tree_from_data is None:
+            col = np.ones((10, 1))
+            for i in range(col.size):
+                col[i] = .1 * i
+            data = np.dstack((.1 * col, .2 * col, .3 * col, .4 * col))  # samples x dim x time
+            branching = [3, 2, 1, 1]
+            TestScenarioTree.__tree_from_data = \
+                tree_factory.FromData(data, branching).build()
 
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
         TestScenarioTree.__construct_tree_from_markov()
         TestScenarioTree.__construct_tree_from_iid()
+        TestScenarioTree.__construct_tree_from_data()
 
     """
     Markov tests
@@ -166,7 +179,7 @@ class TestScenarioTree(unittest.TestCase):
         v = np.random.rand(n, )
         v /= sum(v)
         (N, tau) = (20, 5)
-        tree = tree_factory.MarkovChain(p, v, N, tau).generate_tree()
+        tree = tree_factory.MarkovChain(p, v, N, tau).build()
         for stage in range(tree.num_stages - 1):  # 0, 1, ..., N-1
             for node_idx in tree.nodes_of_stage(stage):
                 prob_child = tree.cond_prob_of_children_of_node(node_idx)
@@ -182,7 +195,7 @@ class TestScenarioTree(unittest.TestCase):
         v /= sum(v)
         (N, tau) = (4, 5)
         with self.assertRaises(ValueError):
-            _ = tree_factory.MarkovChain(p, v, N, tau).generate_tree()
+            _ = tree_factory.MarkovChain(p, v, N, tau).build()
 
     def test_markov_stage_and_stop_is_one(self):
         p = np.array([[0.1, 0.8, 0.1],
@@ -190,7 +203,7 @@ class TestScenarioTree(unittest.TestCase):
                       [0, 0.3, 0.7]])
         v = np.array([0.5, 0.4, 0.1])
         (N, tau) = (1, 1)
-        _ = tree_factory.MarkovChain(p, v, N, tau).generate_tree()
+        _ = tree_factory.MarkovChain(p, v, N, tau).build()
 
     def test_markov_stop_is_one(self):
         p = np.array([[0.1, 0.8, 0.1],
@@ -198,7 +211,7 @@ class TestScenarioTree(unittest.TestCase):
                       [0, 0.3, 0.7]])
         v = np.array([0.5, 0.4, 0.1])
         (N, tau) = (3, 1)
-        _ = tree_factory.MarkovChain(p, v, N, tau).generate_tree()
+        _ = tree_factory.MarkovChain(p, v, N, tau).build()
 
     """
     Iid tests
@@ -331,7 +344,7 @@ class TestScenarioTree(unittest.TestCase):
         v = np.random.rand(n,)
         v /= sum(v)
         (N, tau) = (20, 5)
-        tree = tree_factory.IidProcess(v, N, tau).generate_tree()
+        tree = tree_factory.IidProcess(v, N, tau).build()
         for stage in range(tree.num_stages - 1):  # 0, 1, ..., N-1
             for node_idx in tree.nodes_of_stage(stage):
                 prob_child = tree.cond_prob_of_children_of_node(node_idx)
@@ -344,17 +357,150 @@ class TestScenarioTree(unittest.TestCase):
         v /= sum(v)
         (N, tau) = (4, 5)
         with self.assertRaises(ValueError):
-            _ = tree_factory.IidProcess(v, N, tau).generate_tree()
+            _ = tree_factory.IidProcess(v, N, tau).build()
 
     def test_iid_stage_and_stop_is_one(self):
         v = np.array([0.5, 0.4, 0.1])
         (N, tau) = (1, 1)
-        _ = tree_factory.IidProcess(v, N, tau).generate_tree()
+        _ = tree_factory.IidProcess(v, N, tau).build()
 
     def test_iid_stop_is_one(self):
         v = np.array([0.5, 0.4, 0.1])
         (N, tau) = (3, 1)
-        _ = tree_factory.IidProcess(v, N, tau).generate_tree()
+        _ = tree_factory.IidProcess(v, N, tau).build()
+
+    """
+    Data tests
+    """
+
+    def test_data_num_nodes(self):
+        tree = TestScenarioTree.__tree_from_data
+        self.assertEqual(22, tree.num_nodes)
+
+    def test_data_num_nonleaf_nodes(self):
+        tree = TestScenarioTree.__tree_from_data
+        self.assertEqual(16, tree.num_nonleaf_nodes)
+
+    def test_data_num_events(self):
+        tree = TestScenarioTree.__tree_from_data
+        self.assertEqual(1, tree.num_events)
+
+    def test_data_ancestor_of_node(self):
+        tree = TestScenarioTree.__tree_from_data
+        self.assertEqual(0, tree.ancestor_of_node(1))
+        self.assertEqual(0, tree.ancestor_of_node(2))
+        self.assertEqual(0, tree.ancestor_of_node(3))
+        self.assertEqual(1, tree.ancestor_of_node(4))
+        self.assertEqual(1, tree.ancestor_of_node(5))
+        self.assertEqual(2, tree.ancestor_of_node(6))
+        self.assertEqual(2, tree.ancestor_of_node(7))
+        self.assertEqual(3, tree.ancestor_of_node(8))
+        self.assertEqual(3, tree.ancestor_of_node(9))
+        for i in range(10, tree.num_nodes):
+            self.assertEqual(i - 6, tree.ancestor_of_node(i))
+
+    def test_data_children_of_node(self):
+        tree = TestScenarioTree.__tree_from_data
+        self.assertEqual(3, len(tree.children_of_node(0)))
+        self.assertEqual(2, len(tree.children_of_node(1)))
+        self.assertEqual(2, len(tree.children_of_node(2)))
+        self.assertEqual(2, len(tree.children_of_node(3)))
+        for idx in range(4, tree.num_nonleaf_nodes):
+            self.assertEqual(1, len(tree.children_of_node(idx)))
+
+    def test_data_children_of_node_failure(self):
+        tree = TestScenarioTree.__tree_from_data
+        with self.assertRaises(IndexError):
+            _ = tree.children_of_node(20)
+
+    def test_data_stage_of_node(self):
+        tree = TestScenarioTree.__tree_from_data
+        self.assertEqual(0, tree.stage_of_node(0))
+        for idx in range(1, 4):
+            self.assertEqual(1, tree.stage_of_node(idx))
+        for idx in range(4, 10):
+            self.assertEqual(2, tree.stage_of_node(idx))
+        for idx in range(10, 16):
+            self.assertEqual(3, tree.stage_of_node(idx))
+        for idx in range(16, 22):
+            self.assertEqual(4, tree.stage_of_node(idx))
+
+    def test_data_stage_of_node_failure(self):
+        tree = TestScenarioTree.__tree_from_data
+        with self.assertRaises(ValueError):
+            _ = tree.stage_of_node(-1)
+        with self.assertRaises(IndexError):
+            _ = tree.stage_of_node(22)
+
+    def test_data_num_stages(self):
+        tree = TestScenarioTree.__tree_from_data
+        self.assertEqual(5, tree.num_stages)
+
+    def test_data_nodes_of_stage(self):
+        tree = TestScenarioTree.__tree_from_data
+        self.assertEqual(1, len(tree.nodes_of_stage(0)))
+        self.assertEqual(3, len(tree.nodes_of_stage(1)))
+        self.assertEqual(6, len(tree.nodes_of_stage(2)))
+        self.assertEqual(6, len(tree.nodes_of_stage(3)))
+        self.assertEqual(6, len(tree.nodes_of_stage(4)))
+        self.assertTrue((range(1, 4) == tree.nodes_of_stage(1)).all())
+        self.assertTrue((range(4, 10) == tree.nodes_of_stage(2)).all())
+        self.assertTrue((range(10, 16) == tree.nodes_of_stage(3)).all())
+        self.assertTrue((range(16, 22) == tree.nodes_of_stage(4)).all())
+
+    def test_data_probability_of_node(self):
+        tol = 1e-10
+        tree = TestScenarioTree.__tree_from_data
+        self.assertAlmostEqual(1., tree.probability_of_node(0), delta=tol)
+        self.assertAlmostEqual(.4, tree.probability_of_node(1), delta=tol)
+        self.assertAlmostEqual(.3, tree.probability_of_node(2), delta=tol)
+        self.assertAlmostEqual(.3, tree.probability_of_node(3), delta=tol)
+        self.assertAlmostEqual(.3, tree.probability_of_node(4), delta=tol)
+        self.assertAlmostEqual(.1, tree.probability_of_node(5), delta=tol)
+        self.assertAlmostEqual(.2, tree.probability_of_node(6), delta=tol)
+        self.assertAlmostEqual(.1, tree.probability_of_node(7), delta=tol)
+        self.assertAlmostEqual(.2, tree.probability_of_node(8), delta=tol)
+        self.assertAlmostEqual(.1, tree.probability_of_node(9), delta=tol)
+        for idx in range(10, tree.num_nodes):
+            anc = tree.ancestor_of_node(idx)
+            self.assertAlmostEqual(tree.probability_of_node(anc), tree.probability_of_node(idx), delta=tol)
+
+    def test_data_siblings_of_node(self):
+        tree = TestScenarioTree.__tree_from_data
+        self.assertEqual(1, len(tree.siblings_of_node(0)))
+        for idx in range(1, 4):
+            self.assertEqual(3, len(tree.siblings_of_node(idx)))
+        for idx in range(4, 10):
+            self.assertEqual(2, len(tree.siblings_of_node(idx)))
+        for idx in range(10, tree.num_nodes):
+            self.assertEqual(1, len(tree.siblings_of_node(idx)))
+
+    def test_data_values(self):
+        tree = TestScenarioTree.__tree_from_data
+        for node in range(1, tree.num_nodes):
+            self.assertEqual(0, tree.event_of_node(node))
+
+    def test_data_cond_prob_of_children_of_node(self):
+        tol = 1e-5
+        tree = TestScenarioTree.__tree_from_data
+        for stage in range(tree.num_stages - 1):
+            for node_idx in tree.nodes_of_stage(stage):
+                prob_child = tree.cond_prob_of_children_of_node(node_idx)
+                sum_prob = sum(prob_child)
+                self.assertAlmostEqual(1.0, sum_prob, delta=tol)
+
+    def test_data_cond_prob_of_children_of_node_large_tree(self):
+        tol = 1e-10
+        N = 20
+        data = np.random.random((10, 1, N))  # samples x dim x time
+        branching = np.ones(N)
+        branching[:5] *= 4
+        tree = tree_factory.FromData(data, branching).build()
+        for stage in range(tree.num_stages - 1):
+            for node_idx in tree.nodes_of_stage(stage):
+                prob_child = tree.cond_prob_of_children_of_node(node_idx)
+                sum_prob = sum(prob_child)
+                self.assertAlmostEqual(1.0, sum_prob, delta=tol)
 
 
 if __name__ == '__main__':

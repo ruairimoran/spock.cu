@@ -421,7 +421,6 @@ class MarkovChain:
         # check input data
         ancestors, values, stages = self.__make_ancestors_values_stages()
         probs = self.__make_probability_values(ancestors, values, stages)
-        stochastic = max(self.__transition_prob.shape) > 1
         tree = Tree(self.__dt,
                     stages,
                     ancestors,
@@ -857,7 +856,6 @@ class FromData:
         """
         # check input data
         self.__reduce_scenarios()
-        stochastic = True if self.__branching.any() != 1 else False
         tree = Tree(self.__dt,
                     self.__dict['stage'],
                     self.__dict['ancestor'],

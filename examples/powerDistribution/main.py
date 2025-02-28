@@ -1,6 +1,8 @@
 import numpy as np
 import argparse
 import factories as f
+import pandas as pd
+import datetime
 
 
 def check_spd(mat, name):
@@ -36,21 +38,49 @@ dt = args.dt
 # Generate scenario tree from energy data
 # --------------------------------------------------------
 
-# horizon = 3
-# data = np.random.random((100, 2, horizon))  # samples x dim x time
-# branching = np.ones(horizon, dtype=np.int32)
-# branching[:3] = [3, 1, 1]
-# tree = f.tree.FromData(data, branching).build()
-# print(tree)
+# ---- Read wind file ----
+folder = "examples/powerDistribution/niEnergyData/"
+wind_df = pd.read_csv(folder + "wind_generation_and_forecast_2025.csv", parse_dates=["DATE & TIME"])
+wind_df.columns = wind_df.columns.str.strip()  # Remove extra spaces
+wind_df["hour"] = wind_df["DATE & TIME"].dt.hour + wind_df["DATE & TIME"].dt.minute / 60  # Convert to hours
+wind_df["FORECAST WIND(MW)"] = pd.to_numeric(wind_df["FORECAST WIND(MW)"], errors="coerce")
+wind_df["ACTUAL WIND(MW)"] = pd.to_numeric(wind_df["ACTUAL WIND(MW)"], errors="coerce")
+wind_df["error"] = wind_df["ACTUAL WIND(MW)"] - wind_df["FORECAST WIND(MW)"]
+wind_df["date"] = wind_df["DATE & TIME"].dt.date  # Extract date only
+wind_daily = wind_df.groupby("date")  # Group by date
+max_time_steps = wind_daily.size().max()
+err_wind_list = []
+for _, group in wind_daily:
+    wind_daily_err = group.sort_values("hour")["error"].values  # Sort by time of day
+    if len(wind_daily_err) < max_time_steps:
+        raise Exception("Missing value!")
+    err_wind_list.append(wind_daily_err)
+err_wind = np.array(err_wind_list).reshape(len(err_wind_list), 1, max_time_steps)
 
-col = np.ones((10, 1))
-for i in range(col.size):
-    col[i] = .1 * i
-data = np.dstack((.1 * col, .2 * col, .3 * col, .4 * col))  # samples x dim x time
-branching = [3, 2, 1, 1]
+# ---- Create tree from data ----
+horizon = 47  # 15 minute periods
+data = err_wind  # samples x dim x time
+branching = np.ones(horizon, dtype=np.int32)
+branching[:3] = [5, 2, 1]
 tree = f.tree.FromData(data, branching).build()
-print(tree)
+scenarios = tree.get_scenarios()
+values = tree.data_values
+
+# ---- Plot tree ----
 # tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')  # requires python-tk@3.x installation
+
+# ---- Plot data ----
+import matplotlib.pyplot as plt
+plt.figure(figsize=(10, 5))
+times = .25 * np.arange(tree.num_stages)
+for s in scenarios:
+    plt.plot(times, values[s], marker="o", linestyle="-")
+
+plt.xlabel("Time (Hours from Start)")
+plt.ylabel("Wind Forecast Error (MW)")
+plt.title("Wind Forecast Error vs. Time")
+plt.grid(True)
+plt.show()
 
 # --------------------------------------------------------
 

@@ -9,7 +9,7 @@ class Tree:
     Scenario tree creation and visualisation
     """
 
-    def __init__(self, dt, stages, ancestors, probability, w_values=None, children=None):
+    def __init__(self, dt, stages, ancestors, probability, w_values=None, children=None, data=None):
         """
         :param dt: data type
         :param stages: array where `array position=node number` and `value at position=stage at node`
@@ -17,6 +17,7 @@ class Tree:
         :param probability: array where `array position=node number` and `value at position=probability node occurs`
         :param w_values: (optional) array where `array position=node number` and `value at position=value of w`
         :param children: (optional) array where `array position=node number` and `value at position=children of node`
+        :param data: (optional) array where `row position=node number` and `col position=given data`
 
         Note: avoid using this constructor directly; use a factory instead.
         """
@@ -34,6 +35,7 @@ class Tree:
         self.__children = children  # ^
         self.__num_children = None  # ^
         self.__nodes_of_stage = None  # ^
+        self.__data_values = data
         self.__update()
 
     def __update(self):
@@ -108,6 +110,13 @@ class Tree:
         """
         return self.__stages[-1] + 1
 
+    @property
+    def data_values(self):
+        """
+        :return: data values array
+        """
+        return self.__data_values
+
     def ancestor_of_node(self, node_idx):
         """
         :param node_idx: node index
@@ -168,6 +177,19 @@ class Tree:
         """
         children = self.__children[node_idx]
         return self.__conditional_probability[children]
+
+    def get_scenarios(self):
+        """
+        Return list of scenarios as arrays.
+        """
+        index = []
+        for node in range(self.num_nonleaf_nodes, self.num_nodes):
+            scenario = node - self.num_nonleaf_nodes
+            index.append(np.zeros(self.num_stages, dtype=np.int32))
+            index[scenario][-1] = node
+            for stage in reversed(range(self.num_stages - 1)):
+                index[scenario][stage] = self.ancestor_of_node(index[scenario][stage + 1])
+        return index
 
     def __str__(self):
         return f"Scenario Tree\n+ Nodes: {self.num_nodes}\n+ Stages: {self.num_stages}\n" \
@@ -861,6 +883,7 @@ class FromData:
                     self.__dict['ancestor'],
                     self.__dict['prob'],
                     children=self.__dict['children'],
+                    data=self.__dict['value'],
                     )
         print("Generating tree files...")
         tree.generate_tree_files()

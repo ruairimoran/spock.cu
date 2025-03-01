@@ -2,7 +2,6 @@ import numpy as np
 import argparse
 import factories as f
 import pandas as pd
-import datetime
 
 
 def check_spd(mat, name):
@@ -111,7 +110,7 @@ lines = [None for _ in range(num_scenarios)]
 for i in range(num_scenarios):
     lines[i], = ax.plot(times[:len_scenario], values[scenarios[i]], marker="o", linestyle="-")
 set_ticks(ax, times)
-plt.pause(10)
+plt.pause(5)
 for start in range(1, 200):
     data = np.concatenate((data[:, :, 1:], data[:, :, 0].reshape(-1, 1, 1)), axis=2)
     times = np.hstack((times[1:], times[0] + 2400))

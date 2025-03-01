@@ -13,6 +13,25 @@ def check_spd(mat, name):
           " with norm (", np.linalg.norm(mat), ").")
 
 
+def plot_scenario_values(ax_, data_, branching_, times_, lines_):
+    tree_ = f.tree.FromData(data_, branching_).build()
+    scenarios_ = tree_.get_scenarios()
+    values_ = tree_.data_values
+    num_scenarios_ = len(scenarios_)
+    len_scenario_ = scenarios_[0].size
+    for i in range(num_scenarios_):
+        lines_[i].set_xdata(times_[:len_scenario_])
+        lines_[i].set_ydata(values_[scenarios_[i]])
+    set_ticks(ax_, times_)
+
+
+def set_ticks(ax_, times_):
+    x_ticks_ = np.arange(times_[0], times_[-1], 200)  # tick labels every 2 hours
+    ax_.set_xticks(x_ticks_)
+    ax_.set_xticklabels([f"{((t % 2400) // 100) + ((t % 100) * .006):02.2f}" for t in x_ticks_])
+    ax_.set_xlim(min(times_), max(times_) + 25)
+
+
 parser = argparse.ArgumentParser(description='Example: power distribution.')
 parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
@@ -43,8 +62,8 @@ folder = "examples/powerDistribution/niEnergyData/"
 wind_df = pd.read_csv(folder + "wind_generation_and_forecast_2025.csv", parse_dates=["DATE & TIME"])
 wind_df.columns = wind_df.columns.str.strip()  # Remove extra spaces
 wind_df["hour"] = wind_df["DATE & TIME"].dt.hour + wind_df["DATE & TIME"].dt.minute / 60  # Convert to hours
-wind_df["FORECAST WIND(MW)"] = pd.to_numeric(wind_df["FORECAST WIND(MW)"], errors="coerce")
-wind_df["ACTUAL WIND(MW)"] = pd.to_numeric(wind_df["ACTUAL WIND(MW)"], errors="coerce")
+wind_df["FORECAST WIND(MW)"] = pd.to_numeric(wind_df["FORECAST WIND(MW)"], errors="raise")
+wind_df["ACTUAL WIND(MW)"] = pd.to_numeric(wind_df["ACTUAL WIND(MW)"], errors="raise")
 wind_df["error"] = wind_df["ACTUAL WIND(MW)"] - wind_df["FORECAST WIND(MW)"]
 wind_df["date"] = wind_df["DATE & TIME"].dt.date  # Extract date only
 wind_daily = wind_df.groupby("date")  # Group by date
@@ -58,28 +77,46 @@ for _, group in wind_daily:
 err_wind = np.array(err_wind_list).reshape(len(err_wind_list), 1, max_time_steps)
 
 # ---- Create tree from data ----
-horizon = 47  # 15 minute periods
-data = err_wind  # samples x dim x time
+periods_per_day = 96
+horizon = periods_per_day - 1  # 15 minute periods
 branching = np.ones(horizon, dtype=np.int32)
-branching[:3] = [5, 2, 1]
-tree = f.tree.FromData(data, branching).build()
-scenarios = tree.get_scenarios()
-values = tree.data_values
+branching[:3] = [3, 2, 1]
+
+# start = 4  # 15 minute periods
+# data = err_wind  # samples x dim x time
+# tree = f.tree.FromData(data, branching).build()
+# scenarios = tree.get_scenarios()
+# values = tree.data_values
 
 # ---- Plot tree ----
 # tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')  # requires python-tk@3.x installation
 
 # ---- Plot data ----
 import matplotlib.pyplot as plt
-plt.figure(figsize=(10, 5))
-times = .25 * np.arange(tree.num_stages)
-for s in scenarios:
-    plt.plot(times, values[s], marker="o", linestyle="-")
-
-plt.xlabel("Time (Hours from Start)")
-plt.ylabel("Wind Forecast Error (MW)")
+fig, ax = plt.subplots(figsize=(15, 7))
+ax.set_xlabel("Time (24 hr)")
+ax.set_ylabel("Wind Forecast Error (MW)")
 plt.title("Wind Forecast Error vs. Time")
-plt.grid(True)
+ax.grid(True)
+start = 0  # 15 minute periods
+data = np.concatenate((err_wind[:, :, start:], err_wind[:, :, :start]), axis=2)  # samples x dim x time
+times = .25 * (np.arange(start, start + periods_per_day)) * 100
+times = [t if t < 2400 else t - 2400 for t in times]  # 24 hrs
+tree = f.tree.FromData(data, branching).build()
+scenarios = tree.get_scenarios()
+values = tree.data_values
+num_scenarios = len(scenarios)
+len_scenario = scenarios[0].size
+lines = [None for _ in range(num_scenarios)]
+for i in range(num_scenarios):
+    lines[i], = ax.plot(times[:len_scenario], values[scenarios[i]], marker="o", linestyle="-")
+set_ticks(ax, times)
+plt.pause(10)
+for start in range(1, 200):
+    data = np.concatenate((data[:, :, 1:], data[:, :, 0].reshape(-1, 1, 1)), axis=2)
+    times = np.hstack((times[1:], times[0] + 2400))
+    plot_scenario_values(ax, data, branching, times, lines)
+    plt.pause(.1)
 plt.show()
 
 # --------------------------------------------------------

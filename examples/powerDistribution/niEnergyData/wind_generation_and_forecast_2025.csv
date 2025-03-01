@@ -341,7 +341,7 @@ DATE & TIME, FORECAST WIND(MW),  ACTUAL WIND(MW), REGION
 2 January 2025 12:45,98,62,Northern Ireland
 2 January 2025 13:00,99,60,Northern Ireland
 2 January 2025 13:15,103,58,Northern Ireland
-2 January 2025 13:30,106,-,Northern Ireland
+2 January 2025 13:30,106,62,Northern Ireland
 2 January 2025 13:45,109,66,Northern Ireland
 2 January 2025 14:00,113,68,Northern Ireland
 2 January 2025 14:15,109,80,Northern Ireland
@@ -4654,7 +4654,7 @@ DATE & TIME, FORECAST WIND(MW),  ACTUAL WIND(MW), REGION
 17 February 2025 11:00,634,735,Northern Ireland
 17 February 2025 11:15,640,714,Northern Ireland
 17 February 2025 11:30,645,728,Northern Ireland
-17 February 2025 11:45,651,-,Northern Ireland
+17 February 2025 11:45,651,711,Northern Ireland
 17 February 2025 12:00,655,695,Northern Ireland
 17 February 2025 12:15,654,732,Northern Ireland
 17 February 2025 12:30,653,736,Northern Ireland

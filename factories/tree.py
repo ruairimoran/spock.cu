@@ -73,7 +73,7 @@ class Tree:
         return self.__dt
 
     @property
-    def is_stochastic(self):
+    def is_eventful(self):
         return self.__is_eventful
 
     @property

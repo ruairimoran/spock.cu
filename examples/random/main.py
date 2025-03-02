@@ -3,17 +3,6 @@ import argparse
 import factories as f
 
 
-def enforce_contraction(A_):
-    if np.linalg.eigvals(A_).all() > 0:  # Check if A is positive definite
-        # print("Matrix is already firmly nonexpansive.")
-        return A_
-    else:
-        # print("Modifying A to ensure firmly nonexpansive...")
-        rho_ = max(abs(np.linalg.eigvals(A_)))  # Compute spectral radius
-        A_ = A_ / (rho_ + 1e-1)  # Scale A to ensure contraction
-        return A_
-
-
 def check_spd(mat, name):
     eigs = np.linalg.eigvals(mat)
     is_positive_definite = eigs.all() > 0
@@ -22,7 +11,7 @@ def check_spd(mat, name):
           " with norm (", np.linalg.norm(mat), ").")
 
 
-parser = argparse.ArgumentParser(description='Time cvxpy solvers.')
+parser = argparse.ArgumentParser(description='Example: random.')
 parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
 dt = args.dt

@@ -126,160 +126,24 @@ class Problem:
     def size_dual(self):
         return self.__dual_size
 
-    def __generate_problem_files(self):
-        # Setup jinja environment
-        template_dir = os.path.dirname(os.path.abspath(__file__))
-        file_loader = j2.FileSystemLoader(template_dir)
-        env = j2.Environment(loader=file_loader,
-                             trim_blocks=True,
-                             lstrip_blocks=True,
-                             block_start_string="\% ",
-                             block_end_string="%\\",
-                             variable_start_string="\~",
-                             variable_end_string="~\\",
-                             comment_start_string="\#",
-                             comment_end_string="#\\")
-        template = env.get_template("data.json.jinja2")
-        output = template.render(num_events=self.__tree.num_events,
-                                 num_nonleaf_nodes=self.__tree.num_nonleaf_nodes,
-                                 num_nodes=self.__tree.num_nodes,
-                                 num_stages=self.__tree.num_stages,
-                                 num_states=self.__num_states,
-                                 num_inputs=self.__num_inputs,
-                                 dynamics=self.__list_of_dynamics[0],
-                                 nonleaf_constraint=self.__nonleaf_constraint,
-                                 leaf_constraint=self.__leaf_constraint,
-                                 risk=self.__list_of_risks[0],
-                                 ker_con_rows=self.__kernel_constraint_matrix_rows,
-                                 null_dim=self.__max_nullspace_dim,
-                                 step_size=self.__step_size
-                                 )
-        path = self.__tree.get_folder_path
-        output_file = os.path.join(path, "data.json")
-        fh = open(output_file, "w")
-        fh.write(output)
-        fh.close()
-        # Generate stacks
-        stack_input_dyn_tr = np.dstack([a.input.T for a in self.__list_of_dynamics])
-        stack_AB_dyn = np.dstack([a.state_input for a in self.__list_of_dynamics])
-        stack_sqrt_state_cost = np.dstack([cost.sqrt_Q for cost in self.__list_of_nonleaf_costs])
-        stack_sqrt_input_cost = np.dstack([cost.sqrt_R for cost in self.__list_of_nonleaf_costs])
-        stack_sqrt_terminal_cost = np.dstack([cost.sqrt_Q for cost in self.__list_of_leaf_costs])
-        stack_nonleaf_translation = np.dstack([cost.t for cost in self.__list_of_nonleaf_costs])
-        stack_leaf_translation = np.dstack([cost.t for cost in self.__list_of_leaf_costs])
-        stack_P = np.dstack(self.__P)
-        stack_K = np.dstack(self.__K)
-        stack_dyn_tr = np.dstack(self.__sum_of_dynamics_tr)
-        stack_APB = np.dstack(self.__At_P_B)
-        stack_low_chol = np.dstack(self.__cholesky_lower)
-        stack_null = np.dstack(self.__nullspace_projection_matrix)
-        stack_b = np.dstack(self.__padded_b)
-        # Create tensor dict
-        tensors = {
-            "dynamics_BTr": stack_input_dyn_tr,
-            "dynamics_AB": stack_AB_dyn,
-            "dynamics_P": stack_P,
-            "dynamics_K": stack_K,
-            "dynamics_ABKTr": stack_dyn_tr,
-            "dynamics_APB": stack_APB,
-            "dynamics_lowCholesky": stack_low_chol,
-            "nonleafCost_sqrtQ": stack_sqrt_state_cost,
-            "nonleafCost_sqrtR": stack_sqrt_input_cost,
-            "leafCost_sqrtQ": stack_sqrt_terminal_cost,
-            "nonleafCost_translation": stack_nonleaf_translation,
-            "leafCost_translation": stack_leaf_translation,
-            "risk_NNtr": stack_null,
-            "risk_b": stack_b
-        }
-        if self.__list_of_dynamics[0].is_affine or self.__julia:
-            stack_affine_dyn = np.dstack([dyn.affine for dyn in self.__list_of_dynamics])
-            tensors.update({
-                "dynamics_e": stack_affine_dyn,
-            })
-        l_con = [self.__nonleaf_constraint, self.__leaf_constraint]
-        l_txt = ["nonleafConstraint", "leafConstraint"]
-        for i in range(len(l_con)):
-            con = l_con[i]
-            txt = l_txt[i]
-            if con.is_rectangle:
-                tensors.update({
-                    txt + "ILB": con.lower_bound,
-                    txt + "IUB": con.upper_bound,
-                })
-            if con.is_polyhedron:
-                tensors.update({
-                    txt + "Gamma": con.matrix,
-                    txt + "GLB": con.lower_bound,
-                    txt + "GUB": con.upper_bound,
-                })
-            if con.is_polyhedron_with_identity:
-                tensors.update({
-                    txt + "ILB": con.rect.lower_bound,
-                    txt + "IUB": con.rect.upper_bound,
-                    txt + "Gamma": con.poly.matrix,
-                    txt + "GLB": con.poly.lower_bound,
-                    txt + "GUB": con.poly.upper_bound,
-                })
-        # Generate files
-        for name, tensor in tensors.items():
-            self.__tree.write_to_file_fp(name, tensor)
-        if self.__test:
-            stack_ker_con = np.dstack(self.__kernel_constraint_matrix)
-            test_tensors = {
-                "S2": stack_ker_con,
-            }
-            test_vectors = {
-                "dpTestStates": self.__dp_test_states.reshape(-1),
-                "dpTestInputs": self.__dp_test_inputs.reshape(-1),
-                "dpProjectedStates": self.__dp_projected_states.reshape(-1),
-                "dpProjectedInputs": self.__dp_projected_inputs.reshape(-1),
-                "primBeforeOp": np.array(self.__prim_before_op),
-                "dualAfterOpBeforeAdj": np.array(self.__dual_after_op_before_adj),
-                "primAfterAdj": np.array(self.__prim_after_adj),
-                "adjRandomPrim": self.__prim_random,
-                "adjRandomDual": self.__dual_random,
-                "adjRandomResult": np.array([self.__test_is_adjoint_result]),
-                "dotVector": np.array(self.__dot_vector),
-                "dotResult": np.array([self.__dot_result]),
-            }
-            for name, tensor in test_tensors.items():
-                self.__tree.write_to_file_fp(name, tensor)
-            for name, vector in test_vectors.items():
-                self.__tree.write_to_file_fp(name, vector)
-        if self.__julia:
-            stack_dyn_A = np.dstack([dyn.state for dyn in self.__list_of_dynamics])
-            stack_dyn_B = np.dstack([dyn.input for dyn in self.__list_of_dynamics])
-            stack_cost_nonleaf_Q = np.dstack([cost.state for cost in self.__list_of_nonleaf_costs])
-            stack_cost_nonleaf_R = np.dstack([cost.input for cost in self.__list_of_nonleaf_costs])
-            stack_cost_leaf_Q = np.dstack([cost.state for cost in self.__list_of_leaf_costs])
-            julia_tensors = {
-                "dynamics_A": stack_dyn_A,
-                "dynamics_B": stack_dyn_B,
-                "cost_nonleafQ": stack_cost_nonleaf_Q,
-                "cost_nonleafR": stack_cost_nonleaf_R,
-                "cost_leafQ": stack_cost_leaf_Q,
-            }
-            julia_vectors = {
-            }
-            for name, tensor in julia_tensors.items():
-                self.__tree.write_to_file_fp(name, tensor)
-            for name, vector in julia_vectors.items():
-                self.__tree.write_to_file_fp(name, vector)
-
     # --------------------------------------------------------
     # Cache
     # --------------------------------------------------------
 
     def __generate_offline(self):
+        self.__preconditioning()
         self.__offline_projection_dynamics()
         self.__offline_projection_kernel()
         self.__pad_b()
         self.__get_step_size()
-        if self.__test:
+        if self.__test:  # Must be after `get_step_size()`
             self.__test_dynamic_programming()
             self.__test_op_and_adj()
-            self.__test_is_adjoint()  # Must be after `get_step_size()`
-            self.__test_dot()  # Must be after `get_step_size()`
+            self.__test_is_adjoint()
+            self.__test_dot()
+
+    def __preconditioning(self):
+        pass
 
     def __offline_projection_dynamics(self):
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
@@ -550,6 +414,146 @@ class Problem:
         self.__dot_vector = x.tolist()
         self.__dot_result = res
 
+    def __generate_problem_files(self):
+        # Setup jinja environment
+        template_dir = os.path.dirname(os.path.abspath(__file__))
+        file_loader = j2.FileSystemLoader(template_dir)
+        env = j2.Environment(loader=file_loader,
+                             trim_blocks=True,
+                             lstrip_blocks=True,
+                             block_start_string="\% ",
+                             block_end_string="%\\",
+                             variable_start_string="\~",
+                             variable_end_string="~\\",
+                             comment_start_string="\#",
+                             comment_end_string="#\\")
+        template = env.get_template("data.json.jinja2")
+        output = template.render(num_events=self.__tree.num_events,
+                                 num_nonleaf_nodes=self.__tree.num_nonleaf_nodes,
+                                 num_nodes=self.__tree.num_nodes,
+                                 num_stages=self.__tree.num_stages,
+                                 num_states=self.__num_states,
+                                 num_inputs=self.__num_inputs,
+                                 dynamics=self.__list_of_dynamics[0],
+                                 nonleaf_constraint=self.__nonleaf_constraint,
+                                 leaf_constraint=self.__leaf_constraint,
+                                 risk=self.__list_of_risks[0],
+                                 ker_con_rows=self.__kernel_constraint_matrix_rows,
+                                 null_dim=self.__max_nullspace_dim,
+                                 step_size=self.__step_size
+                                 )
+        path = self.__tree.get_folder_path
+        output_file = os.path.join(path, "data.json")
+        fh = open(output_file, "w")
+        fh.write(output)
+        fh.close()
+        # Generate stacks
+        stack_input_dyn_tr = np.dstack([a.input.T for a in self.__list_of_dynamics])
+        stack_AB_dyn = np.dstack([a.state_input for a in self.__list_of_dynamics])
+        stack_sqrt_state_cost = np.dstack([cost.sqrt_Q for cost in self.__list_of_nonleaf_costs])
+        stack_sqrt_input_cost = np.dstack([cost.sqrt_R for cost in self.__list_of_nonleaf_costs])
+        stack_sqrt_terminal_cost = np.dstack([cost.sqrt_Q for cost in self.__list_of_leaf_costs])
+        stack_nonleaf_translation = np.dstack([cost.t for cost in self.__list_of_nonleaf_costs])
+        stack_leaf_translation = np.dstack([cost.t for cost in self.__list_of_leaf_costs])
+        stack_P = np.dstack(self.__P)
+        stack_K = np.dstack(self.__K)
+        stack_dyn_tr = np.dstack(self.__sum_of_dynamics_tr)
+        stack_APB = np.dstack(self.__At_P_B)
+        stack_low_chol = np.dstack(self.__cholesky_lower)
+        stack_null = np.dstack(self.__nullspace_projection_matrix)
+        stack_b = np.dstack(self.__padded_b)
+        # Create tensor dict
+        tensors = {
+            "dynamics_BTr": stack_input_dyn_tr,
+            "dynamics_AB": stack_AB_dyn,
+            "dynamics_P": stack_P,
+            "dynamics_K": stack_K,
+            "dynamics_ABKTr": stack_dyn_tr,
+            "dynamics_APB": stack_APB,
+            "dynamics_lowCholesky": stack_low_chol,
+            "nonleafCost_sqrtQ": stack_sqrt_state_cost,
+            "nonleafCost_sqrtR": stack_sqrt_input_cost,
+            "leafCost_sqrtQ": stack_sqrt_terminal_cost,
+            "nonleafCost_translation": stack_nonleaf_translation,
+            "leafCost_translation": stack_leaf_translation,
+            "risk_NNtr": stack_null,
+            "risk_b": stack_b
+        }
+        if self.__list_of_dynamics[0].is_affine or self.__julia:
+            stack_affine_dyn = np.dstack([dyn.affine for dyn in self.__list_of_dynamics])
+            tensors.update({
+                "dynamics_e": stack_affine_dyn,
+            })
+        l_con = [self.__nonleaf_constraint, self.__leaf_constraint]
+        l_txt = ["nonleafConstraint", "leafConstraint"]
+        for i in range(len(l_con)):
+            con = l_con[i]
+            txt = l_txt[i]
+            if con.is_rectangle:
+                tensors.update({
+                    txt + "ILB": con.lower_bound,
+                    txt + "IUB": con.upper_bound,
+                })
+            if con.is_polyhedron:
+                tensors.update({
+                    txt + "Gamma": con.matrix,
+                    txt + "GLB": con.lower_bound,
+                    txt + "GUB": con.upper_bound,
+                })
+            if con.is_polyhedron_with_identity:
+                tensors.update({
+                    txt + "ILB": con.rect.lower_bound,
+                    txt + "IUB": con.rect.upper_bound,
+                    txt + "Gamma": con.poly.matrix,
+                    txt + "GLB": con.poly.lower_bound,
+                    txt + "GUB": con.poly.upper_bound,
+                })
+        # Generate files
+        for name, tensor in tensors.items():
+            self.__tree.write_to_file_fp(name, tensor)
+        if self.__test:
+            stack_ker_con = np.dstack(self.__kernel_constraint_matrix)
+            test_tensors = {
+                "S2": stack_ker_con,
+            }
+            test_vectors = {
+                "dpTestStates": self.__dp_test_states.reshape(-1),
+                "dpTestInputs": self.__dp_test_inputs.reshape(-1),
+                "dpProjectedStates": self.__dp_projected_states.reshape(-1),
+                "dpProjectedInputs": self.__dp_projected_inputs.reshape(-1),
+                "primBeforeOp": np.array(self.__prim_before_op),
+                "dualAfterOpBeforeAdj": np.array(self.__dual_after_op_before_adj),
+                "primAfterAdj": np.array(self.__prim_after_adj),
+                "adjRandomPrim": self.__prim_random,
+                "adjRandomDual": self.__dual_random,
+                "adjRandomResult": np.array([self.__test_is_adjoint_result]),
+                "dotVector": np.array(self.__dot_vector),
+                "dotResult": np.array([self.__dot_result]),
+            }
+            for name, tensor in test_tensors.items():
+                self.__tree.write_to_file_fp(name, tensor)
+            for name, vector in test_vectors.items():
+                self.__tree.write_to_file_fp(name, vector)
+        if self.__julia:
+            stack_dyn_A = np.dstack([dyn.state for dyn in self.__list_of_dynamics])
+            stack_dyn_B = np.dstack([dyn.input for dyn in self.__list_of_dynamics])
+            stack_cost_nonleaf_Q = np.dstack([cost.state for cost in self.__list_of_nonleaf_costs])
+            stack_cost_nonleaf_R = np.dstack([cost.input for cost in self.__list_of_nonleaf_costs])
+            stack_cost_leaf_Q = np.dstack([cost.state for cost in self.__list_of_leaf_costs])
+            julia_tensors = {
+                "dynamics_A": stack_dyn_A,
+                "dynamics_B": stack_dyn_B,
+                "cost_nonleafQ": stack_cost_nonleaf_Q,
+                "cost_nonleafR": stack_cost_nonleaf_R,
+                "cost_leafQ": stack_cost_leaf_Q,
+            }
+            julia_vectors = {
+            }
+            for name, tensor in julia_tensors.items():
+                self.__tree.write_to_file_fp(name, tensor)
+            for name, vector in julia_vectors.items():
+                self.__tree.write_to_file_fp(name, vector)
+
     def __print(self):
         print("Problem Data\n"
               "+ Step size: ", self.__step_size, "\n")
@@ -574,19 +578,20 @@ class Factory:
         self.__nonleaf_constraint = [None for _ in range(self.__tree.num_nonleaf_nodes)]
         self.__leaf_constraint = [None for _ in range(self.__tree.num_leaf_nodes)]
         self.__list_of_risks = [None for _ in range(self.__tree.num_nonleaf_nodes)]
+        self.__precondition = True
         self.__test = False
         self.__julia = False
         self.__preload_constraints()
 
-    def __check_stochastic(self, section):
-        if not self.__tree.is_stochastic:
-            raise ValueError("Stochastic " + section + " provided but scenario tree is not stochastic")
+    def __check_eventful(self, section):
+        if not self.__tree.is_eventful:
+            raise ValueError("Stochastic " + section + " provided but scenario tree made from data!")
 
     # --------------------------------------------------------
     # Dynamics
     # --------------------------------------------------------
     def with_stochastic_dynamics(self, dynamics):
-        self.__check_stochastic("dynamics")
+        self.__check_eventful("dynamics")
         if dynamics[0].is_linear:
             self.__list_of_dynamics[0] = build.LinearDynamics(np.zeros(dynamics[0].state.shape),
                                                               np.zeros(dynamics[0].input.shape))
@@ -615,7 +620,7 @@ class Factory:
     # Costs
     # --------------------------------------------------------
     def with_stochastic_nonleaf_costs(self, costs):
-        self.__check_stochastic("costs")
+        self.__check_eventful("costs")
         self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(costs[0].sqrt_Q.shape),
                                                             np.zeros(costs[0].sqrt_R.shape), None, None, True)
         for i in range(1, self.__tree.num_nodes):
@@ -661,6 +666,13 @@ class Factory:
         return self
 
     # --------------------------------------------------------
+    # Preconditioning
+    # --------------------------------------------------------
+    def with_preconditioning(self, enable=True):
+        self.__precondition = enable
+        return self
+
+    # --------------------------------------------------------
     # Tests
     # --------------------------------------------------------
     def with_tests(self):
@@ -691,6 +703,7 @@ class Factory:
             self.__nonleaf_constraint,
             self.__leaf_constraint,
             self.__list_of_risks,
+            self.__precondition,
             self.__test,
             self.__julia,
         )

@@ -18,7 +18,8 @@ class Problem:
     """
 
     def __init__(self, scenario_tree: tree.Tree, num_states, num_inputs, dynamics,
-                 nonleaf_cost, leaf_cost, nonleaf_constraint, leaf_constraint, risk, test, julia):
+                 nonleaf_cost, leaf_cost, nonleaf_constraint, leaf_constraint, risk,
+                 precondition=False, test=False, julia=False):
         """
         :param scenario_tree: instance of ScenarioTree
         :param num_states: number of system states
@@ -29,6 +30,7 @@ class Problem:
         :param nonleaf_constraint: state-input constraint class (size: 1)
         :param leaf_constraint: state constraint class (size: 1)
         :param risk: list of risk classes (size: num_nonleaf_nodes, used: all)
+        :param precondition: whether to precondition problem data
         :param test: whether to compute test data
         :param julia: whether to compute julia data
 
@@ -43,6 +45,7 @@ class Problem:
         self.__list_of_risks = risk
         self.__nonleaf_constraint = nonleaf_constraint
         self.__leaf_constraint = leaf_constraint
+        self.__precondition = precondition
         self.__test = test
         self.__julia = julia
         # Dynamics projection

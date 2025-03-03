@@ -1,6 +1,5 @@
 import numpy as np
 import cvxpy
-import gurobipy
 
 
 class Model:
@@ -36,14 +35,14 @@ class Model:
             return self.__cvx.solve(solver=solver,
                                     mosek_params=mosek_params,
                                     )
-        elif solver == cvxpy.GUROBI:
-            env = gurobipy.Env()
-            env.setParam('FeasibilityTol', tol)
-            env.setParam('OptimalityTol',tol)
-            env.setParam('TimeLimit', max_time)
-            return self.__cvx.solve(solver=solver,
-                                    env=env,
-                                    )
+        # elif solver == cvxpy.GUROBI:
+        #     env = gurobipy.Env()
+        #     env.setParam('FeasibilityTol', tol)
+        #     env.setParam('OptimalityTol',tol)
+        #     env.setParam('TimeLimit', max_time)
+        #     return self.__cvx.solve(solver=solver,
+        #                             env=env,
+        #                             )
         elif solver == cvxpy.SCS:
             scs_params = {
                 "eps_abs": tol,

@@ -14,11 +14,20 @@ class Dynamics:
     Base class for dynamics
     """
 
-    def __init__(self, state_dyn, input_dyn, affine_dyn):
-        self.__state_dyn_matrix = state_dyn
-        self.__input_dyn_matrix = input_dyn
-        self.__affine_dyn_vector = affine_dyn
-        self.__state_input_dyn_matrix = np.hstack((self.__state_dyn_matrix, self.__input_dyn_matrix))
+    def __init__(self, state_, input_, constant_):
+        self.__state = state_
+        self.__input = input_
+        self.__constant = constant_
+        self.__state_input = np.hstack((self.__state, self.__input))
+        self.__state_unconditioned = state_
+        self.__input_unconditioned = input_
+        self.__state_input_unconditioned = np.hstack((self.__state_unconditioned, self.__input_unconditioned))
+
+    def condition(self, scaling_state, scaling_input):
+        self.__state = self.__state_unconditioned @ scaling_state
+        self.__input = self.__input_unconditioned @ scaling_input
+        self.__state_input = np.hstack((self.__state, self.__input))
+        return self
 
     # TYPES
     @property
@@ -30,20 +39,32 @@ class Dynamics:
         return False
 
     @property
-    def state(self):
-        return self.__state_dyn_matrix
+    def A(self):
+        return self.__state
 
     @property
-    def input(self):
-        return self.__input_dyn_matrix
+    def B(self):
+        return self.__input
 
     @property
-    def affine(self):
-        return self.__affine_dyn_vector
+    def A_B(self):
+        return self.__state_input
 
     @property
-    def state_input(self):
-        return self.__state_input_dyn_matrix
+    def c(self):
+        return self.__constant
+
+    @property
+    def A_uncond(self):
+        return self.__state_unconditioned
+
+    @property
+    def B_uncond(self):
+        return self.__input_unconditioned
+
+    @property
+    def A_B_uncond(self):
+        return self.__state_input_unconditioned
 
 
 # --------------------------------------------------------
@@ -54,8 +75,8 @@ class LinearDynamics(Dynamics):
     Linear dynamics
     """
 
-    def __init__(self, state_dyn, input_dyn):
-        super().__init__(state_dyn, input_dyn, np.zeros((state_dyn.shape[0], 1)))
+    def __init__(self, state_, input_):
+        super().__init__(state_, input_, np.zeros((state_.shape[0], 1)))
 
     # TYPES
     @property
@@ -71,8 +92,8 @@ class AffineDynamics(Dynamics):
     Affine dynamics
     """
 
-    def __init__(self, state_dyn, input_dyn, affine_dyn):
-        super().__init__(state_dyn, input_dyn, affine_dyn)
+    def __init__(self, state_, input_, constant_):
+        super().__init__(state_, input_, constant_)
 
     # TYPES
     @property
@@ -92,37 +113,37 @@ class Cost:
     Base class for costs.
     """
 
-    def __init__(self, Q, R=None):
+    def __init__(self, Q):
         self.__Q = Q
-        self.__R = R if R is not None else None
-        self.__sqrt_Q = sqrtm(Q)
-        self.__sqrt_R = sqrtm(R) if R is not None else None
-        self.__t = None
+        self.__sqrt_Q = sqrtm(self.__Q)
+        self.__Q_unconditioned = Q
+        self.__translation = None
         self.__lin = False
 
     @property
-    def state(self):
+    def Q(self):
         return self.__Q
 
-    @property
-    def input(self):
-        return self.__R
+    @Q.setter
+    def Q(self, Q):
+        self.__Q = Q
+        self.__sqrt_Q = sqrtm(self.__Q)
 
     @property
-    def sqrt_Q(self):
+    def Q_sqrt(self):
         return self.__sqrt_Q
 
     @property
-    def sqrt_R(self):
-        return self.__sqrt_R
+    def Q_uncond(self):
+        return self.__Q_unconditioned
 
     @property
-    def t(self):
-        return self.__t
+    def translation(self):
+        return self.__translation
 
-    @t.setter
-    def t(self, t):
-        self.__t = t
+    @translation.setter
+    def translation(self, t):
+        self.__translation = t
 
     @property
     def is_linear(self):
@@ -149,18 +170,61 @@ class NonleafCost(Cost):
         :param r: linear input cost vector
         :param node_zero: whether this is for node zero (setup with all zeros)
         """
-        super().__init__(Q, R)
-        lin_q = q is not None
-        lin_r = r is not None
+        super().__init__(Q)
+        self.__R = R
+        self.__sqrt_R = sqrtm(self.__R)
+        self.__R_unconditioned = R
+        self.__q = q
+        self.__q_unconditioned = q
+        self.__r = r
+        self.__r_unconditioned = r
+        self.__node_zero = node_zero
+        self.__set_translation()
+
+    def __set_translation(self):
+        lin_q = self.__q is not None
+        lin_r = self.__r is not None
         self.lin = lin_q or lin_r
-        nrm_q = q.T @ np.linalg.solve(Q, q) if lin_q else 0
-        nrm_r = r.T @ np.linalg.solve(R, r) if lin_r else 0
+        nrm_q = self.__q.T @ np.linalg.solve(self.Q, self.__q) if lin_q else 0
+        nrm_r = self.__r.T @ np.linalg.solve(self.R, self.__r) if lin_r else 0
         scaled_nrm = .125 * (nrm_q + nrm_r)
-        a = np.linalg.solve(self.sqrt_Q, q).reshape(-1, 1) if lin_q else np.zeros((Q.shape[0], 1))
-        b = np.linalg.solve(self.sqrt_R, r).reshape(-1, 1) if lin_r else np.zeros((R.shape[0], 1))
-        c = -.5 + scaled_nrm if not node_zero else 0
-        d = .5 + scaled_nrm if not node_zero else 0
-        self.t = np.vstack((a, b, c, d))
+        a = np.linalg.solve(self.Q_sqrt, self.__q).reshape(-1, 1) if lin_q else np.zeros((self.Q.shape[0], 1))
+        b = np.linalg.solve(self.__sqrt_R, self.__r).reshape(-1, 1) if lin_r else np.zeros((self.R.shape[0], 1))
+        c = -.5 + scaled_nrm if not self.__node_zero else 0
+        d = .5 + scaled_nrm if not self.__node_zero else 0
+        self.translation = np.vstack((a, b, c, d))
+
+    @property
+    def R(self):
+        return self.__R
+
+    @R.setter
+    def R(self, R):
+        self.__R = R
+        self.__sqrt_R = sqrtm(self.__R)
+
+    @property
+    def R_sqrt(self):
+        return self.__sqrt_R
+
+    @property
+    def R_uncond(self):
+        return self.__R_unconditioned
+
+    @property
+    def q_uncond(self):
+        return self.__q_unconditioned
+
+    @property
+    def r_uncond(self):
+        return self.__r_unconditioned
+
+    def condition(self, scaling_state, scaling_input):
+        self.Q(self.Q_uncond @ scaling_state)
+        self.R(self.R_uncond @ scaling_input)
+        self.__q = scaling_state.T @ self.q_uncond
+        self.__r = scaling_input.T @ self.r_uncond
+        self.__set_translation()
 
 
 # --------------------------------------------------------
@@ -177,13 +241,26 @@ class LeafCost(Cost):
         :param q: linear state cost vector
         """
         super().__init__(Q)
-        self.lin = q is not None
-        nrm_q = q.T @ np.linalg.solve(Q, q) if self.lin else 0
+        self.__q = q
+        self.__q_unconditioned = q
+
+    def __set_translation(self):
+        self.lin = self.__q is not None
+        nrm_q = self.__q.T @ np.linalg.solve(self.Q, self.__q) if self.lin else 0
         scaled_nrm = .125 * nrm_q
-        a = np.linalg.solve(self.sqrt_Q, q).reshape(-1, 1) if self.lin else np.zeros((Q.shape[0], 1))
+        a = np.linalg.solve(self.Q_sqrt, self.__q).reshape(-1, 1) if self.lin else np.zeros((self.Q.shape[0], 1))
         c = -.5 + scaled_nrm
         d = .5 + scaled_nrm
-        self.t = np.vstack((a, c, d))
+        self.translation = np.vstack((a, c, d))
+
+    @property
+    def q_uncond(self):
+        return self.__q_unconditioned
+
+    def condition(self, scaling_state):
+        self.Q(self.Q_uncond @ scaling_state)
+        self.__q = scaling_state.T @ self.q_uncond
+        self.__set_translation()
 
 
 # =====================================================================================================================

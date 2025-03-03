@@ -131,7 +131,8 @@ class Problem:
     # --------------------------------------------------------
 
     def __generate_offline(self):
-        self.__preconditioning()
+        if self.__precondition:
+            self.__preconditioning()
         self.__offline_projection_dynamics()
         self.__offline_projection_kernel()
         self.__pad_b()
@@ -143,7 +144,17 @@ class Problem:
             self.__test_dot()
 
     def __preconditioning(self):
-        pass
+        """
+        Scale problem data to improve step size.
+        Caution! Only use diagonal scaling matrices.
+        """
+        scaling_state = np.eye(self.__num_states)
+        scaling_input = np.eye(self.__num_inputs)
+        self.__list_of_dynamics = [d.condition(scaling_state, scaling_input) for d in self.__list_of_dynamics]
+        self.__list_of_nonleaf_costs = [c.condition(scaling_state, scaling_input) for c in self.__list_of_nonleaf_costs]
+        self.__list_of_leaf_costs = [c.condition(scaling_state) for c in self.__list_of_leaf_costs]
+        # self.__nonleaf_constraint = nonleaf_constraint
+        # self.__leaf_constraint = leaf_constraint
 
     def __offline_projection_dynamics(self):
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
@@ -154,18 +165,18 @@ class Problem:
             sum_for_k = 0
             for j in children_of_i:
                 sum_for_r = sum_for_r \
-                            + self.__list_of_dynamics[j].input.T @ self.__P[j] @ self.__list_of_dynamics[j].input
+                            + self.__list_of_dynamics[j].B.T @ self.__P[j] @ self.__list_of_dynamics[j].B
                 sum_for_k = sum_for_k \
-                            + self.__list_of_dynamics[j].input.T @ self.__P[j] @ self.__list_of_dynamics[j].state
+                            + self.__list_of_dynamics[j].B.T @ self.__P[j] @ self.__list_of_dynamics[j].A
             r_tilde = np.eye(self.__num_inputs) + sum_for_r
             self.__cholesky_lower[i] = sp.linalg.cholesky(r_tilde, lower=self.__lower, check_finite=True)
             self.__K[i] = sp.linalg.cho_solve((self.__cholesky_lower[i], self.__lower), -sum_for_k)
             sum_for_p = 0
             for j in children_of_i:
-                sum_of_dynamics = self.__list_of_dynamics[j].state + self.__list_of_dynamics[j].input @ self.__K[i]
+                sum_of_dynamics = self.__list_of_dynamics[j].A + self.__list_of_dynamics[j].B @ self.__K[i]
                 self.__sum_of_dynamics_tr[j] = sum_of_dynamics.T
                 sum_for_p = sum_for_p + self.__sum_of_dynamics_tr[j] @ self.__P[j] @ sum_of_dynamics
-                self.__At_P_B[j] = self.__sum_of_dynamics_tr[j] @ self.__P[j] @ self.__list_of_dynamics[j].input
+                self.__At_P_B[j] = self.__sum_of_dynamics_tr[j] @ self.__P[j] @ self.__list_of_dynamics[j].B
             self.__P[i] = np.eye(self.__num_states) + self.__K[i].T @ self.__K[i] + sum_for_p
 
     def __offline_projection_kernel(self):
@@ -201,9 +212,9 @@ class Problem:
             cost += cvxpy.sum_squares(x[:, node] - x_bar[:, node]) + cvxpy.sum_squares(u[:, node] - u_bar[:, node])
             for ch in self.__tree.children_of_node(node):
                 constraints += [x[:, ch] ==
-                                self.__list_of_dynamics[ch].state @ x[:, node] +
-                                self.__list_of_dynamics[ch].input @ u[:, node] +
-                                self.__list_of_dynamics[ch].affine.reshape(-1)]  # affine=zeros if linear dynamics
+                                self.__list_of_dynamics[ch].A @ x[:, node] +
+                                self.__list_of_dynamics[ch].B @ u[:, node] +
+                                self.__list_of_dynamics[ch].c.reshape(-1)]  # affine=zeros if linear dynamics
 
         # Leaf nodes
         for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
@@ -260,8 +271,8 @@ class Problem:
         for i in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(i)
             half_t = t[i] * 0.5
-            iv[i] = np.vstack((self.__list_of_nonleaf_costs[i].sqrt_Q @ x[anc],
-                               self.__list_of_nonleaf_costs[i].sqrt_R @ u[anc],
+            iv[i] = np.vstack((self.__list_of_nonleaf_costs[i].Q_sqrt @ x[anc],
+                               self.__list_of_nonleaf_costs[i].R_sqrt @ u[anc],
                                half_t, half_t))
 
         # -> v
@@ -271,7 +282,7 @@ class Problem:
         vi = [np.zeros((self.__num_states + 2, 1)) for _ in range(self.__tree.num_leaf_nodes)]
         for i in range(self.__tree.num_leaf_nodes):
             half_s = s[i + self.__tree.num_nonleaf_nodes] * 0.5
-            vi[i] = np.vstack((self.__list_of_leaf_costs[i].sqrt_Q @ x[i + self.__tree.num_nonleaf_nodes],
+            vi[i] = np.vstack((self.__list_of_leaf_costs[i].Q_sqrt @ x[i + self.__tree.num_nonleaf_nodes],
                                half_s, half_s))
 
         # Gather dual
@@ -316,8 +327,8 @@ class Problem:
         # -> x (nonleaf) and u
         for i in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(i)
-            x[anc] += self.__list_of_nonleaf_costs[i].sqrt_Q @ iv[i][:self.__num_states]
-            u[anc] += self.__list_of_nonleaf_costs[i].sqrt_R @ iv[i][self.__num_states:num_si]
+            x[anc] += self.__list_of_nonleaf_costs[i].Q_sqrt @ iv[i][:self.__num_states]
+            u[anc] += self.__list_of_nonleaf_costs[i].R_sqrt @ iv[i][self.__num_states:num_si]
 
         # -> t
         t = [0. for _ in range(self.__tree.num_nodes)]
@@ -330,7 +341,7 @@ class Problem:
 
         # -> x (leaf)
         for i in range(self.__tree.num_leaf_nodes):
-            x[i + self.__tree.num_nonleaf_nodes] += self.__list_of_leaf_costs[i].sqrt_Q @ vi[i][:self.__num_states]
+            x[i + self.__tree.num_nonleaf_nodes] += self.__list_of_leaf_costs[i].Q_sqrt @ vi[i][:self.__num_states]
 
         # -> s (leaf)
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
@@ -448,13 +459,13 @@ class Problem:
         fh.write(output)
         fh.close()
         # Generate stacks
-        stack_input_dyn_tr = np.dstack([a.input.T for a in self.__list_of_dynamics])
-        stack_AB_dyn = np.dstack([a.state_input for a in self.__list_of_dynamics])
-        stack_sqrt_state_cost = np.dstack([cost.sqrt_Q for cost in self.__list_of_nonleaf_costs])
-        stack_sqrt_input_cost = np.dstack([cost.sqrt_R for cost in self.__list_of_nonleaf_costs])
-        stack_sqrt_terminal_cost = np.dstack([cost.sqrt_Q for cost in self.__list_of_leaf_costs])
-        stack_nonleaf_translation = np.dstack([cost.t for cost in self.__list_of_nonleaf_costs])
-        stack_leaf_translation = np.dstack([cost.t for cost in self.__list_of_leaf_costs])
+        stack_input_dyn_tr = np.dstack([a.B.T for a in self.__list_of_dynamics])
+        stack_AB_dyn = np.dstack([a.A_B for a in self.__list_of_dynamics])
+        stack_sqrt_state_cost = np.dstack([cost.Q_sqrt for cost in self.__list_of_nonleaf_costs])
+        stack_sqrt_input_cost = np.dstack([cost.R_sqrt for cost in self.__list_of_nonleaf_costs])
+        stack_sqrt_terminal_cost = np.dstack([cost.Q_sqrt for cost in self.__list_of_leaf_costs])
+        stack_nonleaf_translation = np.dstack([cost.translation for cost in self.__list_of_nonleaf_costs])
+        stack_leaf_translation = np.dstack([cost.translation for cost in self.__list_of_leaf_costs])
         stack_P = np.dstack(self.__P)
         stack_K = np.dstack(self.__K)
         stack_dyn_tr = np.dstack(self.__sum_of_dynamics_tr)
@@ -462,8 +473,11 @@ class Problem:
         stack_low_chol = np.dstack(self.__cholesky_lower)
         stack_null = np.dstack(self.__nullspace_projection_matrix)
         stack_b = np.dstack(self.__padded_b)
-        # Create tensor dict
-        tensors = {
+        l_con = [self.__nonleaf_constraint, self.__leaf_constraint]
+        l_txt = ["nonleafConstraint", "leafConstraint"]
+        # Create tensor and vector dicts
+        tensors = {}
+        tensors.update({
             "dynamics_BTr": stack_input_dyn_tr,
             "dynamics_AB": stack_AB_dyn,
             "dynamics_P": stack_P,
@@ -478,14 +492,12 @@ class Problem:
             "leafCost_translation": stack_leaf_translation,
             "risk_NNtr": stack_null,
             "risk_b": stack_b
-        }
+        })
         if self.__list_of_dynamics[0].is_affine or self.__julia:
-            stack_affine_dyn = np.dstack([dyn.affine for dyn in self.__list_of_dynamics])
+            stack_affine_dyn = np.dstack([dyn.c for dyn in self.__list_of_dynamics])
             tensors.update({
                 "dynamics_e": stack_affine_dyn,
             })
-        l_con = [self.__nonleaf_constraint, self.__leaf_constraint]
-        l_txt = ["nonleafConstraint", "leafConstraint"]
         for i in range(len(l_con)):
             con = l_con[i]
             txt = l_txt[i]
@@ -508,51 +520,64 @@ class Problem:
                     txt + "GLB": con.poly.lower_bound,
                     txt + "GUB": con.poly.upper_bound,
                 })
-        # Generate files
-        for name, tensor in tensors.items():
-            self.__tree.write_to_file_fp(name, tensor)
         if self.__test:
             stack_ker_con = np.dstack(self.__kernel_constraint_matrix)
-            test_tensors = {
-                "S2": stack_ker_con,
-            }
-            test_vectors = {
-                "dpTestStates": self.__dp_test_states.reshape(-1),
-                "dpTestInputs": self.__dp_test_inputs.reshape(-1),
-                "dpProjectedStates": self.__dp_projected_states.reshape(-1),
-                "dpProjectedInputs": self.__dp_projected_inputs.reshape(-1),
-                "primBeforeOp": np.array(self.__prim_before_op),
-                "dualAfterOpBeforeAdj": np.array(self.__dual_after_op_before_adj),
-                "primAfterAdj": np.array(self.__prim_after_adj),
-                "adjRandomPrim": self.__prim_random,
-                "adjRandomDual": self.__dual_random,
-                "adjRandomResult": np.array([self.__test_is_adjoint_result]),
-                "dotVector": np.array(self.__dot_vector),
-                "dotResult": np.array([self.__dot_result]),
-            }
-            for name, tensor in test_tensors.items():
-                self.__tree.write_to_file_fp(name, tensor)
-            for name, vector in test_vectors.items():
-                self.__tree.write_to_file_fp(name, vector)
+            tensors.update({
+                "test_S2": stack_ker_con,
+            })
+            tensors.update({
+                "test_dpOgStates": self.__dp_test_states.reshape(-1),
+                "test_dpOgInputs": self.__dp_test_inputs.reshape(-1),
+                "test_dpProjectedStates": self.__dp_projected_states.reshape(-1),
+                "test_dpProjectedInputs": self.__dp_projected_inputs.reshape(-1),
+                "test_primBeforeOp": np.array(self.__prim_before_op),
+                "test_dualAfterOpBeforeAdj": np.array(self.__dual_after_op_before_adj),
+                "test_primAfterAdj": np.array(self.__prim_after_adj),
+                "test_adjRandomPrim": self.__prim_random,
+                "test_adjRandomDual": self.__dual_random,
+                "test_adjRandomResult": np.array([self.__test_is_adjoint_result]),
+                "test_dotVector": np.array(self.__dot_vector),
+                "test_dotResult": np.array([self.__dot_result]),
+            })
         if self.__julia:
-            stack_dyn_A = np.dstack([dyn.state for dyn in self.__list_of_dynamics])
-            stack_dyn_B = np.dstack([dyn.input for dyn in self.__list_of_dynamics])
-            stack_cost_nonleaf_Q = np.dstack([cost.state for cost in self.__list_of_nonleaf_costs])
-            stack_cost_nonleaf_R = np.dstack([cost.input for cost in self.__list_of_nonleaf_costs])
-            stack_cost_leaf_Q = np.dstack([cost.state for cost in self.__list_of_leaf_costs])
-            julia_tensors = {
-                "dynamics_A": stack_dyn_A,
-                "dynamics_B": stack_dyn_B,
-                "cost_nonleafQ": stack_cost_nonleaf_Q,
-                "cost_nonleafR": stack_cost_nonleaf_R,
-                "cost_leafQ": stack_cost_leaf_Q,
-            }
-            julia_vectors = {
-            }
-            for name, tensor in julia_tensors.items():
-                self.__tree.write_to_file_fp(name, tensor)
-            for name, vector in julia_vectors.items():
-                self.__tree.write_to_file_fp(name, vector)
+            prefix = "uncond_"
+            stack_dyn_A = np.dstack([dyn.A_uncond for dyn in self.__list_of_dynamics])
+            stack_dyn_B = np.dstack([dyn.B_uncond for dyn in self.__list_of_dynamics])
+            stack_cost_nonleaf_Q = np.dstack([cost.Q_uncond for cost in self.__list_of_nonleaf_costs])
+            stack_cost_nonleaf_R = np.dstack([cost.R.uncond for cost in self.__list_of_nonleaf_costs])
+            stack_cost_leaf_Q = np.dstack([cost.Q_uncond for cost in self.__list_of_leaf_costs])
+            tensors.update({
+                prefix + "dynamics_A": stack_dyn_A,
+                prefix + "dynamics_B": stack_dyn_B,
+                prefix + "cost_nonleafQ": stack_cost_nonleaf_Q,
+                prefix + "cost_nonleafR": stack_cost_nonleaf_R,
+                prefix + "cost_leafQ": stack_cost_leaf_Q,
+            })
+            for i in range(len(l_con)):
+                con = l_con[i]
+                txt = l_txt[i]
+                if con.is_rectangle:
+                    tensors.update({
+                        prefix + txt + "ILB": con.lower_bound,
+                        prefix + txt + "IUB": con.upper_bound,
+                    })
+                if con.is_polyhedron:
+                    tensors.update({
+                        prefix + txt + "Gamma": con.matrix,
+                        prefix + txt + "GLB": con.lower_bound,
+                        prefix + txt + "GUB": con.upper_bound,
+                    })
+                if con.is_polyhedron_with_identity:
+                    tensors.update({
+                        prefix + txt + "ILB": con.rect.lower_bound,
+                        prefix + txt + "IUB": con.rect.upper_bound,
+                        prefix + txt + "Gamma": con.poly.matrix,
+                        prefix + txt + "GLB": con.poly.lower_bound,
+                        prefix + txt + "GUB": con.poly.upper_bound,
+                    })
+        # Write tensors to files
+        for name, tensor in tensors.items():
+            self.__tree.write_to_file_fp(name, tensor)
 
     def __print(self):
         print("Problem Data\n"
@@ -593,12 +618,12 @@ class Factory:
     def with_stochastic_dynamics(self, dynamics):
         self.__check_eventful("dynamics")
         if dynamics[0].is_linear:
-            self.__list_of_dynamics[0] = build.LinearDynamics(np.zeros(dynamics[0].state.shape),
-                                                              np.zeros(dynamics[0].input.shape))
+            self.__list_of_dynamics[0] = build.LinearDynamics(np.zeros(dynamics[0].A.shape),
+                                                              np.zeros(dynamics[0].B.shape))
         if dynamics[0].is_affine:
-            self.__list_of_dynamics[0] = build.AffineDynamics(np.zeros(dynamics[0].state.shape),
-                                                              np.zeros(dynamics[0].input.shape),
-                                                              np.zeros((dynamics[0].state.shape[0], 1)))
+            self.__list_of_dynamics[0] = build.AffineDynamics(np.zeros(dynamics[0].A.shape),
+                                                              np.zeros(dynamics[0].B.shape),
+                                                              np.zeros((dynamics[0].A.shape[0], 1)))
         for i in range(1, self.__tree.num_nodes):
             event = self.__tree.event_of_node(i)
             self.__list_of_dynamics[i] = deepcopy(dynamics[event])
@@ -606,12 +631,12 @@ class Factory:
 
     def with_dynamics(self, dynamics):
         if dynamics.is_linear:
-            self.__list_of_dynamics[0] = build.LinearDynamics(np.zeros(dynamics.state.shape),
-                                                              np.zeros(dynamics.input.shape))
+            self.__list_of_dynamics[0] = build.LinearDynamics(np.zeros(dynamics.A.shape),
+                                                              np.zeros(dynamics.B.shape))
         if dynamics.is_affine:
-            self.__list_of_dynamics[0] = build.AffineDynamics(np.zeros(dynamics.state.shape),
-                                                              np.zeros(dynamics.input.shape),
-                                                              np.zeros((dynamics.state.shape[0], 1)))
+            self.__list_of_dynamics[0] = build.AffineDynamics(np.zeros(dynamics.A.shape),
+                                                              np.zeros(dynamics.B.shape),
+                                                              np.zeros((dynamics.A.shape[0], 1)))
         for i in range(1, self.__tree.num_nodes):
             self.__list_of_dynamics[i] = deepcopy(dynamics)
         return self
@@ -621,16 +646,16 @@ class Factory:
     # --------------------------------------------------------
     def with_stochastic_nonleaf_costs(self, costs):
         self.__check_eventful("costs")
-        self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(costs[0].sqrt_Q.shape),
-                                                            np.zeros(costs[0].sqrt_R.shape), None, None, True)
+        self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(costs[0].Q_sqrt.shape),
+                                                            np.zeros(costs[0].R_sqrt.shape), None, None, True)
         for i in range(1, self.__tree.num_nodes):
             event = self.__tree.event_of_node(i)
             self.__list_of_nonleaf_costs[i] = deepcopy(costs[event])
         return self
 
     def with_nonleaf_cost(self, cost):
-        self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(cost.sqrt_Q.shape),
-                                                            np.zeros(cost.sqrt_R.shape), None, None, True)
+        self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(cost.Q_sqrt.shape),
+                                                            np.zeros(cost.R_sqrt.shape), None, None, True)
         for i in range(1, self.__tree.num_nodes):
             self.__list_of_nonleaf_costs[i] = deepcopy(cost)
         return self

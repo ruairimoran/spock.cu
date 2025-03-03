@@ -102,9 +102,9 @@ class Model:
             anc = self.__tree.ancestor_of_node(node)
             self.__constraints.append(
                 self.__x[self.__node_to_x(node)] ==
-                self.__problem.dynamics_at_node(node).state @ self.__x[self.__node_to_x(anc)] +
-                self.__problem.dynamics_at_node(node).input @ self.__u[self.__node_to_u(anc)] +
-                self.__problem.dynamics_at_node(node).affine
+                self.__problem.dynamics_at_node(node).A @ self.__x[self.__node_to_x(anc)] +
+                self.__problem.dynamics_at_node(node).B @ self.__u[self.__node_to_u(anc)] +
+                self.__problem.dynamics_at_node(node).c
             )
 
     def __impose_cost(self):
@@ -117,14 +117,14 @@ class Model:
         for node in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(node)
             self.__constraints.append(
-                cvxpy.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost_at_node(node).state) +
-                cvxpy.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost_at_node(node).input)
+                cvxpy.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost_at_node(node).A) +
+                cvxpy.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost_at_node(node).B)
                 <= self.__t[node - 1]
             )
         # leaf
         for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
             self.__constraints.append(
-                cvxpy.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost_at_node(node).state)
+                cvxpy.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost_at_node(node).A)
                 <= self.__s[node]
             )
 

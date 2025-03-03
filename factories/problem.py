@@ -150,6 +150,17 @@ class Problem:
         """
         scaling_state = np.eye(self.__num_states)
         scaling_input = np.eye(self.__num_inputs)
+
+        def __is_diagonal_and_positive(mat):
+            diag_mat = np.diagonal(mat)
+            is_diag = np.all(mat == np.diag(diag_mat))
+            is_pos = np.all(diag_mat) > 0.
+            return is_diag and is_pos
+
+        if not __is_diagonal_and_positive(scaling_state):
+            raise Exception("State preconditioning matrix is invalid!")
+        if not __is_diagonal_and_positive(scaling_input):
+            raise Exception("Input preconditioning matrix is invalid!")
         self.__list_of_dynamics = [d.condition(scaling_state, scaling_input) for d in self.__list_of_dynamics]
         self.__list_of_nonleaf_costs = [c.condition(scaling_state, scaling_input) for c in self.__list_of_nonleaf_costs]
         self.__list_of_leaf_costs = [c.condition(scaling_state) for c in self.__list_of_leaf_costs]

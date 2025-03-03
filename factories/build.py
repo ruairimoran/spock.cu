@@ -1,4 +1,5 @@
 import numpy as np
+from copy import deepcopy
 from scipy.linalg import sqrtm
 
 
@@ -19,8 +20,8 @@ class Dynamics:
         self.__input = input_
         self.__constant = constant_
         self.__state_input = np.hstack((self.__state, self.__input))
-        self.__state_unconditioned = state_
-        self.__input_unconditioned = input_
+        self.__state_unconditioned = deepcopy(self.__state)
+        self.__input_unconditioned = deepcopy(self.__input)
         self.__state_input_unconditioned = np.hstack((self.__state_unconditioned, self.__input_unconditioned))
 
     def condition(self, scaling_state, scaling_input):
@@ -116,7 +117,7 @@ class Cost:
     def __init__(self, Q):
         self.__Q = Q
         self.__sqrt_Q = sqrtm(self.__Q)
-        self.__Q_unconditioned = Q
+        self.__Q_unconditioned = deepcopy(self.__Q)
         self.__translation = None
         self.__lin = False
 
@@ -173,11 +174,11 @@ class NonleafCost(Cost):
         super().__init__(Q)
         self.__R = R
         self.__sqrt_R = sqrtm(self.__R)
-        self.__R_unconditioned = R
+        self.__R_unconditioned = deepcopy(self.__R)
         self.__q = q
-        self.__q_unconditioned = q
+        self.__q_unconditioned = deepcopy(self.__q)
         self.__r = r
-        self.__r_unconditioned = r
+        self.__r_unconditioned = deepcopy(self.__r)
         self.__node_zero = node_zero
         self.__set_translation()
 
@@ -242,7 +243,7 @@ class LeafCost(Cost):
         """
         super().__init__(Q)
         self.__q = q
-        self.__q_unconditioned = q
+        self.__q_unconditioned = deepcopy(self.__q)
 
     def __set_translation(self):
         self.lin = self.__q is not None
@@ -354,6 +355,12 @@ class Constraint:
         """
         pass
 
+    def condition(self, scaling_matrix):
+        """
+        Scale constraint bounds or gamma matrix.
+        """
+        pass
+
 
 # --------------------------------------------------------
 # None
@@ -403,9 +410,11 @@ class Rectangle(Constraint):
         """
         super().__init__()
         self.__check_bounds(lower_bound, upper_bound)
-        self.__lb = np.array(lower_bound).reshape(-1, 1)
-        self.__ub = np.array(upper_bound).reshape(-1, 1)
-        self.dim_per_node = self.__lb.size
+        self.__lo_bound = np.array(lower_bound).reshape(-1, 1)
+        self.__up_bound = np.array(upper_bound).reshape(-1, 1)
+        self.__lo_bound_unconditioned = deepcopy(self.__lo_bound)
+        self.__up_bound_unconditioned = deepcopy(self.__up_bound)
+        self.dim_per_node = self.__lo_bound.size
 
     @property
     def is_rectangle(self):
@@ -413,11 +422,19 @@ class Rectangle(Constraint):
 
     @property
     def lower_bound(self):
-        return self.__lb
+        return self.__lo_bound
 
     @property
     def upper_bound(self):
-        return self.__ub
+        return self.__up_bound
+
+    @property
+    def lower_bound_uncond(self):
+        return self.__lo_bound_unconditioned
+
+    @property
+    def upper_bound_uncond(self):
+        return self.__up_bound_unconditioned
 
     @staticmethod
     def __check_bounds(lb, ub):
@@ -457,6 +474,10 @@ class Rectangle(Constraint):
             x[i] = dual[i]
         return x
 
+    def condition(self, scaling_matrix):
+        self.__lo_bound = scaling_matrix @ self.__lo_bound_unconditioned
+        self.__up_bound = scaling_matrix @ self.__up_bound_unconditioned
+
 
 # --------------------------------------------------------
 # Polyhedron
@@ -476,9 +497,12 @@ class Polyhedron(Constraint):
         super().__init__()
         self.__check_arguments(matrix, lower_bound, upper_bound)
         self.__matrix = matrix
-        self.__lb = np.array(lower_bound).reshape(-1, 1)
-        self.__ub = np.array(upper_bound).reshape(-1, 1)
-        self.dim_per_node = self.__lb.size
+        self.__lo_bound = np.array(lower_bound).reshape(-1, 1)
+        self.__up_bound = np.array(upper_bound).reshape(-1, 1)
+        self.__matrix_unconditioned = deepcopy(matrix)
+        self.__lo_bound_unconditioned = deepcopy(self.__lo_bound)
+        self.__up_bound_unconditioned = deepcopy(self.__up_bound)
+        self.dim_per_node = self.__lo_bound.size
 
     @property
     def is_polyhedron(self):
@@ -490,11 +514,23 @@ class Polyhedron(Constraint):
 
     @property
     def lower_bound(self):
-        return self.__lb
+        return self.__lo_bound
 
     @property
     def upper_bound(self):
-        return self.__ub
+        return self.__up_bound
+
+    @property
+    def matrix_uncond(self):
+        return self.__matrix_unconditioned
+
+    @property
+    def lower_bound_uncond(self):
+        return self.__lo_bound_unconditioned
+
+    @property
+    def upper_bound_uncond(self):
+        return self.__up_bound_unconditioned
 
     @staticmethod
     def __check_arguments(G, lb, ub):
@@ -538,6 +574,11 @@ class Polyhedron(Constraint):
         for i in range(n):
             x[i] = self.matrix.T @ dual[i]
         return x
+
+    def condition(self, scaling_matrix):
+        self.__matrix = self.__matrix_unconditioned @ scaling_matrix
+        self.__lo_bound = scaling_matrix @ self.__lo_bound_unconditioned
+        self.__up_bound = scaling_matrix @ self.__up_bound_unconditioned
 
 
 # --------------------------------------------------------
@@ -615,6 +656,10 @@ class PolyhedronWithIdentity(Constraint):
             x[i] = dual[i]
             x[i] += self.__poly.matrix.T @ dual[i + n]
         return x
+
+    def condition(self, scaling_matrix):
+        self.__rect.condition()
+        self.__poly.condition()
 
 
 # =====================================================================================================================

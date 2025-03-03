@@ -79,7 +79,10 @@ err_wind = np.array(err_wind_list).reshape(len(err_wind_list), 1, max_time_steps
 periods_per_day = 96
 horizon = periods_per_day - 1  # 15 minute periods
 branching = np.ones(horizon, dtype=np.int32)
-branching[:3] = [3, 2, 1]
+branching[0] = 3
+for i in range(1, len(branching)):
+    if i % 24 == 0:
+        branching[i] = 2
 
 # start = 4  # 15 minute periods
 # data = err_wind  # samples x dim x time
@@ -104,17 +107,18 @@ times = [t if t < 2400 else t - 2400 for t in times]  # 24 hrs
 tree = f.tree.FromData(data, branching).build()
 scenarios = tree.get_scenarios()
 values = tree.data_values
-num_scenarios = len(scenarios)
+num_lines = len(scenarios) * 2
 len_scenario = scenarios[0].size
-lines = [None for _ in range(num_scenarios)]
-for i in range(num_scenarios):
-    lines[i], = ax.plot(times[:len_scenario], values[scenarios[i]], marker="o", linestyle="-")
+lines = [None for _ in range(num_lines)]
+for i in range(num_lines):
+    lines[i], = ax.plot([], [], marker="o", linestyle="-")
 set_ticks(ax, times)
+ax.set_ylim([min(wind_df["error"]), max(wind_df["error"])])
 plt.pause(5)
-for start in range(1, 200):
+for start in range(0, 200):
+    plot_scenario_values(ax, data, branching, times, lines)
     data = np.concatenate((data[:, :, 1:], data[:, :, 0].reshape(-1, 1, 1)), axis=2)
     times = np.hstack((times[1:], times[0] + 2400))
-    plot_scenario_values(ax, data, branching, times, lines)
     plt.pause(.1)
 plt.show()
 

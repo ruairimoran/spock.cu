@@ -643,7 +643,7 @@ class FromData:
         for keptNode in kept_scenarios:
             resultingProbabilities[keptNode] = sum(
                 probs[np.argwhere(closest_nodes == keptNode)]
-            ).item()
+            )
         return resultingProbabilities
 
     @staticmethod
@@ -720,6 +720,12 @@ class FromData:
         return resulting_probabilities, kept_scenarios, closest_nodes
 
     def __reduce_scenarios(self):
+        """
+        Creates a scenario tree from data, where:
+        - data.shape[0] = samples
+        - data.shape[1] = variables
+        - data.shape[2] = time
+        """
         if self.__original_problem is None:
             originalProb = np.full(
                 (self.__data.shape[0], self.__data.shape[2]),
@@ -821,6 +827,9 @@ class FromData:
         self.__dict['num_leaf'] = self.__dict['leaves'].size
         self.__dict['num_nonleaf'] = self.__dict['num_nodes'] - self.__dict['num_leaf']
         self.__dict['num_stages'] = max(self.__dict['stage']) + 1
+        if 3 * self.__dict['num_leaf'] > self.__data.shape[0]:
+            print(f"Warning: Tree has {self.__dict['num_leaf']} scenarios, "
+                  f"but only {self.__data.shape[0]} samples in data.")
 
         self.__sort_and_relabel()
 

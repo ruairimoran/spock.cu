@@ -114,6 +114,7 @@ problem = (
     .with_nonleaf_constraint(nonleaf_constraint)
     .with_leaf_constraint(leaf_constraint)
     .with_risk(risk)
+    .with_preconditioning(True)
     .with_julia()
     .generate_problem()
 )

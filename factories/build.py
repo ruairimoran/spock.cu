@@ -24,12 +24,6 @@ class Dynamics:
         self.__input_unconditioned = deepcopy(self.__input)
         self.__state_input_unconditioned = np.hstack((self.__state_unconditioned, self.__input_unconditioned))
 
-    def condition(self, scaling_state, scaling_input):
-        self.__state = self.__state_unconditioned @ scaling_state
-        self.__input = self.__input_unconditioned @ scaling_input
-        self.__state_input = np.hstack((self.__state, self.__input))
-        return self
-
     # TYPES
     @property
     def is_linear(self):
@@ -66,6 +60,12 @@ class Dynamics:
     @property
     def A_B_uncond(self):
         return self.__state_input_unconditioned
+
+    def condition(self, scaling_state, scaling_input):
+        self.__state = self.__state_unconditioned @ scaling_state
+        self.__input = self.__input_unconditioned @ scaling_input
+        self.__state_input = np.hstack((self.__state, self.__input))
+        return self
 
 
 # --------------------------------------------------------
@@ -116,7 +116,7 @@ class Cost:
 
     def __init__(self, Q):
         self.__Q = Q
-        self.__sqrt_Q = sqrtm(self.__Q)
+        self.__Q_sqrt = sqrtm(self.__Q)
         self.__Q_unconditioned = deepcopy(self.__Q)
         self.__translation = None
         self.__lin = False
@@ -128,11 +128,11 @@ class Cost:
     @Q.setter
     def Q(self, Q):
         self.__Q = Q
-        self.__sqrt_Q = sqrtm(self.__Q)
+        self.__Q_sqrt = sqrtm(self.__Q)
 
     @property
     def Q_sqrt(self):
-        return self.__sqrt_Q
+        return self.__Q_sqrt
 
     @property
     def Q_uncond(self):
@@ -173,24 +173,24 @@ class NonleafCost(Cost):
         """
         super().__init__(Q)
         self.__R = R
-        self.__sqrt_R = sqrtm(self.__R)
-        self.__R_unconditioned = deepcopy(self.__R)
+        self.__R_sqrt = sqrtm(self.__R)
         self.__q = q
-        self.__q_unconditioned = deepcopy(self.__q)
         self.__r = r
+        self.__R_unconditioned = deepcopy(self.__R)
+        self.__q_unconditioned = deepcopy(self.__q)
         self.__r_unconditioned = deepcopy(self.__r)
+        self.__lin_q = self.__q is not None
+        self.__lin_r = self.__r is not None
+        self.lin = self.__lin_q or self.__lin_r
         self.__node_zero = node_zero
         self.__set_translation()
 
     def __set_translation(self):
-        lin_q = self.__q is not None
-        lin_r = self.__r is not None
-        self.lin = lin_q or lin_r
-        nrm_q = self.__q.T @ np.linalg.solve(self.Q, self.__q) if lin_q else 0
-        nrm_r = self.__r.T @ np.linalg.solve(self.R, self.__r) if lin_r else 0
+        nrm_q = self.__q.T @ np.linalg.solve(self.Q, self.__q) if self.__lin_q else 0
+        nrm_r = self.__r.T @ np.linalg.solve(self.R, self.__r) if self.__lin_r else 0
         scaled_nrm = .125 * (nrm_q + nrm_r)
-        a = np.linalg.solve(self.Q_sqrt, self.__q).reshape(-1, 1) if lin_q else np.zeros((self.Q.shape[0], 1))
-        b = np.linalg.solve(self.__sqrt_R, self.__r).reshape(-1, 1) if lin_r else np.zeros((self.R.shape[0], 1))
+        a = np.linalg.solve(self.Q_sqrt, self.__q).reshape(-1, 1) if self.__lin_q else np.zeros((self.Q.shape[0], 1))
+        b = np.linalg.solve(self.__R_sqrt, self.__r).reshape(-1, 1) if self.__lin_r else np.zeros((self.R.shape[0], 1))
         c = -.5 + scaled_nrm if not self.__node_zero else 0
         d = .5 + scaled_nrm if not self.__node_zero else 0
         self.translation = np.vstack((a, b, c, d))
@@ -202,11 +202,11 @@ class NonleafCost(Cost):
     @R.setter
     def R(self, R):
         self.__R = R
-        self.__sqrt_R = sqrtm(self.__R)
+        self.__R_sqrt = sqrtm(self.__R)
 
     @property
     def R_sqrt(self):
-        return self.__sqrt_R
+        return self.__R_sqrt
 
     @property
     def R_uncond(self):
@@ -221,11 +221,12 @@ class NonleafCost(Cost):
         return self.__r_unconditioned
 
     def condition(self, scaling_state, scaling_input):
-        self.Q(self.Q_uncond @ scaling_state)
-        self.R(self.R_uncond @ scaling_input)
-        self.__q = scaling_state.T @ self.q_uncond
-        self.__r = scaling_input.T @ self.r_uncond
+        self.Q = self.Q_uncond @ scaling_state
+        self.R = self.R_uncond @ scaling_input
+        self.__q = scaling_state.T @ self.q_uncond if self.__lin_q else None
+        self.__r = scaling_input.T @ self.r_uncond if self.__lin_r else None
         self.__set_translation()
+        return self
 
 
 # --------------------------------------------------------
@@ -244,9 +245,9 @@ class LeafCost(Cost):
         super().__init__(Q)
         self.__q = q
         self.__q_unconditioned = deepcopy(self.__q)
+        self.lin = self.__q is not None
 
     def __set_translation(self):
-        self.lin = self.__q is not None
         nrm_q = self.__q.T @ np.linalg.solve(self.Q, self.__q) if self.lin else 0
         scaled_nrm = .125 * nrm_q
         a = np.linalg.solve(self.Q_sqrt, self.__q).reshape(-1, 1) if self.lin else np.zeros((self.Q.shape[0], 1))
@@ -259,9 +260,10 @@ class LeafCost(Cost):
         return self.__q_unconditioned
 
     def condition(self, scaling_state):
-        self.Q(self.Q_uncond @ scaling_state)
-        self.__q = scaling_state.T @ self.q_uncond
+        self.Q = self.Q_uncond @ scaling_state
+        self.__q = scaling_state.T @ self.q_uncond if self.lin else None
         self.__set_translation()
+        return self
 
 
 # =====================================================================================================================
@@ -359,7 +361,7 @@ class Constraint:
         """
         Scale constraint bounds or gamma matrix.
         """
-        pass
+        return self
 
 
 # --------------------------------------------------------
@@ -477,6 +479,7 @@ class Rectangle(Constraint):
     def condition(self, scaling_matrix):
         self.__lo_bound = scaling_matrix @ self.__lo_bound_unconditioned
         self.__up_bound = scaling_matrix @ self.__up_bound_unconditioned
+        return self
 
 
 # --------------------------------------------------------
@@ -579,6 +582,7 @@ class Polyhedron(Constraint):
         self.__matrix = self.__matrix_unconditioned @ scaling_matrix
         self.__lo_bound = scaling_matrix @ self.__lo_bound_unconditioned
         self.__up_bound = scaling_matrix @ self.__up_bound_unconditioned
+        return self
 
 
 # --------------------------------------------------------
@@ -660,6 +664,7 @@ class PolyhedronWithIdentity(Constraint):
     def condition(self, scaling_matrix):
         self.__rect.condition()
         self.__poly.condition()
+        return self
 
 
 # =====================================================================================================================

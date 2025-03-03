@@ -83,6 +83,7 @@ class Problem:
         self.__prim_size = 0
         self.__dual_size = 0
         self.__padded_b = [np.zeros((0, 0)) for _ in range(self.__tree.num_nonleaf_nodes)]
+        self.__scaling = None
         # Generate data and files
         print("Computing offline data...")
         self.__generate_offline()
@@ -131,7 +132,7 @@ class Problem:
     # --------------------------------------------------------
 
     def __generate_offline(self):
-        if self.__precondition:
+        if self.__precondition:  # Must be first
             self.__preconditioning()
         self.__offline_projection_dynamics()
         self.__offline_projection_kernel()
@@ -161,11 +162,13 @@ class Problem:
             raise Exception("State preconditioning matrix is invalid!")
         if not __is_diagonal_and_positive(scaling_input):
             raise Exception("Input preconditioning matrix is invalid!")
+        self.__scaling = np.hstack((np.diagonal(scaling_state), np.diagonal(scaling_input))).T
+        scaling = np.diag(self.__scaling)
         self.__list_of_dynamics = [d.condition(scaling_state, scaling_input) for d in self.__list_of_dynamics]
         self.__list_of_nonleaf_costs = [c.condition(scaling_state, scaling_input) for c in self.__list_of_nonleaf_costs]
         self.__list_of_leaf_costs = [c.condition(scaling_state) for c in self.__list_of_leaf_costs]
-        # self.__nonleaf_constraint = nonleaf_constraint
-        # self.__leaf_constraint = leaf_constraint
+        self.__nonleaf_constraint.condition(scaling)
+        self.__leaf_constraint.condition(scaling_state)
 
     def __offline_projection_dynamics(self):
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
@@ -509,6 +512,11 @@ class Problem:
             tensors.update({
                 "dynamics_e": stack_affine_dyn,
             })
+        if self.__precondition:
+            stack_scaling = self.__scaling.reshape(-1)
+            tensors.update({
+                "scaling": stack_scaling,
+            })
         for i in range(len(l_con)):
             con = l_con[i]
             txt = l_txt[i]
@@ -555,7 +563,7 @@ class Problem:
             stack_dyn_A = np.dstack([dyn.A_uncond for dyn in self.__list_of_dynamics])
             stack_dyn_B = np.dstack([dyn.B_uncond for dyn in self.__list_of_dynamics])
             stack_cost_nonleaf_Q = np.dstack([cost.Q_uncond for cost in self.__list_of_nonleaf_costs])
-            stack_cost_nonleaf_R = np.dstack([cost.R.uncond for cost in self.__list_of_nonleaf_costs])
+            stack_cost_nonleaf_R = np.dstack([cost.R_uncond for cost in self.__list_of_nonleaf_costs])
             stack_cost_leaf_Q = np.dstack([cost.Q_uncond for cost in self.__list_of_leaf_costs])
             tensors.update({
                 prefix + "dynamics_A": stack_dyn_A,
@@ -569,22 +577,22 @@ class Problem:
                 txt = l_txt[i]
                 if con.is_rectangle:
                     tensors.update({
-                        prefix + txt + "ILB": con.lower_bound,
-                        prefix + txt + "IUB": con.upper_bound,
+                        prefix + txt + "ILB": con.lower_bound_uncond,
+                        prefix + txt + "IUB": con.upper_bound_uncond,
                     })
                 if con.is_polyhedron:
                     tensors.update({
-                        prefix + txt + "Gamma": con.matrix,
-                        prefix + txt + "GLB": con.lower_bound,
-                        prefix + txt + "GUB": con.upper_bound,
+                        prefix + txt + "Gamma": con.matrix_uncond,
+                        prefix + txt + "GLB": con.lower_bound_uncond,
+                        prefix + txt + "GUB": con.upper_bound_uncond,
                     })
                 if con.is_polyhedron_with_identity:
                     tensors.update({
-                        prefix + txt + "ILB": con.rect.lower_bound,
-                        prefix + txt + "IUB": con.rect.upper_bound,
-                        prefix + txt + "Gamma": con.poly.matrix,
-                        prefix + txt + "GLB": con.poly.lower_bound,
-                        prefix + txt + "GUB": con.poly.upper_bound,
+                        prefix + txt + "ILB": con.rect.lower_bound_uncond,
+                        prefix + txt + "IUB": con.rect.upper_bound_uncond,
+                        prefix + txt + "Gamma": con.poly.matrix_uncond,
+                        prefix + txt + "GLB": con.poly.lower_bound_uncond,
+                        prefix + txt + "GUB": con.poly.upper_bound_uncond,
                     })
         # Write tensors to files
         for name, tensor in tensors.items():

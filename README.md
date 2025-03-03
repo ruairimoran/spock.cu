@@ -14,6 +14,8 @@ The solver is based on scenario trees, which it can build from:
 - data samples.
 
 ## Hints and tips
-- Once you have created and activated a python(-tk) virtual environment, you can install all package dependencies with `pip install '.[draw, test]'`. You will need python-tk for drawing the scenario trees.
+- Once you have created and activated a python(-tk) virtual environment, you can install the basic dependencies with `pip install .`.
+- For drawing scenario trees, you will need python-tk and run `pip install '.[draw]'`.
+- For running examples and tests, use `pip install '.[all]'`.
 - Make sure your CUDA executable is added in `CMakeLists.txt` at the top level.
-- For testing, add flag `-DSPOCK_BUILD_TEST=ON` to CMake options.
+- For `CUDA C++` testing, add flag `-DSPOCK_BUILD_TEST=ON` to CMake options.

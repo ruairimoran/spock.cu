@@ -26,9 +26,16 @@ dependencies = [
 draw = [
     'PythonTurtle',
 ]
+example = [
+    'pandas',
+]
 test = [
     'cvxpy',
-    'gurobipy'
+]
+all = [
+    'PythonTurtle',
+    'pandas',
+    'cvxpy',
 ]
 
 [project.urls]

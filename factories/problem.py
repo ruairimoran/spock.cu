@@ -513,7 +513,7 @@ class Problem:
                 "dynamics_e": stack_affine_dyn,
             })
         if self.__precondition:
-            stack_scaling = self.__scaling.reshape(-1)
+            stack_scaling = np.reciprocal(self.__scaling).reshape(-1)
             tensors.update({
                 "scaling": stack_scaling,
             })

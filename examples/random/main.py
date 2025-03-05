@@ -114,6 +114,22 @@ problem = (
     .with_nonleaf_constraint(nonleaf_constraint)
     .with_leaf_constraint(leaf_constraint)
     .with_risk(risk)
+    .with_preconditioning(False)
+    .with_julia()
+    .generate_problem()
+)
+
+problem_ = (
+    f.problem.Factory(
+        scenario_tree=tree,
+        num_states=num_states,
+        num_inputs=num_inputs)
+    .with_stochastic_dynamics(dynamics)
+    .with_stochastic_nonleaf_costs(nonleaf_costs)
+    .with_leaf_cost(leaf_cost)
+    .with_nonleaf_constraint(nonleaf_constraint)
+    .with_leaf_constraint(leaf_constraint)
+    .with_risk(risk)
     .with_preconditioning(True)
     .with_julia()
     .generate_problem()

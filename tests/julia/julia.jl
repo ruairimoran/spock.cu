@@ -1,6 +1,5 @@
-# import Pkg
-# pkg_dir = joinpath(@__DIR__, "modelFactory")
-# Pkg.activate(pkg_dir)
+import Pkg
+Pkg.activate(joinpath(@__DIR__, "modelFactory"))
 include(joinpath(@__DIR__, "modelFactory", "src", "modelFactory.jl"))
 using .modelFactory, JuMP, Gurobi, MosekTools, Ipopt, COSMO
 

@@ -14,13 +14,17 @@ def check_spd(mat, name):
 
 def plot_scenario_values(ax_, data_, branching_, times_, lines_):
     tree_ = f.tree.FromData(data_, branching_).build(False)
+    print(tree_)
     scenarios_ = tree_.get_scenarios()
     values_ = tree_.data_values
     num_scenarios_ = len(scenarios_)
     len_scenario_ = scenarios_[0].size
-    for i in range(num_scenarios_):
-        lines_[i].set_xdata(times_[:len_scenario_])
-        lines_[i].set_ydata(values_[scenarios_[i]])
+    for line_idx in range(len(lines_)):  # Clear lines
+        lines_[line_idx].set_xdata([])
+        lines_[line_idx].set_ydata([])
+    for line_idx in range(num_scenarios_):  # Plot scenarios
+        lines_[line_idx].set_xdata(times_[:len_scenario_])
+        lines_[line_idx].set_ydata(values_[scenarios_[line_idx]])
     set_ticks(ax_, times_)
 
 
@@ -73,7 +77,7 @@ err_wind_list = []
 for _, group in wind_daily:
     wind_daily_err = group.sort_values("hour")["error"].values  # Sort by time of day
     if len(wind_daily_err) < max_time_steps or np.isnan(wind_daily_err).any():
-        print("Missing value! Skipping bad sample...")
+        # print("Missing value! Skipping bad sample...")
         continue
     err_wind_list.append(wind_daily_err)
 err_wind = np.array(err_wind_list).reshape(len(err_wind_list), 1, max_time_steps)
@@ -98,6 +102,7 @@ for i in range(1, len(branching)):
 
 # ---- Plot data ----
 import matplotlib.pyplot as plt
+
 fig, ax = plt.subplots(figsize=(15, 7))
 ax.set_xlabel("Time (24 hr)")
 ax.set_ylabel("Wind Forecast Error (MW)")
@@ -105,8 +110,9 @@ plt.title("Wind Forecast Error vs. Time")
 ax.grid(True)
 start = 0  # 15 minute periods
 num_samples = 365
-data = np.concatenate((err_wind[-num_samples:, :, start:],
-                       err_wind[-num_samples:, :, :start]), axis=2)  # samples x dim x time
+data = np.concatenate((
+    err_wind[-num_samples:, :, start:],
+    err_wind[-num_samples:, :, :start]), axis=2)  # samples x dim x time
 times = .25 * (np.arange(start, start + max_time_steps)) * 100
 times = [t if t < 2400 else t - 2400 for t in times]  # 24 hrs
 lines = [None for _ in range(num_samples)]
@@ -114,12 +120,16 @@ for i in range(num_samples):
     lines[i], = ax.plot([], [], marker="o", linestyle="-")
 set_ticks(ax, times)
 ax.set_ylim([min(wind_df["error"]), max(wind_df["error"])])
-# plt.pause(5)
-for start in range(0, 200):
+jump = 8  # 15 minute periods
+data_shape = data.shape
+for _ in range(0, 200):
     print("Building tree and plotting values...")
     plot_scenario_values(ax, data, branching, times, lines)
-    data = np.concatenate((data[:, :, 1:], data[:, :, 0].reshape(-1, 1, 1)), axis=2)
-    times = np.hstack((times[1:], times[0] + 2400))
+    # data = np.concatenate((data[:, :, 1:], data[:, :, 0].reshape(-1, 1, 1)), axis=2)
+    data = data.reshape(-1)
+    data = np.concatenate((data[jump:], data[:jump]))
+    data = data.reshape(data_shape)
+    times = np.concatenate((times[jump:], [t + 2400 for t in times[:jump]]))
     plt.pause(.1)
 plt.show()
 

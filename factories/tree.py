@@ -606,114 +606,98 @@ class FromData:
         """
         Finds minimum distance to node j and return it.
 
-        Args:
-            og_scenarios (array_like): Array of original scenarios
-            elim_scenarios (array_like): Array of scenarios that will be eliminated
-            probs (array_like): Probability of original scenario
-            temp_kept_scenarios (array_like): Array of current kept scenarios
-            j (int): Current eliminated node
-
-        Returns:
-            float: Updated probability based on current eliminated node
+        :param og_scenarios: (array_like) Array of original scenarios
+        :param elim_scenarios: (array_like) Array of scenarios that will be eliminated
+        :param probs: (array_like) Probability of original scenario
+        :param temp_kept_scenarios: (array_like) Array of current kept scenarios
+        :param j: (int) Current eliminated node
+        :return float: Updated probability based on current eliminated node
         """
         dist = 0
-        minDistToKeptScen = np.inf
+        min_dist_to_kept_scen = np.inf
         for h, _ in enumerate(temp_kept_scenarios):
-            distToKeptScen = np.linalg.norm(
+            dist_to_kept_scen = np.linalg.norm(
                 og_scenarios[elim_scenarios[j], :] - og_scenarios[temp_kept_scenarios[h], :],
                 ord=2,
             )
-            if distToKeptScen < minDistToKeptScen:
-                minDistToKeptScen = distToKeptScen
-        dist += probs[elim_scenarios[j]] * minDistToKeptScen
+            if dist_to_kept_scen < min_dist_to_kept_scen:
+                min_dist_to_kept_scen = dist_to_kept_scen
+        dist += probs[elim_scenarios[j]] * min_dist_to_kept_scen
         return dist
 
     @staticmethod
     def __redistribute_probabilities(probs, kept_scenarios, closest_nodes):
         """
-        Apply redistribution by adding probabilities of deleted scenarios
-        to the closest kept scenario.
+        Apply redistribution by adding probabilities of deleted scenarios to the closest kept scenario.
 
-        Args:
-            probs (array_like): Probabilities of original scenarios
-            kept_scenarios (array_like): Kept scenarios
-            closest_nodes (array_like): Closest kept node for each original node
+        :param probs: (array_like) Probabilities of original scenarios
+        :param kept_scenarios: (array_like) Kept scenarios
+        :param closest_nodes: (array_like) Closest kept node for each original node
+        :return array_like: probabilities of kept nodes
         """
-        resultingProbabilities = np.zeros(probs.shape)
-        for keptNode in kept_scenarios:
-            resultingProbabilities[keptNode] = sum(
-                probs[np.argwhere(closest_nodes == keptNode)]
-            )
-        return resultingProbabilities
+        resulting_probabilities = np.zeros(probs.shape)
+        for kept_node in kept_scenarios:
+            resulting_probabilities[kept_node] = sum(probs[np.argwhere(closest_nodes == kept_node)])
+        return resulting_probabilities
 
     @staticmethod
     def __compute_closest_nodes(og_scenarios, kept_scenarios):
         """
         Compute the closest node that is kept for each original node.
 
-        Args:
-            og_scenarios (array_like): Scenarios
-            kept_scenarios (array_like): Desired scenarios
+        :param og_scenarios: (array_like) Original scenarios
+        :param kept_scenarios: (array_like) Desired scenarios
+        :return array_like: nodes closest to original scenarios
         """
-        closestNodes = np.zeros(len(og_scenarios))
+        closest_nodes = np.zeros(len(og_scenarios))
         for j, _ in enumerate(og_scenarios):
-            distMin = np.inf
-            for keptNode in kept_scenarios:
-                dist = np.linalg.norm(
-                    og_scenarios[j, :] - og_scenarios[keptNode, :], ord=2
-                )
-                if dist < distMin:
-                    distMin = dist
-                    curClosestNode = keptNode
-            closestNodes[j] = curClosestNode
-        return closestNodes
+            dist_min = np.inf
+            for kept_node in kept_scenarios:
+                dist = np.linalg.norm(og_scenarios[j, :] - og_scenarios[kept_node, :], ord=2)
+                if dist < dist_min:
+                    dist_min = dist
+                    cur_closest_node = kept_node
+            closest_nodes[j] = cur_closest_node
+        return closest_nodes
 
     def __single_stage(self, og_scenarios, num_desired_scenarios, probs=None):
         """
-        Optimal scenario reduction via forward recursion - single stage
-        Reduce scenarios to a desired number by minimizing
-        Wasserstein-Kantorovitch Lr metric.
+        Optimal scenario reduction via forward recursion - single stage.
+        Reduce scenarios to a desired number by minimizing Wasserstein-Kantorovitch Lr metric.
+        See Algorithm 2 on page 28 of E-PRICE D3.1.
 
-        Input arguments:
-        origScenarios: random variables
-        numDesiredScenarios: number of desired scenarios
-        probs: probabilities
-
-        Output arguments:
-        resulting_probabilities: probabilities of reduced scenarios
-        kept_scenarios: indices of kept scenarios
-        closest_nodes: closestNodes[j] == i iff scenario i in allScenarios is the closest to scenario j
-
-        See Algorithm 2 at page 28 of E-PRICE D3.1
+        :param og_scenarios: random variables
+        :param num_desired_scenarios: number of desired scenarios
+        :param probs: probabilities of original scenarios
+        :return resulting_probabilities: probabilities of reduced scenarios
+        :return kept_scenarios: indices of kept scenarios
+        :return closest_nodes: closest_nodes[j] == i iff scenario i in all_scenarios is the closest to scenario j
         """
-
         if num_desired_scenarios > len(og_scenarios):
             raise ValueError("[FromData] Number of desired scenarios too large.")
         if probs is None:
             probs = np.full(og_scenarios.shape[0], 1 / og_scenarios.shape[0])
 
         # Reduce scenarios
-        numScenarios = len(og_scenarios)  # no. of scenarios
-        allScenarios = np.arange(numScenarios)
-        elimScenarios = np.arange(numScenarios)
+        num_scenarios = len(og_scenarios)  # no. of scenarios
+        all_scenarios = np.arange(num_scenarios)
+        eliminated_scenarios = np.arange(num_scenarios)
         kept_scenarios = np.empty(num_desired_scenarios, dtype=np.int32)
         for i, _ in enumerate(kept_scenarios):
-            distMin = np.inf
-            for s, _ in enumerate(elimScenarios):
+            dist_min = np.inf
+            for s, _ in enumerate(eliminated_scenarios):
                 dist = 0
-                tempKeptScenarios = np.array(
-                    list(set(allScenarios) - (set(elimScenarios) - set([s])))
-                )
-                for j, _ in enumerate(elimScenarios):
+                temp_kept_scenarios = np.array(list(set(all_scenarios) - (set(eliminated_scenarios) - {s})))
+                for j, _ in enumerate(eliminated_scenarios):
                     if j != s:
                         dist += self.__find_min_dist_to_j(
-                            og_scenarios, elimScenarios, probs, tempKeptScenarios, j
+                            og_scenarios, eliminated_scenarios, probs, temp_kept_scenarios, j
                         )
-                if dist < distMin:
-                    distMin = dist
-                    sMin = s
-            kept_scenarios[i] = elimScenarios[sMin]
-            elimScenarios = np.delete(elimScenarios, sMin)
+                if dist < dist_min:
+                    dist_min = dist
+                    s_min = s
+            kept_scenarios[i] = eliminated_scenarios[s_min]
+            eliminated_scenarios = np.delete(eliminated_scenarios, s_min)
 
         closest_nodes = self.__compute_closest_nodes(og_scenarios, kept_scenarios)
         resulting_probabilities = self.__redistribute_probabilities(probs, kept_scenarios, closest_nodes)
@@ -722,35 +706,34 @@ class FromData:
     def __reduce_scenarios(self):
         """
         Creates a scenario tree from data, where:
-        - data.shape[0] = samples
-        - data.shape[1] = variables
-        - data.shape[2] = time
+        - `data.shape[0]` = samples
+        - `data.shape[1]` = variables
+        - `data.shape[2]` = time
         """
         if self.__original_problem is None:
-            originalProb = np.full(
+            og_prob = np.full(
                 (self.__data.shape[0], self.__data.shape[2]),
                 1 / (self.__data.shape[0] * self.__data.shape[2]),
             )
 
-        nScen = self.__data.shape[0]
-        nUncertainVars = self.__data.shape[1]
-
-        desiredPredictionHorizon = self.__branching.size
-        originalPredictionHorizon = self.__data.shape[2]
-        predictionHorizon = min(desiredPredictionHorizon, originalPredictionHorizon)
+        num_scenarios = self.__data.shape[0]
+        num_uncertain_vars = self.__data.shape[1]
+        desired_prediction_horizon = self.__branching.size
+        og_prediction_horizon = self.__data.shape[2]
+        prediction_horizon = min(desired_prediction_horizon, og_prediction_horizon)
 
         if self.__sw_scaling:
             scaled_data = np.zeros(self.__data.shape)
-            for varIndex in range(nUncertainVars):
-                uncertainVars = self.__data[:, varIndex, :]
-                uncertainVarsZeroMean = uncertainVars - np.mean(uncertainVars)
-                scaled_data[:, varIndex, :] = uncertainVarsZeroMean / np.std(uncertainVars)
+            for var_index in range(num_uncertain_vars):
+                uncertain_var = self.__data[:, var_index, :]
+                uncertain_var_zero_mean = uncertain_var - np.mean(uncertain_var)
+                scaled_data[:, var_index, :] = uncertain_var_zero_mean / np.std(uncertain_var)
         else:
             scaled_data = self.__data
 
         self.__dict = {
             'stage': np.array([0], dtype=np.int32),
-            'value': np.zeros((1, nUncertainVars)),
+            'value': np.zeros((1, num_uncertain_vars)),
             'prob': np.array([1]),
             'ancestor': np.array([-1], dtype=np.int32),
             'children': np.array([], dtype=object),
@@ -760,69 +743,61 @@ class FromData:
             'num_nonleaf': np.int32,
             'num_stages': np.int32,
         }
-        cluster = [np.arange(nScen)]
+        cluster = [np.arange(num_scenarios)]
 
-        while any(self.__dict['stage'][self.__dict['leaves']] < predictionHorizon):
-            nLeaves = (self.__dict['leaves']).size
-
-            for leaf in range(nLeaves):
+        while any(self.__dict['stage'][self.__dict['leaves']] < prediction_horizon):
+            num_leaves = (self.__dict['leaves']).size
+            for leaf in range(num_leaves):
                 stage = self.__dict['stage'][self.__dict['leaves'][leaf]]
-
-                if stage < predictionHorizon:
-                    nNodes = (self.__dict['ancestor']).size
-
-                    n = self.__dict['leaves'][leaf]  # this might not increase linearly
-
+                if stage < prediction_horizon:
+                    num_nodes = (self.__dict['ancestor']).size
+                    leaf_idx = self.__dict['leaves'][leaf]  # This might not increase linearly
                     self.__dict['leaves'] = np.delete(self.__dict['leaves'], leaf)
-                    clusterValues = self.__data[cluster[n], :, stage]
-                    scaledClusterValues = scaled_data[cluster[n], :, stage]
-                    nScenInCluster = clusterValues.shape[0]
-                    clusterProb = originalProb[cluster[n], stage]
-                    clusterProb = clusterProb / np.sum(clusterProb)
-
-                    if nScenInCluster > self.__branching[stage]:
-                        [reducedProbs, keptNodes, closestNodes] = self.__single_stage(
-                            scaledClusterValues, self.__branching[stage], clusterProb
+                    cluster_values = self.__data[cluster[leaf_idx], :, stage]
+                    scaled_cluster_values = scaled_data[cluster[leaf_idx], :, stage]
+                    num_scen_in_cluster = cluster_values.shape[0]
+                    cluster_prob = og_prob[cluster[leaf_idx], stage]
+                    cluster_prob = cluster_prob / np.sum(cluster_prob)
+                    if num_scen_in_cluster > self.__branching[stage]:
+                        [reduced_probs, kept_nodes, closest_nodes] = self.__single_stage(
+                            scaled_cluster_values, self.__branching[stage], cluster_prob
                         )
                     else:
-                        reducedProbs = clusterProb
-                        keptNodes = np.arange(nScenInCluster)
-                        closestNodes = keptNodes
-                    newNodes = keptNodes.size
-
-                    for i in range(newNodes):
-                        if nNodes + i >= len(cluster):
-                            cluster.append(cluster[n][closestNodes == keptNodes[i]])
+                        reduced_probs = cluster_prob
+                        kept_nodes = np.arange(num_scen_in_cluster)
+                        closest_nodes = kept_nodes
+                    new_nodes = kept_nodes.size
+                    for i in range(new_nodes):
+                        if num_nodes + i >= len(cluster):
+                            cluster.append(cluster[leaf_idx][closest_nodes == kept_nodes[i]])
                         else:
-                            cluster[nNodes + i] = cluster[n][closestNodes == keptNodes[i]]
-
-                    self.__dict['leaves'] = np.append(self.__dict['leaves'], nNodes + np.arange(newNodes))
+                            cluster[num_nodes + i] = cluster[leaf_idx][closest_nodes == kept_nodes[i]]
+                    self.__dict['leaves'] = np.append(
+                        self.__dict['leaves'], num_nodes + np.arange(new_nodes)
+                    )
                     self.__dict['stage'] = np.append(
-                        self.__dict['stage'], np.ones(newNodes, dtype=np.int32) * (stage + 1)
+                        self.__dict['stage'], np.ones(new_nodes, dtype=np.int32) * (stage + 1)
                     )
                     self.__dict['ancestor'] = np.append(
-                        self.__dict['ancestor'], np.ones(newNodes, dtype=np.int32) * n
+                        self.__dict['ancestor'], np.ones(new_nodes, dtype=np.int32) * leaf_idx
                     )
                     self.__dict['value'] = np.concatenate(
-                        (self.__dict['value'], clusterValues[keptNodes, :])
+                        (self.__dict['value'], cluster_values[kept_nodes, :])
                     )
                     self.__dict['prob'] = np.append(
-                        self.__dict['prob'], self.__dict['prob'][n] * reducedProbs[keptNodes]
+                        self.__dict['prob'], self.__dict['prob'][leaf_idx] * reduced_probs[kept_nodes]
                     )
-
                     # The children need to be arrays...
-                    nMissingEntries = max(0, n + 1 - self.__dict['children'].size)
-                    for _ in range(nMissingEntries):
+                    num_missing_entries = max(0, leaf_idx + 1 - self.__dict['children'].size)
+                    for _ in range(num_missing_entries):
                         self.__dict['children'] = np.append(self.__dict['children'], np.array([None]))
                         self.__dict['children'][-1] = np.array([])
-                    if newNodes == 1:
-                        self.__dict['children'][n] = np.array([nNodes])
+                    if new_nodes == 1:
+                        self.__dict['children'][leaf_idx] = np.array([num_nodes])
                     else:
-                        self.__dict['children'][n] = np.array(
-                            nNodes + np.arange(newNodes), dtype=np.int32
-                        )
+                        self.__dict['children'][leaf_idx] = np.array(num_nodes + np.arange(new_nodes), dtype=np.int32)
 
-        # Compute sizes
+        # Tidy up
         self.__dict['num_nodes'] = self.__dict['stage'].size
         self.__dict['num_leaf'] = self.__dict['leaves'].size
         self.__dict['num_nonleaf'] = self.__dict['num_nodes'] - self.__dict['num_leaf']
@@ -830,21 +805,20 @@ class FromData:
         if 3 * self.__dict['num_leaf'] > self.__data.shape[0]:
             print(f"Warning: Tree has {self.__dict['num_leaf']} scenarios, "
                   f"but only {self.__data.shape[0]} samples in data.")
-
         self.__sort_and_relabel()
 
     def __get_scenarios(self):
         """
-        Return list of scenarios as arrays.
+        :return: list of scenarios as arrays
         """
-        index = []
-        maxStage = max(self.__dict["stage"])
+        index_arrays = []
+        max_stage = max(self.__dict["stage"])
         for scenario in range(self.__dict["leaves"].size):
-            index.append(np.zeros(maxStage + 1, dtype=np.int32))
-            index[scenario][-1] = self.__dict["leaves"][scenario]
-            for k in reversed(range(maxStage)):
-                index[scenario][k] = self.__dict["ancestor"][index[scenario][k + 1]]
-        return index
+            index_arrays.append(np.zeros(max_stage + 1, dtype=np.int32))
+            index_arrays[scenario][-1] = self.__dict["leaves"][scenario]
+            for k in reversed(range(max_stage)):
+                index_arrays[scenario][k] = self.__dict["ancestor"][index_arrays[scenario][k + 1]]
+        return index_arrays
 
     def __sort_and_relabel(self):
         """
@@ -881,9 +855,9 @@ class FromData:
             raise ValueError(f"[FromData] Number {num} not found in key mapping!")
         return mapping[num]
 
-    def build(self):
+    def build(self, files=True):
         """
-        Generates a scenario tree from the given data
+        Generates a scenario tree from the given data.
         """
         # check input data
         self.__reduce_scenarios()
@@ -894,6 +868,7 @@ class FromData:
                     children=self.__dict['children'],
                     data=self.__dict['value'],
                     )
-        print("Generating tree files...")
-        tree.generate_tree_files()
+        if files:
+            print("Generating tree files...")
+            tree.generate_tree_files()
         return tree

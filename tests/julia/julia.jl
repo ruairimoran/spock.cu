@@ -1,11 +1,6 @@
-import Pkg
-package_dir = joinpath(@__DIR__, "tests", "julia", "modelFactory")
-Pkg.activate(package_dir)
-Pkg.instantiate()
-# add_pkg(pkg :: String) = if !(pkg in keys(Pkg.dependencies())) Pkg.add(pkg) end
-# pkgs = ["JSON", "JuMP", "LinearAlgebra", "MathOptInterface",
-# "Gurobi", "MosekTools", "Ipopt", "COSMO"]
-# for pkg in pkgs add_pkg(pkg) end
+# import Pkg
+# pkg_dir = joinpath(@__DIR__, "modelFactory")
+# Pkg.activate(pkg_dir)
 include(joinpath(@__DIR__, "modelFactory", "src", "modelFactory.jl"))
 using .modelFactory, JuMP, Gurobi, MosekTools, Ipopt, COSMO
 

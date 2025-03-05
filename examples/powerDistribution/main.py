@@ -13,7 +13,7 @@ def check_spd(mat, name):
 
 
 def plot_scenario_values(ax_, data_, branching_, times_, lines_):
-    tree_ = f.tree.FromData(data_, branching_).build()
+    tree_ = f.tree.FromData(data_, branching_).build(False)
     scenarios_ = tree_.get_scenarios()
     values_ = tree_.data_values
     num_scenarios_ = len(scenarios_)
@@ -56,28 +56,31 @@ dt = args.dt
 # Generate scenario tree from energy data
 # --------------------------------------------------------
 
-# ---- Read wind file ----
+# ---- Read file ----
+print("Read...")
 folder = "examples/powerDistribution/niEnergyData/"
-wind_df = pd.read_csv(folder + "wind_generation_and_forecast_2025.csv", parse_dates=["DATE & TIME"])
+wind_df = pd.read_csv(folder + "soni_data.csv", parse_dates=["date&time"])
 wind_df.columns = wind_df.columns.str.strip()  # Remove extra spaces
-wind_df["hour"] = wind_df["DATE & TIME"].dt.hour + wind_df["DATE & TIME"].dt.minute / 60  # Convert to hours
-wind_df["FORECAST WIND(MW)"] = pd.to_numeric(wind_df["FORECAST WIND(MW)"], errors="raise")
-wind_df["ACTUAL WIND(MW)"] = pd.to_numeric(wind_df["ACTUAL WIND(MW)"], errors="raise")
-wind_df["error"] = wind_df["ACTUAL WIND(MW)"] - wind_df["FORECAST WIND(MW)"]
-wind_df["date"] = wind_df["DATE & TIME"].dt.date  # Extract date only
+wind_df["hour"] = wind_df["date&time"].dt.hour + wind_df["date&time"].dt.minute / 60  # Convert to hours
+wind_df["wind actual (MW)"] = pd.to_numeric(wind_df["wind actual (MW)"], errors="raise")
+wind_df["wind forecast (MW)"] = pd.to_numeric(wind_df["wind forecast (MW)"], errors="raise")
+wind_df["error"] = wind_df["wind actual (MW)"] - wind_df["wind forecast (MW)"]
+print("Sanitize...")
+wind_df["date"] = wind_df["date&time"].dt.date  # Extract date only
 wind_daily = wind_df.groupby("date")  # Group by date
 max_time_steps = wind_daily.size().max()
 err_wind_list = []
 for _, group in wind_daily:
     wind_daily_err = group.sort_values("hour")["error"].values  # Sort by time of day
-    if len(wind_daily_err) < max_time_steps:
-        raise Exception("Missing value!")
+    if len(wind_daily_err) < max_time_steps or np.isnan(wind_daily_err).any():
+        print("Missing value! Skipping bad sample...")
+        continue
     err_wind_list.append(wind_daily_err)
 err_wind = np.array(err_wind_list).reshape(len(err_wind_list), 1, max_time_steps)
+print(f"Done: ({err_wind.shape[0]}) wind samples.")
 
 # ---- Create tree from data ----
-periods_per_day = 96
-horizon = periods_per_day - 1  # 15 minute periods
+horizon = max_time_steps - 1  # 15 minute periods
 branching = np.ones(horizon, dtype=np.int32)
 branching[0] = 3
 for i in range(1, len(branching)):
@@ -101,21 +104,19 @@ ax.set_ylabel("Wind Forecast Error (MW)")
 plt.title("Wind Forecast Error vs. Time")
 ax.grid(True)
 start = 0  # 15 minute periods
-data = np.concatenate((err_wind[:, :, start:], err_wind[:, :, :start]), axis=2)  # samples x dim x time
-times = .25 * (np.arange(start, start + periods_per_day)) * 100
+num_samples = 365
+data = np.concatenate((err_wind[-num_samples:, :, start:],
+                       err_wind[-num_samples:, :, :start]), axis=2)  # samples x dim x time
+times = .25 * (np.arange(start, start + max_time_steps)) * 100
 times = [t if t < 2400 else t - 2400 for t in times]  # 24 hrs
-tree = f.tree.FromData(data, branching).build()
-scenarios = tree.get_scenarios()
-values = tree.data_values
-num_lines = len(scenarios) * 2
-len_scenario = scenarios[0].size
-lines = [None for _ in range(num_lines)]
-for i in range(num_lines):
+lines = [None for _ in range(num_samples)]
+for i in range(num_samples):
     lines[i], = ax.plot([], [], marker="o", linestyle="-")
 set_ticks(ax, times)
 ax.set_ylim([min(wind_df["error"]), max(wind_df["error"])])
-plt.pause(5)
+# plt.pause(5)
 for start in range(0, 200):
+    print("Building tree and plotting values...")
     plot_scenario_values(ax, data, branching, times, lines)
     data = np.concatenate((data[:, :, 1:], data[:, :, 0].reshape(-1, 1, 1)), axis=2)
     times = np.hstack((times[1:], times[0] + 2400))

@@ -103,7 +103,7 @@ void testKernelProjectionOnline(CacheTestData<T> &d, T epsilon) {
         t.deviceCopyTo(projT);
         s.deviceCopyTo(projS);
         /* Compute kernel matrix * projected vector */
-        DTensor<T> kerConMats = DTensor<T>::parseFromFile(d.m_path + "S2" + d.m_tree->fpFileExt());
+        DTensor<T> kerConMats = DTensor<T>::parseFromFile(d.m_path + "test_S2" + d.m_tree->fpFileExt());
         DTensor<T> kerConMat(kerConMats, 2, node, node);
         DTensor<T> shouldBeZeros = kerConMat * projected;
         std::vector<T> result(shouldBeZeros.numEl());
@@ -195,8 +195,8 @@ TEST_F(CacheTest, kernelProjectionOnlineOrthogonality) {
 TEMPLATE_WITH_TYPE_T
 void testDotM(CacheTestData<T> &d, T epsilon) {
     std::string ext = d.m_tree->fpFileExt();
-    DTensor<T> dotVector = DTensor<T>::parseFromFile(d.m_path + "dotVector" + ext);
-    DTensor<T> dotResult = DTensor<T>::parseFromFile(d.m_path + "dotResult" + ext);
+    DTensor<T> dotVector = DTensor<T>::parseFromFile(d.m_path + "test_dotVector" + ext);
+    DTensor<T> dotResult = DTensor<T>::parseFromFile(d.m_path + "test_dotResult" + ext);
     Cache<T> &c = *d.m_cache;
     T dot = c.dotM(dotVector, dotVector);
     EXPECT_NEAR(dot, dotResult(0, 0, 0), epsilon * 1e1);  // Leeway for python computation errors

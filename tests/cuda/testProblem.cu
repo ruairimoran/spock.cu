@@ -36,10 +36,10 @@ void testDynamicsProjectionOnline(ProblemTestData<T> &d, T epsilon) {
     std::vector<T> cvxStates(statesSize);
     std::vector<T> cvxInputs(inputsSize);
     std::string ext = d.m_tree->fpFileExt();
-    DTensor<T> dpStates = DTensor<T>::parseFromFile(d.m_path + "dpTestStates" + ext);
-    DTensor<T> dpInputs = DTensor<T>::parseFromFile(d.m_path + "dpTestInputs" + ext);
-    DTensor<T> dpProjectedStates = DTensor<T>::parseFromFile(d.m_path + "dpProjectedStates" + ext);
-    DTensor<T> dpProjectedInputs = DTensor<T>::parseFromFile(d.m_path + "dpProjectedInputs" + ext);
+    DTensor<T> dpStates = DTensor<T>::parseFromFile(d.m_path + "test_dpOgStates" + ext);
+    DTensor<T> dpInputs = DTensor<T>::parseFromFile(d.m_path + "test_dpOgInputs" + ext);
+    DTensor<T> dpProjectedStates = DTensor<T>::parseFromFile(d.m_path + "test_dpProjectedStates" + ext);
+    DTensor<T> dpProjectedInputs = DTensor<T>::parseFromFile(d.m_path + "test_dpProjectedInputs" + ext);
     dpProjectedStates.download(cvxStates);
     dpProjectedInputs.download(cvxInputs);
     DTensor<T> d_initState(dpStates, 0, 0, d.m_tree->numStates() - 1);

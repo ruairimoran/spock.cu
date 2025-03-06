@@ -71,7 +71,7 @@ class Cache {
 protected:
     ScenarioTree<T> &m_tree;  ///< Previously created scenario tree
     ProblemData<T> &m_data;  ///< Previously created problem
-    LinearOperator<T> m_L = LinearOperator<T>(m_tree, m_data);  ///< Linear operator and its adjoint
+    CPOperator<T> m_L = CPOperator<T>(m_tree, m_data);  ///< Linear operator and its adjoint
     T m_tolAbs = 0;
     T m_tolRel = 0;
     T m_tol = 0;

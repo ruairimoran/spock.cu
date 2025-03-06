@@ -4,14 +4,13 @@
 #include "../include/gpu.cuh"
 #include "tree.cuh"
 #include "problem.cuh"
-#include <chrono>
 
 
 /**
- * Linear operator 'L' and its adjoint
+ * Chambolle-Pock operator 'L' and its adjoint
  */
 TEMPLATE_WITH_TYPE_T
-class LinearOperator {
+class CPOperator {
 protected:
     ScenarioTree<T> &m_tree;  ///< Previously created scenario tree
     ProblemData<T> &m_data;  ///< Previously created problem
@@ -28,14 +27,14 @@ public:
     /**
      * Constructor
      */
-    LinearOperator(ScenarioTree<T> &tree, ProblemData<T> &data) : m_tree(tree), m_data(data) {
+    CPOperator(ScenarioTree<T> &tree, ProblemData<T> &data) : m_tree(tree), m_data(data) {
         m_d_uNonleafWorkspace = std::make_unique<DTensor<T>>(m_tree.numInputs(), 1, m_tree.numNodes(), true);
         m_d_xNonleafWorkspace = std::make_unique<DTensor<T>>(m_tree.numStates(), 1, m_tree.numNodes(), true);
         m_d_xLeafWorkspace = std::make_unique<DTensor<T>>(m_tree.numStates(), 1, m_tree.numLeafNodes(), true);
         m_d_scalarWorkspace = std::make_unique<DTensor<T>>(1, 1, m_tree.numNodes(), true);
     }
 
-    ~LinearOperator() = default;
+    ~CPOperator() = default;
 
     /**
      * For reuse while testing.
@@ -55,9 +54,9 @@ public:
 };
 
 template<typename T>
-void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<T> &t, DTensor<T> &s,
-                           DTensor<T> &i, DTensor<T> &ii, DTensor<T> &iii, DTensor<T> &iv,
-                           DTensor<T> &v, DTensor<T> &vi) {
+void CPOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<T> &t, DTensor<T> &s,
+                       DTensor<T> &i, DTensor<T> &ii, DTensor<T> &iii, DTensor<T> &iv,
+                       DTensor<T> &v, DTensor<T> &vi) {
     /* I */
     y.deviceCopyTo(i);
     /* II */
@@ -100,9 +99,9 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
 }
 
 template<typename T>
-void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<T> &t, DTensor<T> &s,
-                            DTensor<T> &i, DTensor<T> &ii, DTensor<T> &iii, DTensor<T> &iv,
-                            DTensor<T> &v, DTensor<T> &vi) {
+void CPOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<T> &t, DTensor<T> &s,
+                        DTensor<T> &i, DTensor<T> &ii, DTensor<T> &iii, DTensor<T> &iv,
+                        DTensor<T> &v, DTensor<T> &vi) {
     /* s (nonleaf) */
     DTensor<T> sNonleaf(s, m_matAxis, 0, m_numNonleafNodesMinus1);
     ii.deviceCopyTo(sNonleaf);

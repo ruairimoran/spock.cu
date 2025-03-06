@@ -47,6 +47,7 @@ private:
                 << " is not supported. Supported types include: linear, affine\n";
             throw ERR;
         }
+        m_dynamics.init();
     }
 
     void parseConstraint(const rapidjson::Value &value, std::unique_ptr<Constraint<T>> &constraint, TreePart part) {

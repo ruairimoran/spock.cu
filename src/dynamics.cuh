@@ -6,6 +6,61 @@
 
 
 /**
+ * Base class for linear operator
+ */
+TEMPLATE_WITH_TYPE_T
+class LinearOperator {
+protected:
+
+public:
+    /**
+     * Constructor
+     */
+    LinearOperator() = default;
+
+    ~LinearOperator() = default;
+
+    virtual void op(DTensor<T> &, DTensor<T> &, long, long) = 0;
+
+    virtual void adj(DTensor<T> &, long, long) = 0;
+};
+
+
+/**
+ * Linear operator from a matrix
+ */
+TEMPLATE_WITH_TYPE_T
+class MatrixOperator : public LinearOperator<T> {
+private:
+    size_t m_matAxis = 2;
+    bool m_transpose = true;
+    DTensor<T> &m_d_tensor;
+    std::unique_ptr<DTensor<T>> m_d_tensorTr = nullptr;
+
+public:
+    explicit MatrixOperator(DTensor<T> &tensor, bool trans = true) :
+        m_transpose(trans), m_d_tensor(tensor), LinearOperator<T>() {
+        if (trans) m_d_tensorTr = std::make_unique<DTensor<T>>(m_d_tensor.tr());
+    }
+
+    void op(DTensor<T> &result, DTensor<T> &input, long startMat = 0, long endMat = -1) {
+        if (endMat == -1) endMat = input.numMats() - 1;
+        DTensor<T> tensorSlice(m_d_tensor, m_matAxis, startMat, endMat);
+        result.addAB(tensorSlice, input);
+    }
+
+    void adj(DTensor<T> &tensor, long startMat = 0, long endMat = -1) {
+        if (!m_transpose) {
+            err << "[MatrixOperator] Attempted to apply transpose of matrix without transpose supported!";
+            throw ERR;
+        }
+        tensor.addAB(*m_d_tensorTr, tensor);
+    }
+
+};
+
+
+/**
  * Base class for dynamics
  */
 template<typename T>
@@ -30,6 +85,7 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_lowerCholesky = nullptr;
     std::vector<std::unique_ptr<DTensor<T>>> m_choleskyStage;
     std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>> m_choleskyBatch;
+    std::unique_ptr<LinearOperator<T>> m_d_ABOperator = nullptr;
     /* Workspaces */
     std::unique_ptr<DTensor<T>> m_d_q = nullptr;
     std::unique_ptr<DTensor<T>> m_d_d = nullptr;
@@ -163,9 +219,10 @@ protected:
             m_tree.memCpyAnc2Node(*m_d_workXU, states, chStageFr, chStageTo, m_tree.numStates());
             m_tree.memCpyAnc2Node(*m_d_workXU, inputs, chStageFr, chStageTo, m_tree.numInputs(), m_tree.numStates());
             DTensor<T> x_ChStage(states, m_matAxis, chStageFr, chStageTo);
-            DTensor<T> AB_ChStage(*m_d_AB, m_matAxis, chStageFr, chStageTo);
+//            DTensor<T> AB_ChStage(*m_d_ABOperator, m_matAxis, chStageFr, chStageTo);
             DTensor<T> xu_ChStage(*m_d_workXU, m_matAxis, chStageFr, chStageTo);
-            x_ChStage.addAB(AB_ChStage, xu_ChStage);
+//            x_ChStage.addAB(AB_ChStage, xu_ChStage);
+            m_d_ABOperator->op(x_ChStage, xu_ChStage, chStageFr, chStageTo);
             if (m_affine) {
                 DTensor<T> e_ChStage(*m_d_e, m_matAxis, chStageFr, chStageTo);
                 x_ChStage += e_ChStage;

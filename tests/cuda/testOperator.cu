@@ -117,3 +117,11 @@ TEST_F(OperatorTest, testIsItReallyTheAdjoint) {
     OperatorTestData<double> dd;
     testIsItReallyTheAdjoint<double>(dd, TEST_PRECISION_HIGH);
 }
+
+TEST_F(OperatorTest, testMatrixOperator) {
+    OperatorTestData<float> df;
+    DTensor<float> tensor = DTensor<float>::createRandomTensor(2, 3, 4, -10, 10);
+    MatrixOperator<float> mat = MatrixOperator<float>(tensor, true);
+    DTensor<float> tr = tensor.tr();
+    mat.op(tr);
+}

@@ -261,7 +261,7 @@ class LeafCost(Cost):
         return self.__q_unconditioned
 
     def condition(self, scaling_state):
-        self.Q = self.Q_uncond @ scaling_state
+        self.Q = scaling_state.T @ self.Q_uncond @ scaling_state
         self.__q = scaling_state.T @ self.q_uncond if self.lin else None
         self.__set_translation()
         return self

@@ -60,7 +60,7 @@ static void isFinite(DTensor<T> &d_vec) {
 
 
 /**
- * Status explanation for cache
+ * Cache status enum and string
  */
 enum CacheStatus {
     notRun = -1,
@@ -69,13 +69,18 @@ enum CacheStatus {
     outOfTime = 2
 };
 
-const char* toString(int status) {
+const char *toString(int status) {
     switch (status) {
-        case notRun: return "Cache has not been run!";
-        case converged: return "Converged!";
-        case outOfIter: return "Out of iterations!";
-        case outOfTime: return "Out of time!";
-        default: return "Unknown status.";
+        case notRun:
+            return "Cache has not been run!";
+        case converged:
+            return "Converged!";
+        case outOfIter:
+            return "Out of iterations!";
+        case outOfTime:
+            return "Out of time!";
+        default:
+            return "Unknown status.";
     }
 }
 
@@ -982,13 +987,13 @@ void Cache<T>::computeError(size_t idx) {
             }
             if (m_maxTimeSecs && idx % 200 == 0) {
                 m_timeElapsed = std::chrono::duration<T>(
-                        std::chrono::high_resolution_clock::now() - m_timeStart).count();
+                    std::chrono::high_resolution_clock::now() - m_timeStart).count();
                 if (m_timeElapsed >= m_maxTimeSecs) m_exitCode = outOfTime;
             }
             if (m_exitCode != notRun) {
                 m_countIterations = idx;
                 m_timeElapsed = std::chrono::duration<T>(
-                        std::chrono::high_resolution_clock::now() - m_timeStart).count();
+                    std::chrono::high_resolution_clock::now() - m_timeStart).count();
             }
             if (m_debug) {
                 m_cacheError1[idx] = m_d_workIteratePrim->maxAbs();

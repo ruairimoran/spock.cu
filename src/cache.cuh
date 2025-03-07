@@ -69,7 +69,7 @@ enum CacheStatus {
     outOfTime = 2
 };
 
-const char *toString(int status) {
+static const char *toString(int status) {
     switch (status) {
         case notRun:
             return "Cache has not been run!";

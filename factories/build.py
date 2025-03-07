@@ -221,8 +221,8 @@ class NonleafCost(Cost):
         return self.__r_unconditioned
 
     def condition(self, scaling_state, scaling_input):
-        self.Q = self.Q_uncond @ scaling_state
-        self.R = self.R_uncond @ scaling_input
+        self.Q = scaling_state.T @ self.Q_uncond @ scaling_state
+        self.R = scaling_input.T @ self.R_uncond @ scaling_input
         self.__q = scaling_state.T @ self.q_uncond if self.__lin_q else None
         self.__r = scaling_input.T @ self.r_uncond if self.__lin_r else None
         self.__set_translation()
@@ -246,6 +246,7 @@ class LeafCost(Cost):
         self.__q = q
         self.__q_unconditioned = deepcopy(self.__q)
         self.lin = self.__q is not None
+        self.__set_translation()
 
     def __set_translation(self):
         nrm_q = self.__q.T @ np.linalg.solve(self.Q, self.__q) if self.lin else 0

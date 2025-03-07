@@ -89,8 +89,6 @@ class Problem:
         self.__generate_offline()
         print("Generating problem files...")
         self.__generate_problem_files()
-        # Print problem
-        self.__print()
 
     # GETTERS
     @property
@@ -149,26 +147,35 @@ class Problem:
         Scale problem data to improve step size.
         Caution! Only use diagonal scaling matrices.
         """
-        scaling_state = np.eye(self.__num_states)
-        scaling_input = np.eye(self.__num_inputs)
+        scale_x = np.zeros(self.__num_states)
+        for ele in range(self.__num_states):
+            for cost in self.__list_of_nonleaf_costs[1:]:
+                scale = np.sqrt(cost.Q_uncond[ele, ele])
+                if scale > scale_x[ele]:
+                    scale_x[ele] = scale
+            for cost in self.__list_of_leaf_costs:
+                scale = np.sqrt(cost.Q_uncond[ele, ele])
+                if scale > scale_x[ele]:
+                    scale_x[ele] = scale
 
-        def __is_diagonal_and_positive(mat):
-            diag_mat = np.diagonal(mat)
-            is_diag = np.all(mat == np.diag(diag_mat))
-            is_pos = np.all(diag_mat) > 0.
-            return is_diag and is_pos
+        scale_u = np.zeros(self.__num_inputs)
+        for ele in range(self.__num_inputs):
+            for cost in self.__list_of_nonleaf_costs[1:]:
+                scale = np.sqrt(cost.R_uncond[ele, ele])
+                if scale > scale_u[ele]:
+                    scale_u[ele] = scale
 
-        if not __is_diagonal_and_positive(scaling_state):
-            raise Exception("State preconditioning matrix is invalid!")
-        if not __is_diagonal_and_positive(scaling_input):
-            raise Exception("Input preconditioning matrix is invalid!")
-        self.__scaling = np.hstack((np.diagonal(scaling_state), np.diagonal(scaling_input))).T
-        scaling = np.diag(self.__scaling)
-        self.__list_of_dynamics = [d.condition(scaling_state, scaling_input) for d in self.__list_of_dynamics]
-        self.__list_of_nonleaf_costs = [c.condition(scaling_state, scaling_input) for c in self.__list_of_nonleaf_costs]
-        self.__list_of_leaf_costs = [c.condition(scaling_state) for c in self.__list_of_leaf_costs]
-        self.__nonleaf_constraint.condition(scaling)
-        self.__leaf_constraint.condition(scaling_state)
+        self.__scaling = np.hstack((scale_x, scale_u))
+        if not (self.__scaling.all() > 0.):
+            raise Exception("Preconditioning matrix is invalid!")
+        scale_x_mat = np.diag(1 / scale_x)
+        scale_u_mat = np.diag(1 / scale_u)
+        scale_xu_mat = np.diag(np.hstack((np.diagonal(scale_x_mat), np.diagonal(scale_u_mat))))
+        self.__list_of_dynamics = [d.condition(scale_x_mat, scale_u_mat) for d in self.__list_of_dynamics]
+        self.__list_of_nonleaf_costs = [c.condition(scale_x_mat, scale_u_mat) for c in self.__list_of_nonleaf_costs]
+        self.__list_of_leaf_costs = [c.condition(scale_x_mat) for c in self.__list_of_leaf_costs]
+        self.__nonleaf_constraint.condition(scale_xu_mat)
+        self.__leaf_constraint.condition(scale_x_mat)
 
     def __offline_projection_dynamics(self):
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
@@ -465,7 +472,8 @@ class Problem:
                                  risk=self.__list_of_risks[0],
                                  ker_con_rows=self.__kernel_constraint_matrix_rows,
                                  null_dim=self.__max_nullspace_dim,
-                                 step_size=self.__step_size
+                                 step_size=self.__step_size,
+                                 precondition=self.__precondition
                                  )
         path = self.__tree.get_folder_path
         output_file = os.path.join(path, "data.json")
@@ -513,7 +521,7 @@ class Problem:
                 "dynamics_e": stack_affine_dyn,
             })
         if self.__precondition:
-            stack_scaling = np.reciprocal(self.__scaling).reshape(-1)
+            stack_scaling = self.__scaling.reshape(-1)
             tensors.update({
                 "scaling": stack_scaling,
             })
@@ -598,10 +606,11 @@ class Problem:
         for name, tensor in tensors.items():
             self.__tree.write_to_file_fp(name, tensor)
 
-    def __print(self):
-        print("Problem Data\n"
-              "+ Step size: ", self.__step_size, "\n")
-        return self
+    def __str__(self):
+        return f"Problem Data\n+ Step size: {self.__step_size}\n+ Preconditioning: {self.__precondition}"
+
+    def __repr__(self):
+        return f"Problem Data\n+ Step size: {self.__step_size}\n+ Preconditioning: {self.__precondition}"
 
 
 class Factory:

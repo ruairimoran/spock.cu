@@ -47,18 +47,14 @@ void testDotM(CacheTestData<T> &, T);
  * Caution! For debugging only.
  */
 template<typename T>
-static void isFinite(std::vector<T> &vec) {
-    for (const T &value: vec) {
-        if (!std::isfinite(value)) throw std::invalid_argument("[isFinite] vector has entries that are not finite.\n");
-    }
-}
-
-template<typename T>
 static void isFinite(DTensor<T> &d_vec) {
     std::vector<T> vec(d_vec.numEl());
     d_vec.download(vec);
     for (const T &value: vec) {
-        if (!std::isfinite(value)) throw std::invalid_argument("[isFinite] DTensor has entries that are not finite.\n");
+        if (!std::isfinite(value)) {
+            std::cout << d_vec.tr();
+            throw std::invalid_argument("[isFinite] DTensor has entries that are not finite.\n");
+        }
     }
 }
 
@@ -332,10 +328,6 @@ public:
 
     int runSpock(std::vector<T> &, std::vector<T> * = nullptr);
 
-    std::vector<T> &input() {
-        m_d_input->download(m_input);
-    }
-
     size_t solveIter() { return m_countIterations; }
 
     T solveTime() { return m_timeElapsed; }
@@ -349,6 +341,13 @@ public:
         m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
         std::vector<T> inputs(m_sizeU);
         m_d_u->download(inputs);
+        if (m_data.preconditioned()) {
+            for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
+                for (size_t ele = m_tree.numStates(); ele < m_tree.numStatesAndInputs(); ele++) {
+                    inputs[node * m_tree.numInputs() + ele] *= m_data.scaling()[ele];
+                }
+            }
+        }
         return inputs;
     }
 
@@ -356,6 +355,13 @@ public:
         m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
         std::vector<T> states(m_sizeX);
         m_d_x->download(states);
+        if (m_data.preconditioned()) {
+            for (size_t node = 0; node < m_tree.numNodes(); node++) {
+                for (size_t ele = 0; ele < m_tree.numStates(); ele++) {
+                    states[node * m_tree.numStates() + ele] *= m_data.scaling()[ele];
+                }
+            }
+        }
         return states;
     }
 
@@ -553,6 +559,11 @@ void Cache<T>::initialiseState(std::vector<T> &initState) {
         err << "[initialiseState] Error initialising state: problem setup for " << m_tree.numStates()
             << " but given " << initState.size() << " states" << "\n";
         throw ERR;
+    }
+    if (m_data.preconditioned()) {
+        for (size_t i = 0; i < m_tree.numStates(); i++) {
+            initState[i] *= 1 / m_data.scaling()[i];
+        }
     }
     m_d_initState->upload(initState);
 }
@@ -884,7 +895,7 @@ void Cache<T>::updateDirection(size_t idx) {
 template<typename T>
 void Cache<T>::computeError(size_t idx) {
     cudaDeviceSynchronize();  // DO NOT REMOVE !!!
-    isFinite(*m_d_iterateCandidate);
+    if (m_debug) isFinite(*m_d_iterateCandidate);
 //    if (m_admm) {
 //        m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
 //        Ltr();

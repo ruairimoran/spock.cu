@@ -31,18 +31,10 @@ class Model:
                 "MSK_DPAR_INTPNT_QO_TOL_REL_GAP": tol,
                 "MSK_DPAR_OPTIMIZER_MAX_TIME": max_time,
                 "MSK_DPAR_MIO_MAX_TIME": max_time,
-                }
+            }
             return self.__cvx.solve(solver=solver,
                                     mosek_params=mosek_params,
                                     )
-        # elif solver == cvxpy.GUROBI:
-        #     env = gurobipy.Env()
-        #     env.setParam('FeasibilityTol', tol)
-        #     env.setParam('OptimalityTol',tol)
-        #     env.setParam('TimeLimit', max_time)
-        #     return self.__cvx.solve(solver=solver,
-        #                             env=env,
-        #                             )
         elif solver == cvxpy.SCS:
             scs_params = {
                 "eps_abs": tol,
@@ -70,7 +62,7 @@ class Model:
     @property
     def solve_time(self):
         return self.__cvx.solve_time
-    
+
     @property
     def status(self):
         return self.__cvx.status
@@ -80,7 +72,7 @@ class Model:
         self.__x = cvxpy.Variable((self.__tree.num_nodes * self.__problem.num_states,))
         self.__u = cvxpy.Variable((self.__tree.num_nonleaf_nodes * self.__problem.num_inputs,))
         self.__y = cvxpy.Variable((sum(self.__problem.risk_at_node(i).b.size
-                                    for i in range(self.__tree.num_nonleaf_nodes))), )
+                                       for i in range(self.__tree.num_nonleaf_nodes))), )
         self.__t = cvxpy.Variable((self.__tree.num_nodes - 1,))
         self.__s = cvxpy.Variable((self.__tree.num_nodes,))
         self.__objective = cvxpy.Minimize(self.__s[0])
@@ -101,8 +93,8 @@ class Model:
             anc = self.__tree.ancestor_of_node(node)
             self.__constraints.append(
                 self.__x[self.__node_to_x(node)] ==
-                self.__problem.dynamics_at_node(node).A @ self.__x[self.__node_to_x(anc)] +
-                self.__problem.dynamics_at_node(node).B @ self.__u[self.__node_to_u(anc)] +
+                self.__problem.dynamics_at_node(node).A_uncond @ self.__x[self.__node_to_x(anc)] +
+                self.__problem.dynamics_at_node(node).B_uncond @ self.__u[self.__node_to_u(anc)] +
                 self.__problem.dynamics_at_node(node).c
             )
 
@@ -116,14 +108,14 @@ class Model:
         for node in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(node)
             self.__constraints.append(
-                cvxpy.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost_at_node(node).A) +
-                cvxpy.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost_at_node(node).B)
+                cvxpy.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost_at_node(node).Q_uncond) +
+                cvxpy.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost_at_node(node).R_uncond)
                 <= self.__t[node - 1]
             )
         # leaf
         for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
             self.__constraints.append(
-                cvxpy.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost_at_node(node).A)
+                cvxpy.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost_at_node(node).Q_uncond)
                 <= self.__s[node]
             )
 
@@ -133,10 +125,10 @@ class Model:
             raise Exception("[Model] only supports rectangle nonleaf constraints.\n")
         if not self.__problem.leaf_constraint().is_rectangle:
             raise Exception("[Model] only supports rectangle leaf constraints.\n")
-        nonleaf_lb_x = self.__problem.nonleaf_constraint().lower_bound[:self.__nx]
-        nonleaf_ub_x = self.__problem.nonleaf_constraint().upper_bound[:self.__nx]
-        nonleaf_lb_u = self.__problem.nonleaf_constraint().lower_bound[self.__nx:]
-        nonleaf_ub_u = self.__problem.nonleaf_constraint().upper_bound[self.__nx:]
+        nonleaf_lb_x = self.__problem.nonleaf_constraint().lower_bound_uncond[:self.__nx]
+        nonleaf_ub_x = self.__problem.nonleaf_constraint().upper_bound_uncond[:self.__nx]
+        nonleaf_lb_u = self.__problem.nonleaf_constraint().lower_bound_uncond[self.__nx:]
+        nonleaf_ub_u = self.__problem.nonleaf_constraint().upper_bound_uncond[self.__nx:]
         for ele in range(self.__nu):
             self.__constraints.append(self.__u[self.__node_to_u(0)][ele] >= nonleaf_lb_u[ele])
             self.__constraints.append(self.__u[self.__node_to_u(0)][ele] <= nonleaf_ub_u[ele])
@@ -147,8 +139,8 @@ class Model:
             for ele in range(self.__nu):
                 self.__constraints.append(self.__u[self.__node_to_u(node)][ele] >= nonleaf_lb_u[ele])
                 self.__constraints.append(self.__u[self.__node_to_u(node)][ele] <= nonleaf_ub_u[ele])
-        leaf_lb_x = self.__problem.leaf_constraint().lower_bound
-        leaf_ub_x = self.__problem.leaf_constraint().upper_bound
+        leaf_lb_x = self.__problem.leaf_constraint().lower_bound_uncond
+        leaf_ub_x = self.__problem.leaf_constraint().upper_bound_uncond
         for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
             for ele in range(self.__nx):
                 self.__constraints.append(self.__x[self.__node_to_x(node)][ele] >= leaf_lb_x[ele])

@@ -548,7 +548,6 @@ class IidProcess:
         # check input data
         ancestors, values, stages = self.__make_ancestors_values_stages()
         probs = self.__make_probability_values(ancestors, values, stages)
-        stochastic = self.__n > 1
         tree = Tree(self.__dt,
                     stages,
                     ancestors,

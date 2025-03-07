@@ -19,10 +19,7 @@ int main() {
         real_t maxTime = 5 * minute;
         std::cout << "Allocating cache...\n";
         CacheBuilder builder(tree, problem);
-        Cache cache = builder
-            .tol(tol)
-            .maxTimeSecs(maxTime)
-            .build();
+        Cache cache = builder.tol(tol).maxTimeSecs(maxTime).build();
 
         /* TIMING ALGORITHM */
         DTensor<real_t> d_initState = DTensor<real_t>::parseFromFile(tree.path() + "initialState" + tree.fpFileExt());
@@ -35,8 +32,7 @@ int main() {
         std::cout << "Computing average solve time over (" << runs << ") runs with (" << warm << ") warm up runs...\n";
         for (size_t i = 0; i < totalRuns; i++) {
             int status = cache.runSpock(initState);
-            if (status == 1) throw std::runtime_error("Out of iterations.");
-            if (status == 2) throw std::runtime_error("Out of time.");
+            if (status != converged) throw std::runtime_error(toString(status));
             runTimes[i] = cache.solveTime();
             if (i < totalRuns - 1) cache.reset();
             std::cout << "Run (" << i << ") : " << runTimes[i] << " s.\n";
@@ -59,12 +55,8 @@ int main() {
         std::cout << "SPOCK failed! : No error info.\n";
     }
 
-    /* SAVE */
-    std::ofstream timeScaling;
-    timeScaling.open("time.csv", std::ios::app);
-    timeScaling << avgTime << std::endl;
-    timeScaling.close();
-    std::cout << "Saved (avgTime = " << avgTime << " s).\n";
+    /* PRINT */
+    std::cout << "Avg time = " << avgTime << " s.\n";
 
     return 0;
 }

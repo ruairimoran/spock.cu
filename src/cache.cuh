@@ -60,6 +60,27 @@ static void isFinite(DTensor<T> &d_vec) {
 
 
 /**
+ * Status explanation for cache
+ */
+enum CacheStatus {
+    notRun = -1,
+    converged = 0,
+    outOfIter = 1,
+    outOfTime = 2
+};
+
+const char* toString(int status) {
+    switch (status) {
+        case notRun: return "Cache has not been run!";
+        case converged: return "Converged!";
+        case outOfIter: return "Out of iterations!";
+        case outOfTime: return "Out of time!";
+        default: return "Unknown status.";
+    }
+}
+
+
+/**
  * Cache of methods for proximal algorithms
  */
 TEMPLATE_WITH_TYPE_T
@@ -83,7 +104,7 @@ protected:
     bool m_debug = false;
     bool m_errInit = false;  ///< Whether to initialise tolerances
     bool m_status = false;  ///< General status use
-    int m_exitCode = -1;  ///< Algorithm exit code: -1=notRun, 0=converged, 1=outOfIters, 2=outOfTime
+    int m_exitCode = notRun;  ///< Algorithm exit code
     std::chrono::high_resolution_clock::time_point m_timeStart;
     T m_timeElapsed;
     /* Sizes */
@@ -389,6 +410,7 @@ public:
  */
 template<typename T>
 void Cache<T>::reset() {
+    m_exitCode = notRun;
     m_data.dynamics()->resetWorkspace();
     m_L.resetWorkspace();
     /* Create zero vectors */
@@ -950,20 +972,20 @@ void Cache<T>::computeError(size_t idx) {
         *m_d_workIterate -= *m_d_ellResidual;
         if (m_errInit) {
             m_tol = std::max(m_tolAbs, m_tolRel * m_d_workIterate->maxAbs());
-            m_exitCode = -1;
+            m_exitCode = notRun;
             m_errInit = false;
         } else {
             m_errAbs = m_d_workIterate->maxAbs();
-            if (m_errAbs <= m_tol) m_exitCode = 0;
+            if (m_errAbs <= m_tol) m_exitCode = converged;
             if (m_maxOuterIters) {
-                if (idx >= m_maxOuterIters) m_exitCode = 1;
+                if (idx >= m_maxOuterIters) m_exitCode = outOfIter;
             }
             if (m_maxTimeSecs && idx % 200 == 0) {
                 m_timeElapsed = std::chrono::duration<T>(
                         std::chrono::high_resolution_clock::now() - m_timeStart).count();
-                if (m_timeElapsed >= m_maxTimeSecs) m_exitCode = 2;
+                if (m_timeElapsed >= m_maxTimeSecs) m_exitCode = outOfTime;
             }
-            if (m_exitCode != -1) {
+            if (m_exitCode != notRun) {
                 m_countIterations = idx;
                 m_timeElapsed = std::chrono::duration<T>(
                         std::chrono::high_resolution_clock::now() - m_timeStart).count();
@@ -1009,18 +1031,18 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
         /* Save candidate to accepted iterate */
         acceptCandidate();
         /* Break if termination criteria met */
-        if (m_exitCode != -1) {
+        if (m_exitCode != notRun) {
             break;
         }
     }
     if (m_debug) {
         std::string n = "Cp";
         printToJson(n);
-        if (m_exitCode == 0) {
+        if (m_exitCode == converged) {
             std::cout << "\nConverged in " << m_countIterations << " iterations, to a tolerance of " << m_tol << "\n";
-        } else if (m_exitCode == 1) {
+        } else if (m_exitCode == outOfIter) {
             std::cout << "\nOut of iterations (" << m_maxOuterIters << " iters).\n";
-        } else if (m_exitCode == 2) {
+        } else if (m_exitCode == outOfTime) {
             std::cout << "\nOut of time (" << m_maxTimeSecs << " secs).\n";
         } else {
             std::cout << "\nExited.\n";
@@ -1063,7 +1085,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         iter();
         /* Check error (residual computed internally) */
         computeError(iOut);
-        if (m_exitCode != -1) {
+        if (m_exitCode != notRun) {
             acceptCandidate();
             break;
         }
@@ -1128,7 +1150,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     if (m_debug) {
         std::string n = "Sp";
         printToJson(n);
-        if (m_exitCode == 0) {
+        if (m_exitCode == converged) {
             std::cout << "\nConverged in " << m_countIterations << " iters and "
                       << m_timeElapsed << " secs, to a tolerance of " << m_tol
                       << ", [K0: " << countK0
@@ -1137,14 +1159,14 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
                       << ", bt: " << countK2bt
                       << ", K3: " << countK3
                       << "].\n";
-        } else if (m_exitCode == 1) {
+        } else if (m_exitCode == outOfIter) {
             std::cout << "\nMax iterations (" << m_maxOuterIters << ") reached [K0: " << countK0
                       << ", K1: " << countK1
                       << ", K2: " << countK2
                       << ", bt: " << countK2bt
                       << ", K3: " << countK3
                       << "].\n";
-        } else if (m_exitCode == 2) {
+        } else if (m_exitCode == outOfTime) {
             std::cout << "\nMax time (" << m_maxTimeSecs << "s) reached [K0: " << countK0
                       << ", K1: " << countK1
                       << ", K2: " << countK2

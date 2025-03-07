@@ -107,6 +107,6 @@ tree.write_to_file_fp("initialState", x0)
 # Check mosek
 if precondition:
     model = f.model.Model(tree, problem)
-    model.solve(x0, tol=1e-6)
+    model.solve(x0, tol=1e-3)
     print("\nIPOPT status: ", model.status)
     print("States:\n", model.states, "\nInputs:\n", model.inputs, "\n")

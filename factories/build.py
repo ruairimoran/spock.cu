@@ -18,10 +18,11 @@ class Dynamics:
     def __init__(self, state_, input_, constant_):
         self.__state = state_
         self.__input = input_
-        self.__constant = constant_
+        self.__const = constant_
         self.__state_input = np.hstack((self.__state, self.__input))
         self.__state_unconditioned = deepcopy(self.__state)
         self.__input_unconditioned = deepcopy(self.__input)
+        self.__const_unconditioned = deepcopy(self.__const)
         self.__state_input_unconditioned = np.hstack((self.__state_unconditioned, self.__input_unconditioned))
 
     # TYPES
@@ -42,12 +43,12 @@ class Dynamics:
         return self.__input
 
     @property
-    def A_B(self):
-        return self.__state_input
+    def c(self):
+        return self.__const
 
     @property
-    def c(self):
-        return self.__constant
+    def A_B(self):
+        return self.__state_input
 
     @property
     def A_uncond(self):
@@ -58,12 +59,18 @@ class Dynamics:
         return self.__input_unconditioned
 
     @property
+    def c_uncond(self):
+        return self.__const_unconditioned
+
+    @property
     def A_B_uncond(self):
         return self.__state_input_unconditioned
 
     def condition(self, scaling_state, scaling_input):
-        self.__state = self.__state_unconditioned @ scaling_state
-        self.__input = self.__input_unconditioned @ scaling_input
+        scaling_state_inv = np.diag(1 / np.diagonal(scaling_state))
+        self.__state = scaling_state_inv @ self.__state_unconditioned @ scaling_state
+        self.__input = scaling_state_inv @ self.__input_unconditioned @ scaling_input
+        self.__const = scaling_state_inv @ self.__const_unconditioned
         self.__state_input = np.hstack((self.__state, self.__input))
         return self
 

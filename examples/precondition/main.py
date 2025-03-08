@@ -22,8 +22,8 @@ precondition = bool(args.precondition)
 horizon = 2
 stopping = 1
 num_events = 2
-num_inputs = 2
-num_states = 2  # num_inputs * 2
+num_inputs = 1
+num_states = 2
 
 # --------------------------------------------------------
 # Generate scenario tree

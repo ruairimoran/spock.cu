@@ -232,7 +232,7 @@ public:
     explicit Affine(ScenarioTree<T> &tree) : Dynamics<T>(tree) {
         this->m_affine = true;
         this->m_d_e = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(this->m_tree.path() + this->m_prefix + "e" + this->m_tree.fpFileExt()));
+            DTensor<T>::parseFromFile(this->m_tree.path() + this->m_prefix + "c" + this->m_tree.fpFileExt()));
         this->m_d_Pe = std::make_unique<DTensor<T>>(*this->m_d_P * *this->m_d_e);
     }
 };

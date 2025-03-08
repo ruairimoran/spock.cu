@@ -5,6 +5,7 @@ misc/cacheSp.json
 misc/timeCvxpy.csv
 Manifest.toml
 data/
+log/
 .vscode
 venv*
 .venv*

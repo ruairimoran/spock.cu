@@ -473,7 +473,7 @@ class Problem:
                                  ker_con_rows=self.__kernel_constraint_matrix_rows,
                                  null_dim=self.__max_nullspace_dim,
                                  step_size=self.__step_size,
-                                 precondition=self.__precondition
+                                 precondition=self.__precondition,
                                  )
         path = self.__tree.get_folder_path
         output_file = os.path.join(path, "data.json")
@@ -515,10 +515,10 @@ class Problem:
             "risk_NNtr": stack_null,
             "risk_b": stack_b
         })
-        if self.__list_of_dynamics[0].is_affine or self.__julia:
-            stack_affine_dyn = np.dstack([dyn.c for dyn in self.__list_of_dynamics])
+        if self.__list_of_dynamics[0].is_affine:
+            stack_dyn_const = np.dstack([dyn.c for dyn in self.__list_of_dynamics])
             tensors.update({
-                "dynamics_e": stack_affine_dyn,
+                "dynamics_c": stack_dyn_const,
             })
         if self.__precondition:
             stack_scaling = self.__scaling.reshape(-1)
@@ -570,12 +570,14 @@ class Problem:
             prefix = "uncond_"
             stack_dyn_A = np.dstack([dyn.A_uncond for dyn in self.__list_of_dynamics])
             stack_dyn_B = np.dstack([dyn.B_uncond for dyn in self.__list_of_dynamics])
+            stack_dyn_c = np.dstack([dyn.c_uncond for dyn in self.__list_of_dynamics])
             stack_cost_nonleaf_Q = np.dstack([cost.Q_uncond for cost in self.__list_of_nonleaf_costs])
             stack_cost_nonleaf_R = np.dstack([cost.R_uncond for cost in self.__list_of_nonleaf_costs])
             stack_cost_leaf_Q = np.dstack([cost.Q_uncond for cost in self.__list_of_leaf_costs])
             tensors.update({
                 prefix + "dynamics_A": stack_dyn_A,
                 prefix + "dynamics_B": stack_dyn_B,
+                prefix + "dynamics_c": stack_dyn_c,
                 prefix + "cost_nonleafQ": stack_cost_nonleaf_Q,
                 prefix + "cost_nonleafR": stack_cost_nonleaf_R,
                 prefix + "cost_leafQ": stack_cost_leaf_Q,

@@ -5,7 +5,9 @@
 #include "cones.cuh"
 #include "risks.cuh"
 #include "operator.cuh"
+#include <algorithm>
 #include <chrono>
+#include <filesystem>
 
 
 TEMPLATE_WITH_TYPE_T
@@ -301,6 +303,12 @@ public:
           bool debug = false) :
         m_tree(tree), m_data(data), m_tolAbs(absTol), m_tolRel(relTol), m_maxTimeSecs(maxTimeSecs),
         m_maxOuterIters(maxOuterIters), m_maxInnerIters(maxInnerIters), m_andBuff(andBuff), m_debug(debug) {
+        /* Tolerances */
+        if (m_data.preconditioned()) {
+            T tolScale = 1. / *std::max_element(m_data.scaling().begin(), m_data.scaling().end());
+            m_tolAbs *= tolScale;
+            m_tolRel *= tolScale;
+        }
         /* Sizes */
         initialiseSizes();
         /* Allocate memory on host */
@@ -369,8 +377,8 @@ public:
         m_d_u->download(inputs);
         if (m_data.preconditioned()) {
             for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
-                for (size_t ele = m_tree.numStates(); ele < m_tree.numStatesAndInputs(); ele++) {
-                    inputs[node * m_tree.numInputs() + ele] *= m_data.scaling()[ele];
+                for (size_t ele = 0; ele < m_tree.numInputs(); ele++) {
+                    inputs[node * m_tree.numInputs() + ele] *= m_data.scaling()[ele + m_tree.numStates()];
                 }
             }
         }
@@ -1132,9 +1140,10 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
                 break;  // K1
             }
             /* Compute rho */
-            *m_d_directionScaled *= -1.;
-            *m_d_directionScaled += *m_d_residual;
-            rho = dotM(*m_d_residual, *m_d_directionScaled);  // This is not the algo equation, but performs better.
+            rho = pow(wTilde, 2) - dotM(*m_d_residual, *m_d_directionScaled);  // This is the algo equation.
+//            *m_d_directionScaled *= -1.;  // This is...
+//            *m_d_directionScaled += *m_d_residual;  // not the algo equation, but...
+//            rho = dotM(*m_d_residual, *m_d_directionScaled);  //  performs well.
             /* Safeguard update */
             if (rho >= m_sigma * wTilde * w) {
                 *m_d_residual *= (m_lambda * rho / pow(wTilde, 2));
@@ -1193,9 +1202,9 @@ class CacheBuilder {
 private:
     ScenarioTree<T> &m_tree;
     ProblemData<T> &m_data;
-    T m_tolAbs = 0;
-    T m_tolRel = 0;
-    T m_maxTimeSecs = 0;
+    T m_tolAbs = 0.;
+    T m_tolRel = 0.;
+    T m_maxTimeSecs = 0.;
     size_t m_maxOuterIters = 0;
     size_t m_maxInnerIters = 0;
     size_t m_andBuff = 0;
@@ -1211,7 +1220,7 @@ public:
         m_data(data),
         m_tolAbs(1e-3),
         m_tolRel(0.),
-        m_maxTimeSecs(0),
+        m_maxTimeSecs(0.),
         m_maxOuterIters(0),
         m_maxInnerIters(8),
         m_andBuff(3),
@@ -1314,7 +1323,7 @@ static void
 addArray(rapidjson::Document &doc, std::string const &name, std::vector<T> &vec) {
     for (const T &value: vec) {
         if (!std::isfinite(value)) {
-            err << "[Cache::addArray] array (" << name << ") has entries that are not finite.\n";
+            err << "[Cache::addArray] array (" << name << ") has entries that are not finite!\n";
             throw ERR;
         }
     }
@@ -1355,7 +1364,7 @@ void Cache<T>::printToJson(std::string &file) {
     addArray(doc, "err0", m_cacheError0);
     addArray(doc, "err1", m_cacheError1);
     addArray(doc, "err2", m_cacheError2);
-    addArray(doc, "err3", m_cacheError3);
+//    if (m_admm) addArray(doc, "err3", m_cacheError3);
     std::vector<T> x = this->states();
     addArray(doc, "states", x);
     std::vector<T> u = this->inputs();
@@ -1365,11 +1374,15 @@ void Cache<T>::printToJson(std::string &file) {
     rapidjson::Writer<StringBuffer> writer(buffer, reinterpret_cast<rapidjson::CrtAllocator *>(&doc.GetAllocator()));
     doc.Accept(writer);
     std::string json(buffer.GetString(), buffer.GetSize());
-    std::ofstream of("/home/biggirl/Documents/remote_host/raocp-parallel/misc/cache" + file + ".json");
-    if (!of.is_open()) throw std::runtime_error("[Cache::printToJson] Failed to open file for writing.\n");
-    of << json;
-    of.close();
-    if (!of.good()) throw std::runtime_error("[Cache::printToJson] Can't write the JSON string to the file.\n");
+    std::filesystem::path cwd = std::filesystem::current_path();
+    std::string filename = "cache" + file + ".json";
+    std::filesystem::path logFilePath = cwd / "log" / filename;
+    std::filesystem::create_directories(logFilePath.parent_path());
+    std::ofstream logFile(logFilePath);
+    if (!logFile.is_open()) throw std::runtime_error("[Cache::printToJson] Failed to open file for writing.\n");
+    logFile << json;
+    logFile.close();
+    if (!logFile.good()) throw std::runtime_error("[Cache::printToJson] Can't write the JSON string to the file.\n");
 }
 
 

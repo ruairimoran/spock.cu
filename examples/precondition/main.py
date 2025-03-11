@@ -19,11 +19,11 @@ dt = args.dt
 precondition = bool(args.precondition)
 
 # Sizes::random
-horizon = 3
-stopping = 0
-num_events = 1
+horizon = 5
+stopping = 1
+num_events = 2
 num_inputs = 1
-num_states = 1
+num_states = 2
 
 # --------------------------------------------------------
 # Generate scenario tree
@@ -68,14 +68,14 @@ check_spd(T, "T")
 leaf_cost = f.build.LeafCost(T)
 
 # Constraints
-nonleaf_state_ub = np.ones(num_states) * 1.
+nonleaf_state_ub = np.ones(num_states) * 1000.
 nonleaf_state_lb = -nonleaf_state_ub
-nonleaf_input_ub = np.ones(num_inputs) * 8.
+nonleaf_input_ub = np.ones(num_inputs) * 1000.
 nonleaf_input_lb = -nonleaf_input_ub
 nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
 nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))
 nonleaf_constraint = f.build.Rectangle(nonleaf_lb, nonleaf_ub)
-leaf_ub = np.ones(num_states) * 0.05
+leaf_ub = np.ones(num_states) * 1000.
 leaf_lb = -leaf_ub
 leaf_constraint = f.build.Rectangle(leaf_lb, leaf_ub)
 

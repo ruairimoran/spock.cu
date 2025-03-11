@@ -151,7 +151,7 @@ class Problem:
         Scale problem data to improve step size.
         Caution! Only use diagonal scaling matrices.
         """
-        scale_x = np.zeros(self.__num_states)
+        scale_x = np.ones(self.__num_states)
         for ele in range(self.__num_states):
             for cost in self.__list_of_nonleaf_costs[1:]:
                 scale = np.sqrt(cost.Q_uncond[ele, ele])
@@ -162,7 +162,7 @@ class Problem:
                 if scale > scale_x[ele]:
                     scale_x[ele] = scale
 
-        scale_u = np.zeros(self.__num_inputs)
+        scale_u = np.ones(self.__num_inputs)
         for ele in range(self.__num_inputs):
             for cost in self.__list_of_nonleaf_costs[1:]:
                 scale = np.sqrt(cost.R_uncond[ele, ele])
@@ -179,7 +179,7 @@ class Problem:
         self.__list_of_nonleaf_costs = [c.condition(scale_x_inv, scale_u_inv) for c in self.__list_of_nonleaf_costs]
         self.__list_of_leaf_costs = [c.condition(scale_x_inv) for c in self.__list_of_leaf_costs]
         self.__nonleaf_constraint.condition(np.diag(self.__scaling))
-        self.__leaf_constraint.condition(scale_x)
+        self.__leaf_constraint.condition(scale_x_mat)
 
     def __offline_projection_dynamics(self):
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):

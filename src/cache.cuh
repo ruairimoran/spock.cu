@@ -1268,8 +1268,7 @@ public:
 
     CacheBuilder<T> &enableDebug(bool enable) {
         if (enable && m_maxOuterIters == 0) {
-            err << "[CacheBuilder] Cannot debug without first setting max number of iterations!\n";
-            throw ERR;
+            m_maxOuterIters = 1000;
         }
         m_debug = enable;
         return *this;

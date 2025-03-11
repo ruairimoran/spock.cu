@@ -1,5 +1,6 @@
 import numpy as np
 import cvxpy
+from copy import deepcopy
 
 
 class Model:
@@ -185,9 +186,10 @@ class ModelWithPrecondition:
 
     def solve(self, x0, solver=cvxpy.SCS, tol=1e-3, max_time=np.inf):
         # time limit in seconds
+        x0_cond = deepcopy(x0)
         for i in range(self.__problem.num_states):
-            x0[i] *= self.__problem.scaling[i]
-        self.__constraints.append(self.__x[self.__node_to_x(0)] == x0)
+            x0_cond[i] *= self.__problem.scaling[i]
+        self.__constraints.append(self.__x[self.__node_to_x(0)] == x0_cond)
         self.__cvx = cvxpy.Problem(self.__objective, self.__constraints)
         self.__constraints.pop()
         if solver == cvxpy.MOSEK:

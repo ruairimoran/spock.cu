@@ -66,10 +66,10 @@ class Dynamics:
     def A_B_uncond(self):
         return self.__state_input_unconditioned
 
-    def condition(self, scale_x, scale_u, scale_x_inv):
-        self.__state = scale_x_inv @ self.__state_unconditioned @ scale_x
-        self.__input = scale_x_inv @ self.__input_unconditioned @ scale_u
-        self.__const = scale_x_inv @ self.__const_unconditioned
+    def condition(self, scale_x_inv, scale_u_inv, scale_x):
+        self.__state = scale_x @ self.__state_unconditioned @ scale_x_inv
+        self.__input = scale_x @ self.__input_unconditioned @ scale_u_inv
+        self.__const = scale_x @ self.__const_unconditioned
         self.__state_input = np.hstack((self.__state, self.__input))
         return self
 
@@ -364,7 +364,7 @@ class Constraint:
         """
         pass
 
-    def condition(self, scaling_matrix):
+    def condition(self, scale_xu):
         """
         Scale constraint bounds or gamma matrix.
         """
@@ -483,9 +483,9 @@ class Rectangle(Constraint):
             x[i] = dual[i]
         return x
 
-    def condition(self, scaling_matrix):
-        self.__lo_bound = scaling_matrix @ self.__lo_bound_unconditioned
-        self.__up_bound = scaling_matrix @ self.__up_bound_unconditioned
+    def condition(self, scale_xu):
+        self.__lo_bound = scale_xu @ self.__lo_bound_unconditioned
+        self.__up_bound = scale_xu @ self.__up_bound_unconditioned
         return self
 
 
@@ -585,10 +585,10 @@ class Polyhedron(Constraint):
             x[i] = self.matrix.T @ dual[i]
         return x
 
-    def condition(self, scaling_matrix):
-        self.__matrix = self.__matrix_unconditioned @ scaling_matrix
-        self.__lo_bound = scaling_matrix @ self.__lo_bound_unconditioned
-        self.__up_bound = scaling_matrix @ self.__up_bound_unconditioned
+    def condition(self, scale_xu):
+        self.__matrix = self.__matrix_unconditioned @ scale_xu
+        self.__lo_bound = scale_xu @ self.__lo_bound_unconditioned
+        self.__up_bound = scale_xu @ self.__up_bound_unconditioned
         return self
 
 
@@ -668,9 +668,9 @@ class PolyhedronWithIdentity(Constraint):
             x[i] += self.__poly.matrix.T @ dual[i + n]
         return x
 
-    def condition(self, scaling_matrix):
-        self.__rect.condition()
-        self.__poly.condition()
+    def condition(self, scale_xu):
+        self.__rect.condition(scale_xu)
+        self.__poly.condition(scale_xu)
         return self
 
 

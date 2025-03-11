@@ -378,7 +378,7 @@ public:
         if (m_data.preconditioned()) {
             for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
                 for (size_t ele = 0; ele < m_tree.numInputs(); ele++) {
-                    inputs[node * m_tree.numInputs() + ele] *= m_data.scaling()[ele + m_tree.numStates()];
+                    inputs[node * m_tree.numInputs() + ele] /= m_data.scaling()[ele + m_tree.numStates()];
                 }
             }
         }
@@ -392,7 +392,7 @@ public:
         if (m_data.preconditioned()) {
             for (size_t node = 0; node < m_tree.numNodes(); node++) {
                 for (size_t ele = 0; ele < m_tree.numStates(); ele++) {
-                    states[node * m_tree.numStates() + ele] *= m_data.scaling()[ele];
+                    states[node * m_tree.numStates() + ele] /= m_data.scaling()[ele];
                 }
             }
         }
@@ -597,7 +597,7 @@ void Cache<T>::initialiseState(std::vector<T> &initState) {
     }
     if (m_data.preconditioned()) {
         for (size_t i = 0; i < m_tree.numStates(); i++) {
-            initState[i] *= 1 / m_data.scaling()[i];
+            initState[i] *= m_data.scaling()[i];
         }
     }
     m_d_initState->upload(initState);

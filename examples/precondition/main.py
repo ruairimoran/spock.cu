@@ -1,7 +1,6 @@
 import numpy as np
 import argparse
 import factories as f
-import cvxpy as cp
 
 
 def check_spd(mat, name):
@@ -55,8 +54,8 @@ for i in range(1, num_events + 1):
 
 # Costs
 nonleaf_costs = []
-Q_base = np.eye(num_states) * 1.0
-R_base = np.eye(num_inputs) * 0.1
+Q_base = np.eye(num_states) * 10.0
+R_base = np.eye(num_inputs) * 1.0
 for i in range(1, num_events + 1):
     Q = Q_base * i
     R = R_base * i
@@ -69,14 +68,14 @@ check_spd(T, "T")
 leaf_cost = f.build.LeafCost(T)
 
 # Constraints
-nonleaf_state_ub = np.ones(num_states) * 10000.
+nonleaf_state_ub = np.ones(num_states) * 1.
 nonleaf_state_lb = -nonleaf_state_ub
-nonleaf_input_ub = np.ones(num_inputs) * 10000.
+nonleaf_input_ub = np.ones(num_inputs) * 8.
 nonleaf_input_lb = -nonleaf_input_ub
 nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
 nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))
 nonleaf_constraint = f.build.Rectangle(nonleaf_lb, nonleaf_ub)
-leaf_ub = np.ones(num_states) * 10000.
+leaf_ub = np.ones(num_states) * 0.05
 leaf_lb = -leaf_ub
 leaf_constraint = f.build.Rectangle(leaf_lb, leaf_ub)
 
@@ -109,13 +108,16 @@ tree.write_to_file_fp("initialState", x0)
 if precondition:
     print("\n---- Normal problem ----")
     model = f.model.Model(tree, problem)
-    model.solve(x0, solver=cp.MOSEK, tol=1e-8)
-    print("MOSEK normal status: ", model.status)
+    model.solve(x0, tol=1e-8)
+    print("SCS normal status: ", model.status)
     print("States:\n", model.states, "\nInputs:\n", model.inputs, "\n")
 
     print("---- Preconditioned problem ----")
-    model = f.model.ModelWithPrecondition(tree, problem)
-    model.solve(x0, solver=cp.MOSEK, tol=1e-8)
-    print("MOSEK preconditioned status: ", model.status)
-    if model.status == "optimal":
-        print("States:\n", model.states, "\nInputs:\n", model.inputs, "\n")
+    model_pre = f.model.ModelWithPrecondition(tree, problem)
+    model_pre.solve(x0, tol=1e-8)
+    print("SCS preconditioned status: ", model_pre.status)
+    if model_pre.status != "infeasible":
+        print("States:\n", model_pre.states, "\nInputs:\n", model_pre.inputs, "\n")
+        print("Equal: ",
+              np.allclose(model_pre.states, model.states, 1e-3) and
+              np.allclose(model_pre.inputs, model.inputs, 1e-3))

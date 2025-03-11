@@ -172,16 +172,14 @@ class Problem:
         self.__scaling = np.hstack((scale_x, scale_u))
         if not (self.__scaling.all() > 0.):
             raise Exception("Preconditioning matrix is invalid!")
-        scale_x_mat = np.diag(scale_x)
-        scale_u_mat = np.diag(scale_u)
         scale_x_inv = np.diag(1 / scale_x)
         scale_u_inv = np.diag(1 / scale_u)
-        scale_xu_inv = np.diag(np.hstack((np.diagonal(scale_x_inv), np.diagonal(scale_u_inv))))
+        scale_x_mat = np.diag(scale_x)
         self.__list_of_dynamics = [d.condition(scale_x_inv, scale_u_inv, scale_x_mat) for d in self.__list_of_dynamics]
         self.__list_of_nonleaf_costs = [c.condition(scale_x_inv, scale_u_inv) for c in self.__list_of_nonleaf_costs]
         self.__list_of_leaf_costs = [c.condition(scale_x_inv) for c in self.__list_of_leaf_costs]
-        self.__nonleaf_constraint.condition(scale_xu_inv)
-        self.__leaf_constraint.condition(scale_x_inv)
+        self.__nonleaf_constraint.condition(np.diag(self.__scaling))
+        self.__leaf_constraint.condition(scale_x)
 
     def __offline_projection_dynamics(self):
         for i in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):

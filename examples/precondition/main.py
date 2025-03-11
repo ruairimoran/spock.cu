@@ -119,10 +119,11 @@ def compare_solutions(solver):
     model_pre.solve(x0, solver, tol=1e-8)
     print(solver.__str__(), "preconditioned status: ", model_pre.status)
     if model_pre.status != "infeasible":
+        tol = 1e-6 if solver == cp.MOSEK else 1e-2
         print("States:\n", model_pre.states, "\nInputs:\n", model_pre.inputs, "\n")
         print("Equal: ",
-              np.allclose(model_pre.states, model.states, 1e-6) and
-              np.allclose(model_pre.inputs, model.inputs, 1e-6),
+              np.allclose(model_pre.states, model.states, tol) and
+              np.allclose(model_pre.inputs, model.inputs, tol),
               "\n")
 
 

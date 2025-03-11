@@ -23,7 +23,7 @@ horizon = 2
 stopping = 1
 num_events = 2
 num_inputs = 1
-num_states = 2
+num_states = 1
 
 # --------------------------------------------------------
 # Generate scenario tree
@@ -54,8 +54,8 @@ for i in range(1, num_events + 1):
 
 # Costs
 nonleaf_costs = []
-Q_base = np.eye(num_states) * 10.
-R_base = np.eye(num_inputs) * 1.
+Q_base = np.eye(num_states) * 1.0
+R_base = np.eye(num_inputs) * 0.1
 for i in range(1, num_events + 1):
     Q = Q_base * i
     R = R_base * i
@@ -106,7 +106,15 @@ tree.write_to_file_fp("initialState", x0)
 
 # Check mosek
 if precondition:
+    print("\n---- Normal problem ----")
     model = f.model.Model(tree, problem)
     model.solve(x0, tol=1e-3)
-    print("\nIPOPT status: ", model.status)
+    print("IPOPT normal status: ", model.status)
     print("States:\n", model.states, "\nInputs:\n", model.inputs, "\n")
+
+    print("---- Preconditioned problem ----")
+    model = f.model.ModelWithPrecondition(tree, problem)
+    model.solve(x0, tol=1e-3)
+    print("IPOPT preconditioned status: ", model.status)
+    if model.status == "optimal":
+        print("States:\n", model.states, "\nInputs:\n", model.inputs, "\n")

@@ -66,11 +66,10 @@ class Dynamics:
     def A_B_uncond(self):
         return self.__state_input_unconditioned
 
-    def condition(self, scaling_state, scaling_input):
-        scaling_state_inv = np.diag(1 / np.diagonal(scaling_state))
-        self.__state = scaling_state_inv @ self.__state_unconditioned @ scaling_state
-        self.__input = scaling_state_inv @ self.__input_unconditioned @ scaling_input
-        self.__const = scaling_state_inv @ self.__const_unconditioned
+    def condition(self, scale_x, scale_u, scale_x_inv):
+        self.__state = scale_x_inv @ self.__state_unconditioned @ scale_x
+        self.__input = scale_x_inv @ self.__input_unconditioned @ scale_u
+        self.__const = scale_x_inv @ self.__const_unconditioned
         self.__state_input = np.hstack((self.__state, self.__input))
         return self
 

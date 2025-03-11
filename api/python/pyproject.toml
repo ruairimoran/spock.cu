@@ -1,7 +1,7 @@
 [project]
 name = "spock"
 dynamic = ["version"]
-license = {file = "LICENSE"}
+license = {text = "Apache 2.0"}
 readme = "README.md"
 authors = [
     {name = "Ruairi Moran", email = "rmoran05@qub.ac.uk"},
@@ -11,7 +11,7 @@ description = "API for SPOCK: a solver for multistage risk-averse optimal contro
 keywords=['risk averse, optimal control, parallel']
 requires-python = ">=3.8"
 classifiers = [
-    "Programming Languages :: Python :: C++ :: CUDA",
+    "Programming Languages :: Python",
     "Operating System :: OS Independent",
 ]
 dependencies = [
@@ -28,6 +28,7 @@ draw = [
 ]
 example = [
     'pandas',
+    'mosek',
 ]
 test = [
     'cvxpy',
@@ -35,6 +36,7 @@ test = [
 all = [
     'PythonTurtle',
     'pandas',
+    'mosek',
     'cvxpy',
 ]
 
@@ -46,8 +48,11 @@ Issues = "https://github.com/ruairimoran/raocp-parallel/issues"
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools.packages.find]
-where = ["src", "tests"]
+#[tool.setuptools.packages.find]
+#where = ["api/python"]
+
+[tool.setuptools.packages]
+find = {}
 
 [tool.setuptools.dynamic]
-version = {file = "VERSION"}
+version = {attr = "spock.meta.__version__"}

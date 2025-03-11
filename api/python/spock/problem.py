@@ -463,7 +463,7 @@ class Problem:
                              variable_end_string="~\\",
                              comment_start_string="\#",
                              comment_end_string="#\\")
-        template = env.get_template("data.json.jinja2")
+        template = env.get_template("jinja2.py")
         output = template.render(num_events=self.__tree.num_events,
                                  num_nonleaf_nodes=self.__tree.num_nonleaf_nodes,
                                  num_nodes=self.__tree.num_nodes,

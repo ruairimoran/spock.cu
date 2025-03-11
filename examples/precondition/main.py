@@ -1,6 +1,6 @@
 import numpy as np
 import argparse
-import factories as f
+import spock as s
 import cvxpy as cp
 
 
@@ -33,7 +33,7 @@ num_states = 2
 r = np.ones(num_events)
 v = r / sum(r)
 (final_stage, stop_branching_stage) = (horizon, stopping)
-tree = f.tree.IidProcess(
+tree = s.tree.IidProcess(
     distribution=v,
     horizon=final_stage,
     stopping_stage=stop_branching_stage
@@ -51,7 +51,7 @@ B_base = np.ones((num_states, num_inputs)) * .5
 for i in range(1, num_events + 1):
     A = A_base * i
     B = B_base * i
-    dynamics += [f.build.LinearDynamics(A, B)]
+    dynamics += [s.build.LinearDynamics(A, B)]
 
 # Costs
 nonleaf_costs = []
@@ -62,11 +62,11 @@ for i in range(1, num_events + 1):
     R = R_base * i
     check_spd(Q, "Q")
     check_spd(R, "R")
-    nonleaf_costs += [f.build.NonleafCost(Q, R)]
+    nonleaf_costs += [s.build.NonleafCost(Q, R)]
 
 T = Q_base
 check_spd(T, "T")
-leaf_cost = f.build.LeafCost(T)
+leaf_cost = s.build.LeafCost(T)
 
 # Constraints
 nonleaf_state_ub = np.ones(num_states) * 10.
@@ -75,18 +75,18 @@ nonleaf_input_ub = np.ones(num_inputs) * 7.
 nonleaf_input_lb = -nonleaf_input_ub
 nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
 nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))
-nonleaf_constraint = f.build.Rectangle(nonleaf_lb, nonleaf_ub)
+nonleaf_constraint = s.build.Rectangle(nonleaf_lb, nonleaf_ub)
 leaf_ub = np.ones(num_states) * 1.
 leaf_lb = -leaf_ub
-leaf_constraint = f.build.Rectangle(leaf_lb, leaf_ub)
+leaf_constraint = s.build.Rectangle(leaf_lb, leaf_ub)
 
 # Risk
 alpha = 1.
-risk = f.build.AVaR(alpha)
+risk = s.build.AVaR(alpha)
 
 # Generate problem data
 problem = (
-    f.problem.Factory(
+    s.problem.Factory(
         scenario_tree=tree,
         num_states=num_states,
         num_inputs=num_inputs)
@@ -105,20 +105,29 @@ print(problem)
 x0 = np.ones(num_states) * 5.
 tree.write_to_file_fp("initialState", x0)
 
-# Check mosek
-if precondition:
+
+# Compare
+def compare_solutions(solver):
     print("\n---- Normal problem ----")
-    model = f.model.Model(tree, problem)
-    model.solve(x0, cp.MOSEK, tol=1e-8)
-    print("MOSEK normal status: ", model.status)
+    model = s.model.Model(tree, problem)
+    model.solve(x0, solver, tol=1e-8)
+    print(solver.__str__(), "normal status: ", model.status)
     print("States:\n", model.states, "\nInputs:\n", model.inputs, "\n")
 
     print("---- Preconditioned problem ----")
-    model_pre = f.model.ModelWithPrecondition(tree, problem)
-    model_pre.solve(x0, cp.MOSEK, tol=1e-8)
-    print("MOSEK preconditioned status: ", model_pre.status)
+    model_pre = s.model.ModelWithPrecondition(tree, problem)
+    model_pre.solve(x0, solver, tol=1e-8)
+    print(solver.__str__(), "preconditioned status: ", model_pre.status)
     if model_pre.status != "infeasible":
         print("States:\n", model_pre.states, "\nInputs:\n", model_pre.inputs, "\n")
         print("Equal: ",
-              np.allclose(model_pre.states, model.states, 1e-3) and
-              np.allclose(model_pre.inputs, model.inputs, 1e-3))
+              np.allclose(model_pre.states, model.states, 1e-6) and
+              np.allclose(model_pre.inputs, model.inputs, 1e-6),
+              "\n")
+
+
+if precondition:
+    try:
+        compare_solutions(cp.MOSEK)
+    except:
+        compare_solutions(cp.SCS)

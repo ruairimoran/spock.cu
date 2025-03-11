@@ -586,7 +586,6 @@ class Polyhedron(Constraint):
         return x
 
     def condition(self, scale_xu):
-        self.__matrix = self.__matrix_unconditioned @ scale_xu
         self.__lo_bound = scale_xu @ self.__lo_bound_unconditioned
         self.__up_bound = scale_xu @ self.__up_bound_unconditioned
         return self

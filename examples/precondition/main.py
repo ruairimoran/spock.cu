@@ -1,6 +1,7 @@
 import numpy as np
 import argparse
 import factories as f
+import cvxpy as cp
 
 
 def check_spd(mat, name):
@@ -19,7 +20,7 @@ dt = args.dt
 precondition = bool(args.precondition)
 
 # Sizes::random
-horizon = 5
+horizon = 3
 stopping = 1
 num_events = 2
 num_inputs = 1
@@ -68,14 +69,14 @@ check_spd(T, "T")
 leaf_cost = f.build.LeafCost(T)
 
 # Constraints
-nonleaf_state_ub = np.ones(num_states) * 1000.
+nonleaf_state_ub = np.ones(num_states) * 10.
 nonleaf_state_lb = -nonleaf_state_ub
-nonleaf_input_ub = np.ones(num_inputs) * 1000.
+nonleaf_input_ub = np.ones(num_inputs) * 7.
 nonleaf_input_lb = -nonleaf_input_ub
 nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
 nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))
 nonleaf_constraint = f.build.Rectangle(nonleaf_lb, nonleaf_ub)
-leaf_ub = np.ones(num_states) * 1000.
+leaf_ub = np.ones(num_states) * 1.
 leaf_lb = -leaf_ub
 leaf_constraint = f.build.Rectangle(leaf_lb, leaf_ub)
 
@@ -108,14 +109,14 @@ tree.write_to_file_fp("initialState", x0)
 if precondition:
     print("\n---- Normal problem ----")
     model = f.model.Model(tree, problem)
-    model.solve(x0, tol=1e-8)
-    print("SCS normal status: ", model.status)
+    model.solve(x0, cp.MOSEK, tol=1e-8)
+    print("MOSEK normal status: ", model.status)
     print("States:\n", model.states, "\nInputs:\n", model.inputs, "\n")
 
     print("---- Preconditioned problem ----")
     model_pre = f.model.ModelWithPrecondition(tree, problem)
-    model_pre.solve(x0, tol=1e-8)
-    print("SCS preconditioned status: ", model_pre.status)
+    model_pre.solve(x0, cp.MOSEK, tol=1e-8)
+    print("MOSEK preconditioned status: ", model_pre.status)
     if model_pre.status != "infeasible":
         print("States:\n", model_pre.states, "\nInputs:\n", model_pre.inputs, "\n")
         print("Equal: ",

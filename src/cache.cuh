@@ -305,7 +305,7 @@ public:
         m_maxOuterIters(maxOuterIters), m_maxInnerIters(maxInnerIters), m_andBuff(andBuff), m_debug(debug) {
         /* Tolerances */
         if (m_data.preconditioned()) {
-            T tolScale = 1. / *std::max_element(m_data.scaling().begin(), m_data.scaling().end());
+            T tolScale = *std::min_element(m_data.scaling().begin(), m_data.scaling().end());
             m_tolAbs *= tolScale;
             m_tolRel *= tolScale;
         }

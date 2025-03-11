@@ -1,6 +1,7 @@
 import numpy as np
 import argparse
 import factories as f
+import cvxpy as cp
 
 
 def check_spd(mat, name):
@@ -38,7 +39,7 @@ tree = f.tree.IidProcess(
     stopping_stage=stop_branching_stage
 ).build()
 print(tree)
-tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')  # requires python-tk@3.x installation
+# tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')  # requires python-tk@3.x installation
 
 # --------------------------------------------------------
 # Generate problem data
@@ -108,13 +109,13 @@ tree.write_to_file_fp("initialState", x0)
 if precondition:
     print("\n---- Normal problem ----")
     model = f.model.Model(tree, problem)
-    model.solve(x0, tol=1e-6)
-    print("IPOPT normal status: ", model.status)
+    model.solve(x0, solver=cp.MOSEK, tol=1e-8)
+    print("MOSEK normal status: ", model.status)
     print("States:\n", model.states, "\nInputs:\n", model.inputs, "\n")
 
     print("---- Preconditioned problem ----")
     model = f.model.ModelWithPrecondition(tree, problem)
-    model.solve(x0, tol=1e-6)
-    print("IPOPT preconditioned status: ", model.status)
+    model.solve(x0, solver=cp.MOSEK, tol=1e-8)
+    print("MOSEK preconditioned status: ", model.status)
     if model.status == "optimal":
         print("States:\n", model.states, "\nInputs:\n", model.inputs, "\n")

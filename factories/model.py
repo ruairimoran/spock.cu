@@ -186,7 +186,7 @@ class ModelWithPrecondition:
     def solve(self, x0, solver=cvxpy.SCS, tol=1e-3, max_time=np.inf):
         # time limit in seconds
         for i in range(self.__problem.num_states):
-            x0[i] *= 1 / self.__problem.scaling[i]
+            x0[i] *= self.__problem.scaling[i]
         self.__constraints.append(self.__x[self.__node_to_x(0)] == x0)
         self.__cvx = cvxpy.Problem(self.__objective, self.__constraints)
         self.__constraints.pop()
@@ -222,7 +222,7 @@ class ModelWithPrecondition:
         states = np.array(self.__x.value).reshape(-1, 1)
         scaling = self.__problem.scaling[:self.__problem.num_states]
         for i in range(self.__tree.num_nodes * self.__problem.num_states):
-            states[i] *= scaling[i % self.__problem.num_states]
+            states[i] /= scaling[i % self.__problem.num_states]
         return states
 
     @property
@@ -230,7 +230,7 @@ class ModelWithPrecondition:
         inputs = np.array(self.__u.value).reshape(-1, 1)
         scaling = self.__problem.scaling[self.__problem.num_states:]
         for i in range(self.__tree.num_nonleaf_nodes * self.__problem.num_inputs):
-            inputs[i] *= scaling[i % self.__problem.num_inputs]
+            inputs[i] /= scaling[i % self.__problem.num_inputs]
         return inputs
 
     @property
@@ -286,6 +286,7 @@ class ModelWithPrecondition:
                 cvxpy.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost_at_node(node).R)
                 <= self.__t[node - 1]
             )
+
         # leaf
         for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
             self.__constraints.append(

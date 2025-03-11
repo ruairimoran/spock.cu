@@ -226,11 +226,11 @@ class NonleafCost(Cost):
     def r_uncond(self):
         return self.__r_unconditioned
 
-    def condition(self, scaling_state, scaling_input):
-        self.Q = scaling_state.T @ self.Q_uncond @ scaling_state
-        self.R = scaling_input.T @ self.R_uncond @ scaling_input
-        self.__q = scaling_state.T @ self.q_uncond if self.__lin_q else None
-        self.__r = scaling_input.T @ self.r_uncond if self.__lin_r else None
+    def condition(self, scaling_state_inv, scaling_input_inv):
+        self.Q = scaling_state_inv.T @ self.Q_uncond @ scaling_state_inv
+        self.R = scaling_input_inv.T @ self.R_uncond @ scaling_input_inv
+        self.__q = scaling_state_inv.T @ self.q_uncond if self.__lin_q else None
+        self.__r = scaling_input_inv.T @ self.r_uncond if self.__lin_r else None
         self.__set_translation()
         return self
 
@@ -266,9 +266,9 @@ class LeafCost(Cost):
     def q_uncond(self):
         return self.__q_unconditioned
 
-    def condition(self, scaling_state):
-        self.Q = scaling_state.T @ self.Q_uncond @ scaling_state
-        self.__q = scaling_state.T @ self.q_uncond if self.lin else None
+    def condition(self, scaling_state_inv):
+        self.Q = scaling_state_inv.T @ self.Q_uncond @ scaling_state_inv
+        self.__q = scaling_state_inv.T @ self.q_uncond if self.lin else None
         self.__set_translation()
         return self
 

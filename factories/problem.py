@@ -177,9 +177,9 @@ class Problem:
         scale_x_inv = np.diag(1 / scale_x)
         scale_u_inv = np.diag(1 / scale_u)
         scale_xu_inv = np.diag(np.hstack((np.diagonal(scale_x_inv), np.diagonal(scale_u_inv))))
-        self.__list_of_dynamics = [d.condition(scale_x_mat, scale_u_mat, scale_x_inv) for d in self.__list_of_dynamics]
-        self.__list_of_nonleaf_costs = [c.condition(scale_x_inv, scale_u_inv) for c in self.__list_of_nonleaf_costs]
-        self.__list_of_leaf_costs = [c.condition(scale_x_inv) for c in self.__list_of_leaf_costs]
+        self.__list_of_dynamics = [d.condition(scale_x_inv, scale_u_inv, scale_x_mat) for d in self.__list_of_dynamics]
+        self.__list_of_nonleaf_costs = [c.condition(scale_x_mat, scale_u_mat) for c in self.__list_of_nonleaf_costs]
+        self.__list_of_leaf_costs = [c.condition(scale_x_mat) for c in self.__list_of_leaf_costs]
         self.__nonleaf_constraint.condition(scale_xu_inv)
         self.__leaf_constraint.condition(scale_x_inv)
 

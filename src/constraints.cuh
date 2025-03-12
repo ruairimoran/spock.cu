@@ -141,13 +141,14 @@ public:
         for (size_t i = 0; i < numNodes; i++) {
             DTensor<T> lbNode(*this->m_d_lowerBound, this->m_matAxis, i, i);
             DTensor<T> ubNode(*this->m_d_upperBound, this->m_matAxis, i, i);
+            lb.deviceCopyTo(lbNode);
+            ub.deviceCopyTo(ubNode);
+            /* Edit the root node state bounds (±inf) */
             if (part == nonleaf && i == 0) {
-                size_t n = numStates + numInputs;
-                lbNode.upload(std::vector<T>(n, -INFINITY));
-                ubNode.upload(std::vector<T>(n, INFINITY));
-            } else {
-                lb.deviceCopyTo(lbNode);
-                ub.deviceCopyTo(ubNode);
+                DTensor<T> lbRootState(lbNode, this->m_rowAxis, 0, numStates - 1);
+                DTensor<T> ubRootState(ubNode, this->m_rowAxis, 0, numStates - 1);
+                lbRootState.upload(std::vector<T>(numStates, -INFINITY));
+                ubRootState.upload(std::vector<T>(numStates, INFINITY));
             }
         }
     }

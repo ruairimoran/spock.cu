@@ -106,29 +106,36 @@ x0 = np.ones(num_states) * 5.
 tree.write_to_file_fp("initialState", x0)
 
 
-# Compare
-def compare_solutions(solver):
-    print("\n---- Normal problem ----")
+# Compare solutions
+def run_unconditioned(sol):
     model = s.model.Model(tree, problem)
-    model.solve(x0, solver, tol=1e-8)
-    print(solver.__str__(), "normal status: ", model.status)
+    model.solve(x0, sol, tol=1e-8)
+    print("\n---- Normal problem ----")
+    print(sol.__str__(), "normal status: ", model.status)
     print("States:\n", model.states, "\nInputs:\n", model.inputs, "\n")
+    return model.states, model.inputs
 
+
+def run_conditioned(sol):
+    model = s.model.ModelWithPrecondition(tree, problem)
+    model.solve(x0, sol, tol=1e-8)
     print("---- Preconditioned problem ----")
-    model_pre = s.model.ModelWithPrecondition(tree, problem)
-    model_pre.solve(x0, solver, tol=1e-8)
-    print(solver.__str__(), "preconditioned status: ", model_pre.status)
-    if model_pre.status != "infeasible":
-        tol = 1e-6 if solver == cp.MOSEK else 1e-2
-        print("States:\n", model_pre.states, "\nInputs:\n", model_pre.inputs, "\n")
-        print("Equal: ",
-              np.allclose(model_pre.states, model.states, tol) and
-              np.allclose(model_pre.inputs, model.inputs, tol),
-              "\n")
+    print(sol.__str__(), "preconditioned status: ", model.status)
+    return model.states, model.inputs, model.status
 
 
+try:
+    solver = cp.MOSEK
+    states, inputs = run_unconditioned(solver)
+except:
+    solver = cp.SCS
+    states, inputs = run_unconditioned(solver)
 if precondition:
-    try:
-        compare_solutions(cp.MOSEK)
-    except:
-        compare_solutions(cp.SCS)
+    states_, inputs_, status = run_conditioned(solver)
+    if status != "infeasible":
+        tol = 1e-2
+        print("States:\n", states_, "\nInputs:\n", inputs_, "\n")
+        print("Equal: ",
+              np.allclose(states_, states, tol) and
+              np.allclose(inputs_, inputs, tol),
+              "\n")

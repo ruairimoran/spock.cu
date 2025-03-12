@@ -354,14 +354,8 @@ public:
         for (size_t i = 0; i < this->m_numNodes; i++) {
             DTensor<T> ilbNode(ilbSlice, this->m_matAxis, i, i);
             DTensor<T> iubNode(iubSlice, this->m_matAxis, i, i);
-            if (part == nonleaf && i == 0) {
-                size_t n = numStates + numInputs;
-                ilbNode.upload(std::vector<T>(n, -INFINITY));
-                iubNode.upload(std::vector<T>(n, INFINITY));
-            } else {
-                ilb.deviceCopyTo(ilbNode);
-                iub.deviceCopyTo(iubNode);
-            }
+            ilb.deviceCopyTo(ilbNode);
+            iub.deviceCopyTo(iubNode);
             DTensor<T> glbNode(glbSlice, this->m_matAxis, i, i);
             DTensor<T> gubNode(gubSlice, this->m_matAxis, i, i);
             glb.deviceCopyTo(glbNode);

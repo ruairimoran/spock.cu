@@ -154,13 +154,14 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_ellResidual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_ellResidualPrim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_ellResidualDual = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_admmIterate = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_admmIterateCandidate = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_admmErrPrim = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_admmErrDual = nullptr;
-    T m_admmTolPrim = 0;
-    T m_admmTolDual = 0;
+//    std::unique_ptr<DTensor<T>> m_d_admmIterate = nullptr;
+//    std::unique_ptr<DTensor<T>> m_d_admmIterateCandidate = nullptr;
+//    std::unique_ptr<DTensor<T>> m_d_admmErrPrim = nullptr;
+//    std::unique_ptr<DTensor<T>> m_d_admmErrDual = nullptr;
+//    T m_admmTolPrim = 0.;
+//    T m_admmTolDual = 0.;
     /* Workspaces */
+    std::vector<T> m_initState;
     std::unique_ptr<DTensor<T>> m_d_initState = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workIterate = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workIteratePrim = nullptr;
@@ -184,7 +185,6 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_vi = nullptr;
     std::unique_ptr<DTensor<T>> m_d_viSoc = nullptr;
     std::unique_ptr<DTensor<T>> m_d_input = nullptr;
-    std::vector<T> m_input;
     /* Projections */
     std::unique_ptr<NonnegativeOrthantCone<T>> m_nnoc = nullptr;
     /* Caches */
@@ -312,7 +312,7 @@ public:
         /* Sizes */
         initialiseSizes();
         /* Allocate memory on host */
-        m_input = std::vector<T>(m_tree.numInputs());
+        m_initState = std::vector<T>(m_tree.numStates());
         m_cacheCallsToL = std::vector<size_t>(m_maxOuterIters);
         m_cacheError0 = std::vector<T>(m_maxOuterIters);
         m_cacheError1 = std::vector<T>(m_maxOuterIters);
@@ -361,6 +361,8 @@ public:
     int runCp(std::vector<T> &, std::vector<T> * = nullptr);
 
     int runSpock(std::vector<T> &, std::vector<T> * = nullptr);
+
+    int status() { return m_exitCode; }
 
     size_t solveIter() { return m_countIterations; }
 
@@ -427,22 +429,23 @@ void Cache<T>::reset() {
     m_data.dynamics()->resetWorkspace();
     m_L.resetWorkspace();
     /* Create zero vectors */
-    std::vector<T> numStates(m_tree.numStates(), 0);
-    std::vector<T> sizeIterate(m_sizeIterate, 0);
-    std::vector<T> sizePrim(m_sizePrim, 0);
-    std::vector<T> sizeDual(m_sizeDual, 0);
-    std::vector<T> sizeIterateSizeAnd(m_sizeIterate * m_andBuff, 0);
-    std::vector<T> nullDimNumNonleafNodes(m_data.nullDim() * m_tree.numNonleafNodes(), 0);
+    std::vector<T> numStates(m_tree.numStates(), 0.);
+    std::vector<T> sizeIterate(m_sizeIterate, 0.);
+    std::vector<T> sizePrim(m_sizePrim, 0.);
+    std::vector<T> sizeDual(m_sizeDual, 0.);
+    std::vector<T> sizeIterateSizeAnd(m_sizeIterate * m_andBuff, 0.);
+    std::vector<T> nullDimNumNonleafNodes(m_data.nullDim() * m_tree.numNonleafNodes(), 0.);
     /* Zero all cached data */
-    std::fill(m_cacheCallsToL.begin(), m_cacheCallsToL.end(), 0);
-    std::fill(m_cacheError0.begin(), m_cacheError0.end(), 0);
-    std::fill(m_cacheError1.begin(), m_cacheError1.end(), 0);
-    std::fill(m_cacheError2.begin(), m_cacheError2.end(), 0);
-    std::fill(m_cacheDeltaPrim.begin(), m_cacheDeltaPrim.end(), 0);
-    std::fill(m_cacheDeltaDual.begin(), m_cacheDeltaDual.end(), 0);
-    std::fill(m_cacheNrmLtrDeltaDual.begin(), m_cacheNrmLtrDeltaDual.end(), 0);
-    std::fill(m_cacheDistDeltaDual.begin(), m_cacheDistDeltaDual.end(), 0);
-    std::fill(m_cacheSuppDeltaDual.begin(), m_cacheSuppDeltaDual.end(), 0);
+    std::fill(m_initState.begin(), m_initState.end(), 0.);
+    std::fill(m_cacheCallsToL.begin(), m_cacheCallsToL.end(), 0.);
+    std::fill(m_cacheError0.begin(), m_cacheError0.end(), 0.);
+    std::fill(m_cacheError1.begin(), m_cacheError1.end(), 0.);
+    std::fill(m_cacheError2.begin(), m_cacheError2.end(), 0.);
+    std::fill(m_cacheDeltaPrim.begin(), m_cacheDeltaPrim.end(), 0.);
+    std::fill(m_cacheDeltaDual.begin(), m_cacheDeltaDual.end(), 0.);
+    std::fill(m_cacheNrmLtrDeltaDual.begin(), m_cacheNrmLtrDeltaDual.end(), 0.);
+    std::fill(m_cacheDistDeltaDual.begin(), m_cacheDistDeltaDual.end(), 0.);
+    std::fill(m_cacheSuppDeltaDual.begin(), m_cacheSuppDeltaDual.end(), 0.);
     m_d_initState->upload(numStates);
     m_d_iterate->upload(sizeIterate);
     m_d_iteratePrev->upload(sizeIterate);
@@ -596,11 +599,11 @@ void Cache<T>::initialiseState(std::vector<T> &initState) {
         throw ERR;
     }
     if (m_data.preconditioned()) {
-        for (size_t i = 0; i < m_tree.numStates(); i++) {
-            initState[i] *= m_data.scaling()[i];
-        }
+        for (size_t i = 0; i < m_tree.numStates(); i++) { m_initState[i] = initState[i] * m_data.scaling()[i]; }
+        m_d_initState->upload(m_initState);
+    } else {
+        m_d_initState->upload(initState);
     }
-    m_d_initState->upload(initState);
 }
 
 /**

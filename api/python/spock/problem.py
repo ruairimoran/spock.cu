@@ -45,7 +45,8 @@ class Problem:
         self.__list_of_risks = risk
         self.__nonleaf_constraint = nonleaf_constraint
         self.__leaf_constraint = leaf_constraint
-        self.__precondition = precondition
+        self.__precondition_requested = precondition
+        self.__precondition_worth_it = False
         self.__test = test
         self.__julia = julia
         # Dynamics projection
@@ -129,13 +130,21 @@ class Problem:
     def scaling(self):
         return self.__scaling
 
+    @property
+    def preconditioned(self):
+        return self.__precondition_worth_it
+
     # --------------------------------------------------------
     # Cache
     # --------------------------------------------------------
 
     def __generate_offline(self):
-        if self.__precondition:  # Must be first
-            self.__preconditioning()
+        if self.__precondition_requested:  # Must be first
+            scale_x, scale_u = self.__preconditioning_check()
+            if self.__precondition_worth_it:
+                self.__preconditioning(scale_x, scale_u)
+            else:
+                print("Not worth preconditioning! Continuing without...")
         self.__offline_projection_dynamics()
         self.__offline_projection_kernel()
         self.__pad_b()
@@ -146,9 +155,10 @@ class Problem:
             self.__test_is_adjoint()
             self.__test_dot()
 
-    def __preconditioning(self):
+    def __preconditioning_check(self):
         """
-        Scale problem data to improve step size.
+        Find scaling parameters to improve step size.
+        If all scaling parameters are <=1, preconditioning is not worth it.
         Caution! Only use diagonal scaling matrices.
         """
         scale_x = np.ones(self.__num_states)
@@ -169,9 +179,16 @@ class Problem:
                 if scale > scale_u[ele]:
                     scale_u[ele] = scale
 
+        self.__precondition_worth_it = not (np.allclose(scale_x, 1.) and np.allclose(scale_u, 1.))
+        return scale_x, scale_u
+
+    def __preconditioning(self, scale_x, scale_u):
+        """
+        Condition problem data with scaling parameters.
+        """
         self.__scaling = np.hstack((scale_x, scale_u))
         if not (self.__scaling.all() > 0.):
-            raise Exception("Preconditioning matrix is invalid!")
+            raise Exception("Preconditioning parameters are invalid!")
         scale_x_inv = np.diag(1 / scale_x)
         scale_u_inv = np.diag(1 / scale_u)
         scale_x_mat = np.diag(scale_x)
@@ -477,7 +494,7 @@ class Problem:
                                  ker_con_rows=self.__kernel_constraint_matrix_rows,
                                  null_dim=self.__max_nullspace_dim,
                                  step_size=self.__step_size,
-                                 precondition=self.__precondition,
+                                 precondition=self.__precondition_worth_it,
                                  )
         path = self.__tree.get_folder_path
         output_file = os.path.join(path, "data.json")
@@ -524,7 +541,7 @@ class Problem:
             tensors.update({
                 "dynamics_c": stack_dyn_const,
             })
-        if self.__precondition:
+        if self.__precondition_worth_it:
             stack_scaling = self.__scaling.reshape(-1)
             tensors.update({
                 "scaling": stack_scaling,
@@ -613,10 +630,14 @@ class Problem:
             self.__tree.write_to_file_fp(name, tensor)
 
     def __str__(self):
-        return f"Problem Data\n+ Step size: {self.__step_size}\n+ Preconditioning: {self.__precondition}"
+        return (f"Problem Data\n+ Step size: {self.__step_size}\n"
+                f"+ Preconditioning: "
+                f"requested = {self.__precondition_requested}, accepted = {self.__precondition_worth_it}")
 
     def __repr__(self):
-        return f"Problem Data\n+ Step size: {self.__step_size}\n+ Preconditioning: {self.__precondition}"
+        return (f"Problem Data\n+ Step size: {self.__step_size}\n"
+                f"+ Preconditioning: "
+                f"requested = {self.__precondition_requested}, accepted = {self.__precondition_worth_it}")
 
 
 class Factory:

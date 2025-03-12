@@ -55,8 +55,8 @@ for i in range(1, num_events + 1):
 
 # Costs
 nonleaf_costs = []
-Q_base = np.eye(num_states) * 10.0
-R_base = np.eye(num_inputs) * 1.0
+Q_base = np.eye(num_states) * 10.
+R_base = np.eye(num_inputs) * 1.
 for i in range(1, num_events + 1):
     Q = Q_base * i
     R = R_base * i
@@ -130,7 +130,7 @@ try:
 except:
     solver = cp.SCS
     states, inputs = run_unconditioned(solver)
-if precondition:
+if problem.preconditioned:
     states_, inputs_, status = run_conditioned(solver)
     if status != "infeasible":
         tol = 1e-2

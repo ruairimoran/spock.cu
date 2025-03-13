@@ -118,7 +118,7 @@ function read_data()
         json["dynamics"]["type"],
         read_tensor_from_binary(TR, folder * "uncond_dynamics_A" * file_ext_r),
         read_tensor_from_binary(TR, folder * "uncond_dynamics_B" * file_ext_r),
-        read_tensor_from_binary(TR, folder * "dynamics_e" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "uncond_dynamics_c" * file_ext_r),
         read_tensor_from_binary(TR, folder * "uncond_cost_nonleafQ" * file_ext_r),
         read_tensor_from_binary(TR, folder * "uncond_cost_nonleafR" * file_ext_r),
         read_tensor_from_binary(TR, folder * "uncond_cost_leafQ" * file_ext_r),

@@ -1,6 +1,6 @@
 import numpy as np
 import argparse
-import factories as f
+import spock as s
 
 
 def check_spd(mat, name):
@@ -13,14 +13,18 @@ def check_spd(mat, name):
 
 parser = argparse.ArgumentParser(description='Example: random.')
 parser.add_argument("--dt", type=str, default='d')
+parser.add_argument("--lo", type=int, default=1e3)
+parser.add_argument("--hi", type=int, default=1e6)
 args = parser.parse_args()
 dt = args.dt
+lo_vars = args.lo
+hi_vars = args.hi
 
 # Sizes::random
 horizon, num_events, stopping, num_inputs, num_states = 0, 0, 0, 0, 0
 rng = np.random.default_rng()
 num_vars = np.inf
-while num_vars > 4e3:
+while not (lo_vars < num_vars < hi_vars):
     horizon = rng.integers(5, 15, endpoint=True)
     stopping = rng.integers(1, 3, endpoint=True)
     num_events = rng.integers(2, 10, endpoint=True)
@@ -47,7 +51,7 @@ r = rng.uniform(size=num_events)
 v = r / sum(r)
 
 (final_stage, stop_branching_stage) = (horizon, stopping)
-tree = f.tree.IidProcess(
+tree = s.tree.IidProcess(
     distribution=v,
     horizon=final_stage,
     stopping_stage=stop_branching_stage
@@ -65,14 +69,13 @@ A_base = np.eye(num_states)
 B_base = rng.normal(0., 1., size=(num_states, num_inputs))
 for i in range(num_events):
     A = A_base + rng.normal(0., .01, size=(num_states, num_states))
-    # A = enforce_contraction(A)
     B = B_base + rng.normal(0., .01, size=(num_states, num_inputs))
-    dynamics += [f.build.LinearDynamics(A, B)]
+    dynamics += [s.build.LinearDynamics(A, B)]
 
 # Costs
 nonleaf_costs = []
-Q_base = rng.normal(0., .02, size=(num_states, num_states))
-R_base = rng.normal(0., .01, size=(num_inputs, num_inputs))
+Q_base = rng.normal(0., .1, size=(num_states, num_states))
+R_base = rng.normal(0., .1, size=(num_inputs, num_inputs))
 for i in range(num_events):
     Q_w = Q_base + rng.normal(0., .01, size=(num_states, num_states))
     R_w = R_base + rng.normal(0., .01, size=(num_inputs, num_inputs))
@@ -80,11 +83,11 @@ for i in range(num_events):
     R = R_w @ R_w.T
     # check_spd(Q, "Q")
     # check_spd(R, "R")
-    nonleaf_costs += [f.build.NonleafCost(Q, R)]
+    nonleaf_costs += [s.build.NonleafCost(Q, R)]
 
 T = Q_base @ Q_base.T
 # check_spd(T, "T")
-leaf_cost = f.build.LeafCost(T)
+leaf_cost = s.build.LeafCost(T)
 
 # Constraints
 nonleaf_state_ub = rng.uniform(1., 2., num_states)
@@ -93,18 +96,18 @@ nonleaf_input_ub = rng.uniform(0., .1, num_inputs)
 nonleaf_input_lb = -nonleaf_input_ub
 nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
 nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))
-nonleaf_constraint = f.build.Rectangle(nonleaf_lb, nonleaf_ub)
+nonleaf_constraint = s.build.Rectangle(nonleaf_lb, nonleaf_ub)
 leaf_ub = rng.uniform(1., 2., num_states)
 leaf_lb = -leaf_ub
-leaf_constraint = f.build.Rectangle(leaf_lb, leaf_ub)
+leaf_constraint = s.build.Rectangle(leaf_lb, leaf_ub)
 
 # Risk
 alpha = rng.uniform(0., 1.)
-risk = f.build.AVaR(alpha)
+risk = s.build.AVaR(alpha)
 
 # Generate problem data
 problem = (
-    f.problem.Factory(
+    s.problem.Factory(
         scenario_tree=tree,
         num_states=num_states,
         num_inputs=num_inputs)
@@ -114,23 +117,7 @@ problem = (
     .with_nonleaf_constraint(nonleaf_constraint)
     .with_leaf_constraint(leaf_constraint)
     .with_risk(risk)
-    .with_preconditioning(False)
-    .with_julia()
-    .generate_problem()
-)
-
-problem_ = (
-    f.problem.Factory(
-        scenario_tree=tree,
-        num_states=num_states,
-        num_inputs=num_inputs)
-    .with_stochastic_dynamics(dynamics)
-    .with_stochastic_nonleaf_costs(nonleaf_costs)
-    .with_leaf_cost(leaf_cost)
-    .with_nonleaf_constraint(nonleaf_constraint)
-    .with_leaf_constraint(leaf_constraint)
-    .with_risk(risk)
-    .with_preconditioning(True)
+    .with_preconditioning()
     .with_julia()
     .generate_problem()
 )

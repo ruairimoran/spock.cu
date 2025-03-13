@@ -1,7 +1,7 @@
 import Pkg
 Pkg.activate(joinpath(@__DIR__, "modelFactory"))
 include(joinpath(@__DIR__, "modelFactory", "src", "modelFactory.jl"))
-using .modelFactory, JuMP, Gurobi, MosekTools, Ipopt, COSMO
+using .modelFactory, JuMP, Gurobi, MosekTools, Ipopt  # COSMO
 
 
 function check_status(model :: Model, time, max_time)
@@ -24,7 +24,7 @@ max_time = 5 * minute
 time_g = 0.
 time_m = 0.
 time_i = 0.
-time_c = 0.
+# time_c = 0.
 tol_f64 = Float64(1e-3)
 max_time_f64 = Float64(5 * minute)
 status = Int64(1)
@@ -46,6 +46,15 @@ if status_g == MOI.OPTIMAL || status_g == MOI.LOCALLY_SOLVED || status_g == MOI.
 end
 
 if status == 0
+    atol = 1e-3
+    sat_x_max = any(isapprox.(maximum(value.(model_g[:x])), data.constraint_nonleaf_max[1]; atol=atol))
+    sat_x_min = any(isapprox.(minimum(value.(model_g[:x])), data.constraint_nonleaf_min[1]; atol=atol))
+    sat_u_max = any(isapprox.(maximum(value.(model_g[:u])), data.constraint_nonleaf_max[data.num_states + 1]; atol=atol))
+    sat_u_min = any(isapprox.(minimum(value.(model_g[:u])), data.constraint_nonleaf_min[data.num_states + 1]; atol=atol))
+    sat_x = sat_x_max || sat_x_min
+    sat_u = sat_u_max || sat_u_min
+    println("(Gurobi) Constraint saturation: states = ", sat_x, ", inputs = ", sat_u)
+
     model_m = build_model(Mosek.Optimizer, data, risk)
     set_attribute(model_m, "MSK_DPAR_INTPNT_TOL_REL_GAP", tol_f64)
     set_attribute(model_m, "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", tol_f64)
@@ -73,23 +82,24 @@ if status == 0
     end
     status_i, time_i = check_status(model_i, time_i, max_time_f64)
 
-    model_c = build_model(COSMO.Optimizer, data, risk)
-    set_attribute(model_c, "eps_abs", tol_f64)
-    set_attribute(model_c, "eps_rel", tol_f64)
-    set_attribute(model_c, "time_limit", max_time_f64)
-    println("(Cosmo) Solving...")
-    try
-        global time_c = @elapsed solve_this(model_c, x0)
-    catch e
-        global time_c = 0.
-        println(e)
-    end
-    status_c, time_c = check_status(model_c, time_c, max_time_f64)
+#     model_c = build_model(COSMO.Optimizer, data, risk)
+#     set_attribute(model_c, "eps_abs", tol_f64)
+#     set_attribute(model_c, "eps_rel", tol_f64)
+#     set_attribute(model_c, "time_limit", max_time_f64)
+#     println("(Cosmo) Solving...")
+#     try
+#         global time_c = @elapsed solve_this(model_c, x0)
+#     catch e
+#         global time_c = 0.
+#         println(e)
+#     end
+#     status_c, time_c = check_status(model_c, time_c, max_time_f64)
 
     println("Saving julia times ...")
     num_vars = data.num_nodes * (data.num_states + data.num_inputs)
     open("time.csv", "a") do f
-        write(f, "$(num_vars), $(time_g), $(time_m), $(time_i), $(time_c), ")
+        write(f, "$(num_vars), $(time_g), $(time_m), $(time_i), ")
+#         write(f, "$(num_vars), $(time_g), $(time_m), $(time_i), $(time_c), ")
     end
     println("Saved!")
 end

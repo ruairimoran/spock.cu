@@ -3,44 +3,36 @@
 
 
 int main() {
-    bool debug = false;
     real_t minute = 60.;
-
     real_t avgTime = 0.;
     try {
         /* SCENARIO TREE */
         std::cout << "Reading tree files...\n";
         ScenarioTree<real_t> tree;
-        if (debug) std::cout << tree;
 
         /* PROBLEM DATA */
         std::cout << "Reading problem files...\n";
         ProblemData<real_t> problem(tree);
-        if (debug) std::cout << problem;
 
         /* CACHE */
         real_t tol = 1e-3;
         real_t maxTime = 5 * minute;
         std::cout << "Allocating cache...\n";
         CacheBuilder builder(tree, problem);
-        Cache cache = builder
-            .tol(tol)
-            .maxTimeSecs(maxTime)
-            .build();
+        Cache cache = builder.tol(tol).maxTimeSecs(maxTime).build();
 
         /* TIMING ALGORITHM */
         DTensor<real_t> d_initState = DTensor<real_t>::parseFromFile(tree.path() + "initialState" + tree.fpFileExt());
         std::vector<real_t> initState(tree.numStates());
         d_initState.download(initState);
-        size_t runs = 3;
-        size_t warm = 5;
+        size_t runs = 2;
+        size_t warm = 3;
         size_t totalRuns = runs + warm;
         std::vector<real_t> runTimes(totalRuns, 0.);
         std::cout << "Computing average solve time over (" << runs << ") runs with (" << warm << ") warm up runs...\n";
         for (size_t i = 0; i < totalRuns; i++) {
             int status = cache.runSpock(initState);
-            if (status == 1) throw std::runtime_error("Out of iterations.");
-            if (status == 2) throw std::runtime_error("Out of time.");
+            if (status != converged) throw std::runtime_error(toString(status));
             runTimes[i] = cache.solveTime();
             cache.reset();
             std::cout << "Run (" << i << ") : " << runTimes[i] << " s.\n";

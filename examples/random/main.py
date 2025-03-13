@@ -28,7 +28,7 @@ while not (lo_vars < num_vars < hi_vars):
     horizon = rng.integers(5, 15, endpoint=True)
     stopping = rng.integers(1, 3, endpoint=True)
     num_events = rng.integers(2, 10, endpoint=True)
-    num_inputs = rng.integers(10, 100, endpoint=True)
+    num_inputs = 3  # rng.integers(10, 100, endpoint=True)
     num_states = num_inputs * 2
     num_nodes = ((num_events**(stopping + 1) - 1) / (num_events - 1)) + ((num_events**stopping) * (horizon - stopping))
     num_vars = num_nodes * (num_states + num_inputs)
@@ -66,7 +66,7 @@ print(tree)
 # Dynamics
 dynamics = []
 A_base = np.eye(num_states)
-B_base = rng.normal(0., 1., size=(num_states, num_inputs))
+B_base = rng.normal(0., .1, size=(num_states, num_inputs))
 for i in range(num_events):
     A = A_base + rng.normal(0., .01, size=(num_states, num_states))
     B = B_base + rng.normal(0., .01, size=(num_states, num_inputs))
@@ -74,19 +74,19 @@ for i in range(num_events):
 
 # Costs
 nonleaf_costs = []
-Q_base = rng.normal(0., .1, size=(num_states, num_states))
-R_base = rng.normal(0., .1, size=(num_inputs, num_inputs))
+Q_base = np.diag(rng.uniform(0., 3., size=num_states))
+R_base = np.diag(rng.uniform(0., 1., size=num_inputs))
 for i in range(num_events):
     Q_w = Q_base + rng.normal(0., .01, size=(num_states, num_states))
     R_w = R_base + rng.normal(0., .01, size=(num_inputs, num_inputs))
     Q = Q_w @ Q_w.T
     R = R_w @ R_w.T
-    # check_spd(Q, "Q")
-    # check_spd(R, "R")
+    check_spd(Q, "Q")
+    check_spd(R, "R")
     nonleaf_costs += [s.build.NonleafCost(Q, R)]
 
 T = Q_base @ Q_base.T
-# check_spd(T, "T")
+check_spd(T, "T")
 leaf_cost = s.build.LeafCost(T)
 
 # Constraints
@@ -97,9 +97,7 @@ nonleaf_input_lb = -nonleaf_input_ub
 nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
 nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))
 nonleaf_constraint = s.build.Rectangle(nonleaf_lb, nonleaf_ub)
-leaf_ub = rng.uniform(1., 2., num_states)
-leaf_lb = -leaf_ub
-leaf_constraint = s.build.Rectangle(leaf_lb, leaf_ub)
+leaf_constraint = s.build.Rectangle(nonleaf_state_lb, nonleaf_state_ub)
 
 # Risk
 alpha = rng.uniform(0., 1.)
@@ -121,6 +119,7 @@ problem = (
     .with_julia()
     .generate_problem()
 )
+print(problem)
 
 # Initial state
 x0 = np.zeros(num_states)

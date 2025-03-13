@@ -161,6 +161,7 @@ protected:
 //    T m_admmTolPrim = 0.;
 //    T m_admmTolDual = 0.;
     /* Workspaces */
+    std::vector<T> m_sizeIterateOnes;
     std::vector<T> m_initState;
     std::unique_ptr<DTensor<T>> m_d_initState = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workIterate = nullptr;
@@ -313,6 +314,7 @@ public:
         initialiseSizes();
         /* Allocate memory on host */
         m_initState = std::vector<T>(m_tree.numStates());
+        m_sizeIterateOnes(m_sizeIterate, 1.);
         m_cacheCallsToL = std::vector<size_t>(m_maxOuterIters);
         m_cacheError0 = std::vector<T>(m_maxOuterIters);
         m_cacheError1 = std::vector<T>(m_maxOuterIters);
@@ -626,8 +628,8 @@ void Cache<T>::initialisePrev(std::vector<T> *previousSolution) {
         m_d_iterate->upload(*previousSolution);
         saveToPrev();
     } else {
-        m_d_iteratePrev->upload(std::vector<T>(m_sizeIterate, 1.));
-        m_d_residualPrev->upload(std::vector<T>(m_sizeIterate, 1.));
+        m_d_iteratePrev->upload(m_sizeIterateOnes);
+        m_d_residualPrev->upload(m_sizeIterateOnes);
     }
 }
 

@@ -13,14 +13,14 @@ def fit(arimaModel):
 
 
 def calculatePrmse(trainedModel, testData, nTestSamples, forecastHorizon):
-    prmse = np.zeros(nTestSamples)
+    err = np.zeros(nTestSamples)
     for k in range(nTestSamples):
         forecast = trainedModel.forecast(forecastHorizon)
-        actual = testData[k : k + forecastHorizon]
+        actual = testData[k: k + forecastHorizon]
         error = actual - forecast
-        prmse[k] = np.sqrt(1 / forecastHorizon * sum(error**2))
+        err[k] = np.sqrt(1 / forecastHorizon * sum(error**2))
         trainedModel = trainedModel.extend(testData[k][None])
-    return prmse
+    return err
 
 
 path = os.getcwd()
@@ -53,21 +53,25 @@ trainingTime = time[:nTrainingSamples]  # 1 hour sampling time
 path_to_file = os.path.join(path, "modelMeans.csv")
 for t in ["n", "t"]:
     for s in [24, 168]:
-        for p in np.arange(0, 6):
+        for p in np.arange(0, 5):
             for d in np.arange(0, 2):
-                for q in np.arange(0, 6):
-                    for P in np.arange(0, 6):
+                for q in np.arange(0, 5):
+                    for P in np.arange(0, 5):
                         for D in np.arange(0, 2):
-                            for Q in np.arange(0, 6):
-                                print(f"Building ARIMA with params: [({p}, {d}, {q}), ({P}, {D}, {Q}), {s}, {t}] ...")
+                            for Q in np.arange(0, 5):
+                                params = [p, d, q, P, D, Q, s, t]
+                                print(f"Building ARIMA with params: {params} ...")
                                 try:
-                                    arima = ARIMA(endog=trainingData, order=(p, d, q), seasonal_order=(P, D, Q, s), trend=t)
+                                    arima = ARIMA(endog=trainingData, 
+                                                  order=(p, d, q), 
+                                                  seasonal_order=(P, D, Q, s), 
+                                                  trend=t)
                                     arimaTrained = fit(arima)
                                     prmse = calculatePrmse(arimaTrained, testData, nTest, PREDICTION_HORIZON)
                                     mean = np.mean(prmse)
                                     with open(path_to_file, mode="a", newline="") as f:
                                         writer = csv.writer(f)
-                                        writer.writerow([p, d, q, P, D, Q, s, t, mean])
+                                        writer.writerow(params + [mean])
                                 except Exception as e:
                                     print("Error, moving on...")
 

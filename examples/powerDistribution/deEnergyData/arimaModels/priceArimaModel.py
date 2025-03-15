@@ -59,8 +59,7 @@ for t in ["n", "t"]:
                     for P in np.arange(0, 5):
                         for D in np.arange(0, 2):
                             for Q in np.arange(0, 5):
-                                params = [p, d, q, P, D, Q, s, t]
-                                print(f"Building ARIMA with params: {params} ...")
+                                print(f"Building ARIMA with params: [({p}, {d}, {q}), ({P}, {D}, {Q}), {s}, {t}] ...")
                                 try:
                                     arima = ARIMA(endog=trainingData, 
                                                   order=(p, d, q), 
@@ -71,7 +70,7 @@ for t in ["n", "t"]:
                                     mean = np.mean(prmse)
                                     with open(path_to_file, mode="a", newline="") as f:
                                         writer = csv.writer(f)
-                                        writer.writerow(params + [mean])
+                                        writer.writerow([p, d, q, P, D, Q, s, t, mean])
                                 except Exception as e:
                                     print("Error, moving on...")
 

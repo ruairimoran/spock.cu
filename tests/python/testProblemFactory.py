@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-import factories as f
+import spock as s
 
 
 class TestProblem(unittest.TestCase):
@@ -18,7 +18,7 @@ class TestProblem(unittest.TestCase):
             v = np.array([0.5, 0.4, 0.1])
             (N, tau) = (4, 3)
             TestProblem.__tree = \
-                f.tree.MarkovChain(p, v, N, tau).build()
+                s.tree.MarkovChain(p, v, N, tau).build()
 
     @staticmethod
     def _construct_problem():
@@ -30,19 +30,19 @@ class TestProblem(unittest.TestCase):
             systems = [system, 2 * system, 3 * system]
             control = np.random.randn(TestProblem.__num_states, TestProblem.__num_inputs)
             controls = [control, 2 * control, 3 * control]
-            dynamics = [f.build.LinearDynamics(systems[0], controls[0]),
-                        f.build.LinearDynamics(systems[1], controls[1]),
-                        f.build.LinearDynamics(systems[2], controls[2])]
+            dynamics = [s.build.LinearDynamics(systems[0], controls[0]),
+                        s.build.LinearDynamics(systems[1], controls[1]),
+                        s.build.LinearDynamics(systems[2], controls[2])]
 
             # construct cost weight matrices
             nonleaf_state_weight = 10 * np.eye(TestProblem.__num_states)  # n x n matrix
             nonleaf_state_weights = [nonleaf_state_weight, 2 * nonleaf_state_weight, 3 * nonleaf_state_weight]
             control_weight = np.eye(TestProblem.__num_inputs)  # u x u matrix OR scalar
             control_weights = [control_weight, 2 * control_weight, 3 * control_weight]
-            nonleaf_costs = [f.build.NonleafCost(nonleaf_state_weights[0], control_weights[0]),
-                             f.build.NonleafCost(nonleaf_state_weights[1], control_weights[1]),
-                             f.build.NonleafCost(nonleaf_state_weights[2], control_weights[2])]
-            leaf_cost = f.build.LeafCost(5 * np.eye(TestProblem.__num_states))
+            nonleaf_costs = [s.build.NonleafCost(nonleaf_state_weights[0], control_weights[0]),
+                             s.build.NonleafCost(nonleaf_state_weights[1], control_weights[1]),
+                             s.build.NonleafCost(nonleaf_state_weights[2], control_weights[2])]
+            leaf_cost = s.build.LeafCost(5 * np.eye(TestProblem.__num_states))
 
             # state-input constraint
             state_lim = 6
@@ -53,20 +53,20 @@ class TestProblem(unittest.TestCase):
             input_ub = input_lim * np.ones((TestProblem.__num_inputs, 1))
             si_lb = np.vstack((state_lb, input_lb))
             si_ub = np.vstack((state_ub, input_ub))
-            state_input_constraint = f.build.Rectangle(si_lb, si_ub)
+            state_input_constraint = s.build.Rectangle(si_lb, si_ub)
 
             # terminal constraint
             leaf_state_lim = 0.1
             leaf_state_lb = -leaf_state_lim * np.ones((TestProblem.__num_states, 1))
             leaf_state_ub = leaf_state_lim * np.ones((TestProblem.__num_states, 1))
-            leaf_state_constraint = f.build.Rectangle(leaf_state_lb, leaf_state_ub)
+            leaf_state_constraint = s.build.Rectangle(leaf_state_lb, leaf_state_ub)
 
             # define risks
             alpha = 0.95
-            risks = f.build.AVaR(alpha)
+            risks = s.build.AVaR(alpha)
 
             TestProblem.__problem = (
-                f.problem.Factory(tree, TestProblem.__num_states, TestProblem.__num_inputs)
+                s.problem.Factory(tree, TestProblem.__num_states, TestProblem.__num_inputs)
                 .with_stochastic_dynamics(dynamics)
                 .with_stochastic_nonleaf_costs(nonleaf_costs)
                 .with_leaf_cost(leaf_cost)
@@ -78,7 +78,7 @@ class TestProblem(unittest.TestCase):
 
             # test if deterministic problem data can be generated
             _ = (
-                f.problem.Factory(tree, TestProblem.__num_states, TestProblem.__num_inputs)
+                s.problem.Factory(tree, TestProblem.__num_states, TestProblem.__num_inputs)
                 .with_dynamics(dynamics[0])
                 .with_nonleaf_cost(nonleaf_costs[0])
                 .with_leaf_cost(leaf_cost)

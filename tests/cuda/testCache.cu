@@ -41,6 +41,8 @@ void testInitialisingState(CacheTestData<T> &d) {
     d.m_cache->initialiseState(initialState);
     std::vector<T> x(initialState.size());
     d.m_cache->m_d_initState->download(x);
+    if (d.m_data->preconditioned())
+        for (size_t i = 0; i < d.m_tree->numStates(); i++) { initialState[i] *= d.m_data->scaling()[i]; }
     EXPECT_EQ(x, initialState);
 }
 

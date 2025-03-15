@@ -314,7 +314,7 @@ public:
         initialiseSizes();
         /* Allocate memory on host */
         m_initState = std::vector<T>(m_tree.numStates());
-        m_sizeIterateOnes(m_sizeIterate, 1.);
+        m_sizeIterateOnes = std::vector<T>(m_sizeIterate, 1.);
         m_cacheCallsToL = std::vector<size_t>(m_maxOuterIters);
         m_cacheError0 = std::vector<T>(m_maxOuterIters);
         m_cacheError1 = std::vector<T>(m_maxOuterIters);

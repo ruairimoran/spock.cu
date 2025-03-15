@@ -25,7 +25,7 @@ time_g = 0.
 time_m = 0.
 time_i = 0.
 # time_c = 0.
-tol_f64 = Float64(1e-3)
+tol_f64 = Float64(tol)
 max_time_f64 = Float64(5 * minute)
 status = Int64(1)
 
@@ -41,19 +41,21 @@ catch e
     println(e)
 end
 status_g, time_g = check_status(model_g, time_g, max_time_f64)
-if status_g == MOI.OPTIMAL || status_g == MOI.LOCALLY_SOLVED || status_g == MOI.TIME_LIMIT
+if status_g == MOI.OPTIMAL || status_g == MOI.LOCALLY_SOLVED || status_g == MOI.TIME_LIMIT || status_g == MOI.NUMERICAL_ERROR
     status = 0
 end
 
 if status == 0
-    atol = 1e-3
-    sat_x_max = any(isapprox.(maximum(value.(model_g[:x])), data.constraint_nonleaf_max[1]; atol=atol))
-    sat_x_min = any(isapprox.(minimum(value.(model_g[:x])), data.constraint_nonleaf_min[1]; atol=atol))
-    sat_u_max = any(isapprox.(maximum(value.(model_g[:u])), data.constraint_nonleaf_max[data.num_states + 1]; atol=atol))
-    sat_u_min = any(isapprox.(minimum(value.(model_g[:u])), data.constraint_nonleaf_min[data.num_states + 1]; atol=atol))
-    sat_x = sat_x_max || sat_x_min
-    sat_u = sat_u_max || sat_u_min
-    println("(Gurobi) Constraint saturation: states = ", sat_x, ", inputs = ", sat_u)
+    if status_g == MOI.OPTIMAL || status_g == MOI.LOCALLY_SOLVED
+        atol = 1e-3
+        sat_x_max = any(isapprox.(maximum(value.(model_g[:x])), data.constraint_nonleaf_max[1]; atol=atol))
+        sat_x_min = any(isapprox.(minimum(value.(model_g[:x])), data.constraint_nonleaf_min[1]; atol=atol))
+        sat_u_max = any(isapprox.(maximum(value.(model_g[:u])), data.constraint_nonleaf_max[data.num_states + 1]; atol=atol))
+        sat_u_min = any(isapprox.(minimum(value.(model_g[:u])), data.constraint_nonleaf_min[data.num_states + 1]; atol=atol))
+        sat_x = sat_x_max || sat_x_min
+        sat_u = sat_u_max || sat_u_min
+        println("(Gurobi) Constraint saturation: states = ", sat_x, ", inputs = ", sat_u)
+    end
 
     model_m = build_model(Mosek.Optimizer, data, risk)
     set_attribute(model_m, "MSK_DPAR_INTPNT_TOL_REL_GAP", tol_f64)

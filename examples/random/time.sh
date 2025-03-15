@@ -9,7 +9,7 @@ main() {
     source "${path}.venv/bin/activate"
     mkdir -p ./build
     start=5000
-    width=1000
+    width=5000
     n=2
     for interval in {0..8}; do
         lo=$((start + width * interval))

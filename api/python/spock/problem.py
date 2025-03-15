@@ -630,7 +630,9 @@ class Problem:
             self.__tree.write_to_file_fp(name, tensor)
 
     def __str__(self):
-        return (f"Problem Data\n+ Step size: {self.__step_size}\n"
+        return (f"Problem Data\n"
+                f"+ Variables: {(self.__num_states + self.__num_inputs) * self.__tree.num_nodes}\n"
+                f"+ Step size: {self.__step_size}\n"
                 f"+ Preconditioning: "
                 f"requested = {self.__precondition_requested}, accepted = {self.__precondition_worth_it}")
 

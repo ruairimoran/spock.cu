@@ -19,7 +19,7 @@ args = parser.parse_args()
 dt = args.dt
 precondition = bool(args.precondition)
 
-# Sizes::random
+# Sizes
 horizon = 3
 stopping = 1
 num_events = 2
@@ -54,12 +54,15 @@ for i in range(1, num_events + 1):
     dynamics += [s.build.LinearDynamics(A, B)]
 
 # Costs
+rng = np.random.default_rng()
 nonleaf_costs = []
 Q_base = np.eye(num_states) * 10.
 R_base = np.eye(num_inputs) * 1.
 for i in range(1, num_events + 1):
-    Q = Q_base * i
-    R = R_base * i
+    Q_noise = rng.normal(0., .1, size=(num_states, num_states))
+    R_noise = rng.normal(0., .1, size=(num_inputs, num_inputs))
+    Q = Q_base + (Q_noise @ Q_noise.T)
+    R = R_base + (R_noise @ R_noise.T)
     check_spd(Q, "Q")
     check_spd(R, "R")
     nonleaf_costs += [s.build.NonleafCost(Q, R)]

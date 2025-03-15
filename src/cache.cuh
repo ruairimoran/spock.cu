@@ -113,7 +113,7 @@ protected:
     bool m_status = false;  ///< General status use
     int m_exitCode = notRun;  ///< Algorithm exit code
     std::chrono::high_resolution_clock::time_point m_timeStart;
-    T m_timeElapsed;
+    T m_timeElapsed = 0.;
     /* Sizes */
     size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
     size_t m_sizeX = 0;  ///< States of all nodes
@@ -998,7 +998,7 @@ void Cache<T>::computeError(size_t idx) {
             if (m_maxOuterIters) {
                 if (idx >= m_maxOuterIters) m_exitCode = outOfIter;
             }
-            if (m_maxTimeSecs && idx % 200 == 0) {
+            if (m_maxTimeSecs && idx % 1000 == 0) {
                 m_timeElapsed = std::chrono::duration<T>(
                     std::chrono::high_resolution_clock::now() - m_timeStart).count();
                 if (m_timeElapsed >= m_maxTimeSecs) m_exitCode = outOfTime;

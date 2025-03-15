@@ -25,8 +25,8 @@ int main() {
         DTensor<real_t> d_initState = DTensor<real_t>::parseFromFile(tree.path() + "initialState" + tree.fpFileExt());
         std::vector<real_t> initState(tree.numStates());
         d_initState.download(initState);
-        size_t runs = 1;
-        size_t warm = 0;
+        size_t runs = 2;
+        size_t warm = 3;
         size_t totalRuns = runs + warm;
         std::vector<real_t> runTimes(totalRuns, 0.);
         std::cout << "Computing average solve time over (" << runs << ") runs with (" << warm << ") warm up runs...\n";
@@ -46,10 +46,10 @@ int main() {
     }
 
     /* SAVE */
-    std::ofstream timeScaling;
-    timeScaling.open("time.csv", std::ios::app);
-    timeScaling << avgTime << std::endl;
-    timeScaling.close();
+    std::ofstream file;
+    file.open("time.csv", std::ios::app);
+    file << avgTime << std::endl;
+    file.close();
     std::cout << "Saved (avgTime = " << avgTime << " s).\n";
 
     return 0;

@@ -13,7 +13,7 @@ def check_spd(mat, name):
 
 parser = argparse.ArgumentParser(description='Example: random.')
 parser.add_argument("--dt", type=str, default='d')
-parser.add_argument("--lo", type=int, default=1e3)
+parser.add_argument("--lo", type=int, default=1e4)
 parser.add_argument("--hi", type=int, default=1e6)
 args = parser.parse_args()
 dt = args.dt
@@ -28,7 +28,7 @@ while not (lo_vars < num_vars < hi_vars):
     horizon = rng.integers(5, 15, endpoint=True)
     stopping = rng.integers(1, 3, endpoint=True)
     num_events = rng.integers(2, 10, endpoint=True)
-    num_inputs = 3  # rng.integers(10, 100, endpoint=True)
+    num_inputs = rng.integers(10, 300, endpoint=True)
     num_states = num_inputs * 2
     num_nodes = ((num_events**(stopping + 1) - 1) / (num_events - 1)) + ((num_events**stopping) * (horizon - stopping))
     num_vars = num_nodes * (num_states + num_inputs)
@@ -74,15 +74,16 @@ for i in range(num_events):
 
 # Costs
 nonleaf_costs = []
-Q_base = np.diag(rng.uniform(0., 3., size=num_states))
+Q_base = np.diag(rng.uniform(0., 10., size=num_states))
 R_base = np.diag(rng.uniform(0., 1., size=num_inputs))
 for i in range(num_events):
-    Q_w = Q_base + rng.normal(0., .01, size=(num_states, num_states))
-    R_w = R_base + rng.normal(0., .01, size=(num_inputs, num_inputs))
+    Q_w = Q_base + rng.normal(0., .1, size=(num_states, num_states))
+    R_w = R_base + rng.normal(0., .1, size=(num_inputs, num_inputs))
     Q = Q_w @ Q_w.T
     R = R_w @ R_w.T
-    check_spd(Q, "Q")
-    check_spd(R, "R")
+    if i == 0:
+        check_spd(Q, "Q")
+        check_spd(R, "R")
     nonleaf_costs += [s.build.NonleafCost(Q, R)]
 
 T = Q_base @ Q_base.T
@@ -90,9 +91,9 @@ check_spd(T, "T")
 leaf_cost = s.build.LeafCost(T)
 
 # Constraints
-nonleaf_state_ub = rng.uniform(1., 2., num_states)
+nonleaf_state_ub = rng.uniform(10., 20., num_states)
 nonleaf_state_lb = -nonleaf_state_ub
-nonleaf_input_ub = rng.uniform(0., .1, num_inputs)
+nonleaf_input_ub = rng.uniform(5., 10., num_inputs)
 nonleaf_input_lb = -nonleaf_input_ub
 nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
 nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))

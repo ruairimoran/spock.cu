@@ -25,6 +25,7 @@ private:
     size_t m_numY = 0;  ///< Size of primal vector 'y'
     T m_stepSize = 0;  ///< Step size of CP operator T
     T m_stepSizeRecip = 0;  ///< Reciprocal of step size of CP operator T
+    bool m_preconditioned = false;  ///< Whether data has been preconditioned
     std::unique_ptr<DTensor<T>> m_d_stepSize = nullptr;  ///< Step size of CP operator T (on device)
     std::unique_ptr<Dynamics<T>> m_dynamics = nullptr;
     std::unique_ptr<Cost<T>> m_nonleafCost = nullptr;
@@ -32,6 +33,8 @@ private:
     std::unique_ptr<Constraint<T>> m_nonleafConstraint = nullptr;
     std::unique_ptr<Constraint<T>> m_leafConstraint = nullptr;
     std::unique_ptr<CoherentRisk<T>> m_risk = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_scaling = nullptr;  ///< Scaling factor of states and inputs
+    std::vector<T> m_scaling;  ///< Scaling factor of states and inputs
     /* Kernel projection */
     size_t m_nullDim = 0;
     std::unique_ptr<DTensor<T>> m_d_nullspaceProj = nullptr;
@@ -83,6 +86,15 @@ private:
         }
     }
 
+    void parseScaling() {
+        if (m_preconditioned) {
+            m_d_scaling = std::make_unique<DTensor<T>>(
+                DTensor<T>::parseFromFile(m_tree.path() + "scaling" + m_tree.fpFileExt()));
+            m_scaling = std::vector<T>(m_d_scaling->numEl());
+            m_d_scaling->download(m_scaling);
+        }
+    }
+
     std::ostream &print(std::ostream &out) const {
         out << "Nonleaf constraint: " << *m_nonleafConstraint;
         out << "Leaf constraint: " << *m_leafConstraint;
@@ -110,17 +122,17 @@ public:
         m_numY = m_nullDim - (m_tree.numEvents() * 2);
         m_stepSize = doc["stepSize"].GetDouble();
         m_stepSizeRecip = 1. / m_stepSize;
+        m_preconditioned = doc["preconditioned"].GetBool();
 
-        /* Allocate memory on device */
+        /* Parse files */
         m_d_stepSize = std::make_unique<DTensor<T>>(std::vector(1, m_stepSize), 1);
-
-        /* Parse dynamics, constraints, and risks */
         parseDynamics(doc["dynamics"]);
         m_nonleafCost = std::make_unique<CostNonleaf<T>>(m_tree);
         m_leafCost = std::make_unique<CostLeaf<T>>(m_tree);
         parseConstraint(doc["constraint"], m_nonleafConstraint, nonleaf);
         parseConstraint(doc["constraint"], m_leafConstraint, leaf);
         parseRisk(doc["risk"]);
+        parseScaling();
     }
 
     /**
@@ -135,11 +147,17 @@ public:
 
     T stepSizeRecip() { return m_stepSizeRecip; }
 
+    bool preconditioned() { return m_preconditioned; }
+
     size_t nullDim() { return m_nullDim; }
 
     size_t yDim() { return m_numY; }
 
     DTensor<T> &d_stepSize() { return *m_d_stepSize; }
+
+    DTensor<T> &d_scaling() { return *m_d_scaling; }
+
+    std::vector<T> &scaling() { return m_scaling; }
 
     std::unique_ptr<Dynamics<T>> &dynamics() { return m_dynamics; }
 

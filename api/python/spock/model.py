@@ -31,7 +31,6 @@ class Model:
                 "MSK_DPAR_INTPNT_CO_TOL_REL_GAP": tol,
                 "MSK_DPAR_INTPNT_QO_TOL_REL_GAP": tol,
                 "MSK_DPAR_OPTIMIZER_MAX_TIME": max_time,
-                "MSK_DPAR_MIO_MAX_TIME": max_time,
             }
             return self.__cvx.solve(solver=solver,
                                     mosek_params=mosek_params,
@@ -62,7 +61,7 @@ class Model:
 
     @property
     def solve_time(self):
-        return self.__cvx.solve_time
+        return self.__cvx.solver_stats.solve_time
 
     @property
     def status(self):

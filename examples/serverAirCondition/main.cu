@@ -34,7 +34,7 @@ int main() {
             int status = cache.runSpock(initState);
             if (status != converged) throw std::runtime_error(toString(status));
             runTimes[i] = cache.solveTime();
-            cache.reset();
+            if (i < totalRuns - 1) cache.reset();
             std::cout << "Run (" << i << ") : " << runTimes[i] << " s.\n";
         }
         real_t time = std::reduce(runTimes.begin() + warm, runTimes.end());

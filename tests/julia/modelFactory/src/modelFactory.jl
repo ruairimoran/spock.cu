@@ -384,7 +384,6 @@ function solve_this(
     x0 :: Vector{TR},
     )
     x = model[:x]
-    u = model[:u]
     # Add initial state constraint
     @constraint(
         model, 
@@ -393,8 +392,6 @@ function solve_this(
     )
     # Solve problem
     optimize!(model)
-    # Return states and inputs
-    return value.(x), value.(u)
 end
 
 export solve_this

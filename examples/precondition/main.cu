@@ -39,6 +39,8 @@ int main() {
         }
         real_t time = std::reduce(runTimes.begin() + warm, runTimes.end());
         avgTime = time / runs;
+
+        /* PRINT */
         std::vector<real_t> states = cache.states();
         std::vector<real_t> inputs = cache.inputs();
         std::cout << "States:\n";

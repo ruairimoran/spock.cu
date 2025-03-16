@@ -38,8 +38,8 @@ public:
 TEMPLATE_WITH_TYPE_T
 void testOperator(OperatorTestData<T> &d, T epsilon) {
     std::string ext = d.m_tree->fpFileExt();
-    DTensor<T> primBeforeOp = DTensor<T>::parseFromFile(d.m_path + "primBeforeOp" + ext);
-    DTensor<T> dualAfterOpBeforeAdj = DTensor<T>::parseFromFile(d.m_path + "dualAfterOpBeforeAdj" + ext);
+    DTensor<T> primBeforeOp = DTensor<T>::parseFromFile(d.m_path + "test_primBeforeOp" + ext);
+    DTensor<T> dualAfterOpBeforeAdj = DTensor<T>::parseFromFile(d.m_path + "test_dualAfterOpBeforeAdj" + ext);
     dualAfterOpBeforeAdj.download(d.m_dualAfterOpBeforeAdj);
     /* Load primal and test resulting dual */
     Cache<T> &c = *d.m_cache;
@@ -65,8 +65,8 @@ TEST_F(OperatorTest, op) {
 TEMPLATE_WITH_TYPE_T
 void testAdjoint(OperatorTestData<T> &d, T epsilon) {
     std::string ext = d.m_tree->fpFileExt();
-    DTensor<T> dualAfterOpBeforeAdj = DTensor<T>::parseFromFile(d.m_path + "dualAfterOpBeforeAdj" + ext);
-    DTensor<T> primAfterAdj = DTensor<T>::parseFromFile(d.m_path + "primAfterAdj" + ext);
+    DTensor<T> dualAfterOpBeforeAdj = DTensor<T>::parseFromFile(d.m_path + "test_dualAfterOpBeforeAdj" + ext);
+    DTensor<T> primAfterAdj = DTensor<T>::parseFromFile(d.m_path + "test_primAfterAdj" + ext);
     primAfterAdj.download(d.m_primAfterAdj);
     /* Load dual and test resulting primal */
     Cache<T> &c = *d.m_cache;
@@ -92,9 +92,9 @@ TEST_F(OperatorTest, adj) {
 TEMPLATE_WITH_TYPE_T
 void testIsItReallyTheAdjoint(OperatorTestData<T> &d, T epsilon) {
     std::string ext = d.m_tree->fpFileExt();
-    DTensor<T> prim = DTensor<T>::parseFromFile(d.m_path + "adjRandomPrim" + ext);
-    DTensor<T> dual = DTensor<T>::parseFromFile(d.m_path + "adjRandomDual" + ext);
-    DTensor<T> result = DTensor<T>::parseFromFile(d.m_path + "adjRandomResult" + ext);
+    DTensor<T> prim = DTensor<T>::parseFromFile(d.m_path + "test_adjRandomPrim" + ext);
+    DTensor<T> dual = DTensor<T>::parseFromFile(d.m_path + "test_adjRandomDual" + ext);
+    DTensor<T> result = DTensor<T>::parseFromFile(d.m_path + "test_adjRandomResult" + ext);
     Cache<T> &c = *d.m_cache;
     /* y'Lx */
     prim.deviceCopyTo(*d.m_cache->m_d_workIteratePrim);

@@ -5,7 +5,9 @@
 #include "cones.cuh"
 #include "risks.cuh"
 #include "operator.cuh"
+#include <algorithm>
 #include <chrono>
+#include <filesystem>
 
 
 TEMPLATE_WITH_TYPE_T
@@ -47,18 +49,40 @@ void testDotM(CacheTestData<T> &, T);
  * Caution! For debugging only.
  */
 template<typename T>
-static void isFinite(std::vector<T> &vec) {
-    for (const T &value: vec) {
-        if (!std::isfinite(value)) throw std::invalid_argument("[isFinite] vector has entries that are not finite.\n");
-    }
-}
-
-template<typename T>
 static void isFinite(DTensor<T> &d_vec) {
     std::vector<T> vec(d_vec.numEl());
     d_vec.download(vec);
     for (const T &value: vec) {
-        if (!std::isfinite(value)) throw std::invalid_argument("[isFinite] DTensor has entries that are not finite.\n");
+        if (!std::isfinite(value)) {
+            std::cout << d_vec.tr();
+            throw std::invalid_argument("[isFinite] DTensor has entries that are not finite.\n");
+        }
+    }
+}
+
+
+/**
+ * Cache status enum and string
+ */
+enum CacheStatus {
+    notRun = -1,
+    converged = 0,
+    outOfIter = 1,
+    outOfTime = 2
+};
+
+static const char *toString(int status) {
+    switch (status) {
+        case notRun:
+            return "Cache has not been run!";
+        case converged:
+            return "Converged!";
+        case outOfIter:
+            return "Out of iterations!";
+        case outOfTime:
+            return "Out of time!";
+        default:
+            return "Unknown status.";
     }
 }
 
@@ -87,9 +111,9 @@ protected:
     bool m_debug = false;
     bool m_errInit = false;  ///< Whether to initialise tolerances
     bool m_status = false;  ///< General status use
-    int m_exitCode = -1;  ///< Algorithm exit code: -1=notRun, 0=converged, 1=outOfIters, 2=outOfTime
+    int m_exitCode = notRun;  ///< Algorithm exit code
     std::chrono::high_resolution_clock::time_point m_timeStart;
-    T m_timeElapsed;
+    T m_timeElapsed = 0.;
     /* Sizes */
     size_t m_sizeU = 0;  ///< Inputs of all nonleaf nodes
     size_t m_sizeX = 0;  ///< States of all nodes
@@ -130,13 +154,15 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_ellResidual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_ellResidualPrim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_ellResidualDual = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_admmIterate = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_admmIterateCandidate = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_admmErrPrim = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_admmErrDual = nullptr;
-    T m_admmTolPrim = 0;
-    T m_admmTolDual = 0;
+//    std::unique_ptr<DTensor<T>> m_d_admmIterate = nullptr;
+//    std::unique_ptr<DTensor<T>> m_d_admmIterateCandidate = nullptr;
+//    std::unique_ptr<DTensor<T>> m_d_admmErrPrim = nullptr;
+//    std::unique_ptr<DTensor<T>> m_d_admmErrDual = nullptr;
+//    T m_admmTolPrim = 0.;
+//    T m_admmTolDual = 0.;
     /* Workspaces */
+    std::vector<T> m_sizeIterateOnes;
+    std::vector<T> m_initState;
     std::unique_ptr<DTensor<T>> m_d_initState = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workIterate = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workIteratePrim = nullptr;
@@ -160,7 +186,6 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_vi = nullptr;
     std::unique_ptr<DTensor<T>> m_d_viSoc = nullptr;
     std::unique_ptr<DTensor<T>> m_d_input = nullptr;
-    std::vector<T> m_input;
     /* Projections */
     std::unique_ptr<NonnegativeOrthantCone<T>> m_nnoc = nullptr;
     /* Caches */
@@ -279,10 +304,17 @@ public:
           bool debug = false) :
         m_tree(tree), m_data(data), m_tolAbs(absTol), m_tolRel(relTol), m_maxTimeSecs(maxTimeSecs),
         m_maxOuterIters(maxOuterIters), m_maxInnerIters(maxInnerIters), m_andBuff(andBuff), m_debug(debug) {
+        /* Tolerances */
+        if (m_data.preconditioned()) {
+            T tolScale = *std::min_element(m_data.scaling().begin(), m_data.scaling().end());
+            m_tolAbs *= tolScale;
+            m_tolRel *= tolScale;
+        }
         /* Sizes */
         initialiseSizes();
         /* Allocate memory on host */
-        m_input = std::vector<T>(m_tree.numInputs());
+        m_initState = std::vector<T>(m_tree.numStates());
+        m_sizeIterateOnes = std::vector<T>(m_sizeIterate, 1.);
         m_cacheCallsToL = std::vector<size_t>(m_maxOuterIters);
         m_cacheError0 = std::vector<T>(m_maxOuterIters);
         m_cacheError1 = std::vector<T>(m_maxOuterIters);
@@ -332,9 +364,7 @@ public:
 
     int runSpock(std::vector<T> &, std::vector<T> * = nullptr);
 
-    std::vector<T> &input() {
-        m_d_input->download(m_input);
-    }
+    int status() { return m_exitCode; }
 
     size_t solveIter() { return m_countIterations; }
 
@@ -349,6 +379,13 @@ public:
         m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
         std::vector<T> inputs(m_sizeU);
         m_d_u->download(inputs);
+        if (m_data.preconditioned()) {
+            for (size_t node = 0; node < m_tree.numNonleafNodes(); node++) {
+                for (size_t ele = 0; ele < m_tree.numInputs(); ele++) {
+                    inputs[node * m_tree.numInputs() + ele] /= m_data.scaling()[ele + m_tree.numStates()];
+                }
+            }
+        }
         return inputs;
     }
 
@@ -356,6 +393,13 @@ public:
         m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
         std::vector<T> states(m_sizeX);
         m_d_x->download(states);
+        if (m_data.preconditioned()) {
+            for (size_t node = 0; node < m_tree.numNodes(); node++) {
+                for (size_t ele = 0; ele < m_tree.numStates(); ele++) {
+                    states[node * m_tree.numStates() + ele] /= m_data.scaling()[ele];
+                }
+            }
+        }
         return states;
     }
 
@@ -383,25 +427,27 @@ public:
  */
 template<typename T>
 void Cache<T>::reset() {
+    m_exitCode = notRun;
     m_data.dynamics()->resetWorkspace();
     m_L.resetWorkspace();
     /* Create zero vectors */
-    std::vector<T> numStates(m_tree.numStates(), 0);
-    std::vector<T> sizeIterate(m_sizeIterate, 0);
-    std::vector<T> sizePrim(m_sizePrim, 0);
-    std::vector<T> sizeDual(m_sizeDual, 0);
-    std::vector<T> sizeIterateSizeAnd(m_sizeIterate * m_andBuff, 0);
-    std::vector<T> nullDimNumNonleafNodes(m_data.nullDim() * m_tree.numNonleafNodes(), 0);
+    std::vector<T> numStates(m_tree.numStates(), 0.);
+    std::vector<T> sizeIterate(m_sizeIterate, 0.);
+    std::vector<T> sizePrim(m_sizePrim, 0.);
+    std::vector<T> sizeDual(m_sizeDual, 0.);
+    std::vector<T> sizeIterateSizeAnd(m_sizeIterate * m_andBuff, 0.);
+    std::vector<T> nullDimNumNonleafNodes(m_data.nullDim() * m_tree.numNonleafNodes(), 0.);
     /* Zero all cached data */
-    std::fill(m_cacheCallsToL.begin(), m_cacheCallsToL.end(), 0);
-    std::fill(m_cacheError0.begin(), m_cacheError0.end(), 0);
-    std::fill(m_cacheError1.begin(), m_cacheError1.end(), 0);
-    std::fill(m_cacheError2.begin(), m_cacheError2.end(), 0);
-    std::fill(m_cacheDeltaPrim.begin(), m_cacheDeltaPrim.end(), 0);
-    std::fill(m_cacheDeltaDual.begin(), m_cacheDeltaDual.end(), 0);
-    std::fill(m_cacheNrmLtrDeltaDual.begin(), m_cacheNrmLtrDeltaDual.end(), 0);
-    std::fill(m_cacheDistDeltaDual.begin(), m_cacheDistDeltaDual.end(), 0);
-    std::fill(m_cacheSuppDeltaDual.begin(), m_cacheSuppDeltaDual.end(), 0);
+    std::fill(m_initState.begin(), m_initState.end(), 0.);
+    std::fill(m_cacheCallsToL.begin(), m_cacheCallsToL.end(), 0.);
+    std::fill(m_cacheError0.begin(), m_cacheError0.end(), 0.);
+    std::fill(m_cacheError1.begin(), m_cacheError1.end(), 0.);
+    std::fill(m_cacheError2.begin(), m_cacheError2.end(), 0.);
+    std::fill(m_cacheDeltaPrim.begin(), m_cacheDeltaPrim.end(), 0.);
+    std::fill(m_cacheDeltaDual.begin(), m_cacheDeltaDual.end(), 0.);
+    std::fill(m_cacheNrmLtrDeltaDual.begin(), m_cacheNrmLtrDeltaDual.end(), 0.);
+    std::fill(m_cacheDistDeltaDual.begin(), m_cacheDistDeltaDual.end(), 0.);
+    std::fill(m_cacheSuppDeltaDual.begin(), m_cacheSuppDeltaDual.end(), 0.);
     m_d_initState->upload(numStates);
     m_d_iterate->upload(sizeIterate);
     m_d_iteratePrev->upload(sizeIterate);
@@ -554,7 +600,12 @@ void Cache<T>::initialiseState(std::vector<T> &initState) {
             << " but given " << initState.size() << " states" << "\n";
         throw ERR;
     }
-    m_d_initState->upload(initState);
+    if (m_data.preconditioned()) {
+        for (size_t i = 0; i < m_tree.numStates(); i++) { m_initState[i] = initState[i] * m_data.scaling()[i]; }
+        m_d_initState->upload(m_initState);
+    } else {
+        m_d_initState->upload(initState);
+    }
 }
 
 /**
@@ -577,8 +628,8 @@ void Cache<T>::initialisePrev(std::vector<T> *previousSolution) {
         m_d_iterate->upload(*previousSolution);
         saveToPrev();
     } else {
-        m_d_iteratePrev->upload(std::vector<T>(m_sizeIterate, 1.));
-        m_d_residualPrev->upload(std::vector<T>(m_sizeIterate, 1.));
+        m_d_iteratePrev->upload(m_sizeIterateOnes);
+        m_d_residualPrev->upload(m_sizeIterateOnes);
     }
 }
 
@@ -884,7 +935,7 @@ void Cache<T>::updateDirection(size_t idx) {
 template<typename T>
 void Cache<T>::computeError(size_t idx) {
     cudaDeviceSynchronize();  // DO NOT REMOVE !!!
-    isFinite(*m_d_iterateCandidate);
+    if (m_debug) isFinite(*m_d_iterateCandidate);
 //    if (m_admm) {
 //        m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
 //        Ltr();
@@ -939,23 +990,23 @@ void Cache<T>::computeError(size_t idx) {
         *m_d_workIterate -= *m_d_ellResidual;
         if (m_errInit) {
             m_tol = std::max(m_tolAbs, m_tolRel * m_d_workIterate->maxAbs());
-            m_exitCode = -1;
+            m_exitCode = notRun;
             m_errInit = false;
         } else {
             m_errAbs = m_d_workIterate->maxAbs();
-            if (m_errAbs <= m_tol) m_exitCode = 0;
+            if (m_errAbs <= m_tol) m_exitCode = converged;
             if (m_maxOuterIters) {
-                if (idx >= m_maxOuterIters) m_exitCode = 1;
+                if (idx >= m_maxOuterIters) m_exitCode = outOfIter;
             }
-            if (m_maxTimeSecs && idx % 200 == 0) {
+            if (m_maxTimeSecs && idx % 1000 == 0) {
                 m_timeElapsed = std::chrono::duration<T>(
-                        std::chrono::high_resolution_clock::now() - m_timeStart).count();
-                if (m_timeElapsed >= m_maxTimeSecs) m_exitCode = 2;
+                    std::chrono::high_resolution_clock::now() - m_timeStart).count();
+                if (m_timeElapsed >= m_maxTimeSecs) m_exitCode = outOfTime;
             }
-            if (m_exitCode != -1) {
+            if (m_exitCode != notRun) {
                 m_countIterations = idx;
                 m_timeElapsed = std::chrono::duration<T>(
-                        std::chrono::high_resolution_clock::now() - m_timeStart).count();
+                    std::chrono::high_resolution_clock::now() - m_timeStart).count();
             }
             if (m_debug) {
                 m_cacheError1[idx] = m_d_workIteratePrim->maxAbs();
@@ -998,18 +1049,18 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
         /* Save candidate to accepted iterate */
         acceptCandidate();
         /* Break if termination criteria met */
-        if (m_exitCode != -1) {
+        if (m_exitCode != notRun) {
             break;
         }
     }
     if (m_debug) {
         std::string n = "Cp";
         printToJson(n);
-        if (m_exitCode == 0) {
+        if (m_exitCode == converged) {
             std::cout << "\nConverged in " << m_countIterations << " iterations, to a tolerance of " << m_tol << "\n";
-        } else if (m_exitCode == 1) {
+        } else if (m_exitCode == outOfIter) {
             std::cout << "\nOut of iterations (" << m_maxOuterIters << " iters).\n";
-        } else if (m_exitCode == 2) {
+        } else if (m_exitCode == outOfTime) {
             std::cout << "\nOut of time (" << m_maxTimeSecs << " secs).\n";
         } else {
             std::cout << "\nExited.\n";
@@ -1052,7 +1103,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         iter();
         /* Check error (residual computed internally) */
         computeError(iOut);
-        if (m_exitCode != -1) {
+        if (m_exitCode != notRun) {
             acceptCandidate();
             break;
         }
@@ -1094,9 +1145,10 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
                 break;  // K1
             }
             /* Compute rho */
-            *m_d_directionScaled *= -1.;
-            *m_d_directionScaled += *m_d_residual;
-            rho = dotM(*m_d_residual, *m_d_directionScaled);  // This is not the algo equation, but performs better.
+            rho = pow(wTilde, 2) - dotM(*m_d_residual, *m_d_directionScaled);  // This is the algo equation.
+//            *m_d_directionScaled *= -1.;  // This is...
+//            *m_d_directionScaled += *m_d_residual;  // not the algo equation, but...
+//            rho = dotM(*m_d_residual, *m_d_directionScaled);  //  performs well.
             /* Safeguard update */
             if (rho >= m_sigma * wTilde * w) {
                 *m_d_residual *= (m_lambda * rho / pow(wTilde, 2));
@@ -1117,7 +1169,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
     if (m_debug) {
         std::string n = "Sp";
         printToJson(n);
-        if (m_exitCode == 0) {
+        if (m_exitCode == converged) {
             std::cout << "\nConverged in " << m_countIterations << " iters and "
                       << m_timeElapsed << " secs, to a tolerance of " << m_tol
                       << ", [K0: " << countK0
@@ -1126,14 +1178,14 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
                       << ", bt: " << countK2bt
                       << ", K3: " << countK3
                       << "].\n";
-        } else if (m_exitCode == 1) {
+        } else if (m_exitCode == outOfIter) {
             std::cout << "\nMax iterations (" << m_maxOuterIters << ") reached [K0: " << countK0
                       << ", K1: " << countK1
                       << ", K2: " << countK2
                       << ", bt: " << countK2bt
                       << ", K3: " << countK3
                       << "].\n";
-        } else if (m_exitCode == 2) {
+        } else if (m_exitCode == outOfTime) {
             std::cout << "\nMax time (" << m_maxTimeSecs << "s) reached [K0: " << countK0
                       << ", K1: " << countK1
                       << ", K2: " << countK2
@@ -1155,9 +1207,9 @@ class CacheBuilder {
 private:
     ScenarioTree<T> &m_tree;
     ProblemData<T> &m_data;
-    T m_tolAbs = 0;
-    T m_tolRel = 0;
-    T m_maxTimeSecs = 0;
+    T m_tolAbs = 0.;
+    T m_tolRel = 0.;
+    T m_maxTimeSecs = 0.;
     size_t m_maxOuterIters = 0;
     size_t m_maxInnerIters = 0;
     size_t m_andBuff = 0;
@@ -1173,7 +1225,7 @@ public:
         m_data(data),
         m_tolAbs(1e-3),
         m_tolRel(0.),
-        m_maxTimeSecs(0),
+        m_maxTimeSecs(0.),
         m_maxOuterIters(0),
         m_maxInnerIters(8),
         m_andBuff(3),
@@ -1221,8 +1273,7 @@ public:
 
     CacheBuilder<T> &enableDebug(bool enable) {
         if (enable && m_maxOuterIters == 0) {
-            err << "[CacheBuilder] Cannot debug without first setting max number of iterations!\n";
-            throw ERR;
+            m_maxOuterIters = 1000;
         }
         m_debug = enable;
         return *this;
@@ -1276,7 +1327,7 @@ static void
 addArray(rapidjson::Document &doc, std::string const &name, std::vector<T> &vec) {
     for (const T &value: vec) {
         if (!std::isfinite(value)) {
-            err << "[Cache::addArray] array (" << name << ") has entries that are not finite.\n";
+            err << "[Cache::addArray] array (" << name << ") has entries that are not finite!\n";
             throw ERR;
         }
     }
@@ -1317,7 +1368,7 @@ void Cache<T>::printToJson(std::string &file) {
     addArray(doc, "err0", m_cacheError0);
     addArray(doc, "err1", m_cacheError1);
     addArray(doc, "err2", m_cacheError2);
-    addArray(doc, "err3", m_cacheError3);
+//    if (m_admm) addArray(doc, "err3", m_cacheError3);
     std::vector<T> x = this->states();
     addArray(doc, "states", x);
     std::vector<T> u = this->inputs();
@@ -1327,11 +1378,15 @@ void Cache<T>::printToJson(std::string &file) {
     rapidjson::Writer<StringBuffer> writer(buffer, reinterpret_cast<rapidjson::CrtAllocator *>(&doc.GetAllocator()));
     doc.Accept(writer);
     std::string json(buffer.GetString(), buffer.GetSize());
-    std::ofstream of("/home/biggirl/Documents/remote_host/raocp-parallel/misc/cache" + file + ".json");
-    if (!of.is_open()) throw std::runtime_error("[Cache::printToJson] Failed to open file for writing.\n");
-    of << json;
-    of.close();
-    if (!of.good()) throw std::runtime_error("[Cache::printToJson] Can't write the JSON string to the file.\n");
+    std::filesystem::path cwd = std::filesystem::current_path();
+    std::string filename = "cache" + file + ".json";
+    std::filesystem::path logFilePath = cwd / "log" / filename;
+    std::filesystem::create_directories(logFilePath.parent_path());
+    std::ofstream logFile(logFilePath);
+    if (!logFile.is_open()) throw std::runtime_error("[Cache::printToJson] Failed to open file for writing.\n");
+    logFile << json;
+    logFile.close();
+    if (!logFile.good()) throw std::runtime_error("[Cache::printToJson] Can't write the JSON string to the file.\n");
 }
 
 

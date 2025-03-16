@@ -51,6 +51,8 @@ if (SPOCK_BUILD_TEST)
 endif()
 unset(SPOCK_BUILD_TEST CACHE)
 # ----
-#add_subdirectory(examples/random)
+add_subdirectory(examples/precondition)
+add_subdirectory(examples/random)
+add_subdirectory(examples/serverAirCondition)
 add_subdirectory(examples/powerDistribution)
 # ----

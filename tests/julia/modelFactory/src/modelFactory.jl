@@ -87,7 +87,7 @@ struct Data
     dynamics_type :: String
     dynamics_A :: Vector{Matrix{TR}}
     dynamics_B :: Vector{Matrix{TR}}
-    dynamics_c :: Vector{Matrix{TR}}
+    dynamics_c :: Union{Vector{Matrix{TR}}, Nothing}
     cost_nonleaf_Q :: Vector{Matrix{TR}}
     cost_nonleaf_R :: Vector{Matrix{TR}}
     cost_leaf_Q :: Vector{Matrix{TR}}
@@ -99,9 +99,6 @@ struct Data
     constraint_leaf_max :: Vector{TR}
     risk_type :: String
     risk_alpha :: TR
-    risk_rowsS2 :: TI
-    risk_rowsNNtr :: TI
-    step_size :: TR
     ancestors :: Vector{TI}
     ch_num :: Vector{TI}
     ch_from :: Vector{TI}
@@ -119,23 +116,20 @@ function read_data()
         json["numStates"],
         json["numInputs"],
         json["dynamics"]["type"],
-        read_tensor_from_binary(TR, folder * "dynamics_A" * file_ext_r),
-        read_tensor_from_binary(TR, folder * "dynamics_B" * file_ext_r),
-        read_tensor_from_binary(TR, folder * "dynamics_e" * file_ext_r),
-        read_tensor_from_binary(TR, folder * "cost_nonleafQ" * file_ext_r),
-        read_tensor_from_binary(TR, folder * "cost_nonleafR" * file_ext_r),
-        read_tensor_from_binary(TR, folder * "cost_leafQ" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "uncond_dynamics_A" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "uncond_dynamics_B" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "uncond_dynamics_c" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "uncond_cost_nonleafQ" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "uncond_cost_nonleafR" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "uncond_cost_leafQ" * file_ext_r),
         json["constraint"]["nonleaf"],
         json["constraint"]["leaf"],
-        read_vector_from_binary(TR, folder * "nonleafConstraintILB" * file_ext_r),
-        read_vector_from_binary(TR, folder * "nonleafConstraintIUB" * file_ext_r),
-        read_vector_from_binary(TR, folder * "leafConstraintILB" * file_ext_r),
-        read_vector_from_binary(TR, folder * "leafConstraintIUB" * file_ext_r),
+        read_vector_from_binary(TR, folder * "uncond_nonleafConstraintILB" * file_ext_r),
+        read_vector_from_binary(TR, folder * "uncond_nonleafConstraintIUB" * file_ext_r),
+        read_vector_from_binary(TR, folder * "uncond_leafConstraintILB" * file_ext_r),
+        read_vector_from_binary(TR, folder * "uncond_leafConstraintIUB" * file_ext_r),
         json["risk"]["type"],
         json["risk"]["alpha"],
-        json["rowsS2"],
-        json["rowsNNtr"],
-        json["stepSize"],
         read_vector_from_binary(TI, folder * "ancestors" * file_ext_i) .+ 1,
         read_vector_from_binary(TI, folder * "numChildren" * file_ext_i),
         read_vector_from_binary(TI, folder * "childrenFrom" * file_ext_i) .+ 1,
@@ -390,7 +384,6 @@ function solve_this(
     x0 :: Vector{TR},
     )
     x = model[:x]
-    u = model[:u]
     # Add initial state constraint
     @constraint(
         model, 
@@ -399,8 +392,6 @@ function solve_this(
     )
     # Solve problem
     optimize!(model)
-    # Return states and inputs
-    return value.(x), value.(u)
 end
 
 export solve_this

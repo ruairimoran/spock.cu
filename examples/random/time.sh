@@ -9,9 +9,9 @@ main() {
     source "${path}.venv/bin/activate"
     mkdir -p ./build
     start=100000
-    width=100000
-    n=10
-    for interval in {0..8}; do
+    width=10000
+    n=1
+    for interval in {0..80}; do
         lo=$((start + width * interval))
         hi=$((start + width * (interval + 1)))
         for i in $(seq 1 $n); do

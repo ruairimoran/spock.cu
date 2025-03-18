@@ -1,10 +1,20 @@
 #include <spock.cuh>
+#include <sys/resource.h>
 #define real_t double  // templates type defaults to double
 
 
+size_t getPeakRSS() {
+    struct rusage usage;
+    getrusage(RUSAGE_SELF, &usage);
+    return usage.ru_maxrss;  // KB
+}
+
+
 int main() {
+    size_t ramBefore = getPeakRSS();
     real_t minute = 60.;
     real_t avgTime = 0.;
+    real_t ram = 0.;
     try {
         /* SCENARIO TREE */
         std::cout << "Reading tree files...\n";
@@ -34,6 +44,10 @@ int main() {
             int status = cache.runSpock(initState);
             if (status != converged) throw std::runtime_error(toString(status));
             runTimes[i] = cache.solveTime();
+            if (i == 0) {
+                size_t ramAfter = getPeakRSS();
+                ram = (ramAfter - ramBefore) / 1024.;  // KB to MB
+            }
             cache.reset();
             std::cout << "Run (" << i << ") : " << runTimes[i] << " s.\n";
         }
@@ -48,7 +62,7 @@ int main() {
     /* SAVE */
     std::ofstream timeScaling;
     timeScaling.open("time.csv", std::ios::app);
-    timeScaling << avgTime << std::endl;
+    timeScaling << avgTime << ", " << ram << std::endl;
     timeScaling.close();
     std::cout << "Saved (avgTime = " << avgTime << " s).\n";
 

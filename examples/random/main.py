@@ -63,10 +63,10 @@ print(tree)
 # Dynamics
 dynamics = []
 A_base = np.eye(num_states)
-B_base = rng.normal(0., .1, size=(num_states, num_inputs))
+B_base = np.ones((num_states, num_inputs))
 for i in range(num_events):
-    A = A_base + rng.normal(0., .01, size=(num_states, num_states))
-    B = B_base + rng.normal(0., .01, size=(num_states, num_inputs))
+    A = A_base + rng.normal(0., .1, size=(num_states, num_states))
+    B = B_base + rng.normal(0., .1, size=(num_states, num_inputs))
     dynamics += [s.build.LinearDynamics(A, B)]
 
 # Costs

@@ -156,20 +156,32 @@ print(tree)
 # --------------------------------------------------------
 # Generate problem data
 # --------------------------------------------------------
-num_states = 10
-num_inputs = 10
+n_s = 10  # number of storage units
+n_p = 3  # number of conventional generators
+n_r = 1  # number of renewables
+beta = np.ones((n_s, 1)) * 1 / n_s
+T = 1  # hour
+fuel_cost = 2.
+
+num_states = n_s
+num_inputs = n_s + n_p + 1
 
 # Dynamics
-A = np.eye(num_states)
-B = np.ones((num_states, num_inputs))
-dynamics = s.build.LinearDynamics(A, B)
+A = .99 * np.eye(n_s)
+B = np.hstack((
+    np.eye(n_s) - beta @ np.ones((1, n_s)),
+    beta @ np.ones((1, n_p)),
+    beta,
+)) * T
+c = T * beta
+dynamics = s.build.AffineDynamics(A, B)
 
 # Costs
-Q = np.eye(num_states)
-R = np.eye(num_inputs)
-nonleaf_costs = s.build.NonleafCost(Q, R)
-T = Q
-leaf_cost = s.build.LeafCost(T)
+Q = None
+R = np.diag(np.stack((np.zeros(n_s), np.ones(n_p) * fuel_cost, -T)))
+q = None
+r = np.stack((np.zeros(n_s), np.ones(n_p) * fuel_cost, 0.))
+nonleaf_costs = s.build.NonleafCost(Q, R, q, r)
 
 # Constraints
 nonleaf_state_ub = np.ones(num_states)
@@ -192,7 +204,6 @@ problem = (
     s.problem.Factory(scenario_tree=tree, num_states=num_states, num_inputs=num_inputs)
     .with_dynamics(dynamics)
     .with_nonleaf_cost(nonleaf_costs)
-    .with_leaf_cost(leaf_cost)
     .with_nonleaf_constraint(nonleaf_constraint)
     .with_leaf_constraint(leaf_constraint)
     .with_risk(risk)

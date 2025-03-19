@@ -87,7 +87,7 @@ class Tree:
         """
         :return: total number of events
         """
-        return max(self.__w_idx) + 1
+        return max(self.__num_children)
 
     @property
     def num_nodes(self):

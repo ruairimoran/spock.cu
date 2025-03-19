@@ -1,23 +1,18 @@
 import numpy as np
 import argparse
 import pandas as pd
+import matplotlib.pyplot as plt
 import spock as s
 
 
-def plot_scenario_values(ax_, data_, branching_, times_, lines_):
-    tree_ = s.tree.FromData(data_, branching_).build(False)
+def plot_scenario_values(ax_, tree_, times_, var=0):
     print(tree_)
     scenarios_ = tree_.get_scenarios()
     values_ = tree_.data_values
     num_scenarios_ = len(scenarios_)
     len_scenario_ = scenarios_[0].size
-    for line_idx in range(len(lines_)):  # Clear lines
-        lines_[line_idx].set_xdata([])
-        lines_[line_idx].set_ydata([])
-    for line_idx in range(num_scenarios_):  # Plot scenarios
-        lines_[line_idx].set_xdata(times_[:len_scenario_])
-        lines_[line_idx].set_ydata(values_[scenarios_[line_idx]])
-    set_ticks(ax_, times_)
+    for scen in range(num_scenarios_):
+        ax_.plot(times_[:len_scenario_], values_[scenarios_[scen], var])
 
 
 def set_ticks(ax_, times_):
@@ -28,7 +23,9 @@ def set_ticks(ax_, times_):
 
 
 def compute_error(df):
-    return (df["actual"] - df["forecast"]) / df["actual"]  # should this be "/ forecast" ?
+    if np.any(np.isclose(df["forecast"], 0.)):
+        raise Exception("Trying to divide by zero!")
+    return (df["actual"] - df["forecast"]) / abs(df["forecast"])  # should this be "/ actual" ?
 
 
 def daylight_savings(arr, max_t):
@@ -122,58 +119,90 @@ err_price = sanitize_and_group(price, max_time_steps)
 print(f"Done: ({err_price.shape[0]}) price samples.")
 
 # --------------------------------------------------------
-# Combine samples: [demand, renewables, price]
+# Combine samples [demand, renewables, price]
+# into [samples x dim x time] array
 # --------------------------------------------------------
 err_samples = np.concatenate((err_demand, err_renewables, err_price), axis=1)
 
+# --------------------------------------------------------
+# Create tree from data
+# --------------------------------------------------------
+horizon = max_time_steps - 1  # 1 hour periods
+branching = np.ones(horizon, dtype=np.int32)
+branching[0:3] = [5, 5, 5]
+data = err_samples
+tree = s.tree.FromData(data, branching).build()
+print(tree)
 
-
-# ---- Create tree from data ----
-# horizon = max_time_steps - 1  # 15 minute periods
-# branching = np.ones(horizon, dtype=np.int32)
-# branching[0] = 3
-# for i in range(1, len(branching)):
-#     if i % 24 == 0:
-#         branching[i] = 2
-
-# start = 4  # 15 minute periods
-# data = err_wind  # samples x dim x time
-# tree = s.tree.FromData(data, branching).build()
-# scenarios = tree.get_scenarios()
-# values = tree.data_values
-
-# ---- Plot tree ----
-# tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')  # requires python-tk@3.x installation
-
-# ---- Plot data ----
-# import matplotlib.pyplot as plt
-#
-# fig, ax = plt.subplots(figsize=(15, 7))
-# ax.set_xlabel("Time (24 hr)")
-# ax.set_ylabel("Wind Forecast Error (MW)")
-# plt.title("Wind Forecast Error vs. Time")
-# ax.grid(True)
-# start = 0  # 15 minute periods
-# num_samples = 365
-# data = np.concatenate((
-#     err_wind[-num_samples:, :, start:],
-#     err_wind[-num_samples:, :, :start]), axis=2)  # samples x dim x time
-# times = .25 * (np.arange(start, start + max_time_steps)) * 100
-# times = [t if t < 2400 else t - 2400 for t in times]  # 24 hrs
-# lines = [None for _ in range(num_samples)]
-# for i in range(num_samples):
-#     lines[i], = ax.plot([], [], marker="o", linestyle="-")
-# set_ticks(ax, times)
-# ax.set_ylim([min(wind_df["error"]), max(wind_df["error"])])
-# jump = 8  # 15 minute periods
-# data_shape = data.shape
-# for _ in range(0, 200):
-#     print("Building tree and plotting values...")
-#     plot_scenario_values(ax, data, branching, times, lines)
-#     # data = np.concatenate((data[:, :, 1:], data[:, :, 0].reshape(-1, 1, 1)), axis=2)
-#     data = data.reshape(-1)
-#     data = np.concatenate((data[jump:], data[:jump]))
-#     data = data.reshape(data_shape)
-#     times = np.concatenate((times[jump:], [t + 2400 for t in times[:jump]]))
-#     plt.pause(.1)
+# --------------------------------------------------------
+# Plot scenarios
+# --------------------------------------------------------
+# fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(15, 10))
+# start = 0  # 1 hour periods
+# times = np.arange(start, start + max_time_steps) * 100
+# lims = [[-.2, .2], [-.2, .2], [-5., 5.]]
+# titles = ["demand", "renewables", "price"]
+# axes[1].set_ylabel("Error (1. = 100% of forecast value)")
+# for i, ax in enumerate(axes):
+#     ax.set_xlabel("Time (24 hr)")
+#     ax.set_title(f"Error vs. Time ({titles[i]})")
+#     ax.grid(True)
+#     ax.set_ylim(lims[i])
+#     plot_scenario_values(ax, tree, times, i)
+#     set_ticks(ax, times)
+# plt.tight_layout()
 # plt.show()
+
+# --------------------------------------------------------
+# Generate problem data
+# --------------------------------------------------------
+num_states = 10
+num_inputs = 10
+
+# Dynamics
+A = np.eye(num_states)
+B = np.ones((num_states, num_inputs))
+dynamics = s.build.LinearDynamics(A, B)
+
+# Costs
+Q = np.eye(num_states)
+R = np.eye(num_inputs)
+nonleaf_costs = s.build.NonleafCost(Q, R)
+T = Q
+leaf_cost = s.build.LeafCost(T)
+
+# Constraints
+nonleaf_state_ub = np.ones(num_states)
+nonleaf_state_lb = -nonleaf_state_ub
+nonleaf_input_ub = np.ones(num_inputs)
+nonleaf_input_lb = -nonleaf_input_ub
+nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
+nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))
+nonleaf_constraint = s.build.Rectangle(nonleaf_lb, nonleaf_ub)
+leaf_ub = np.ones(num_states)
+leaf_lb = -leaf_ub
+leaf_constraint = s.build.Rectangle(leaf_lb, leaf_ub)
+
+# Risk
+alpha = .95
+risk = s.build.AVaR(alpha)
+
+# Generate
+problem = (
+    s.problem.Factory(scenario_tree=tree, num_states=num_states, num_inputs=num_inputs)
+    .with_dynamics(dynamics)
+    .with_nonleaf_cost(nonleaf_costs)
+    .with_leaf_cost(leaf_cost)
+    .with_nonleaf_constraint(nonleaf_constraint)
+    .with_leaf_constraint(leaf_constraint)
+    .with_risk(risk)
+    .with_julia()
+    .generate_problem()
+)
+print(problem)
+
+# --------------------------------------------------------
+# Initial state
+# --------------------------------------------------------
+x0 = np.zeros(num_states)
+tree.write_to_file_fp("initialState", x0)

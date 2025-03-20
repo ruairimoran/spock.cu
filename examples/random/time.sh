@@ -11,7 +11,7 @@ main() {
     start=100000
     width=10000
     n=1
-    for interval in {0..80}; do
+    for interval in {0..9}; do
         lo=$((start + width * interval))
         hi=$((start + width * (interval + 1)))
         for i in $(seq 1 $n); do

@@ -97,23 +97,22 @@ data = read_data()
 risk = build_risk(data)
 x0 = read_vector_from_binary(TR, folder * "initialState" * file_ext_r)
 tol = 1e-3
-max_time = 5 * minute
+max_time = 10 * minute
 status = Int64(1)
 tol_f64 = Float64(tol)
-max_time_f64 = Float64(5 * minute)
+max_time_f64 = Float64(max_time)
 
 
 for run in [0, 1]
 
-    status_g, time_g, ram_g = get_stats(Gurobi.Optimizer, data, risk, tol_f64, max_time_f64)
-    if status_g == MOI.OPTIMAL || status_g == MOI.LOCALLY_SOLVED ||
-       status_g == MOI.TIME_LIMIT || status_g == MOI.NUMERICAL_ERROR
-       global status = 0
-    else
+    status_m, time_m, ram_m = get_stats(Mosek.Optimizer, data, risk, tol_f64, max_time_f64)
+    if status_m == MOI.INFEASIBLE
        break
+    else
+        global status = 0
     end
 
-    status_m, time_m, ram_m = get_stats(Mosek.Optimizer, data, risk, tol_f64, max_time_f64)
+    status_g, time_g, ram_g = get_stats(Gurobi.Optimizer, data, risk, tol_f64, max_time_f64)
 
     status_i, time_i, ram_i = get_stats(Ipopt.Optimizer, data, risk, tol_f64, max_time_f64)
 

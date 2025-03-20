@@ -108,10 +108,10 @@ price = pd.DataFrame()
 # Actual
 price_actual = pd.read_csv(folder + "priceActual.csv", sep=";")
 price["date&time"] = pd.to_datetime(price_actual["date"] + " " + price_actual["from"], dayfirst=True)
-price["actual"] = pd.to_numeric(price_actual["price [ct/kWh]"], errors="raise")
+price["actual"] = pd.to_numeric(price_actual["price [ct/kWh]"], errors="raise") * 10  # euro/MWh
 # Forecast
 price_forecast = pd.read_csv(folder + "priceForecast.csv", sep=";")
-price["forecast"] = pd.to_numeric(price_forecast["price [ct/kWh]"], errors="raise")
+price["forecast"] = pd.to_numeric(price_forecast["price [ct/kWh]"], errors="raise") * 10  # euro/MWh
 # Error
 price["error"] = compute_error(price)
 # Sanitize and group by day
@@ -123,6 +123,9 @@ print(f"Done: ({err_price.shape[0]}) price samples.")
 # into [samples x dim x time] array
 # --------------------------------------------------------
 err_samples = np.concatenate((err_demand, err_renewables, err_price), axis=1)
+idx_d = 0
+idx_r = 1
+idx_p = 2
 
 # --------------------------------------------------------
 # Create tree from data
@@ -155,44 +158,106 @@ print(tree)
 
 # --------------------------------------------------------
 # Generate problem data
+# state = [x, dx, p-] = [stored energy, change in stored energy, prev conventional power]
+# input = [s, p, m] = [charge, conventional power, exchanged power]
 # --------------------------------------------------------
-n_s = 10  # number of storage units
+n_s = 2  # number of storage units
 n_p = 3  # number of conventional generators
+n_m = 1
 n_r = 1  # number of renewables
-beta = np.ones((n_s, 1)) * 1 / n_s
-T = 1  # hour
-fuel_cost = 2.
+beta = np.ones((n_s, 1)) * 1 / n_s  # relative sizes of storage units
+T = 1  # sampling time (hours)
+fuel_cost = 2.  # euro/MWh
 
-num_states = n_s
-num_inputs = n_s + n_p + 1
+num_states = n_s + n_s + n_p
+num_inputs = n_s + n_p + n_m
 
 # Dynamics
-A = .99 * np.eye(n_s)
+dynamics = [None]
+eye_s = np.eye(n_s)
+eye_p = np.eye(n_p)
+zero_p = np.zeros((n_p, n_m))
+A = .98 * eye_s
+A_aug = np.zeros((num_states, num_states))
+A_aug[:n_s, :n_s] = A
+A_aug[n_s:n_s*2, :n_s] = A
 B = np.hstack((
-    np.eye(n_s) - beta @ np.ones((1, n_s)),
+    eye_s - beta @ np.ones((1, n_s)),
     beta @ np.ones((1, n_p)),
     beta,
 )) * T
-c = T * beta
-dynamics = s.build.AffineDynamics(A, B)
+B_ = np.hstack((
+    np.zeros((n_p, n_s)),
+    eye_p,
+    zero_p,
+))
+B_aug = np.vstack((B, B, B_))
+for node in range(1, tree.num_nodes):
+    c = T * beta * (tree.data_values[node, idx_r] - tree.data_values[node, idx_d])
+    c_aug = np.vstack((c, c, zero_p))
+    dynamics += [s.build.AffineDynamics(A_aug, B_aug, c_aug)]
 
 # Costs
-Q = None
-R = np.diag(np.stack((np.zeros(n_s), np.ones(n_p) * fuel_cost, -T)))
+nonleaf_costs = [None]
+Q = np.zeros((num_states, num_states))
 q = None
-r = np.stack((np.zeros(n_s), np.ones(n_p) * fuel_cost, 0.))
-nonleaf_costs = s.build.NonleafCost(Q, R, q, r)
+for node in range(1, tree.num_nodes):
+    R = np.diag(np.concatenate(
+        (np.zeros(n_s), np.ones(n_p) * fuel_cost, np.array([0.])), axis=0
+    ))
+    r = np.concatenate(
+        (np.zeros(n_s), np.ones(n_p) * fuel_cost, np.array([-T * tree.data_values[node, idx_p]])), axis=0
+    )
+    nonleaf_costs += [s.build.NonleafCost(Q, R, q, r)]
+leaf_cost = s.build.LeafCost(Q)
 
 # Constraints
-nonleaf_state_ub = np.ones(num_states)
-nonleaf_state_lb = -nonleaf_state_ub
-nonleaf_input_ub = np.ones(num_inputs)
-nonleaf_input_lb = -nonleaf_input_ub
-nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
-nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))
-nonleaf_constraint = s.build.Rectangle(nonleaf_lb, nonleaf_ub)
-leaf_ub = np.ones(num_states)
-leaf_lb = -leaf_ub
+stored_energy_lb = np.ones(n_s) * 1.  # MWh
+stored_energy_ub = np.ones(n_s) * 100.  # MWh
+stored_energy_rate_lb = np.ones(n_s) * 1.  # MWh
+stored_energy_rate_ub = np.ones(n_s) * 100.  # MWh
+charge_rate_lb = np.ones(n_s) * 1.  # MW
+charge_rate_ub = np.ones(n_s) * 100.  # MW
+conventional_supply_lb = np.ones(n_p) * 1.  # MW
+conventional_supply_ub = np.ones(n_p) * 100.  # MW
+exchange_lb = np.ones(n_m) * 1.  # MW
+exchange_ub = np.ones(n_m) * 100.  # MW
+conventional_supply_rate_lb = np.ones(n_p) * 1.  # MW
+conventional_supply_rate_ub = np.ones(n_p) * 100.  # MW
+
+nonleaf_rect_lb = np.hstack((
+    stored_energy_lb,
+    stored_energy_rate_lb,
+    conventional_supply_lb,
+    charge_rate_lb,
+    conventional_supply_lb,
+    exchange_lb,
+))
+nonleaf_rect_ub = np.hstack((
+    stored_energy_ub,
+    stored_energy_rate_ub,
+    conventional_supply_ub,
+    charge_rate_ub,
+    conventional_supply_ub,
+    exchange_ub,
+))
+nonleaf_rect = s.build.Rectangle(nonleaf_rect_lb, nonleaf_rect_ub)
+poly_mat_x = np.hstack((np.zeros((n_p, n_s * 2)), -eye_p))
+poly_mat_u = np.hstack((np.zeros((n_p, n_s)), eye_p, zero_p))
+poly_mat = np.hstack((poly_mat_x, poly_mat_u))
+nonleaf_poly = s.build.Polyhedron(poly_mat, conventional_supply_rate_lb, conventional_supply_rate_ub)
+nonleaf_constraint = s.build.PolyhedronWithIdentity(nonleaf_rect, nonleaf_poly)
+
+leaf_lb = np.hstack((
+    stored_energy_lb,
+    stored_energy_rate_lb,
+    conventional_supply_lb,
+))
+leaf_ub = np.hstack((
+    stored_energy_ub,
+    stored_energy_rate_ub,
+    conventional_supply_ub,
+))
 leaf_constraint = s.build.Rectangle(leaf_lb, leaf_ub)
 
 # Risk
@@ -202,10 +267,11 @@ risk = s.build.AVaR(alpha)
 # Generate
 problem = (
     s.problem.Factory(scenario_tree=tree, num_states=num_states, num_inputs=num_inputs)
-    .with_dynamics(dynamics)
-    .with_nonleaf_cost(nonleaf_costs)
-    .with_nonleaf_constraint(nonleaf_constraint)
-    .with_leaf_constraint(leaf_constraint)
+    .with_dynamics_list(dynamics)
+    .with_cost_nonleaf_list(nonleaf_costs)
+    .with_cost_leaf(leaf_cost)
+    .with_constraint_nonleaf(nonleaf_constraint)
+    .with_constraint_leaf(leaf_constraint)
     .with_risk(risk)
     .with_julia()
     .generate_problem()

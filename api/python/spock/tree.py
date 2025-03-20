@@ -113,7 +113,7 @@ class Tree:
     @property
     def data_values(self):
         """
-        :return: data values array
+        :return: data values array where `row=node number` and `col=given data`
         """
         return self.__data_values
 

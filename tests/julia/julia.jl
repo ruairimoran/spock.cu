@@ -97,7 +97,7 @@ data = read_data()
 risk = build_risk(data)
 x0 = read_vector_from_binary(TR, folder * "initialState" * file_ext_r)
 tol = 1e-3
-max_time = 10 * minute
+max_time = 5 * minute
 status = Int64(1)
 tol_f64 = Float64(tol)
 max_time_f64 = Float64(max_time)
@@ -121,6 +121,7 @@ for run in [0, 1]
         num_vars = data.num_nodes * (data.num_states + data.num_inputs)
         open("time.csv", "a") do f
             write(f, "$(num_vars), $(time_g), $(ram_g), $(time_m), $(ram_m), $(time_i), $(ram_i), ")
+            # write(f, "$(num_vars), $(time_m), $(ram_m), ")
         end
         println("Saved!")
     end

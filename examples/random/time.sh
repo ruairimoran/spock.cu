@@ -8,10 +8,10 @@ main() {
     # shellcheck disable=SC1090
     source "${path}.venv/bin/activate"
     mkdir -p ./build
-    start=100000
+    start=10000
     width=10000
     n=1
-    for interval in {0..9}; do
+    for interval in {0..8}; do
         lo=$((start + width * interval))
         hi=$((start + width * (interval + 1)))
         for i in $(seq 1 $n); do

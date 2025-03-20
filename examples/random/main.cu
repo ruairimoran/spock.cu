@@ -26,7 +26,7 @@ int main() {
 
         /* CACHE */
         real_t tol = 1e-3;
-        real_t maxTime = 10 * minute;
+        real_t maxTime = 5 * minute;
         std::cout << "Allocating cache...\n";
         CacheBuilder builder(tree, problem);
         Cache cache = builder.tol(tol).maxTimeSecs(maxTime).build();
@@ -36,7 +36,7 @@ int main() {
         std::vector<real_t> initState(tree.numStates());
         d_initState.download(initState);
         size_t runs = 2;
-        size_t warm = 3;
+        size_t warm = 1;
         size_t totalRuns = runs + warm;
         std::vector<real_t> runTimes(totalRuns, 0.);
         std::cout << "Computing average solve time over (" << runs << ") runs with (" << warm << ") warm up runs...\n";

@@ -71,8 +71,8 @@ for i in range(num_events):
 
 # Costs
 nonleaf_costs = []
-Q_base = np.diag(rng.uniform(0., .9, size=num_states))
-R_base = np.diag(rng.uniform(0., .1, size=num_inputs))
+Q_base = np.diag(rng.uniform(0., .1, size=num_states))
+R_base = np.diag(rng.uniform(0., 100., size=num_inputs))
 for i in range(num_events):
     Q_w = Q_base + rng.normal(0., .01, size=(num_states, num_states))
     R_w = R_base + rng.normal(0., .01, size=(num_inputs, num_inputs))

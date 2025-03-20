@@ -1,5 +1,5 @@
 import numpy as np
-import cvxpy
+import cvxpy as cp
 from copy import deepcopy
 
 
@@ -20,12 +20,12 @@ class Model:
         self.__cvx = None
         self.__build()
 
-    def solve(self, x0, solver=cvxpy.SCS, tol=1e-3, max_time=np.inf):
+    def solve(self, x0, solver=cp.SCS, tol=1e-3, max_time=np.inf):
         # time limit in seconds
         self.__constraints.append(self.__x[self.__node_to_x(0)] == x0)
-        self.__cvx = cvxpy.Problem(self.__objective, self.__constraints)
+        self.__cvx = cp.Problem(self.__objective, self.__constraints)
         self.__constraints.pop()
-        if solver == cvxpy.MOSEK:
+        if solver == cp.MOSEK:
             mosek_params = {
                 "MSK_DPAR_INTPNT_TOL_REL_GAP": tol,
                 "MSK_DPAR_INTPNT_CO_TOL_REL_GAP": tol,
@@ -35,7 +35,7 @@ class Model:
             return self.__cvx.solve(solver=solver,
                                     mosek_params=mosek_params,
                                     )
-        elif solver == cvxpy.SCS:
+        elif solver == cp.SCS:
             scs_params = {
                 "eps_abs": tol,
                 "eps_rel": tol,
@@ -68,17 +68,17 @@ class Model:
         return self.__cvx.status
 
     def __build(self):
-        """Build an optimisation model using CVXPY."""
-        self.__x = cvxpy.Variable((self.__tree.num_nodes * self.__problem.num_states,))
-        self.__u = cvxpy.Variable((self.__tree.num_nonleaf_nodes * self.__problem.num_inputs,))
-        self.__y = cvxpy.Variable((sum(self.__problem.risk_at_node(i).b.size
+        """Build an optimisation model using cp."""
+        self.__x = cp.Variable((self.__tree.num_nodes * self.__problem.num_states,))
+        self.__u = cp.Variable((self.__tree.num_nonleaf_nodes * self.__problem.num_inputs,))
+        self.__y = cp.Variable((sum(self.__problem.risk_at_node(i).b.size
                                        for i in range(self.__tree.num_nonleaf_nodes))), )
-        self.__t = cvxpy.Variable((self.__tree.num_nodes - 1,))
-        self.__s = cvxpy.Variable((self.__tree.num_nodes,))
-        self.__objective = cvxpy.Minimize(self.__s[0])
+        self.__t = cp.Variable((self.__tree.num_nodes - 1,))
+        self.__s = cp.Variable((self.__tree.num_nodes,))
+        self.__objective = cp.Minimize(self.__s[0])
         self.__impose_dynamics()
         self.__impose_cost()
-        self.__impose_rectangle()
+        self.__impose_constraints()
         self.__impose_risk_constraints()
 
     def __node_to_x(self, node):
@@ -108,43 +108,88 @@ class Model:
         for node in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(node)
             self.__constraints.append(
-                cvxpy.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost_at_node(node).Q_uncond) +
-                cvxpy.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost_at_node(node).R_uncond)
+                cp.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost_at_node(node).Q_uncond) +
+                cp.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost_at_node(node).R_uncond)
                 <= self.__t[node - 1]
             )
         # leaf
         for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
             self.__constraints.append(
-                cvxpy.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost_at_node(node).Q_uncond)
+                cp.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost_at_node(node).Q_uncond)
                 <= self.__s[node]
             )
 
-    def __impose_rectangle(self):
-        """Impose box constraints on the variables."""
-        if not self.__problem.nonleaf_constraint().is_rectangle:
-            raise Exception("[Model] only supports rectangle nonleaf constraints.\n")
-        if not self.__problem.leaf_constraint().is_rectangle:
-            raise Exception("[Model] only supports rectangle leaf constraints.\n")
-        nonleaf_lb_x = self.__problem.nonleaf_constraint().lower_bound_uncond[:self.__nx]
-        nonleaf_ub_x = self.__problem.nonleaf_constraint().upper_bound_uncond[:self.__nx]
-        nonleaf_lb_u = self.__problem.nonleaf_constraint().lower_bound_uncond[self.__nx:]
-        nonleaf_ub_u = self.__problem.nonleaf_constraint().upper_bound_uncond[self.__nx:]
+    def __impose_rect_nonleaf(self, con):
+        lb_x = con.lower_bound_uncond[:self.__nx]
+        ub_x = con.upper_bound_uncond[:self.__nx]
+        lb_u = con.lower_bound_uncond[self.__nx:]
+        ub_u = con.upper_bound_uncond[self.__nx:]
         for ele in range(self.__nu):
-            self.__constraints.append(self.__u[self.__node_to_u(0)][ele] >= nonleaf_lb_u[ele])
-            self.__constraints.append(self.__u[self.__node_to_u(0)][ele] <= nonleaf_ub_u[ele])
+            u_i = self.__u[self.__node_to_u(0)][ele]
+            self.__constraints.append(u_i >= lb_u[ele])
+            self.__constraints.append(u_i <= ub_u[ele])
         for node in range(1, self.__tree.num_nonleaf_nodes):
             for ele in range(self.__nx):
-                self.__constraints.append(self.__x[self.__node_to_x(node)][ele] >= nonleaf_lb_x[ele])
-                self.__constraints.append(self.__x[self.__node_to_x(node)][ele] <= nonleaf_ub_x[ele])
+                x_i = self.__x[self.__node_to_x(node)][ele]
+                self.__constraints.append(x_i >= lb_x[ele])
+                self.__constraints.append(x_i <= ub_x[ele])
             for ele in range(self.__nu):
-                self.__constraints.append(self.__u[self.__node_to_u(node)][ele] >= nonleaf_lb_u[ele])
-                self.__constraints.append(self.__u[self.__node_to_u(node)][ele] <= nonleaf_ub_u[ele])
-        leaf_lb_x = self.__problem.leaf_constraint().lower_bound_uncond
-        leaf_ub_x = self.__problem.leaf_constraint().upper_bound_uncond
+                u_i = self.__u[self.__node_to_u(node)][ele]
+                self.__constraints.append(u_i >= lb_u[ele])
+                self.__constraints.append(u_i <= ub_u[ele])
+
+    def __impose_poly_nonleaf(self, con):
+        lb = con.lower_bound_uncond
+        ub = con.upper_bound_uncond
+        g = con.matrix_uncond
+        for node in range(self.__tree.num_nonleaf_nodes):
+            x = self.__x[self.__node_to_x(node)]
+            u = self.__u[self.__node_to_u(node)]
+            xu = cp.concatenate([x, u]).reshape((-1, 1), 'C')
+            v = g @ xu
+            for ele in range(v.size):
+                v_i = v[ele]
+                self.__constraints.append(v_i >= lb[ele])
+                self.__constraints.append(v_i <= ub[ele])
+
+    def __impose_rect_leaf(self, con):
+        lb_x = con.lower_bound_uncond
+        ub_x = con.upper_bound_uncond
         for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
             for ele in range(self.__nx):
-                self.__constraints.append(self.__x[self.__node_to_x(node)][ele] >= leaf_lb_x[ele])
-                self.__constraints.append(self.__x[self.__node_to_x(node)][ele] <= leaf_ub_x[ele])
+                self.__constraints.append(self.__x[self.__node_to_x(node)][ele] >= lb_x[ele])
+                self.__constraints.append(self.__x[self.__node_to_x(node)][ele] <= ub_x[ele])
+
+    def __impose_poly_leaf(self, con):
+        lb = con.lower_bound_uncond
+        ub = con.upper_bound_uncond
+        g = con.matrix_uncond
+        for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
+            x = self.__x[self.__node_to_x(node)].reshape((-1, 1), 'C')
+            v = g @ x
+            for ele in range(v.size):
+                v_i = v[ele]
+                self.__constraints.append(v_i >= lb[ele])
+                self.__constraints.append(v_i <= ub[ele])
+
+    def __impose_constraints(self):
+        """Impose convex constraints on the variables."""
+        con = self.__problem.nonleaf_constraint()
+        if self.__problem.nonleaf_constraint().is_rectangle:
+            self.__impose_rect_nonleaf(con)
+        elif self.__problem.nonleaf_constraint().is_polyhedron:
+            self.__impose_poly_nonleaf(con)
+        elif self.__problem.nonleaf_constraint().is_polyhedron_with_identity:
+            self.__impose_rect_nonleaf(con.rect)
+            self.__impose_poly_nonleaf(con.poly)
+        con = self.__problem.leaf_constraint()
+        if self.__problem.leaf_constraint().is_rectangle:
+            self.__impose_rect_leaf(con)
+        elif self.__problem.leaf_constraint().is_polyhedron:
+            self.__impose_poly_leaf(con)
+        elif self.__problem.leaf_constraint().is_polyhedron_with_identity:
+            self.__impose_rect_leaf(con.rect)
+            self.__impose_poly_leaf(con.poly)
 
     def __impose_risk_constraints(self):
         y_offset = 0
@@ -183,15 +228,15 @@ class ModelWithPrecondition:
         self.__cvx = None
         self.__build()
 
-    def solve(self, x0, solver=cvxpy.SCS, tol=1e-3, max_time=np.inf):
+    def solve(self, x0, solver=cp.SCS, tol=1e-3, max_time=np.inf):
         # time limit in seconds
         x0_cond = deepcopy(x0)
         for i in range(self.__problem.num_states):
             x0_cond[i] *= self.__problem.scaling[i]
         self.__constraints.append(self.__x[self.__node_to_x(0)] == x0_cond)
-        self.__cvx = cvxpy.Problem(self.__objective, self.__constraints)
+        self.__cvx = cp.Problem(self.__objective, self.__constraints)
         self.__constraints.pop()
-        if solver == cvxpy.MOSEK:
+        if solver == cp.MOSEK:
             mosek_params = {
                 "MSK_DPAR_INTPNT_TOL_REL_GAP": tol,
                 "MSK_DPAR_INTPNT_CO_TOL_REL_GAP": tol,
@@ -202,7 +247,7 @@ class ModelWithPrecondition:
             return self.__cvx.solve(solver=solver,
                                     mosek_params=mosek_params,
                                     )
-        elif solver == cvxpy.SCS:
+        elif solver == cp.SCS:
             scs_params = {
                 "eps_abs": tol,
                 "eps_rel": tol,
@@ -243,17 +288,17 @@ class ModelWithPrecondition:
         return self.__cvx.status
 
     def __build(self):
-        """Build an optimisation model using CVXPY."""
-        self.__x = cvxpy.Variable((self.__tree.num_nodes * self.__problem.num_states,))
-        self.__u = cvxpy.Variable((self.__tree.num_nonleaf_nodes * self.__problem.num_inputs,))
-        self.__y = cvxpy.Variable((sum(self.__problem.risk_at_node(i).b.size
+        """Build an optimisation model using cp."""
+        self.__x = cp.Variable((self.__tree.num_nodes * self.__problem.num_states,))
+        self.__u = cp.Variable((self.__tree.num_nonleaf_nodes * self.__problem.num_inputs,))
+        self.__y = cp.Variable((sum(self.__problem.risk_at_node(i).b.size
                                        for i in range(self.__tree.num_nonleaf_nodes))), )
-        self.__t = cvxpy.Variable((self.__tree.num_nodes - 1,))
-        self.__s = cvxpy.Variable((self.__tree.num_nodes,))
-        self.__objective = cvxpy.Minimize(self.__s[0])
+        self.__t = cp.Variable((self.__tree.num_nodes - 1,))
+        self.__s = cp.Variable((self.__tree.num_nodes,))
+        self.__objective = cp.Minimize(self.__s[0])
         self.__impose_dynamics()
         self.__impose_cost()
-        self.__impose_rectangle()
+        self.__impose_constraints()
         self.__impose_risk_constraints()
 
     def __node_to_x(self, node):
@@ -283,44 +328,89 @@ class ModelWithPrecondition:
         for node in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(node)
             self.__constraints.append(
-                cvxpy.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost_at_node(node).Q) +
-                cvxpy.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost_at_node(node).R)
+                cp.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost_at_node(node).Q) +
+                cp.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost_at_node(node).R)
                 <= self.__t[node - 1]
             )
 
         # leaf
         for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
             self.__constraints.append(
-                cvxpy.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost_at_node(node).Q)
+                cp.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost_at_node(node).Q)
                 <= self.__s[node]
             )
 
-    def __impose_rectangle(self):
-        """Impose box constraints on the variables."""
-        if not self.__problem.nonleaf_constraint().is_rectangle:
-            raise Exception("[Model] only supports rectangle nonleaf constraints.\n")
-        if not self.__problem.leaf_constraint().is_rectangle:
-            raise Exception("[Model] only supports rectangle leaf constraints.\n")
-        nonleaf_lb_x = self.__problem.nonleaf_constraint().lower_bound[:self.__nx]
-        nonleaf_ub_x = self.__problem.nonleaf_constraint().upper_bound[:self.__nx]
-        nonleaf_lb_u = self.__problem.nonleaf_constraint().lower_bound[self.__nx:]
-        nonleaf_ub_u = self.__problem.nonleaf_constraint().upper_bound[self.__nx:]
+    def __impose_rect_nonleaf(self, con):
+        lb_x = con.lower_bound[:self.__nx]
+        ub_x = con.upper_bound[:self.__nx]
+        lb_u = con.lower_bound[self.__nx:]
+        ub_u = con.upper_bound[self.__nx:]
         for ele in range(self.__nu):
-            self.__constraints.append(self.__u[self.__node_to_u(0)][ele] >= nonleaf_lb_u[ele])
-            self.__constraints.append(self.__u[self.__node_to_u(0)][ele] <= nonleaf_ub_u[ele])
+            u_i = self.__u[self.__node_to_u(0)][ele]
+            self.__constraints.append(u_i >= lb_u[ele])
+            self.__constraints.append(u_i <= ub_u[ele])
         for node in range(1, self.__tree.num_nonleaf_nodes):
             for ele in range(self.__nx):
-                self.__constraints.append(self.__x[self.__node_to_x(node)][ele] >= nonleaf_lb_x[ele])
-                self.__constraints.append(self.__x[self.__node_to_x(node)][ele] <= nonleaf_ub_x[ele])
+                x_i = self.__x[self.__node_to_x(node)][ele]
+                self.__constraints.append(x_i >= lb_x[ele])
+                self.__constraints.append(x_i <= ub_x[ele])
             for ele in range(self.__nu):
-                self.__constraints.append(self.__u[self.__node_to_u(node)][ele] >= nonleaf_lb_u[ele])
-                self.__constraints.append(self.__u[self.__node_to_u(node)][ele] <= nonleaf_ub_u[ele])
-        leaf_lb_x = self.__problem.leaf_constraint().lower_bound
-        leaf_ub_x = self.__problem.leaf_constraint().upper_bound
+                u_i = self.__u[self.__node_to_u(node)][ele]
+                self.__constraints.append(u_i >= lb_u[ele])
+                self.__constraints.append(u_i <= ub_u[ele])
+
+    def __impose_poly_nonleaf(self, con):
+        lb = con.lower_bound
+        ub = con.upper_bound
+        g = con.matrix
+        for node in range(self.__tree.num_nonleaf_nodes):
+            x = self.__x[self.__node_to_x(node)]
+            u = self.__u[self.__node_to_u(node)]
+            xu = cp.concatenate([x, u]).reshape((-1, 1), 'C')
+            v = g @ xu
+            for ele in range(v.size):
+                v_i = v[ele]
+                self.__constraints.append(v_i >= lb[ele])
+                self.__constraints.append(v_i <= ub[ele])
+
+    def __impose_rect_leaf(self, con):
+        lb_x = con.lower_bound
+        ub_x = con.upper_bound
         for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
             for ele in range(self.__nx):
-                self.__constraints.append(self.__x[self.__node_to_x(node)][ele] >= leaf_lb_x[ele])
-                self.__constraints.append(self.__x[self.__node_to_x(node)][ele] <= leaf_ub_x[ele])
+                self.__constraints.append(self.__x[self.__node_to_x(node)][ele] >= lb_x[ele])
+                self.__constraints.append(self.__x[self.__node_to_x(node)][ele] <= ub_x[ele])
+
+    def __impose_poly_leaf(self, con):
+        lb = con.lower_bound
+        ub = con.upper_bound
+        g = con.matrix
+        for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
+            x = self.__x[self.__node_to_x(node)].reshape((-1, 1), 'C')
+            v = g @ x
+            for ele in range(v.size):
+                v_i = v[ele]
+                self.__constraints.append(v_i >= lb[ele])
+                self.__constraints.append(v_i <= ub[ele])
+
+    def __impose_constraints(self):
+        """Impose convex constraints on the variables."""
+        con = self.__problem.nonleaf_constraint()
+        if self.__problem.nonleaf_constraint().is_rectangle:
+            self.__impose_rect_nonleaf(con)
+        elif self.__problem.nonleaf_constraint().is_polyhedron:
+            self.__impose_poly_nonleaf(con)
+        elif self.__problem.nonleaf_constraint().is_polyhedron_with_identity:
+            self.__impose_rect_nonleaf(con.rect)
+            self.__impose_poly_nonleaf(con.poly)
+        con = self.__problem.leaf_constraint()
+        if self.__problem.leaf_constraint().is_rectangle:
+            self.__impose_rect_leaf(con)
+        elif self.__problem.leaf_constraint().is_polyhedron:
+            self.__impose_poly_leaf(con)
+        elif self.__problem.leaf_constraint().is_polyhedron_with_identity:
+            self.__impose_rect_leaf(con.rect)
+            self.__impose_poly_leaf(con.poly)
 
     def __impose_risk_constraints(self):
         y_offset = 0

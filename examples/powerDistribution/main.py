@@ -161,8 +161,8 @@ print(tree)
 # state = [x, dx, p-] = [stored energy, change in stored energy, prev conventional power]
 # input = [s, p, m] = [charge, conventional power, exchanged power]
 # --------------------------------------------------------
-n_s = 2  # number of storage units
-n_p = 3  # number of conventional generators
+n_s = 1  # number of storage units
+n_p = 1  # number of conventional generators
 n_m = 1
 n_r = 1  # number of renewables
 beta = np.ones((n_s, 1)) * 1 / n_s  # relative sizes of storage units
@@ -283,3 +283,39 @@ print(problem)
 # --------------------------------------------------------
 x0 = np.zeros(num_states)
 tree.write_to_file_fp("initialState", x0)
+
+
+import cvxpy as cp
+
+
+def run(sol):
+    model = s.model.Model(tree, problem)
+    model.solve(x0, sol, tol=1e-4)
+    print(sol.__str__(), "normal status: ", model.status)
+    print("States:\n", model.states, "\nInputs:\n", model.inputs, "\n")
+    return model.states, model.inputs
+
+
+def run_conditioned(sol):
+    model = s.model.ModelWithPrecondition(tree, problem)
+    model.solve(x0, sol, tol=1e-4)
+    print(sol.__str__(), "preconditioned status: ", model.status)
+    return model.states, model.inputs, model.status
+
+
+solver = None
+try:
+    solver = cp.MOSEK
+    states, inputs = run(solver)
+except:
+    solver = cp.SCS
+    states, inputs = run(solver)
+if problem.preconditioned:
+    states_, inputs_, status = run_conditioned(solver)
+    if status != "infeasible":
+        tol = 1e-2
+        print("States:\n", states_, "\nInputs:\n", inputs_, "\n")
+        print("Equal: ",
+              np.allclose(states_, states, tol) and
+              np.allclose(inputs_, inputs, tol),
+              "\n")

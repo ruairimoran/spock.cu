@@ -161,8 +161,8 @@ print(tree)
 # state = [x, dx, p-] = [stored energy, change in stored energy, prev conventional power]
 # input = [s, p, m] = [charge, conventional power, exchanged power]
 # --------------------------------------------------------
-n_s = 1  # number of storage units
-n_p = 1  # number of conventional generators
+n_s = 3  # number of storage units
+n_p = 2  # number of conventional generators
 n_m = 1
 n_r = 1  # number of renewables
 beta = np.ones((n_s, 1)) * 1 / n_s  # relative sizes of storage units
@@ -212,18 +212,19 @@ for node in range(1, tree.num_nodes):
 leaf_cost = s.build.LeafCost(Q)
 
 # Constraints
+large = 1e9
 stored_energy_lb = np.ones(n_s) * 1.  # MWh
-stored_energy_ub = np.ones(n_s) * 100.  # MWh
-stored_energy_rate_lb = np.ones(n_s) * 1.  # MWh
-stored_energy_rate_ub = np.ones(n_s) * 100.  # MWh
-charge_rate_lb = np.ones(n_s) * 1.  # MW
-charge_rate_ub = np.ones(n_s) * 100.  # MW
-conventional_supply_lb = np.ones(n_p) * 1.  # MW
-conventional_supply_ub = np.ones(n_p) * 100.  # MW
-exchange_lb = np.ones(n_m) * 1.  # MW
-exchange_ub = np.ones(n_m) * 100.  # MW
-conventional_supply_rate_lb = np.ones(n_p) * 1.  # MW
-conventional_supply_rate_ub = np.ones(n_p) * 100.  # MW
+stored_energy_ub = np.ones(n_s) * large  # MWh
+stored_energy_rate_lb = np.ones(n_s) * -large  # MWh
+stored_energy_rate_ub = np.ones(n_s) * large  # MWh
+charge_rate_lb = np.ones(n_s) * -large  # MW
+charge_rate_ub = np.ones(n_s) * large  # MW
+conventional_supply_lb = np.ones(n_p) * 0.  # MW
+conventional_supply_ub = np.ones(n_p) * large  # MW
+exchange_lb = np.ones(n_m) * -large  # MW
+exchange_ub = np.ones(n_m) * large  # MW
+conventional_supply_rate_lb = np.ones(n_p) * -large  # MW
+conventional_supply_rate_ub = np.ones(n_p) * large  # MW
 
 nonleaf_rect_lb = np.hstack((
     stored_energy_lb,

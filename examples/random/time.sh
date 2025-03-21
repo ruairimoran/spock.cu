@@ -10,7 +10,7 @@ main() {
     mkdir -p ./build
     start=10000
     width=10000
-    n=1
+    n=10
     for interval in {0..8}; do
         lo=$((start + width * interval))
         hi=$((start + width * (interval + 1)))

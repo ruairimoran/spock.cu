@@ -1,4 +1,4 @@
-Datum;von;Zeitzone von;bis;Zeitzone bis;Spotmarktpreis in ct/kWh
+date;from;time zone from;to;time zone to;price [ct/kWh]
 30.12.2024;23:00;UTC;00:00;UTC;5.049
 31.12.2024;00:00;UTC;01:00;UTC;4.59
 31.12.2024;01:00;UTC;02:00;UTC;5.643

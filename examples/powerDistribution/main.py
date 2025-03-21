@@ -67,11 +67,11 @@ folder = "deEnergyData/"
 print("Read demand...")
 demand = pd.DataFrame()
 # Actual
-demand_actual = pd.read_csv(folder + "demandActual.csv", sep=";")
+demand_actual = pd.read_csv(folder + "demandActual24.csv", sep=";")
 demand["date&time"] = pd.to_datetime(demand_actual["Start date"], format="%b %d, %Y %I:%M %p")
 demand["actual"] = pd.to_numeric(demand_actual["grid load [MWh]"].str.replace(",", "", regex=True), errors="raise")
 # Forecast
-demand_forecast = pd.read_csv(folder + "demandForecast.csv", sep=";")
+demand_forecast = pd.read_csv(folder + "demandForecast24.csv", sep=";")
 demand["forecast"] = pd.to_numeric(demand_forecast["grid load [MWh]"].str.replace(",", "", regex=True), errors="raise")
 # Error
 demand["error"] = compute_error(demand)
@@ -85,14 +85,14 @@ print(f"Done: ({err_demand.shape[0]}) demand samples.")
 print("Read renewables...")
 renewables = pd.DataFrame()
 # Actual
-renewables_actual = pd.read_csv(folder + "renewablesActual.csv", sep=";")
+renewables_actual = pd.read_csv(folder + "renewablesActual24.csv", sep=";")
 renewables["date&time"] = pd.to_datetime(renewables_actual["Start date"], format="%b %d, %Y %I:%M %p")
 renewables["offshore"] = pd.to_numeric(renewables_actual["Wind offshore [MWh]"].str.replace(",", "", regex=True), errors="raise")
 renewables["onshore"] = pd.to_numeric(renewables_actual["Wind onshore [MWh]"].str.replace(",", "", regex=True), errors="raise")
 renewables["pv"] = pd.to_numeric(renewables_actual["Photovoltaics [MWh]"].str.replace(",", "", regex=True), errors="raise")
 renewables["actual"] = renewables["offshore"] + renewables["onshore"] + renewables["pv"]
 # Forecast
-renewables_forecast = pd.read_csv(folder + "renewablesForecast.csv", sep=";")
+renewables_forecast = pd.read_csv(folder + "renewablesForecast24.csv", sep=";")
 renewables["forecast"] = pd.to_numeric(renewables_forecast["Photovoltaics and wind [MWh]"].str.replace(",", "", regex=True), errors="raise")
 # Error
 renewables["error"] = compute_error(renewables)
@@ -106,11 +106,11 @@ print(f"Done: ({err_renewables.shape[0]}) renewables samples.")
 print("Read price...")
 price = pd.DataFrame()
 # Actual
-price_actual = pd.read_csv(folder + "priceActual.csv", sep=";")
+price_actual = pd.read_csv(folder + "priceActual24.csv", sep=";")
 price["date&time"] = pd.to_datetime(price_actual["date"] + " " + price_actual["from"], dayfirst=True)
 price["actual"] = pd.to_numeric(price_actual["price [ct/kWh]"], errors="raise") * 10  # euro/MWh
 # Forecast
-price_forecast = pd.read_csv(folder + "priceForecast.csv", sep=";")
+price_forecast = pd.read_csv(folder + "priceForecast24.csv", sep=";")
 price["forecast"] = pd.to_numeric(price_forecast["price [ct/kWh]"], errors="raise") * 10  # euro/MWh
 # Error
 price["error"] = compute_error(price)
@@ -130,7 +130,7 @@ idx_p = 2
 # --------------------------------------------------------
 # Create tree from data
 # --------------------------------------------------------
-horizon = 2  # max_time_steps - 1  # 1 hour periods
+horizon = 5  # max_time_steps - 1  # 1 hour periods
 branching = np.ones(horizon, dtype=np.int32)
 branching[0] = 5
 data = err_samples
@@ -155,6 +155,19 @@ print(tree)
 #     set_ticks(ax, times)
 # plt.tight_layout()
 # plt.show()
+
+# --------------------------------------------------------
+# Read forecast for problem
+# --------------------------------------------------------
+fc = pd.read_csv(folder + "demandForecast25.csv", sep=";")
+fc["forecast"] = pd.to_numeric(fc["grid load [MWh]"].str.replace(",", "", regex=True), errors="raise")
+fc_d = np.array(fc["forecast"])
+fc = pd.read_csv(folder + "renewablesForecast25.csv", sep=";")
+fc["forecast"] = pd.to_numeric(fc["Photovoltaics and wind [MWh]"].str.replace(",", "", regex=True), errors="raise")
+fc_r = np.array(fc["forecast"])
+fc = pd.read_csv(folder + "priceForecast25.csv", sep=";")
+fc["forecast"] = pd.to_numeric(fc["price [ct/kWh]"], errors="raise") * 10  # euro/MWh
+fc_p = np.array(fc["forecast"])
 
 # --------------------------------------------------------
 # Generate problem data
@@ -193,8 +206,8 @@ B_ = np.hstack((
 ))
 B_aug = np.vstack((B, B, B_))
 for node in range(1, tree.num_nodes):
-    c = T * beta * (fc_r[tree.stage_of(node)] * tree.data_values[node, idx_r]
-                    - fc_d[tree.stage_of(node)] * tree.data_values[node, idx_d])
+    c = T * beta * (fc_r[tree.stage_of_node(node)] * tree.data_values[node, idx_r]
+                    - fc_d[tree.stage_of_node(node)] * tree.data_values[node, idx_d])
     c_aug = np.vstack((c, c, zero_p))
     dynamics += [s.build.AffineDynamics(A_aug, B_aug, c_aug)]
 
@@ -209,7 +222,7 @@ for node in range(1, tree.num_nodes):
     r = np.concatenate((
         np.zeros(n_s),
         np.ones(n_p) * fuel_cost,
-        np.array([-T * fc_p[tree.stage_of(node)] * tree.data_values[node, idx_p]])), axis=0
+        np.array([-T * fc_p[tree.stage_of_node(node)] * tree.data_values[node, idx_p]])), axis=0
     )
     nonleaf_costs += [s.build.NonleafCost(Q, R, q, r)]
 leaf_cost = s.build.LeafCost(Q)

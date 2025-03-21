@@ -378,7 +378,7 @@ class TestScenarioTree(unittest.TestCase):
 
     def test_data_num_events(self):
         tree = TestScenarioTree.__tree_from_data
-        self.assertEqual(tree.children_of_node(0), tree.num_events)
+        self.assertEqual(len(tree.children_of_node(0)), tree.num_events)
 
     def test_data_ancestor_of_node(self):
         tree = TestScenarioTree.__tree_from_data

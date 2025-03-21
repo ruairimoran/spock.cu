@@ -25,7 +25,7 @@ def set_ticks(ax_, times_):
 def compute_error(df):
     if np.any(np.isclose(df["forecast"], 0.)):
         raise Exception("Trying to divide by zero!")
-    return (df["actual"] - df["forecast"]) / abs(df["forecast"])  # should this be "/ actual" ?
+    return df["actual"] / df["forecast"]
 
 
 def daylight_savings(arr, max_t):
@@ -130,9 +130,9 @@ idx_p = 2
 # --------------------------------------------------------
 # Create tree from data
 # --------------------------------------------------------
-horizon = max_time_steps - 1  # 1 hour periods
+horizon = 2  # max_time_steps - 1  # 1 hour periods
 branching = np.ones(horizon, dtype=np.int32)
-branching[0:3] = [5, 5, 5]
+branching[0] = 5
 data = err_samples
 tree = s.tree.FromData(data, branching).build()
 print(tree)
@@ -150,7 +150,7 @@ print(tree)
 #     ax.set_xlabel("Time (24 hr)")
 #     ax.set_title(f"Error vs. Time ({titles[i]})")
 #     ax.grid(True)
-#     ax.set_ylim(lims[i])
+#     # ax.set_ylim(lims[i])
 #     plot_scenario_values(ax, tree, times, i)
 #     set_ticks(ax, times)
 # plt.tight_layout()
@@ -193,7 +193,8 @@ B_ = np.hstack((
 ))
 B_aug = np.vstack((B, B, B_))
 for node in range(1, tree.num_nodes):
-    c = T * beta * (tree.data_values[node, idx_r] - tree.data_values[node, idx_d])
+    c = T * beta * (fc_r[tree.stage_of(node)] * tree.data_values[node, idx_r]
+                    - fc_d[tree.stage_of(node)] * tree.data_values[node, idx_d])
     c_aug = np.vstack((c, c, zero_p))
     dynamics += [s.build.AffineDynamics(A_aug, B_aug, c_aug)]
 
@@ -205,14 +206,16 @@ for node in range(1, tree.num_nodes):
     R = np.diag(np.concatenate(
         (np.zeros(n_s), np.ones(n_p) * fuel_cost, np.array([0.])), axis=0
     ))
-    r = np.concatenate(
-        (np.zeros(n_s), np.ones(n_p) * fuel_cost, np.array([-T * tree.data_values[node, idx_p]])), axis=0
+    r = np.concatenate((
+        np.zeros(n_s),
+        np.ones(n_p) * fuel_cost,
+        np.array([-T * fc_p[tree.stage_of(node)] * tree.data_values[node, idx_p]])), axis=0
     )
     nonleaf_costs += [s.build.NonleafCost(Q, R, q, r)]
 leaf_cost = s.build.LeafCost(Q)
 
 # Constraints
-large = 1e9
+large = 1000
 stored_energy_lb = np.ones(n_s) * 1.  # MWh
 stored_energy_ub = np.ones(n_s) * large  # MWh
 stored_energy_rate_lb = np.ones(n_s) * -large  # MWh

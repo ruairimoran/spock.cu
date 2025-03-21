@@ -93,10 +93,16 @@ struct Data
     cost_leaf_Q :: Vector{Matrix{TR}}
     constraint_nonleaf :: String
     constraint_leaf :: String
-    constraint_nonleaf_min :: Vector{TR}
-    constraint_nonleaf_max :: Vector{TR}
-    constraint_leaf_min :: Vector{TR}
-    constraint_leaf_max :: Vector{TR}
+    constraint_nonleaf_ilb :: Union{Vector{TR}, Nothing}
+    constraint_nonleaf_iub :: Union{Vector{TR}, Nothing}
+    constraint_nonleaf_glb :: Union{Vector{TR}, Nothing}
+    constraint_nonleaf_gub :: Union{Vector{TR}, Nothing}
+    constraint_nonleaf_g :: Union{Matrix{TR}, Nothing}
+    constraint_leaf_ilb :: Union{Vector{TR}, Nothing}
+    constraint_leaf_iub :: Union{Vector{TR}, Nothing}
+    constraint_leaf_glb :: Union{Vector{TR}, Nothing}
+    constraint_leaf_gub :: Union{Vector{TR}, Nothing}
+    constraint_leaf_g :: Union{Matrix{TR}, Nothing}
     risk_type :: String
     risk_alpha :: TR
     ancestors :: Vector{TI}
@@ -108,7 +114,37 @@ end
 
 function read_data()
     json = JSON.parse(read(folder * "data.json", String))
-    return Data(
+    constraint_nonleaf = json["constraint"]["nonleaf"]
+    constraint_leaf = json["constraint"]["leaf"]
+    constraint_nonleaf_ilb = Nothing
+    constraint_nonleaf_iub = Nothing
+    constraint_nonleaf_glb = Nothing
+    constraint_nonleaf_gub = Nothing
+    constraint_nonleaf_g = Nothing
+    constraint_leaf_ilb = Nothing
+    constraint_leaf_iub = Nothing
+    constraint_leaf_glb = Nothing
+    constraint_leaf_gub = Nothing
+    constraint_leaf_g = Nothing
+    if constraint_nonleaf == "rectangle" || constraint_nonleaf == "polyhedronWithIdentity"
+        constraint_nonleaf_ilb = read_vector_from_binary(TR, folder * "uncond_nonleafConstraintILB" * file_ext_r)
+        constraint_nonleaf_iub = read_vector_from_binary(TR, folder * "uncond_nonleafConstraintIUB" * file_ext_r)
+    end
+    if constraint_nonleaf == "polyhedron" || constraint_nonleaf == "polyhedronWithIdentity"
+        constraint_nonleaf_glb = read_vector_from_binary(TR, folder * "uncond_nonleafConstraintGLB" * file_ext_r)
+        constraint_nonleaf_gub = read_vector_from_binary(TR, folder * "uncond_nonleafConstraintGUB" * file_ext_r)
+        constraint_nonleaf_g = read_tensor_from_binary(TR, folder * "uncond_nonleafConstraintGamma" * file_ext_r)
+    end
+    if constraint_leaf == "rectangle" || constraint_leaf == "polyhedronWithIdentity"
+        constraint_leaf_ilb = read_vector_from_binary(TR, folder * "uncond_leafConstraintILB" * file_ext_r)
+        constraint_leaf_iub = read_vector_from_binary(TR, folder * "uncond_leafConstraintIUB" * file_ext_r)
+    end
+    if constraint_leaf == "polyhedron" || constraint_leaf == "polyhedronWithIdentity"
+        constraint_leaf_glb = read_vector_from_binary(TR, folder * "uncond_leafConstraintGLB" * file_ext_r)
+        constraint_leaf_gub = read_vector_from_binary(TR, folder * "uncond_leafConstraintGUB" * file_ext_r)
+        constraint_leaf_g = read_tensor_from_binary(TR, folder * "uncond_leafConstraintGamma" * file_ext_r)
+    end
+    data = Data(
         json["numEvents"],
         json["numNonleafNodes"],
         json["numNodes"],
@@ -122,12 +158,18 @@ function read_data()
         read_tensor_from_binary(TR, folder * "uncond_cost_nonleafQ" * file_ext_r),
         read_tensor_from_binary(TR, folder * "uncond_cost_nonleafR" * file_ext_r),
         read_tensor_from_binary(TR, folder * "uncond_cost_leafQ" * file_ext_r),
-        json["constraint"]["nonleaf"],
-        json["constraint"]["leaf"],
-        read_vector_from_binary(TR, folder * "uncond_nonleafConstraintILB" * file_ext_r),
-        read_vector_from_binary(TR, folder * "uncond_nonleafConstraintIUB" * file_ext_r),
-        read_vector_from_binary(TR, folder * "uncond_leafConstraintILB" * file_ext_r),
-        read_vector_from_binary(TR, folder * "uncond_leafConstraintIUB" * file_ext_r),
+        constraint_nonleaf,
+        constraint_leaf,
+        constraint_nonleaf_ilb,
+        constraint_nonleaf_iub,
+        constraint_nonleaf_glb,
+        constraint_nonleaf_gub,
+        constraint_nonleaf_g,
+        constraint_leaf_ilb,
+        constraint_leaf_iub,
+        constraint_leaf_glb,
+        constraint_leaf_gub,
+        constraint_leaf_g,
         json["risk"]["type"],
         json["risk"]["alpha"],
         read_vector_from_binary(TI, folder * "ancestors" * file_ext_i) .+ 1,
@@ -136,6 +178,7 @@ function read_data()
         read_vector_from_binary(TI, folder * "childrenTo" * file_ext_i) .+ 1,
         read_vector_from_binary(TR, folder * "conditionalProbabilities" * file_ext_r),
     )
+    return data
 end
 
 export read_data
@@ -166,7 +209,6 @@ function impose_dynamics(
     )
     x = model[:x]
     u = model[:u]
-
     @constraint(
         model,
         dynamics[node=2:d.num_nodes],
@@ -189,7 +231,6 @@ function impose_cost(
     u = model[:u]
     t = model[:t]
     s = model[:s]
-
     @constraint(
         model,
         nonleaf_cost[node=2:d.num_nodes],
@@ -197,7 +238,6 @@ function impose_cost(
         + u[node_to_u(d, d.ancestors[node])]' * d.cost_nonleaf_R[node] * u[node_to_u(d, d.ancestors[node])])
         <= t[node - 1]
     )
-
     @constraint(
         model,
         leaf_cost[node=d.num_nonleaf_nodes+1:d.num_nodes],
@@ -210,39 +250,79 @@ end
     Build::StateInputConstraints
 """
 
-function impose_state_input_constraints(
-    model :: Model, 
-    d :: Data, 
-    )
+function impose_rect_nonleaf(model :: Model, d :: Data)
     x = model[:x]
     u = model[:u]
-
-    if d.constraint_nonleaf != "rectangle" || d.constraint_leaf != "rectangle"
-        throw("Constraint type not supported!")
-    end
-
-    nonleaf_x_min = d.constraint_nonleaf_min[1:d.num_states]
-    nonleaf_x_max = d.constraint_nonleaf_max[1:d.num_states]
-    nonleaf_u_min = d.constraint_nonleaf_min[d.num_states + 1:end]
-    nonleaf_u_max = d.constraint_nonleaf_max[d.num_states + 1:end]
-
+    x_min = d.constraint_nonleaf_ilb[1:d.num_states]
+    x_max = d.constraint_nonleaf_iub[1:d.num_states]
+    u_min = d.constraint_nonleaf_ilb[d.num_states + 1:end]
+    u_max = d.constraint_nonleaf_iub[d.num_states + 1:end]
     @constraint(
         model,
         nonleaf_state_rectangle[node=2:d.num_nonleaf_nodes],
         nonleaf_x_min .<= x[node_to_x(d, node)] .<= nonleaf_x_max
     )
-
     @constraint(
         model,
         nonleaf_input_rectangle[node=1:d.num_nonleaf_nodes],
         nonleaf_u_min .<= u[node_to_u(d, node)] .<= nonleaf_u_max
     )
+end
 
+function impose_poly_nonleaf(model :: Model, d :: Data)
+    x = model[:x]
+    u = model[:u]
+    g_min = d.constraint_nonleaf_glb
+    g_max = d.constraint_nonleaf_gub
+    g = d.constraint_nonleaf_g
+    @constraint(
+        model,
+        nonleaf_poly[node=1:d.num_nonleaf_nodes],
+        g_min .<= g * vcat(x[node_to_x(d, node)], u[node_to_u(d, node)]) .<= g_max
+    )
+end
+
+function impose_rect_leaf(model :: Model, d :: Data)
+    x = model[:x]
+    u = model[:u]
+    x_min = d.constraint_leaf_ilb
+    x_max = d.constraint_leaf_iub
     @constraint(
         model,
         leaf_state_rectangle[node=d.num_nonleaf_nodes+1:d.num_nodes],
-        d.constraint_leaf_min .<= x[node_to_x(d, node)] .<= d.constraint_leaf_max
+        x_min .<= x[node_to_x(d, node)] .<= x_max
     )
+end
+
+function impose_poly_leaf(model :: Model, d :: Data)
+    x = model[:x]
+    g_min = d.constraint_leaf_glb
+    g_max = d.constraint_leaf_gub
+    g = d.constraint_leaf_g
+    @constraint(
+        model,
+        leaf_poly[node=d.num_nonleaf_nodes+1:d.num_nodes],
+        g_min .<= g * vcat(x[node_to_x(d, node)], u[node_to_u(d, node)]) .<= g_max
+    )
+end
+
+function impose_constraints(constraint, model :: Model, d :: Data)
+    if constraint == "rectangle" || constraint == "polyhedronWithIdentity"
+        impose_rect_nonleaf(model, d)
+    end
+    if constraint == "polyhedron" || constraint == "polyhedronWithIdentity"
+        impose_poly_nonleaf(model, d)
+    end
+end
+
+function impose_state_input_constraints(
+    model :: Model, 
+    d :: Data, 
+    )
+    con = d.constraint_nonleaf
+    impose_constraints(con, model, d)
+    con = d.constraint_leaf
+    impose_constraints(con, model, d)
 end
 
 """

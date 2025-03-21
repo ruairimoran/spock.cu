@@ -143,9 +143,9 @@ class Model:
         ub = con.upper_bound_uncond
         g = con.matrix_uncond
         for node in range(self.__tree.num_nonleaf_nodes):
-            x = self.__x[self.__node_to_x(node)]
-            u = self.__u[self.__node_to_u(node)]
-            xu = cp.concatenate([x, u]).reshape((-1, 1), 'C')
+            x = self.__x[self.__node_to_x(node)].reshape((-1, 1), 'C')
+            u = self.__u[self.__node_to_u(node)].reshape((-1, 1), 'C')
+            xu = cp.vstack([x, u])
             v = g @ xu
             for ele in range(v.size):
                 v_i = v[ele]
@@ -175,19 +175,19 @@ class Model:
     def __impose_constraints(self):
         """Impose convex constraints on the variables."""
         con = self.__problem.nonleaf_constraint()
-        if self.__problem.nonleaf_constraint().is_rectangle:
+        if con.is_rectangle:
             self.__impose_rect_nonleaf(con)
-        elif self.__problem.nonleaf_constraint().is_polyhedron:
+        elif con.is_polyhedron:
             self.__impose_poly_nonleaf(con)
-        elif self.__problem.nonleaf_constraint().is_polyhedron_with_identity:
+        elif con.is_polyhedron_with_identity:
             self.__impose_rect_nonleaf(con.rect)
             self.__impose_poly_nonleaf(con.poly)
         con = self.__problem.leaf_constraint()
-        if self.__problem.leaf_constraint().is_rectangle:
+        if con.is_rectangle:
             self.__impose_rect_leaf(con)
-        elif self.__problem.leaf_constraint().is_polyhedron:
+        elif con.is_polyhedron:
             self.__impose_poly_leaf(con)
-        elif self.__problem.leaf_constraint().is_polyhedron_with_identity:
+        elif con.is_polyhedron_with_identity:
             self.__impose_rect_leaf(con.rect)
             self.__impose_poly_leaf(con.poly)
 
@@ -364,9 +364,9 @@ class ModelWithPrecondition:
         ub = con.upper_bound
         g = con.matrix
         for node in range(self.__tree.num_nonleaf_nodes):
-            x = self.__x[self.__node_to_x(node)]
-            u = self.__u[self.__node_to_u(node)]
-            xu = cp.concatenate([x, u]).reshape((-1, 1), 'C')
+            x = self.__x[self.__node_to_x(node)].reshape((-1, 1), 'C')
+            u = self.__u[self.__node_to_u(node)].reshape((-1, 1), 'C')
+            xu = cp.vstack([x, u])
             v = g @ xu
             for ele in range(v.size):
                 v_i = v[ele]

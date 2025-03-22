@@ -83,7 +83,7 @@ for i in range(num_events):
         check_spd(R, "R")
     nonleaf_costs += [s.build.NonleafCost(Q, R)]
 
-T = Q_base @ Q_base.T
+T = Q_base
 check_spd(T, "T")
 leaf_cost = s.build.LeafCost(T)
 

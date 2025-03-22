@@ -51,7 +51,11 @@ function read_tensor_from_binary(::Type{T}, filename) where {T}
     data, dims = read_binary(T, filename)
     # Reshape into a tensor
     arr = reshape(data, Int.(dims)...)
-    return collect(eachslice(arr, dims = 3))
+    tensor = [copy(A) for A in eachslice(arr, dims=3)]
+    if dims[3] == 1
+        return first(tensor)
+    end
+    return tensor
 end
 
 """
@@ -87,7 +91,7 @@ struct Data
     dynamics_type :: String
     dynamics_A :: Vector{Matrix{TR}}
     dynamics_B :: Vector{Matrix{TR}}
-    dynamics_c :: Union{Vector{Matrix{TR}}, Nothing}
+    dynamics_c :: Vector{Matrix{TR}}
     cost_nonleaf_Q :: Vector{Matrix{TR}}
     cost_nonleaf_R :: Vector{Matrix{TR}}
     cost_leaf_Q :: Vector{Matrix{TR}}
@@ -116,16 +120,16 @@ function read_data()
     json = JSON.parse(read(folder * "data.json", String))
     constraint_nonleaf = json["constraint"]["nonleaf"]
     constraint_leaf = json["constraint"]["leaf"]
-    constraint_nonleaf_ilb = Nothing
-    constraint_nonleaf_iub = Nothing
-    constraint_nonleaf_glb = Nothing
-    constraint_nonleaf_gub = Nothing
-    constraint_nonleaf_g = Nothing
-    constraint_leaf_ilb = Nothing
-    constraint_leaf_iub = Nothing
-    constraint_leaf_glb = Nothing
-    constraint_leaf_gub = Nothing
-    constraint_leaf_g = Nothing
+    constraint_nonleaf_ilb = nothing
+    constraint_nonleaf_iub = nothing
+    constraint_nonleaf_glb = nothing
+    constraint_nonleaf_gub = nothing
+    constraint_nonleaf_g = nothing
+    constraint_leaf_ilb = nothing
+    constraint_leaf_iub = nothing
+    constraint_leaf_glb = nothing
+    constraint_leaf_gub = nothing
+    constraint_leaf_g = nothing
     if constraint_nonleaf == "rectangle" || constraint_nonleaf == "polyhedronWithIdentity"
         constraint_nonleaf_ilb = read_vector_from_binary(TR, folder * "uncond_nonleafConstraintILB" * file_ext_r)
         constraint_nonleaf_iub = read_vector_from_binary(TR, folder * "uncond_nonleafConstraintIUB" * file_ext_r)
@@ -259,13 +263,13 @@ function impose_rect_nonleaf(model :: Model, d :: Data)
     u_max = d.constraint_nonleaf_iub[d.num_states + 1:end]
     @constraint(
         model,
-        nonleaf_state_rectangle[node=2:d.num_nonleaf_nodes],
-        nonleaf_x_min .<= x[node_to_x(d, node)] .<= nonleaf_x_max
+        nonleaf_rect_state[node=2:d.num_nonleaf_nodes],
+        x_min .<= x[node_to_x(d, node)] .<= x_max
     )
     @constraint(
         model,
-        nonleaf_input_rectangle[node=1:d.num_nonleaf_nodes],
-        nonleaf_u_min .<= u[node_to_u(d, node)] .<= nonleaf_u_max
+        nonleaf_rect_input[node=1:d.num_nonleaf_nodes],
+        u_min .<= u[node_to_u(d, node)] .<= u_max
     )
 end
 
@@ -289,7 +293,7 @@ function impose_rect_leaf(model :: Model, d :: Data)
     x_max = d.constraint_leaf_iub
     @constraint(
         model,
-        leaf_state_rectangle[node=d.num_nonleaf_nodes+1:d.num_nodes],
+        leaf_rect[node=d.num_nonleaf_nodes+1:d.num_nodes],
         x_min .<= x[node_to_x(d, node)] .<= x_max
     )
 end
@@ -306,23 +310,24 @@ function impose_poly_leaf(model :: Model, d :: Data)
     )
 end
 
-function impose_constraints(constraint, model :: Model, d :: Data)
-    if constraint == "rectangle" || constraint == "polyhedronWithIdentity"
-        impose_rect_nonleaf(model, d)
-    end
-    if constraint == "polyhedron" || constraint == "polyhedronWithIdentity"
-        impose_poly_nonleaf(model, d)
-    end
-end
-
 function impose_state_input_constraints(
     model :: Model, 
     d :: Data, 
     )
     con = d.constraint_nonleaf
-    impose_constraints(con, model, d)
+    if con == "rectangle" || con == "polyhedronWithIdentity"
+        impose_rect_nonleaf(model, d)
+    end
+    if con == "polyhedron" || con == "polyhedronWithIdentity"
+        impose_poly_nonleaf(model, d)
+    end
     con = d.constraint_leaf
-    impose_constraints(con, model, d)
+    if con == "rectangle" || con == "polyhedronWithIdentity"
+        impose_rect_leaf(model, d)
+    end
+    if con == "polyhedron" || con == "polyhedronWithIdentity"
+        impose_poly_leaf(model, d)
+    end
 end
 
 """

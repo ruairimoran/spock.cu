@@ -130,7 +130,7 @@ idx_p = 2
 # --------------------------------------------------------
 # Create tree from data
 # --------------------------------------------------------
-horizon = 5  # max_time_steps - 1  # 1 hour periods
+horizon = 3  # max_time_steps - 1  # 1 hour periods
 branching = np.ones(horizon, dtype=np.int32)
 branching[0] = 5
 data = err_samples
@@ -299,6 +299,8 @@ print(problem)
 # Initial state
 # --------------------------------------------------------
 x0 = np.zeros(num_states)
+for k in range(num_states):
+    x0[k] = .5 * (leaf_lb[k] + leaf_ub[k])
 tree.write_to_file_fp("initialState", x0)
 
 

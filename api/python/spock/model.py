@@ -315,12 +315,13 @@ class ModelWithPrecondition:
     def __impose_dynamics(self):
         """Impose dynamic constraints on the optimisation model."""
         for node in range(1, self.__tree.num_nodes):
+            if self.__problem.dynamics_at_node(node).is_affine:
+                raise Exception("[Model] Affine dynamics not supported!")
             anc = self.__tree.ancestor_of_node(node)
             self.__constraints.append(
                 self.__x[self.__node_to_x(node)] ==
                 self.__problem.dynamics_at_node(node).A @ self.__x[self.__node_to_x(anc)] +
-                self.__problem.dynamics_at_node(node).B @ self.__u[self.__node_to_u(anc)] +
-                self.__problem.dynamics_at_node(node).c
+                self.__problem.dynamics_at_node(node).B @ self.__u[self.__node_to_u(anc)]
             )
 
     def __impose_cost(self):

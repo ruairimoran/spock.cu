@@ -249,7 +249,7 @@ function impose_cost(
     u = model[:u]
     t = model[:t]
     s = model[:s]
-    if false
+    if true
         println("[JuMP] Costs have been modified for power example!")
         @constraint(
             model,

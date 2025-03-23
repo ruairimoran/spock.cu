@@ -42,7 +42,7 @@ A = np.eye(num_states)
 # Input dynamics
 B = 0.5 * np.ones((num_states, num_inputs))
 
-dynamics = [s.build.LinearDynamics(1.5 * A, 1.5 * B), s.build.LinearDynamics(A, B)]
+dynamics = [s.build.Dynamics(1.5 * A, 1.5 * B), s.build.Dynamics(A, B)]
 
 # State cost
 Q = np.eye(num_states)

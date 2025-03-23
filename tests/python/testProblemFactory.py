@@ -30,9 +30,9 @@ class TestProblem(unittest.TestCase):
             systems = [system, 2 * system, 3 * system]
             control = np.random.randn(TestProblem.__num_states, TestProblem.__num_inputs)
             controls = [control, 2 * control, 3 * control]
-            dynamics = [s.build.LinearDynamics(systems[0], controls[0]),
-                        s.build.LinearDynamics(systems[1], controls[1]),
-                        s.build.LinearDynamics(systems[2], controls[2])]
+            dynamics = [s.build.Dynamics(systems[0], controls[0]),
+                        s.build.Dynamics(systems[1], controls[1]),
+                        s.build.Dynamics(systems[2], controls[2])]
 
             # construct cost weight matrices
             nonleaf_state_weight = 10 * np.eye(TestProblem.__num_states)  # n x n matrix

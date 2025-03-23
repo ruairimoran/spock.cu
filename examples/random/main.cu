@@ -1,20 +1,33 @@
 #include <spock.cuh>
 #include <sys/resource.h>
+#include <nvml.h>
 #define real_t double  // templates type defaults to double
 
 
-size_t getPeakRSS() {
+real_t getMemGPU() {
+    real_t usedMB = 0.;
+    size_t free = 0;
+    size_t total = 0;
+    cudaMemGetInfo(&free, &total);
+    usedMB = (total - free) / (1024 * 1024);
+    return usedMB;  // MB
+}
+
+
+real_t getPeakRSS() {
     struct rusage usage;
     getrusage(RUSAGE_SELF, &usage);
-    return usage.ru_maxrss;  // KB
+    return usage.ru_maxrss / 1024.;  // MB
 }
 
 
 int main() {
-    size_t ramBefore = getPeakRSS();
+    real_t cpuBefore = getPeakRSS();
+    real_t gpuBefore = getMemGPU();
     real_t minute = 60.;
     real_t avgTime = 0.;
     real_t ram = 0.;
+    real_t ramGPU = 0.;
     try {
         /* SCENARIO TREE */
         std::cout << "Reading tree files...\n";
@@ -35,8 +48,8 @@ int main() {
         DTensor<real_t> d_initState = DTensor<real_t>::parseFromFile(tree.path() + "initialState" + tree.fpFileExt());
         std::vector<real_t> initState(tree.numStates());
         d_initState.download(initState);
-        size_t runs = 1;
-        size_t warm = 0;
+        size_t runs = 2;
+        size_t warm = 1;
         size_t totalRuns = runs + warm;
         std::vector<real_t> runTimes(totalRuns, 0.);
         std::cout << "Computing average solve time over (" << runs << ") runs with (" << warm << ") warm up runs...\n";
@@ -45,8 +58,10 @@ int main() {
             if (status != converged) throw std::runtime_error(toString(status));
             runTimes[i] = cache.solveTime();
             if (i == 0) {
-                size_t ramAfter = getPeakRSS();
-                ram = (ramAfter - ramBefore) / 1024.;  // KB to MB
+                real_t cpuAfter = getPeakRSS();
+                ram = cpuAfter - cpuBefore;
+                real_t gpuAfter = getMemGPU();
+                ramGPU = gpuAfter - gpuBefore;
             }
             cache.reset();
             std::cout << "Run (" << i << ") : " << runTimes[i] << " s.\n";
@@ -62,7 +77,7 @@ int main() {
     /* SAVE */
     std::ofstream timeScaling;
     timeScaling.open("time.csv", std::ios::app);
-    timeScaling << avgTime << ", " << ram << std::endl;
+    timeScaling << avgTime << ", " << ram << ", " << ramGPU << std::endl;
     timeScaling.close();
     std::cout << "Saved (avgTime = " << avgTime << " s).\n";
 

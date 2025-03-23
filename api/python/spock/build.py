@@ -19,7 +19,7 @@ class Dynamics:
         self.__is_affine = constant_ is not None
         self.__state = state_
         self.__input = input_
-        self.__const = constant_ if self.__is_affine else np.zeros((state_.shape[0], 1))
+        self.__const = np.array(constant_).reshape(-1, 1) if self.__is_affine else np.zeros((state_.shape[0], 1))
         self.__state_input = np.hstack((self.__state, self.__input))
         self.__state_unconditioned = deepcopy(self.__state)
         self.__input_unconditioned = deepcopy(self.__input)

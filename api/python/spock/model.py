@@ -31,13 +31,13 @@ class Model:
                 "MSK_DPAR_INTPNT_CO_TOL_REL_GAP": tol,
                 "MSK_DPAR_INTPNT_QO_TOL_REL_GAP": tol,
                 "MSK_DPAR_OPTIMIZER_MAX_TIME": max_time,
-                "MSK_IPAR_LOG": 3,
-                "MSK_IPAR_INFEAS_REPORT_AUTO": 1,
-                "MSK_IPAR_INFEAS_REPORT_LEVEL": 3,
+                "MSK_IPAR_LOG": 0,  # log = 3
+                "MSK_IPAR_INFEAS_REPORT_AUTO": 0,  # log = 1
+                "MSK_IPAR_INFEAS_REPORT_LEVEL": 0,  # log = 3
             }
             return self.__cvx.solve(solver=solver,
                                     mosek_params=mosek_params,
-                                    verbose=True,
+                                    verbose=False,
                                     )
         elif solver == cp.SCS:
             scs_params = {

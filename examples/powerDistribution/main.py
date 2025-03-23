@@ -130,21 +130,11 @@ idx_p = 2
 # --------------------------------------------------------
 # Create tree from data
 # --------------------------------------------------------
-horizon = 5  # max_time_steps - 1  # 1 hour periods
-# branching = np.ones(horizon, dtype=np.int32)
-# branching[0] = 5
-# data = err_samples
-# tree = s.tree.FromData(data, branching).build()
-
-r = np.ones(2)
-v = r / sum(r)
-(final_stage, stop_branching_stage) = (horizon, horizon)
-tree = s.tree.IidProcess(
-    distribution=v,
-    horizon=final_stage,
-    stopping_stage=stop_branching_stage
-).build()
-
+horizon = 3  # max_time_steps - 1  # 1 hour periods
+branching = np.ones(horizon, dtype=np.int32)
+branching[0] = 5
+data = err_samples
+tree = s.tree.FromData(data, branching).build()
 print(tree)
 
 # --------------------------------------------------------
@@ -182,15 +172,15 @@ fc_p = np.array(fc["forecast"])
 # state = [x, dx, p-] = [stored energy, change in stored energy, prev conventional power]
 # input = [s, p, m] = [charge, conventional power, exchanged power]
 # --------------------------------------------------------
-n_s = 3  # number of storage units
+n_s = 4  # number of storage units. CAUTION! MUST MAKE NON-RECURRING ENTRIES IN BETA!
 n_p = 2  # number of conventional generators
 n_m = 1
 n_r = 1  # number of renewables
-beta = np.ones((n_s, 1)) * 1 / n_s  # relative sizes of storage units
+beta = np.ones((n_s, 1)) * 1 / n_s  # relative sizes of storage units. CAUTION! MUST BE NON-RECURRING ENTRIES!
 T = 1.  # sampling time (hours)
 fuel_cost = 1.  # euro/MWh
 
-num_states = n_s #+ n_s + n_p
+num_states = n_s + n_s + n_p
 num_inputs = n_s + n_p + n_m
 
 # Dynamics
@@ -199,47 +189,44 @@ eye_s = np.eye(n_s)
 eye_p = np.eye(n_p)
 zero_p = np.zeros((n_p, n_m))
 A = .98 * eye_s
-# A_aug = np.zeros((num_states, num_states))
-# A_aug[:n_s, :n_s] = A
-# A_aug[n_s:n_s*2, :n_s] = A - eye_s
+A_aug = np.zeros((num_states, num_states))
+A_aug[:n_s, :n_s] = A
+A_aug[n_s:n_s*2, :n_s] = A - eye_s
 B = np.hstack((
     eye_s - beta @ np.ones((1, n_s)),
     beta @ np.ones((1, n_p)),
     beta,
 )) * T
-B = np.ones((num_states, num_inputs))
-# B_ = np.hstack((
-#     np.zeros((n_p, n_s)),
-#     eye_p,
-#     zero_p,
-# ))
-# B_aug = np.vstack((B, B, B_))
+B_ = np.hstack((
+    np.zeros((n_p, n_s)),
+    eye_p,
+    zero_p,
+))
+B_aug = np.vstack((B, B, B_))
 for node in range(1, tree.num_nodes):
-    # c = T * beta * (fc_r[tree.stage_of_node(node)] * tree.data_values[node, idx_r]
-    #                 - fc_d[tree.stage_of_node(node)] * tree.data_values[node, idx_d])
+    c = T * beta * (fc_r[tree.stage_of_node(node)] * tree.data_values[node, idx_r]
+                    - fc_d[tree.stage_of_node(node)] * tree.data_values[node, idx_d])
     # c_aug = np.vstack((c, c, zero_p))
-    dynamics += [s.build.LinearDynamics(A, B)]
+    dynamics += [s.build.Dynamics(A_aug, B_aug)]
 
 # Costs
-zero = 10.
+zero = 1e-1
 nonleaf_costs = [None]
-# Q = np.diag(np.ones(num_states) * zero) * .1
-Q = np.diag(np.ones(num_states) * 10.)
+Q = np.diag(np.ones(num_states) * zero)
 q = None
 for node in range(1, tree.num_nodes):
-    # R = np.diag(np.concatenate(
-    #     (np.ones(n_s) * zero, np.ones(n_p) * fuel_cost, np.array([zero])), axis=0
-    # ))
-    # r = np.concatenate((
-    #     np.zeros(n_s),
-    #     np.ones(n_p) * fuel_cost,
-    #     np.array([-T * fc_p[tree.stage_of_node(node)] * tree.data_values[node, idx_p]])), axis=0
-    # )
-    nonleaf_costs += [s.build.NonleafCost(Q, np.diag(np.ones(num_inputs)))]
+    R = np.diag(np.concatenate(
+        (np.ones(n_s) * zero, np.ones(n_p) * np.sqrt(fuel_cost), np.array([zero])), axis=0
+    ))
+    r = np.concatenate((
+        np.zeros(n_s + n_p),
+        np.array([-T * fc_p[tree.stage_of_node(node)] * tree.data_values[node, idx_p]])), axis=0
+    )
+    nonleaf_costs += [s.build.NonleafCost(Q, R, q, r)]
 leaf_cost = s.build.LeafCost(Q)
 
 # Constraints
-large = 1e4  # conventional generation at midnight on 1st Jan 25 was ~4000 MW
+large = 5e3  # conventional generation at midnight on 1st Jan 25 was ~4000 MW
 stored_energy_lb = np.ones(n_s) * 1.  # MWh
 stored_energy_ub = np.ones(n_s) * large  # MWh
 stored_energy_rate_lb = np.ones(n_s) * -large  # MWh
@@ -255,36 +242,36 @@ conventional_supply_rate_ub = np.ones(n_p) * large  # MW
 
 nonleaf_rect_lb = np.hstack((
     stored_energy_lb,
-    # stored_energy_rate_lb,
-    # conventional_supply_lb,
+    stored_energy_rate_lb,
+    conventional_supply_lb,
     charge_rate_lb,
     conventional_supply_lb,
     exchange_lb,
 ))
 nonleaf_rect_ub = np.hstack((
     stored_energy_ub,
-    # stored_energy_rate_ub,
-    # conventional_supply_ub,
+    stored_energy_rate_ub,
+    conventional_supply_ub,
     charge_rate_ub,
     conventional_supply_ub,
     exchange_ub,
 ))
-nonleaf_constraint = s.build.Rectangle(nonleaf_rect_lb, nonleaf_rect_ub)
-# poly_mat_x = np.hstack((np.zeros((n_p, n_s * 2)), -eye_p))
-# poly_mat_u = np.hstack((np.zeros((n_p, n_s)), eye_p, zero_p))
-# poly_mat = np.hstack((poly_mat_x, poly_mat_u))
-# nonleaf_poly = s.build.Polyhedron(poly_mat, conventional_supply_rate_lb, conventional_supply_rate_ub)
-# nonleaf_constraint = s.build.PolyhedronWithIdentity(nonleaf_rect, nonleaf_poly)
+nonleaf_rect = s.build.Rectangle(nonleaf_rect_lb, nonleaf_rect_ub)
+poly_mat_x = np.hstack((np.zeros((n_p, n_s * 2)), -eye_p))
+poly_mat_u = np.hstack((np.zeros((n_p, n_s)), eye_p, zero_p))
+poly_mat = np.hstack((poly_mat_x, poly_mat_u))
+nonleaf_poly = s.build.Polyhedron(poly_mat, conventional_supply_rate_lb, conventional_supply_rate_ub)
+nonleaf_constraint = s.build.PolyhedronWithIdentity(nonleaf_rect, nonleaf_poly)
 
 leaf_lb = np.hstack((
     stored_energy_lb,
-    # stored_energy_rate_lb,
-    # conventional_supply_lb,
+    stored_energy_rate_lb,
+    conventional_supply_lb,
 ))
 leaf_ub = np.hstack((
     stored_energy_ub,
-    # stored_energy_rate_ub,
-    # conventional_supply_ub,
+    stored_energy_rate_ub,
+    conventional_supply_ub,
 ))
 leaf_constraint = s.build.Rectangle(leaf_lb, leaf_ub)
 
@@ -340,12 +327,12 @@ try:
 except:
     solver = cp.SCS
     states, inputs = run(solver)
-if problem.preconditioned:
-    states_, inputs_, status = run_conditioned(solver)
-    if status != "infeasible":
-        tol = 1e-2
-        print("States:\n", states_, "\nInputs:\n", inputs_, "\n")
-        print("Equal: ",
-              np.allclose(states_, states, tol) and
-              np.allclose(inputs_, inputs, tol),
-              "\n")
+# if problem.preconditioned:
+#     states_, inputs_, status = run_conditioned(solver)
+#     if status != "infeasible":
+#         tol = 1e-2
+#         print("States:\n", states_, "\nInputs:\n", inputs_, "\n")
+#         print("Equal: ",
+#               np.allclose(states_, states, tol) and
+#               np.allclose(inputs_, inputs, tol),
+#               "\n")

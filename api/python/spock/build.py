@@ -15,10 +15,11 @@ class Dynamics:
     Base class for dynamics
     """
 
-    def __init__(self, state_, input_, constant_):
+    def __init__(self, state_, input_, constant_=None):
+        self.__is_affine = constant_ is not None
         self.__state = state_
         self.__input = input_
-        self.__const = constant_
+        self.__const = constant_ if self.__is_affine else np.zeros((state_.shape[0], 1))
         self.__state_input = np.hstack((self.__state, self.__input))
         self.__state_unconditioned = deepcopy(self.__state)
         self.__input_unconditioned = deepcopy(self.__input)
@@ -28,11 +29,11 @@ class Dynamics:
     # TYPES
     @property
     def is_linear(self):
-        return False
+        return not self.__is_affine
 
     @property
     def is_affine(self):
-        return False
+        return self.__is_affine
 
     @property
     def A(self):
@@ -72,40 +73,6 @@ class Dynamics:
         self.__const = scale_x @ self.__const_unconditioned
         self.__state_input = np.hstack((self.__state, self.__input))
         return self
-
-
-# --------------------------------------------------------
-# Linear
-# --------------------------------------------------------
-class LinearDynamics(Dynamics):
-    """
-    Linear dynamics
-    """
-
-    def __init__(self, state_, input_):
-        super().__init__(state_, input_, np.zeros((state_.shape[0], 1)))
-
-    # TYPES
-    @property
-    def is_linear(self):
-        return True
-
-
-# --------------------------------------------------------
-# Affine
-# --------------------------------------------------------
-class AffineDynamics(Dynamics):
-    """
-    Affine dynamics
-    """
-
-    def __init__(self, state_, input_, constant_):
-        super().__init__(state_, input_, constant_)
-
-    # TYPES
-    @property
-    def is_affine(self):
-        return True
 
 
 # =====================================================================================================================

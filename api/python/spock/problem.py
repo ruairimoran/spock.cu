@@ -6,11 +6,12 @@ from scipy.sparse.linalg import LinearOperator, eigs
 from copy import deepcopy
 from . import tree
 from . import build
+
 try:
     import cvxpy
 except ImportError:
     cvxpy = None  # cvxpy is only needed for testing purposes
-    
+
 
 class Problem:
     """
@@ -674,12 +675,12 @@ class Factory:
     # --------------------------------------------------------
     def with_dynamics(self, dynamics):
         if dynamics.is_linear:
-            self.__list_of_dynamics[0] = build.LinearDynamics(np.zeros(dynamics.A.shape),
-                                                              np.zeros(dynamics.B.shape))
+            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(dynamics.A.shape),
+                                                        np.zeros(dynamics.B.shape))
         if dynamics.is_affine:
-            self.__list_of_dynamics[0] = build.AffineDynamics(np.zeros(dynamics.A.shape),
-                                                              np.zeros(dynamics.B.shape),
-                                                              np.zeros((dynamics.A.shape[0], 1)))
+            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(dynamics.A.shape),
+                                                        np.zeros(dynamics.B.shape),
+                                                        np.zeros((dynamics.A.shape[0], 1)))
         for i in range(1, self.__tree.num_nodes):
             self.__list_of_dynamics[i] = deepcopy(dynamics)
         return self
@@ -688,12 +689,12 @@ class Factory:
         self.__check_eventful("dynamics")
         temp_dyn = dynamics[0]
         if temp_dyn.is_linear:
-            self.__list_of_dynamics[0] = build.LinearDynamics(np.zeros(temp_dyn.A.shape),
-                                                              np.zeros(temp_dyn.B.shape))
+            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(temp_dyn.A.shape),
+                                                        np.zeros(temp_dyn.B.shape))
         if dynamics[0].is_affine:
-            self.__list_of_dynamics[0] = build.AffineDynamics(np.zeros(temp_dyn.A.shape),
-                                                              np.zeros(temp_dyn.B.shape),
-                                                              np.zeros((temp_dyn.A.shape[0], 1)))
+            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(temp_dyn.A.shape),
+                                                        np.zeros(temp_dyn.B.shape),
+                                                        np.zeros((temp_dyn.A.shape[0], 1)))
         for i in range(1, self.__tree.num_nodes):
             event = self.__tree.event_of_node(i)
             self.__list_of_dynamics[i] = deepcopy(dynamics[event])
@@ -704,12 +705,12 @@ class Factory:
             raise Exception(f"[ProblemFactory] First dynamics in list must be ({None})!")
         temp_dyn = dynamics[1]
         if temp_dyn.is_linear:
-            self.__list_of_dynamics[0] = build.LinearDynamics(np.zeros(temp_dyn.A.shape),
-                                                              np.zeros(temp_dyn.B.shape))
+            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(temp_dyn.A.shape),
+                                                        np.zeros(temp_dyn.B.shape))
         if dynamics[1].is_affine:
-            self.__list_of_dynamics[0] = build.AffineDynamics(np.zeros(temp_dyn.A.shape),
-                                                              np.zeros(temp_dyn.B.shape),
-                                                              np.zeros((temp_dyn.A.shape[0], 1)))
+            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(temp_dyn.A.shape),
+                                                        np.zeros(temp_dyn.B.shape),
+                                                        np.zeros((temp_dyn.A.shape[0], 1)))
         for i in range(1, self.__tree.num_nodes):
             self.__list_of_dynamics[i] = deepcopy(dynamics[i])
         return self

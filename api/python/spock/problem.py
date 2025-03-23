@@ -675,10 +675,10 @@ class Factory:
     def with_stochastic_dynamics(self, dynamics):
         self.__check_eventful("dynamics")
         if dynamics[0].is_linear:
-            self.__list_of_dynamics[0] = build.LinearDynamics(np.zeros(dynamics[0].A.shape),
+            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(dynamics[0].A.shape),
                                                               np.zeros(dynamics[0].B.shape))
         if dynamics[0].is_affine:
-            self.__list_of_dynamics[0] = build.AffineDynamics(np.zeros(dynamics[0].A.shape),
+            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(dynamics[0].A.shape),
                                                               np.zeros(dynamics[0].B.shape),
                                                               np.zeros((dynamics[0].A.shape[0], 1)))
         for i in range(1, self.__tree.num_nodes):
@@ -688,10 +688,10 @@ class Factory:
 
     def with_dynamics(self, dynamics):
         if dynamics.is_linear:
-            self.__list_of_dynamics[0] = build.LinearDynamics(np.zeros(dynamics.A.shape),
+            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(dynamics.A.shape),
                                                               np.zeros(dynamics.B.shape))
         if dynamics.is_affine:
-            self.__list_of_dynamics[0] = build.AffineDynamics(np.zeros(dynamics.A.shape),
+            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(dynamics.A.shape),
                                                               np.zeros(dynamics.B.shape),
                                                               np.zeros((dynamics.A.shape[0], 1)))
         for i in range(1, self.__tree.num_nodes):

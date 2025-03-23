@@ -9,20 +9,20 @@ function check_status(model :: Model, time, max_time)
     if time > max_time || (status != MOI.OPTIMAL && status != MOI.LOCALLY_SOLVED)
         time = 0.
     end
-    println("[$(MOI.get(model, MOI.SolverName()))] Done! ($(time) s) ($(status))")
     return status, time
 end
 
 
-function run_model(model :: Model, max_t)
+function run_model(model :: Model, max_time)
     println("[$(MOI.get(model, MOI.SolverName()))] Solving ...")
-    t = 0.
+    time = 0.
     try
-        t = @elapsed solve_this(model, x0)
+        time = @elapsed solve_this(model, x0)
     catch e
         println(e)
     end
-    status, time = check_status(model, t, max_t)
+    status, time = check_status(model, time, max_time)
+    println("[$(MOI.get(model, MOI.SolverName()))] Done! ($(time) s) ($(status))")
     return status, time
 end
 
@@ -55,53 +55,73 @@ function check_bounds(model :: Model, status, d, tol)
 end
 
 
+function build_and_run(optimizer, data, risk, tol, max_time)
+    model = build_model(optimizer, data, risk)
+    if optimizer == Gurobi.Optimizer
+        set_attribute(model, "FeasibilityTol", tol)
+        set_attribute(model, "OptimalityTol", tol)
+        set_attribute(model, "TimeLimit", max_time)
+    elseif optimizer == Mosek.Optimizer
+        set_attribute(model, "MSK_DPAR_INTPNT_TOL_REL_GAP", tol_f64)
+        set_attribute(model, "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", tol_f64)
+        set_attribute(model, "MSK_DPAR_INTPNT_QO_TOL_REL_GAP", tol_f64)
+        set_attribute(model, "MSK_DPAR_OPTIMIZER_MAX_TIME", max_time_f64)
+    elseif optimizer == Ipopt.Optimizer
+        set_attribute(model, "tol", tol_f64)
+        set_attribute(model, "max_cpu_time", max_time_f64)
+        set_attribute(model, "sb", "yes")
+    else
+        println("Optimizer not set up!")
+    end
+    status, time = run_model(model, max_time)
+    check_bounds(model, status, data, tol)
+    return status, time
+end
+
+
+function get_stats(optimizer, data, risk, tol, max_time)
+    status = Nothing
+    time = 0.
+    ram = 0.
+    try
+        (status, time), _, bytes, _, _ = @timed build_and_run(optimizer, data, risk, tol, max_time)
+        ram = bytes / 1024^2
+    catch e
+        println(e)
+    end
+    return status, time, ram
+end
+
+
 data = read_data()
 risk = build_risk(data)
 x0 = read_vector_from_binary(TR, folder * "initialState" * file_ext_r)
 tol = 1e-3
 max_time = 5 * minute
 status = Int64(1)
+tol_f64 = Float64(tol)
+max_time_f64 = Float64(max_time)
+
 
 for run in [0, 1]
-    time_g = 0.
-    time_m = 0.
-    time_i = 0.
-    tol_f64 = Float64(tol)
-    max_time_f64 = Float64(5 * minute)
 
-    model_g = build_model(Gurobi.Optimizer, data, risk)
-    set_attribute(model_g, "FeasibilityTol", tol_f64)
-    set_attribute(model_g, "OptimalityTol", tol_f64)
-    set_attribute(model_g, "TimeLimit", max_time_f64)
-    status_g, time_g = run_model(model_g, max_time_f64)
-    check_bounds(model_g, status_g, data, tol_f64)
-    if status_g == MOI.OPTIMAL || status_g == MOI.LOCALLY_SOLVED ||
-       status_g == MOI.TIME_LIMIT || status_g == MOI.NUMERICAL_ERROR
-       global status = 0
-    else
+    status_m, time_m, ram_m = get_stats(Mosek.Optimizer, data, risk, tol_f64, max_time_f64)
+    if status_m == MOI.INFEASIBLE
        break
+    else
+        global status = 0
     end
 
-    model_m = build_model(Mosek.Optimizer, data, risk)
-    set_attribute(model_m, "MSK_DPAR_INTPNT_TOL_REL_GAP", tol_f64)
-    set_attribute(model_m, "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", tol_f64)
-    set_attribute(model_m, "MSK_DPAR_INTPNT_QO_TOL_REL_GAP", tol_f64)
-    set_attribute(model_m, "MSK_DPAR_OPTIMIZER_MAX_TIME", max_time_f64)
-    status_m, time_m = run_model(model_m, max_time_f64)
-    check_bounds(model_m, status_m, data, tol_f64)
+    status_g, time_g, ram_g = get_stats(Gurobi.Optimizer, data, risk, tol_f64, max_time_f64)
 
-    model_i = build_model(Ipopt.Optimizer, data, risk)
-    set_attribute(model_i, "tol", tol_f64)
-    set_attribute(model_i, "max_cpu_time", max_time_f64)
-    set_attribute(model_i, "sb", "yes")
-    status_i, time_i = run_model(model_i, max_time_f64)
-    check_bounds(model_i, status_i, data, tol_f64)
+    status_i, time_i, ram_i = get_stats(Ipopt.Optimizer, data, risk, tol_f64, max_time_f64)
 
     if run == 1
         println("Saving julia times...")
         num_vars = data.num_nodes * (data.num_states + data.num_inputs)
         open("time.csv", "a") do f
-            write(f, "$(num_vars), $(time_g), $(time_m), $(time_i), ")
+            write(f, "$(num_vars), $(time_g), $(ram_g), $(time_m), $(ram_m), $(time_i), $(ram_i), ")
+            # write(f, "$(num_vars), $(time_m), $(ram_m), ")
         end
         println("Saved!")
     end

@@ -1,6 +1,7 @@
 import numpy as np
 import argparse
 import factories as f
+import pandas as pd
 
 
 def check_spd(mat, name):
@@ -9,6 +10,29 @@ def check_spd(mat, name):
     is_symmetric = np.allclose(mat, mat.T)
     print("Is " + name + " symmetric positive-definite?", is_positive_definite and is_symmetric,
           " with norm (", np.linalg.norm(mat), ").")
+
+
+def plot_scenario_values(ax_, data_, branching_, times_, lines_):
+    tree_ = f.tree.FromData(data_, branching_).build(False)
+    print(tree_)
+    scenarios_ = tree_.get_scenarios()
+    values_ = tree_.data_values
+    num_scenarios_ = len(scenarios_)
+    len_scenario_ = scenarios_[0].size
+    for line_idx in range(len(lines_)):  # Clear lines
+        lines_[line_idx].set_xdata([])
+        lines_[line_idx].set_ydata([])
+    for line_idx in range(num_scenarios_):  # Plot scenarios
+        lines_[line_idx].set_xdata(times_[:len_scenario_])
+        lines_[line_idx].set_ydata(values_[scenarios_[line_idx]])
+    set_ticks(ax_, times_)
+
+
+def set_ticks(ax_, times_):
+    x_ticks_ = np.arange(times_[0], times_[-1], 200)  # tick labels every 2 hours
+    ax_.set_xticks(x_ticks_)
+    ax_.set_xticklabels([f"{((t % 2400) // 100) + ((t % 100) * .006):02.2f}" for t in x_ticks_])
+    ax_.set_xlim(min(times_), max(times_) + 25)
 
 
 parser = argparse.ArgumentParser(description='Example: power distribution.')
@@ -36,21 +60,78 @@ dt = args.dt
 # Generate scenario tree from energy data
 # --------------------------------------------------------
 
-# horizon = 3
-# data = np.random.random((100, 2, horizon))  # samples x dim x time
-# branching = np.ones(horizon, dtype=np.int32)
-# branching[:3] = [3, 1, 1]
-# tree = f.tree.FromData(data, branching).build()
-# print(tree)
+# ---- Read file ----
+print("Read...")
+folder = "examples/powerDistribution/niEnergyData/"
+wind_df = pd.read_csv(folder + "soni_data.csv", parse_dates=["date&time"])
+wind_df.columns = wind_df.columns.str.strip()  # Remove extra spaces
+wind_df["hour"] = wind_df["date&time"].dt.hour + wind_df["date&time"].dt.minute / 60  # Convert to hours
+wind_df["wind actual (MW)"] = pd.to_numeric(wind_df["wind actual (MW)"], errors="raise")
+wind_df["wind forecast (MW)"] = pd.to_numeric(wind_df["wind forecast (MW)"], errors="raise")
+wind_df["error"] = wind_df["wind actual (MW)"] - wind_df["wind forecast (MW)"]
+print("Sanitize...")
+wind_df["date"] = wind_df["date&time"].dt.date  # Extract date only
+wind_daily = wind_df.groupby("date")  # Group by date
+max_time_steps = wind_daily.size().max()
+err_wind_list = []
+for _, group in wind_daily:
+    wind_daily_err = group.sort_values("hour")["error"].values  # Sort by time of day
+    if len(wind_daily_err) < max_time_steps or np.isnan(wind_daily_err).any():
+        # print("Missing value! Skipping bad sample...")
+        continue
+    err_wind_list.append(wind_daily_err)
+err_wind = np.array(err_wind_list).reshape(len(err_wind_list), 1, max_time_steps)
+print(f"Done: ({err_wind.shape[0]}) wind samples.")
 
-col = np.ones((10, 1))
-for i in range(col.size):
-    col[i] = .1 * i
-data = np.dstack((.1 * col, .2 * col, .3 * col, .4 * col))  # samples x dim x time
-branching = [3, 2, 1, 1]
-tree = f.tree.FromData(data, branching).build()
-print(tree)
+# ---- Create tree from data ----
+horizon = max_time_steps - 1  # 15 minute periods
+branching = np.ones(horizon, dtype=np.int32)
+branching[0] = 3
+for i in range(1, len(branching)):
+    if i % 24 == 0:
+        branching[i] = 2
+
+# start = 4  # 15 minute periods
+# data = err_wind  # samples x dim x time
+# tree = f.tree.FromData(data, branching).build()
+# scenarios = tree.get_scenarios()
+# values = tree.data_values
+
+# ---- Plot tree ----
 # tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')  # requires python-tk@3.x installation
+
+# ---- Plot data ----
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(15, 7))
+ax.set_xlabel("Time (24 hr)")
+ax.set_ylabel("Wind Forecast Error (MW)")
+plt.title("Wind Forecast Error vs. Time")
+ax.grid(True)
+start = 0  # 15 minute periods
+num_samples = 365
+data = np.concatenate((
+    err_wind[-num_samples:, :, start:],
+    err_wind[-num_samples:, :, :start]), axis=2)  # samples x dim x time
+times = .25 * (np.arange(start, start + max_time_steps)) * 100
+times = [t if t < 2400 else t - 2400 for t in times]  # 24 hrs
+lines = [None for _ in range(num_samples)]
+for i in range(num_samples):
+    lines[i], = ax.plot([], [], marker="o", linestyle="-")
+set_ticks(ax, times)
+ax.set_ylim([min(wind_df["error"]), max(wind_df["error"])])
+jump = 8  # 15 minute periods
+data_shape = data.shape
+for _ in range(0, 200):
+    print("Building tree and plotting values...")
+    plot_scenario_values(ax, data, branching, times, lines)
+    # data = np.concatenate((data[:, :, 1:], data[:, :, 0].reshape(-1, 1, 1)), axis=2)
+    data = data.reshape(-1)
+    data = np.concatenate((data[jump:], data[:jump]))
+    data = data.reshape(data_shape)
+    times = np.concatenate((times[jump:], [t + 2400 for t in times[:jump]]))
+    plt.pause(.1)
+plt.show()
 
 # --------------------------------------------------------
 

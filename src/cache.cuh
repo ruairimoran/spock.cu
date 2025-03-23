@@ -315,16 +315,18 @@ public:
         /* Allocate memory on host */
         m_initState = std::vector<T>(m_tree.numStates());
         m_sizeIterateOnes = std::vector<T>(m_sizeIterate, 1.);
-        m_cacheCallsToL = std::vector<size_t>(m_maxOuterIters);
-        m_cacheError0 = std::vector<T>(m_maxOuterIters);
-        m_cacheError1 = std::vector<T>(m_maxOuterIters);
-        m_cacheError2 = std::vector<T>(m_maxOuterIters);
-        m_cacheError3 = std::vector<T>(m_maxOuterIters);
-        m_cacheDeltaPrim = std::vector<T>(m_maxOuterIters);
-        m_cacheDeltaDual = std::vector<T>(m_maxOuterIters);
-        m_cacheNrmLtrDeltaDual = std::vector<T>(m_maxOuterIters);
-        m_cacheDistDeltaDual = std::vector<T>(m_maxOuterIters);
-        m_cacheSuppDeltaDual = std::vector<T>(m_maxOuterIters);
+        if (m_debug) {
+            m_cacheCallsToL = std::vector<size_t>(m_maxOuterIters);
+            m_cacheError0 = std::vector<T>(m_maxOuterIters);
+            m_cacheError1 = std::vector<T>(m_maxOuterIters);
+            m_cacheError2 = std::vector<T>(m_maxOuterIters);
+            m_cacheError3 = std::vector<T>(m_maxOuterIters);
+            m_cacheDeltaPrim = std::vector<T>(m_maxOuterIters);
+            m_cacheDeltaDual = std::vector<T>(m_maxOuterIters);
+            m_cacheNrmLtrDeltaDual = std::vector<T>(m_maxOuterIters);
+            m_cacheDistDeltaDual = std::vector<T>(m_maxOuterIters);
+            m_cacheSuppDeltaDual = std::vector<T>(m_maxOuterIters);
+        }
         /* Allocate memory on device */
         m_d_initState = std::make_unique<DTensor<T>>(m_tree.numStates(), 1, 1, true);
         m_d_iterate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);

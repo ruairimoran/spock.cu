@@ -13,8 +13,8 @@ def check_spd(mat, name):
 
 parser = argparse.ArgumentParser(description='Example: random.')
 parser.add_argument("--dt", type=str, default='d')
-parser.add_argument("--lo", type=int, default=1e4)
-parser.add_argument("--hi", type=int, default=1e6)
+parser.add_argument("--lo", type=int, default=1e2)
+parser.add_argument("--hi", type=int, default=1e3)
 args = parser.parse_args()
 dt = args.dt
 lo_vars = args.lo
@@ -49,15 +49,12 @@ print(
 
 r = rng.uniform(size=num_events)
 v = r / sum(r)
-
 (final_stage, stop_branching_stage) = (horizon, stopping)
 tree = s.tree.IidProcess(
     distribution=v,
     horizon=final_stage,
     stopping_stage=stop_branching_stage
 ).build()
-
-# tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')  # requires python-tk@3.x installation
 print(tree)
 
 # --------------------------------------------------------
@@ -66,19 +63,19 @@ print(tree)
 # Dynamics
 dynamics = []
 A_base = np.eye(num_states)
-B_base = rng.normal(0., .1, size=(num_states, num_inputs))
+B_base = rng.normal(0., 1., size=(num_states, num_inputs))
 for i in range(num_events):
     A = A_base + rng.normal(0., .01, size=(num_states, num_states))
     B = B_base + rng.normal(0., .01, size=(num_states, num_inputs))
-    dynamics += [s.build.LinearDynamics(A, B)]
+    dynamics += [s.build.Dynamics(A, B)]
 
 # Costs
 nonleaf_costs = []
-Q_base = np.diag(rng.uniform(0., 10., size=num_states))
-R_base = np.diag(rng.uniform(0., 1., size=num_inputs))
+Q_base = np.diag(rng.uniform(0., .1, size=num_states))
+R_base = np.diag(rng.uniform(0., 100., size=num_inputs))
 for i in range(num_events):
-    Q_w = Q_base + rng.normal(0., .1, size=(num_states, num_states))
-    R_w = R_base + rng.normal(0., .1, size=(num_inputs, num_inputs))
+    Q_w = Q_base + rng.normal(0., .01, size=(num_states, num_states))
+    R_w = R_base + rng.normal(0., .01, size=(num_inputs, num_inputs))
     Q = Q_w @ Q_w.T
     R = R_w @ R_w.T
     if i == 0:
@@ -86,14 +83,14 @@ for i in range(num_events):
         check_spd(R, "R")
     nonleaf_costs += [s.build.NonleafCost(Q, R)]
 
-T = Q_base @ Q_base.T
+T = Q_base
 check_spd(T, "T")
 leaf_cost = s.build.LeafCost(T)
 
 # Constraints
-nonleaf_state_ub = rng.uniform(10., 20., num_states)
+nonleaf_state_ub = rng.uniform(1., 2., num_states)
 nonleaf_state_lb = -nonleaf_state_ub
-nonleaf_input_ub = rng.uniform(5., 10., num_inputs)
+nonleaf_input_ub = rng.uniform(0., .1, num_inputs)
 nonleaf_input_lb = -nonleaf_input_ub
 nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
 nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))

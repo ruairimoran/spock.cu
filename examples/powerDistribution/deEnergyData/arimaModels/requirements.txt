@@ -1,0 +1,6 @@
+wheel
+jupyter
+matplotlib
+numpy
+statsmodels
+pandas

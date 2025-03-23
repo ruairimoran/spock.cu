@@ -27,31 +27,35 @@ function run_model(model :: Model, max_time)
 end
 
 
+"""
+For example::random only!
+Checks if any of the bounds are active.
+"""
 function check_bounds(model :: Model, status, d, tol)
-    if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED
-        n = d.num_states + 1
-        sat_x_max = any(isapprox.(maximum(value.(model[:x])),
-            d.constraint_nonleaf_max[1]; atol = tol))
-        sat_x_min = any(isapprox.(minimum(value.(model[:x])),
-            d.constraint_nonleaf_min[1]; atol = tol))
-        sat_u_max = any(isapprox.(maximum(value.(model[:u])),
-            d.constraint_nonleaf_max[n]; atol = tol))
-        sat_u_min = any(isapprox.(minimum(value.(model[:u])),
-            d.constraint_nonleaf_min[n]; atol = tol))
-        sat_x = sat_x_max || sat_x_min
-        sat_u = sat_u_max || sat_u_min
-        println("[$(MOI.get(model, MOI.SolverName()))] Constraint saturation: states = ", sat_x, ", inputs = ", sat_u)
-        if false  # print states and inputs
-            println("[$(MOI.get(model, MOI.SolverName()))] States:")
-            for state in value.(model[:x])
-                println(state)
-            end
-            println("[$(MOI.get(model, MOI.SolverName()))] Inputs:")
-            for input in value.(model[:u])
-                println(input)
-            end
-        end
-    end
+#     if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED
+#         n = d.num_states + 1
+#         sat_x_max = any(isapprox.(maximum(value.(model[:x])),
+#             d.constraint_nonleaf_max[1]; atol = tol))
+#         sat_x_min = any(isapprox.(minimum(value.(model[:x])),
+#             d.constraint_nonleaf_min[1]; atol = tol))
+#         sat_u_max = any(isapprox.(maximum(value.(model[:u])),
+#             d.constraint_nonleaf_max[n]; atol = tol))
+#         sat_u_min = any(isapprox.(minimum(value.(model[:u])),
+#             d.constraint_nonleaf_min[n]; atol = tol))
+#         sat_x = sat_x_max || sat_x_min
+#         sat_u = sat_u_max || sat_u_min
+#         println("[$(MOI.get(model, MOI.SolverName()))] Constraint saturation: states = ", sat_x, ", inputs = ", sat_u)
+#         if false  # print states and inputs
+#             println("[$(MOI.get(model, MOI.SolverName()))] States:")
+#             for state in value.(model[:x])
+#                 println(state)
+#             end
+#             println("[$(MOI.get(model, MOI.SolverName()))] Inputs:")
+#             for input in value.(model[:u])
+#                 println(input)
+#             end
+#         end
+#     end
 end
 
 

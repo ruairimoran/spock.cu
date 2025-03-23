@@ -130,7 +130,7 @@ idx_p = 2
 # --------------------------------------------------------
 # Create tree from data
 # --------------------------------------------------------
-horizon = 3  # max_time_steps - 1  # 1 hour periods
+horizon = 23  # max_time_steps - 1  # 1 hour periods
 branching = np.ones(horizon, dtype=np.int32)
 branching[0] = 5
 data = err_samples
@@ -173,9 +173,8 @@ fc_p = np.array(fc["forecast"])
 # input = [s, p, -m] = [charge, conventional power, exchanged power]
 # --------------------------------------------------------
 n_s = 4  # number of storage units. CAUTION! MUST MAKE NON-RECURRING ENTRIES IN BETA!
-n_p = 2  # number of conventional generators
-n_m = 1
-n_r = 1  # number of renewables
+n_p = 3  # number of conventional generators
+n_m = 1  # number of markets
 beta = np.ones((n_s, 1)) * 1 / n_s  # relative sizes of storage units. CAUTION! MUST BE NON-RECURRING ENTRIES!
 T = 1.  # sampling time (hours)
 fuel_cost = 10.  # euro/MWh
@@ -211,7 +210,7 @@ for node in range(1, tree.num_nodes):
     dynamics += [s.build.Dynamics(A_aug, B_aug, c_aug)]
 
 # Costs
-zero = 1e-1
+zero = 1e-16
 nonleaf_costs = [None]
 Q = np.diag(np.ones(num_states) * zero)
 q = None
@@ -302,39 +301,3 @@ x0 = np.zeros(num_states)
 for k in range(num_states):
     x0[k] = .5 * (leaf_lb[k] + leaf_ub[k])
 tree.write_to_file_fp("initialState", x0)
-
-
-import cvxpy as cp
-
-
-def run(sol):
-    model = s.model.Model(tree, problem)
-    model.solve(x0, sol, tol=1e-4)
-    print(sol.__str__(), "normal status: ", model.status)
-    print("States:\n", model.states, "\nInputs:\n", model.inputs, "\n")
-    return model.states, model.inputs
-
-
-def run_conditioned(sol):
-    model = s.model.ModelWithPrecondition(tree, problem)
-    model.solve(x0, sol, tol=1e-4)
-    print(sol.__str__(), "preconditioned status: ", model.status)
-    return model.states, model.inputs, model.status
-
-
-solver = None
-try:
-    solver = cp.MOSEK
-    states, inputs = run(solver)
-except:
-    solver = cp.SCS
-    states, inputs = run(solver)
-# if problem.preconditioned:
-#     states_, inputs_, status = run_conditioned(solver)
-#     if status != "infeasible":
-#         tol = 1e-2
-#         print("States:\n", states_, "\nInputs:\n", inputs_, "\n")
-#         print("Equal: ",
-#               np.allclose(states_, states, tol) and
-#               np.allclose(inputs_, inputs, tol),
-#               "\n")

@@ -170,7 +170,7 @@ fc_p = np.array(fc["forecast"])
 # --------------------------------------------------------
 # Generate problem data
 # state = [x, dx, p-] = [stored energy, change in stored energy, prev conventional power]
-# input = [s, p, m] = [charge, conventional power, exchanged power]
+# input = [s, p, -m] = [charge, conventional power, exchanged power]
 # --------------------------------------------------------
 n_s = 4  # number of storage units. CAUTION! MUST MAKE NON-RECURRING ENTRIES IN BETA!
 n_p = 2  # number of conventional generators
@@ -178,7 +178,7 @@ n_m = 1
 n_r = 1  # number of renewables
 beta = np.ones((n_s, 1)) * 1 / n_s  # relative sizes of storage units. CAUTION! MUST BE NON-RECURRING ENTRIES!
 T = 1.  # sampling time (hours)
-fuel_cost = 1.  # euro/MWh
+fuel_cost = 10.  # euro/MWh
 
 num_states = n_s + n_s + n_p
 num_inputs = n_s + n_p + n_m
@@ -204,10 +204,11 @@ B_ = np.hstack((
 ))
 B_aug = np.vstack((B, B, B_))
 for node in range(1, tree.num_nodes):
-    c = T * beta * (fc_r[tree.stage_of_node(node)] * tree.data_values[node, idx_r]
-                    - fc_d[tree.stage_of_node(node)] * tree.data_values[node, idx_d])
-    # c_aug = np.vstack((c, c, zero_p))
-    dynamics += [s.build.Dynamics(A_aug, B_aug)]
+    renewables_node = fc_r[tree.stage_of_node(node)] * tree.data_values[node, idx_r]
+    demand_node = fc_d[tree.stage_of_node(node)] * tree.data_values[node, idx_d]
+    c = T * beta * (renewables_node - demand_node)
+    c_aug = np.vstack((c, c, zero_p))
+    dynamics += [s.build.Dynamics(A_aug, B_aug, c_aug)]
 
 # Costs
 zero = 1e-1
@@ -215,13 +216,14 @@ nonleaf_costs = [None]
 Q = np.diag(np.ones(num_states) * zero)
 q = None
 for node in range(1, tree.num_nodes):
+    price_node = fc_p[tree.stage_of_node(node)] * tree.data_values[node, idx_p]
     R = np.diag(np.concatenate(
         (np.ones(n_s) * zero, np.ones(n_p) * np.sqrt(fuel_cost), np.array([zero])), axis=0
     ))
     r = np.concatenate((
         np.zeros(n_s + n_p),
-        np.array([-T * fc_p[tree.stage_of_node(node)] * tree.data_values[node, idx_p]])), axis=0
-    )
+        np.array([T * price_node])), axis=0
+    ).reshape(-1, 1)
     nonleaf_costs += [s.build.NonleafCost(Q, R, q, r)]
 leaf_cost = s.build.LeafCost(Q)
 

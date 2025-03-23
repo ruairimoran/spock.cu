@@ -729,9 +729,11 @@ class Factory:
     # Costs
     # --------------------------------------------------------
     def with_cost_nonleaf(self, cost):
+        q = np.zeros((cost.Q_uncond.shape[0], 1)) if cost.q_uncond is not None else None
+        r = np.zeros((cost.R_uncond.shape[0], 1)) if cost.r_uncond is not None else None
         self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(cost.Q_sqrt.shape),
                                                             np.zeros(cost.R_sqrt.shape),
-                                                            None, None, True)
+                                                            q, r, True)
         for i in range(1, self.__tree.num_nodes):
             self.__list_of_nonleaf_costs[i] = deepcopy(cost)
         return self
@@ -739,9 +741,11 @@ class Factory:
     def with_cost_nonleaf_events(self, cost):
         self.__check_eventful("costs")
         temp = cost[0]
+        q = np.zeros((temp.Q_uncond.shape[0], 1)) if temp.q_uncond is not None else None
+        r = np.zeros((temp.R_uncond.shape[0], 1)) if temp.r_uncond is not None else None
         self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(temp.Q_sqrt.shape),
                                                             np.zeros(temp.R_sqrt.shape),
-                                                            None, None, True)
+                                                            q, r, True)
         for i in range(1, self.__tree.num_nodes):
             event = self.__tree.event_of_node(i)
             self.__list_of_nonleaf_costs[i] = deepcopy(cost[event])
@@ -751,9 +755,11 @@ class Factory:
         if cost[0] is not None:
             raise Exception(f"[ProblemFactory] First nonleaf cost in list must be ({None})!")
         temp = cost[1]
+        q = np.zeros((temp.Q_uncond.shape[0], 1)) if temp.q_uncond is not None else None
+        r = np.zeros((temp.R_uncond.shape[0], 1)) if temp.r_uncond is not None else None
         self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(temp.Q_sqrt.shape),
                                                             np.zeros(temp.R_sqrt.shape),
-                                                            None, None, True)
+                                                            q, r, True)
         for i in range(1, self.__tree.num_nodes):
             self.__list_of_nonleaf_costs[i] = deepcopy(cost[i])
         return self

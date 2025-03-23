@@ -249,21 +249,30 @@ function impose_cost(
     u = model[:u]
     t = model[:t]
     s = model[:s]
-    println("[JuMP] Costs have been modified for power example!")
-    @constraint(
-        model,
-        nonleaf_cost[node=2:d.num_nodes],
-        (
-            # x[node_to_x(d, d.ancestors[node])]' * d.cost_nonleaf_Q[node] * x[node_to_x(d, d.ancestors[node])]
-            # +
-            u[node_to_u(d, d.ancestors[node])]' * d.cost_nonleaf_R[node] * u[node_to_u(d, d.ancestors[node])]
-            # +
-            # (d.cost_nonleaf_q[node]' * x[node_to_x(d, d.ancestors[node])])[1]
-            +
-            (d.cost_nonleaf_r[node][end] * u[node_to_u(d, d.ancestors[node])][end])
+    if false
+        println("[JuMP] Costs have been modified for power example!")
+        @constraint(
+            model,
+            nonleaf_cost[node=2:d.num_nodes],
+            (
+                u[node_to_u(d, d.ancestors[node])]' * d.cost_nonleaf_R[node] * u[node_to_u(d, d.ancestors[node])]
+                +
+                (d.cost_nonleaf_r[node][end] * u[node_to_u(d, d.ancestors[node])][end])
+            )
+            <= t[node - 1]
         )
-        <= t[node - 1]
-    )
+    else
+        @constraint(
+            model,
+            nonleaf_cost[node=2:d.num_nodes],
+            (
+                x[node_to_x(d, d.ancestors[node])]' * d.cost_nonleaf_Q[node] * x[node_to_x(d, d.ancestors[node])]
+                +
+                u[node_to_u(d, d.ancestors[node])]' * d.cost_nonleaf_R[node] * u[node_to_u(d, d.ancestors[node])]
+            )
+            <= t[node - 1]
+        )
+    end
     @constraint(
         model,
         leaf_cost[node=d.num_nonleaf_nodes+1:d.num_nodes],

@@ -94,6 +94,8 @@ struct Data
     dynamics_c :: Vector{Matrix{TR}}
     cost_nonleaf_Q :: Vector{Matrix{TR}}
     cost_nonleaf_R :: Vector{Matrix{TR}}
+    cost_nonleaf_q :: Union{Vector{Vector{TR}}, Nothing}
+    cost_nonleaf_r :: Union{Vector{Vector{TR}}, Nothing}
     cost_leaf_Q :: Vector{Matrix{TR}}
     constraint_nonleaf :: String
     constraint_leaf :: String
@@ -118,6 +120,16 @@ end
 
 function read_data()
     json = JSON.parse(read(folder * "data.json", String))
+    if false
+        cost_nonleaf_q = read_tensor_from_binary(TR, folder * "uncond_cost_nonleaf_q" * file_ext_r)
+    else
+        cost_nonleaf_q = nothing
+    end
+    if true
+        cost_nonleaf_r = read_tensor_from_binary(TR, folder * "uncond_cost_nonleaf_r" * file_ext_r)
+    else
+        cost_nonleaf_r = nothing
+    end    
     constraint_nonleaf = json["constraint"]["nonleaf"]
     constraint_leaf = json["constraint"]["leaf"]
     constraint_nonleaf_ilb = nothing
@@ -159,9 +171,11 @@ function read_data()
         read_tensor_from_binary(TR, folder * "uncond_dynamics_A" * file_ext_r),
         read_tensor_from_binary(TR, folder * "uncond_dynamics_B" * file_ext_r),
         read_tensor_from_binary(TR, folder * "uncond_dynamics_c" * file_ext_r),
-        read_tensor_from_binary(TR, folder * "uncond_cost_nonleafQ" * file_ext_r),
-        read_tensor_from_binary(TR, folder * "uncond_cost_nonleafR" * file_ext_r),
-        read_tensor_from_binary(TR, folder * "uncond_cost_leafQ" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "uncond_cost_nonleaf_Q" * file_ext_r),
+        read_tensor_from_binary(TR, folder * "uncond_cost_nonleaf_R" * file_ext_r),
+        cost_nonleaf_q,
+        cost_nonleaf_r,
+        read_tensor_from_binary(TR, folder * "uncond_cost_leaf_Q" * file_ext_r),
         constraint_nonleaf,
         constraint_leaf,
         constraint_nonleaf_ilb,
@@ -238,16 +252,23 @@ function impose_cost(
     @constraint(
         model,
         nonleaf_cost[node=2:d.num_nodes],
-        (x[node_to_x(d, d.ancestors[node])]' * d.cost_nonleaf_Q[node] * x[node_to_x(d, d.ancestors[node])]
-        + u[node_to_u(d, d.ancestors[node])]' * d.cost_nonleaf_R[node] * u[node_to_u(d, d.ancestors[node])])
+        (
+            # x[node_to_x(d, d.ancestors[node])]' * d.cost_nonleaf_Q[node] * x[node_to_x(d, d.ancestors[node])]
+            # + 
+            u[node_to_u(d, d.ancestors[node])]' * d.cost_nonleaf_R[node] * u[node_to_u(d, d.ancestors[node])]
+            # +
+            # d.cost_nonleaf_q[node] * x[node_to_x(d, d.ancestors[node])]
+            + 
+            d.cost_nonleaf_r[node] * u[node_to_u(d, d.ancestors[node])]
+        )
         <= t[node - 1]
     )
-    @constraint(
-        model,
-        leaf_cost[node=d.num_nonleaf_nodes+1:d.num_nodes],
-        x[node_to_x(d, node)]' * d.cost_leaf_Q[node - d.num_nonleaf_nodes] * x[node_to_x(d, node)]
-        <= s[node]
-    )
+    # @constraint(
+    #     model,
+    #     leaf_cost[node=d.num_nonleaf_nodes+1:d.num_nodes],
+    #     x[node_to_x(d, node)]' * d.cost_leaf_Q[node - d.num_nonleaf_nodes] * x[node_to_x(d, node)]
+    #     <= s[node]
+    # )
 end
 
 """

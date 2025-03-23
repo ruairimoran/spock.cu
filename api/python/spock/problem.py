@@ -600,10 +600,20 @@ class Problem:
                 prefix + "dynamics_A": stack_dyn_A,
                 prefix + "dynamics_B": stack_dyn_B,
                 prefix + "dynamics_c": stack_dyn_c,
-                prefix + "cost_nonleafQ": stack_cost_nonleaf_Q,
-                prefix + "cost_nonleafR": stack_cost_nonleaf_R,
-                prefix + "cost_leafQ": stack_cost_leaf_Q,
+                prefix + "cost_nonleaf_Q": stack_cost_nonleaf_Q,
+                prefix + "cost_nonleaf_R": stack_cost_nonleaf_R,
+                prefix + "cost_leaf_Q": stack_cost_leaf_Q,
             })
+            if self.__list_of_nonleaf_costs[-1].q_uncond is not None:
+                stack_cost_nonleaf_q = np.dstack([cost.q_uncond for cost in self.__list_of_nonleaf_costs])
+                tensors.update({
+                    prefix + "cost_nonleaf_q": stack_cost_nonleaf_q,
+                })
+            if self.__list_of_nonleaf_costs[-1].r_uncond is not None:
+                stack_cost_nonleaf_r = np.dstack([cost.r_uncond for cost in self.__list_of_nonleaf_costs])
+                tensors.update({
+                    prefix + "cost_nonleaf_r": stack_cost_nonleaf_r,
+                })
             for i in range(len(l_con)):
                 con = l_con[i]
                 txt = l_txt[i]

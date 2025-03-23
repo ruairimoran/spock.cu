@@ -13,8 +13,8 @@ def check_spd(mat, name):
 
 parser = argparse.ArgumentParser(description='Example: random.')
 parser.add_argument("--dt", type=str, default='d')
-parser.add_argument("--lo", type=int, default=1e5)
-parser.add_argument("--hi", type=int, default=1e6)
+parser.add_argument("--lo", type=int, default=1e2)
+parser.add_argument("--hi", type=int, default=1e3)
 args = parser.parse_args()
 dt = args.dt
 lo_vars = args.lo
@@ -67,7 +67,7 @@ B_base = rng.normal(0., 1., size=(num_states, num_inputs))
 for i in range(num_events):
     A = A_base + rng.normal(0., .01, size=(num_states, num_states))
     B = B_base + rng.normal(0., .01, size=(num_states, num_inputs))
-    dynamics += [s.build.LinearDynamics(A, B)]
+    dynamics += [s.build.Dynamics(A, B)]
 
 # Costs
 nonleaf_costs = []

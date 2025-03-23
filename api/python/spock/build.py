@@ -127,6 +127,10 @@ class Cost:
     def is_linear(self, lin):
         self.__lin = lin
 
+    @staticmethod
+    def _inv(A, b):
+        return np.linalg.solve(A, b)
+
 
 # --------------------------------------------------------
 # Nonleaf
@@ -159,14 +163,17 @@ class NonleafCost(Cost):
         self.__set_translation()
 
     def __set_translation(self):
-        nrm_q = self.__q.T @ np.linalg.solve(self.Q, self.__q) if self.__lin_q else 0
-        nrm_r = self.__r.T @ np.linalg.solve(self.R, self.__r) if self.__lin_r else 0
-        scaled_nrm = .125 * (nrm_q + nrm_r)
-        a = np.linalg.solve(self.Q_sqrt, self.__q).reshape(-1, 1) if self.__lin_q else np.zeros((self.Q.shape[0], 1))
-        b = np.linalg.solve(self.__R_sqrt, self.__r).reshape(-1, 1) if self.__lin_r else np.zeros((self.R.shape[0], 1))
-        c = -.5 + scaled_nrm if not self.__node_zero else 0
-        d = .5 + scaled_nrm if not self.__node_zero else 0
-        self.translation = np.vstack((a, b, c, d))
+        if self.__node_zero:
+            self.translation = np.zeros((self.Q.shape[0] + self.R.shape[0] + 2, 1))
+        else:
+            nrm_q = self.__q.T @ self._inv(self.Q, self.__q) if self.__lin_q else 0
+            nrm_r = self.__r.T @ self._inv(self.R, self.__r) if self.__lin_r else 0
+            scaled_nrm = .125 * (nrm_q + nrm_r)
+            a = self._inv(self.Q_sqrt, self.__q).reshape(-1, 1) if self.__lin_q else np.zeros((self.Q.shape[0], 1))
+            b = self._inv(self.__R_sqrt, self.__r).reshape(-1, 1) if self.__lin_r else np.zeros((self.R.shape[0], 1))
+            c = -.5 + scaled_nrm
+            d = .5 + scaled_nrm
+            self.translation = np.vstack((a, b, c, d))
 
     @property
     def R(self):
@@ -222,9 +229,9 @@ class LeafCost(Cost):
         self.__set_translation()
 
     def __set_translation(self):
-        nrm_q = self.__q.T @ np.linalg.solve(self.Q, self.__q) if self.lin else 0
+        nrm_q = self.__q.T @ self._inv(self.Q, self.__q) if self.lin else 0
         scaled_nrm = .125 * nrm_q
-        a = np.linalg.solve(self.Q_sqrt, self.__q).reshape(-1, 1) if self.lin else np.zeros((self.Q.shape[0], 1))
+        a = self._inv(self.Q_sqrt, self.__q).reshape(-1, 1) if self.lin else np.zeros((self.Q.shape[0], 1))
         c = -.5 + scaled_nrm
         d = .5 + scaled_nrm
         self.translation = np.vstack((a, c, d))
@@ -553,8 +560,8 @@ class Polyhedron(Constraint):
         return x
 
     def condition(self, scale_xu):
-        self.__lo_bound = scale_xu @ self.__lo_bound_unconditioned
-        self.__up_bound = scale_xu @ self.__up_bound_unconditioned
+        scale_inv = np.diag(1 / np.diagonal(scale_xu))
+        self.__matrix = self.__matrix_unconditioned @ scale_inv
         return self
 
 

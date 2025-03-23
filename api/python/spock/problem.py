@@ -6,11 +6,12 @@ from scipy.sparse.linalg import LinearOperator, eigs
 from copy import deepcopy
 from . import tree
 from . import build
+
 try:
     import cvxpy
 except ImportError:
     cvxpy = None  # cvxpy is only needed for testing purposes
-    
+
 
 class Problem:
     """
@@ -599,10 +600,20 @@ class Problem:
                 prefix + "dynamics_A": stack_dyn_A,
                 prefix + "dynamics_B": stack_dyn_B,
                 prefix + "dynamics_c": stack_dyn_c,
-                prefix + "cost_nonleafQ": stack_cost_nonleaf_Q,
-                prefix + "cost_nonleafR": stack_cost_nonleaf_R,
-                prefix + "cost_leafQ": stack_cost_leaf_Q,
+                prefix + "cost_nonleaf_Q": stack_cost_nonleaf_Q,
+                prefix + "cost_nonleaf_R": stack_cost_nonleaf_R,
+                prefix + "cost_leaf_Q": stack_cost_leaf_Q,
             })
+            if self.__list_of_nonleaf_costs[-1].q_uncond is not None:
+                stack_cost_nonleaf_q = np.dstack([cost.q_uncond for cost in self.__list_of_nonleaf_costs])
+                tensors.update({
+                    prefix + "cost_nonleaf_q": stack_cost_nonleaf_q,
+                })
+            if self.__list_of_nonleaf_costs[-1].r_uncond is not None:
+                stack_cost_nonleaf_r = np.dstack([cost.r_uncond for cost in self.__list_of_nonleaf_costs])
+                tensors.update({
+                    prefix + "cost_nonleaf_r": stack_cost_nonleaf_r,
+                })
             for i in range(len(l_con)):
                 con = l_con[i]
                 txt = l_txt[i]
@@ -672,54 +683,95 @@ class Factory:
     # --------------------------------------------------------
     # Dynamics
     # --------------------------------------------------------
-    def with_stochastic_dynamics(self, dynamics):
+    def with_dynamics(self, dynamics):
+        if dynamics.is_linear:
+            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(dynamics.A.shape),
+                                                        np.zeros(dynamics.B.shape))
+        if dynamics.is_affine:
+            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(dynamics.A.shape),
+                                                        np.zeros(dynamics.B.shape),
+                                                        np.zeros((dynamics.A.shape[0], 1)))
+        for i in range(1, self.__tree.num_nodes):
+            self.__list_of_dynamics[i] = deepcopy(dynamics)
+        return self
+
+    def with_dynamics_events(self, dynamics):
         self.__check_eventful("dynamics")
-        if dynamics[0].is_linear:
-            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(dynamics[0].A.shape),
-                                                              np.zeros(dynamics[0].B.shape))
+        temp_dyn = dynamics[0]
+        if temp_dyn.is_linear:
+            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(temp_dyn.A.shape),
+                                                        np.zeros(temp_dyn.B.shape))
         if dynamics[0].is_affine:
-            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(dynamics[0].A.shape),
-                                                              np.zeros(dynamics[0].B.shape),
-                                                              np.zeros((dynamics[0].A.shape[0], 1)))
+            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(temp_dyn.A.shape),
+                                                        np.zeros(temp_dyn.B.shape),
+                                                        np.zeros((temp_dyn.A.shape[0], 1)))
         for i in range(1, self.__tree.num_nodes):
             event = self.__tree.event_of_node(i)
             self.__list_of_dynamics[i] = deepcopy(dynamics[event])
         return self
 
-    def with_dynamics(self, dynamics):
-        if dynamics.is_linear:
-            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(dynamics.A.shape),
-                                                              np.zeros(dynamics.B.shape))
-        if dynamics.is_affine:
-            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(dynamics.A.shape),
-                                                              np.zeros(dynamics.B.shape),
-                                                              np.zeros((dynamics.A.shape[0], 1)))
+    def with_dynamics_list(self, dynamics):
+        if dynamics[0] is not None:
+            raise Exception(f"[ProblemFactory] First dynamics in list must be ({None})!")
+        temp_dyn = dynamics[1]
+        if temp_dyn.is_linear:
+            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(temp_dyn.A.shape),
+                                                        np.zeros(temp_dyn.B.shape))
+        if dynamics[1].is_affine:
+            self.__list_of_dynamics[0] = build.Dynamics(np.zeros(temp_dyn.A.shape),
+                                                        np.zeros(temp_dyn.B.shape),
+                                                        np.zeros((temp_dyn.A.shape[0], 1)))
         for i in range(1, self.__tree.num_nodes):
-            self.__list_of_dynamics[i] = deepcopy(dynamics)
+            self.__list_of_dynamics[i] = deepcopy(dynamics[i])
         return self
 
     # --------------------------------------------------------
     # Costs
     # --------------------------------------------------------
-    def with_stochastic_nonleaf_costs(self, costs):
-        self.__check_eventful("costs")
-        self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(costs[0].Q_sqrt.shape),
-                                                            np.zeros(costs[0].R_sqrt.shape), None, None, True)
-        for i in range(1, self.__tree.num_nodes):
-            event = self.__tree.event_of_node(i)
-            self.__list_of_nonleaf_costs[i] = deepcopy(costs[event])
-        return self
-
-    def with_nonleaf_cost(self, cost):
+    def with_cost_nonleaf(self, cost):
+        q = np.zeros((cost.Q_uncond.shape[0], 1)) if cost.q_uncond is not None else None
+        r = np.zeros((cost.R_uncond.shape[0], 1)) if cost.r_uncond is not None else None
         self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(cost.Q_sqrt.shape),
-                                                            np.zeros(cost.R_sqrt.shape), None, None, True)
+                                                            np.zeros(cost.R_sqrt.shape),
+                                                            q, r, True)
         for i in range(1, self.__tree.num_nodes):
             self.__list_of_nonleaf_costs[i] = deepcopy(cost)
         return self
 
-    def with_leaf_cost(self, cost):
+    def with_cost_nonleaf_events(self, cost):
+        self.__check_eventful("costs")
+        temp = cost[0]
+        q = np.zeros((temp.Q_uncond.shape[0], 1)) if temp.q_uncond is not None else None
+        r = np.zeros((temp.R_uncond.shape[0], 1)) if temp.r_uncond is not None else None
+        self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(temp.Q_sqrt.shape),
+                                                            np.zeros(temp.R_sqrt.shape),
+                                                            q, r, True)
+        for i in range(1, self.__tree.num_nodes):
+            event = self.__tree.event_of_node(i)
+            self.__list_of_nonleaf_costs[i] = deepcopy(cost[event])
+        return self
+
+    def with_cost_nonleaf_list(self, cost):
+        if cost[0] is not None:
+            raise Exception(f"[ProblemFactory] First nonleaf cost in list must be ({None})!")
+        temp = cost[1]
+        q = np.zeros((temp.Q_uncond.shape[0], 1)) if temp.q_uncond is not None else None
+        r = np.zeros((temp.R_uncond.shape[0], 1)) if temp.r_uncond is not None else None
+        self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(temp.Q_sqrt.shape),
+                                                            np.zeros(temp.R_sqrt.shape),
+                                                            q, r, True)
+        for i in range(1, self.__tree.num_nodes):
+            self.__list_of_nonleaf_costs[i] = deepcopy(cost[i])
+        return self
+
+    def with_cost_leaf(self, cost):
         for i in range(self.__tree.num_leaf_nodes):
             self.__list_of_leaf_costs[i] = deepcopy(cost)
+        return self
+
+    def with_cost_leaf_list(self, cost):
+        for i in range(self.__tree.num_leaf_nodes):
+            self.__list_of_leaf_costs[i] = deepcopy(cost[i])
         return self
 
     # --------------------------------------------------------
@@ -730,11 +782,11 @@ class Factory:
         self.__nonleaf_constraint = build.No()
         self.__leaf_constraint = build.No()
 
-    def with_nonleaf_constraint(self, state_input_constraint):
+    def with_constraint_nonleaf(self, state_input_constraint):
         self.__nonleaf_constraint = deepcopy(state_input_constraint)
         return self
 
-    def with_leaf_constraint(self, state_constraint):
+    def with_constraint_leaf(self, state_constraint):
         self.__leaf_constraint = deepcopy(state_constraint)
         return self
 

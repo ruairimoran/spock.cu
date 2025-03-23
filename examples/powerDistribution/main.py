@@ -1,31 +1,18 @@
 import numpy as np
 import argparse
-import factories as f
 import pandas as pd
+import matplotlib.pyplot as plt
+import spock as s
 
 
-def check_spd(mat, name):
-    eigs = np.linalg.eigvals(mat)
-    is_positive_definite = eigs.all() > 0
-    is_symmetric = np.allclose(mat, mat.T)
-    print("Is " + name + " symmetric positive-definite?", is_positive_definite and is_symmetric,
-          " with norm (", np.linalg.norm(mat), ").")
-
-
-def plot_scenario_values(ax_, data_, branching_, times_, lines_):
-    tree_ = f.tree.FromData(data_, branching_).build(False)
+def plot_scenario_values(ax_, tree_, times_, var=0):
     print(tree_)
     scenarios_ = tree_.get_scenarios()
     values_ = tree_.data_values
     num_scenarios_ = len(scenarios_)
     len_scenario_ = scenarios_[0].size
-    for line_idx in range(len(lines_)):  # Clear lines
-        lines_[line_idx].set_xdata([])
-        lines_[line_idx].set_ydata([])
-    for line_idx in range(num_scenarios_):  # Plot scenarios
-        lines_[line_idx].set_xdata(times_[:len_scenario_])
-        lines_[line_idx].set_ydata(values_[scenarios_[line_idx]])
-    set_ticks(ax_, times_)
+    for scen in range(num_scenarios_):
+        ax_.plot(times_[:len_scenario_], values_[scenarios_[scen], var])
 
 
 def set_ticks(ax_, times_):
@@ -35,184 +22,282 @@ def set_ticks(ax_, times_):
     ax_.set_xlim(min(times_), max(times_) + 25)
 
 
-parser = argparse.ArgumentParser(description='Example: power distribution.')
+def compute_multiplier(df):
+    if np.any(np.isclose(df["forecast"], 0.)):
+        raise Exception("Trying to divide by zero!")
+    return df["actual"] / df["forecast"]
+
+
+def daylight_savings(arr, max_t):
+    if len(arr) == max_t - 1:
+        arr = np.append(arr, arr[-1])  # Duplicate last value
+    elif len(arr) == max_t + 1:
+        arr = arr[:-1]  # Remove last value
+    return arr
+
+
+def sanitize_and_group(df, max_steps):
+    print("Sanitize...")
+    df["date"] = df["date&time"].dt.date  # Extract date only
+    df["time"] = df["date&time"].dt.time  # Extract date only
+    df_per_day = df.groupby("date")  # Group by date
+    df_list = []
+    for _, group in df_per_day:
+        df_err_per_day = group.sort_values("time")["multiplier"].values  # Sort by time of day
+        df_err_per_day = daylight_savings(df_err_per_day, max_steps)
+        if len(df_err_per_day) != max_steps or np.isnan(df_err_per_day).any():
+            print("Bad sample!")
+            print(group)
+            continue
+        df_list.append(df_err_per_day.reshape(1, 1, -1))
+    return np.vstack(df_list)
+
+
+parser = argparse.ArgumentParser(description='Example: power distribution: generate scenario tree.')
 parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
 dt = args.dt
 
-# # Sizes
-# horizon = 5
-# stopping = 1
-# num_events = 2
-# num_inputs = 2
-# num_states = num_inputs * 2
-#
-# print(
-#     "\n",
-#     "Events:", num_events, "\n",
-#     "Horizon:", horizon, "\n",
-#     "Stop branch:", stopping, "\n",
-#     "States:", num_states, "\n",
-#     "Inputs:", num_inputs, "\n",
-# )
+max_time_steps = 24  # 1-hour sampling time
+folder = "deEnergyData/"
 
 # --------------------------------------------------------
-# Generate scenario tree from energy data
+# Read demand data
 # --------------------------------------------------------
+print("Read demand...")
+demand = pd.DataFrame()
+# Actual
+demand_actual = pd.read_csv(folder + "demandActual24.csv", sep=";")
+demand["date&time"] = pd.to_datetime(demand_actual["Start date"], format="%b %d, %Y %I:%M %p")
+demand["actual"] = pd.to_numeric(demand_actual["grid load [MWh]"].str.replace(",", "", regex=True), errors="raise")
+# Forecast
+demand_forecast = pd.read_csv(folder + "demandForecast24.csv", sep=";")
+demand["forecast"] = pd.to_numeric(demand_forecast["grid load [MWh]"].str.replace(",", "", regex=True), errors="raise")
+# Error
+demand["multiplier"] = compute_multiplier(demand)
+# Sanitize and group by day
+err_demand = sanitize_and_group(demand, max_time_steps)
+print(f"Done: ({err_demand.shape[0]}) demand samples.")
 
-# ---- Read file ----
-print("Read...")
-folder = "examples/powerDistribution/niEnergyData/"
-wind_df = pd.read_csv(folder + "soni_data.csv", parse_dates=["date&time"])
-wind_df.columns = wind_df.columns.str.strip()  # Remove extra spaces
-wind_df["hour"] = wind_df["date&time"].dt.hour + wind_df["date&time"].dt.minute / 60  # Convert to hours
-wind_df["wind actual (MW)"] = pd.to_numeric(wind_df["wind actual (MW)"], errors="raise")
-wind_df["wind forecast (MW)"] = pd.to_numeric(wind_df["wind forecast (MW)"], errors="raise")
-wind_df["error"] = wind_df["wind actual (MW)"] - wind_df["wind forecast (MW)"]
-print("Sanitize...")
-wind_df["date"] = wind_df["date&time"].dt.date  # Extract date only
-wind_daily = wind_df.groupby("date")  # Group by date
-max_time_steps = wind_daily.size().max()
-err_wind_list = []
-for _, group in wind_daily:
-    wind_daily_err = group.sort_values("hour")["error"].values  # Sort by time of day
-    if len(wind_daily_err) < max_time_steps or np.isnan(wind_daily_err).any():
-        # print("Missing value! Skipping bad sample...")
-        continue
-    err_wind_list.append(wind_daily_err)
-err_wind = np.array(err_wind_list).reshape(len(err_wind_list), 1, max_time_steps)
-print(f"Done: ({err_wind.shape[0]}) wind samples.")
+# --------------------------------------------------------
+# Read renewables data
+# --------------------------------------------------------
+print("Read renewables...")
+renewables = pd.DataFrame()
+# Actual
+renewables_actual = pd.read_csv(folder + "renewablesActual24.csv", sep=";")
+renewables["date&time"] = pd.to_datetime(renewables_actual["Start date"], format="%b %d, %Y %I:%M %p")
+renewables["offshore"] = pd.to_numeric(renewables_actual["Wind offshore [MWh]"].str.replace(",", "", regex=True), errors="raise")
+renewables["onshore"] = pd.to_numeric(renewables_actual["Wind onshore [MWh]"].str.replace(",", "", regex=True), errors="raise")
+renewables["pv"] = pd.to_numeric(renewables_actual["Photovoltaics [MWh]"].str.replace(",", "", regex=True), errors="raise")
+renewables["actual"] = renewables["offshore"] + renewables["onshore"] + renewables["pv"]
+# Forecast
+renewables_forecast = pd.read_csv(folder + "renewablesForecast24.csv", sep=";")
+renewables["forecast"] = pd.to_numeric(renewables_forecast["Photovoltaics and wind [MWh]"].str.replace(",", "", regex=True), errors="raise")
+# Error
+renewables["multiplier"] = compute_multiplier(renewables)
+# Sanitize and group by day
+err_renewables = sanitize_and_group(renewables, max_time_steps)
+print(f"Done: ({err_renewables.shape[0]}) renewables samples.")
 
-# ---- Create tree from data ----
-horizon = max_time_steps - 1  # 15 minute periods
+# --------------------------------------------------------
+# Read price data
+# --------------------------------------------------------
+print("Read price...")
+price = pd.DataFrame()
+# Actual
+price_actual = pd.read_csv(folder + "priceActual24.csv", sep=";")
+price["date&time"] = pd.to_datetime(price_actual["date"] + " " + price_actual["from"], dayfirst=True)
+price["actual"] = pd.to_numeric(price_actual["price [ct/kWh]"], errors="raise") * 10  # euro/MWh
+# Forecast
+price_forecast = pd.read_csv(folder + "priceForecast24.csv", sep=";")
+price["forecast"] = pd.to_numeric(price_forecast["price [ct/kWh]"], errors="raise") * 10  # euro/MWh
+# Error
+price["multiplier"] = compute_multiplier(price)
+# Sanitize and group by day
+err_price = sanitize_and_group(price, max_time_steps)
+print(f"Done: ({err_price.shape[0]}) price samples.")
+
+# --------------------------------------------------------
+# Combine samples [demand, renewables, price]
+# into [samples x dim x time] array
+# --------------------------------------------------------
+err_samples = np.concatenate((err_demand, err_renewables, err_price), axis=1)
+idx_d = 0
+idx_r = 1
+idx_p = 2
+
+# --------------------------------------------------------
+# Create tree from data
+# --------------------------------------------------------
+horizon = 23  # max_time_steps - 1  # 1 hour periods
 branching = np.ones(horizon, dtype=np.int32)
-branching[0] = 3
-for i in range(1, len(branching)):
-    if i % 24 == 0:
-        branching[i] = 2
-
-# start = 4  # 15 minute periods
-# data = err_wind  # samples x dim x time
-# tree = f.tree.FromData(data, branching).build()
-# scenarios = tree.get_scenarios()
-# values = tree.data_values
-
-# ---- Plot tree ----
-# tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')  # requires python-tk@3.x installation
-
-# ---- Plot data ----
-import matplotlib.pyplot as plt
-
-fig, ax = plt.subplots(figsize=(15, 7))
-ax.set_xlabel("Time (24 hr)")
-ax.set_ylabel("Wind Forecast Error (MW)")
-plt.title("Wind Forecast Error vs. Time")
-ax.grid(True)
-start = 0  # 15 minute periods
-num_samples = 365
-data = np.concatenate((
-    err_wind[-num_samples:, :, start:],
-    err_wind[-num_samples:, :, :start]), axis=2)  # samples x dim x time
-times = .25 * (np.arange(start, start + max_time_steps)) * 100
-times = [t if t < 2400 else t - 2400 for t in times]  # 24 hrs
-lines = [None for _ in range(num_samples)]
-for i in range(num_samples):
-    lines[i], = ax.plot([], [], marker="o", linestyle="-")
-set_ticks(ax, times)
-ax.set_ylim([min(wind_df["error"]), max(wind_df["error"])])
-jump = 8  # 15 minute periods
-data_shape = data.shape
-for _ in range(0, 200):
-    print("Building tree and plotting values...")
-    plot_scenario_values(ax, data, branching, times, lines)
-    # data = np.concatenate((data[:, :, 1:], data[:, :, 0].reshape(-1, 1, 1)), axis=2)
-    data = data.reshape(-1)
-    data = np.concatenate((data[jump:], data[:jump]))
-    data = data.reshape(data_shape)
-    times = np.concatenate((times[jump:], [t + 2400 for t in times[:jump]]))
-    plt.pause(.1)
-plt.show()
+branching[0] = 5
+data = err_samples
+tree = s.tree.FromData(data, branching).build()
+print(tree)
 
 # --------------------------------------------------------
+# Plot scenarios
+# --------------------------------------------------------
+# fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(15, 10))
+# start = 0  # 1 hour periods
+# times = np.arange(start, start + max_time_steps) * 100
+# titles = ["demand", "renewables", "price"]
+# axes[1].set_ylabel("Error (1. = 100% of forecast value)")
+# for i, ax in enumerate(axes):
+#     ax.set_xlabel("Time (24 hr)")
+#     ax.set_title(f"Multiplier vs. Time ({titles[i]})")
+#     ax.grid(True)
+#     plot_scenario_values(ax, tree, times, i)
+#     set_ticks(ax, times)
+# plt.tight_layout()
+# plt.show()
 
-# r = np.ones(3)
-# v = r / sum(r)
-#
-# (final_stage, stop_branching_stage) = (3, 2)
-# tree = f.tree.IidProcess(
-#     distribution=v,
-#     horizon=final_stage,
-#     stopping_stage=stop_branching_stage
-# ).build()
+# --------------------------------------------------------
+# Read forecast for problem
+# --------------------------------------------------------
+fc = pd.read_csv(folder + "demandForecast25.csv", sep=";")
+fc["forecast"] = pd.to_numeric(fc["grid load [MWh]"].str.replace(",", "", regex=True), errors="raise")
+fc_d = np.array(fc["forecast"])
+fc = pd.read_csv(folder + "renewablesForecast25.csv", sep=";")
+fc["forecast"] = pd.to_numeric(fc["Photovoltaics and wind [MWh]"].str.replace(",", "", regex=True), errors="raise")
+fc_r = np.array(fc["forecast"])
+fc = pd.read_csv(folder + "priceForecast25.csv", sep=";")
+fc["forecast"] = pd.to_numeric(fc["price [ct/kWh]"], errors="raise") * 10  # euro/MWh
+fc_p = np.array(fc["forecast"])
 
-# tree.bulls_eye_plot(dot_size=6, radius=300, filename='scenario-tree.eps')  # requires python-tk@3.x installation
-# print(tree)
+# --------------------------------------------------------
+# Generate problem data
+# state = [x, dx, p-] = [stored energy, change in stored energy, prev conventional power]
+# input = [s, p, -m] = [charge, conventional power, exchanged power]
+# --------------------------------------------------------
+n_s = 4  # number of storage units. CAUTION! MUST MAKE NON-RECURRING ENTRIES IN BETA!
+n_p = 3  # number of conventional generators
+n_m = 1  # number of markets
+beta = np.ones((n_s, 1)) * 1 / n_s  # relative sizes of storage units. CAUTION! MUST BE NON-RECURRING ENTRIES!
+T = 1.  # sampling time (hours)
+fuel_cost = 10.  # euro/MWh
 
-# # --------------------------------------------------------
-# # Generate problem data
-# # --------------------------------------------------------
-# # Dynamics
-# dynamics = []
-# A_base = np.eye(num_states)
-# B_base = rng.normal(0., 1., size=(num_states, num_inputs))
-# for i in range(num_events):
-#     A = A_base + rng.normal(0., .01, size=(num_states, num_states))
-#     # A = enforce_contraction(A)
-#     B = B_base + rng.normal(0., .01, size=(num_states, num_inputs))
-#     dynamics += [f.build.LinearDynamics(A, B)]
-#
-# # Costs
-# nonleaf_costs = []
-# Q_base = rng.normal(0., .02, size=(num_states, num_states))
-# R_base = rng.normal(0., .01, size=(num_inputs, num_inputs))
-# for i in range(num_events):
-#     Q_w = Q_base + rng.normal(0., .01, size=(num_states, num_states))
-#     R_w = R_base + rng.normal(0., .01, size=(num_inputs, num_inputs))
-#     Q = Q_w @ Q_w.T
-#     R = R_w @ R_w.T
-#     # check_spd(Q, "Q")
-#     # check_spd(R, "R")
-#     nonleaf_costs += [f.build.NonleafCost(Q, R)]
-#
-# T = Q_base @ Q_base.T
-# # check_spd(T, "T")
-# leaf_cost = f.build.LeafCost(T)
-#
-# # Constraints
-# nonleaf_state_ub = rng.uniform(1., 2., num_states)
-# nonleaf_state_lb = -nonleaf_state_ub
-# nonleaf_input_ub = rng.uniform(0., .1, num_inputs)
-# nonleaf_input_lb = -nonleaf_input_ub
-# nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
-# nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))
-# nonleaf_constraint = f.build.Rectangle(nonleaf_lb, nonleaf_ub)
-# leaf_ub = rng.uniform(1., 2., num_states)
-# leaf_lb = -leaf_ub
-# leaf_constraint = f.build.Rectangle(leaf_lb, leaf_ub)
-#
-# # Risk
-# alpha = rng.uniform(0., 1.)
-# risk = f.build.AVaR(alpha)
-#
-# # Generate problem data
-# problem = (
-#     f.problem.Factory(
-#         scenario_tree=tree,
-#         num_states=num_states,
-#         num_inputs=num_inputs)
-#     .with_stochastic_dynamics(dynamics)
-#     .with_stochastic_nonleaf_costs(nonleaf_costs)
-#     .with_leaf_cost(leaf_cost)
-#     .with_nonleaf_constraint(nonleaf_constraint)
-#     .with_leaf_constraint(leaf_constraint)
-#     .with_risk(risk)
-#     .with_julia()
-#     .generate_problem()
-# )
-#
-# # Initial state
-# x0 = np.zeros(num_states)
-# for k in range(num_states):
-#     con = .5 * nonleaf_state_ub[k]
-#     x0[k] = rng.uniform(-con, con)
-# tree.write_to_file_fp("initialState", x0)
+num_states = n_s + n_s + n_p
+num_inputs = n_s + n_p + n_m
+
+# Dynamics
+dynamics = [None]
+eye_s = np.eye(n_s)
+eye_p = np.eye(n_p)
+zero_p = np.zeros((n_p, n_m))
+A = .98 * eye_s
+A_aug = np.zeros((num_states, num_states))
+A_aug[:n_s, :n_s] = A
+A_aug[n_s:n_s*2, :n_s] = A - eye_s
+B = np.hstack((
+    eye_s - beta @ np.ones((1, n_s)),
+    beta @ np.ones((1, n_p)),
+    beta,
+)) * T
+B_ = np.hstack((
+    np.zeros((n_p, n_s)),
+    eye_p,
+    zero_p,
+))
+B_aug = np.vstack((B, B, B_))
+for node in range(1, tree.num_nodes):
+    renewables_node = fc_r[tree.stage_of_node(node)] * tree.data_values[node, idx_r]
+    demand_node = fc_d[tree.stage_of_node(node)] * tree.data_values[node, idx_d]
+    c = T * beta * (renewables_node - demand_node)
+    c_aug = np.vstack((c, c, zero_p))
+    dynamics += [s.build.Dynamics(A_aug, B_aug, c_aug)]
+
+# Costs
+zero = 1e-16
+nonleaf_costs = [None]
+Q = np.diag(np.ones(num_states) * zero)
+q = None
+for node in range(1, tree.num_nodes):
+    price_node = fc_p[tree.stage_of_node(node)] * tree.data_values[node, idx_p]
+    R = np.diag(np.concatenate(
+        (np.ones(n_s) * zero, np.ones(n_p) * np.sqrt(fuel_cost), np.array([zero])), axis=0
+    ))
+    r = np.concatenate((
+        np.zeros(n_s + n_p),
+        np.array([T * price_node])), axis=0
+    ).reshape(-1, 1)
+    nonleaf_costs += [s.build.NonleafCost(Q, R, q, r)]
+leaf_cost = s.build.LeafCost(Q)
+
+# Constraints
+large = 5e3  # conventional generation at midnight on 1st Jan 25 was ~4000 MW
+stored_energy_lb = np.ones(n_s) * 1.  # MWh
+stored_energy_ub = np.ones(n_s) * large  # MWh
+stored_energy_rate_lb = np.ones(n_s) * -large  # MWh
+stored_energy_rate_ub = np.ones(n_s) * large  # MWh
+charge_rate_lb = np.ones(n_s) * -large  # MW
+charge_rate_ub = np.ones(n_s) * large  # MW
+conventional_supply_lb = np.ones(n_p) * 0.  # MW
+conventional_supply_ub = np.ones(n_p) * large  # MW
+exchange_lb = np.ones(n_m) * -large  # MW
+exchange_ub = np.ones(n_m) * large  # MW
+conventional_supply_rate_lb = np.ones(n_p) * -large  # MW
+conventional_supply_rate_ub = np.ones(n_p) * large  # MW
+
+nonleaf_rect_lb = np.hstack((
+    stored_energy_lb,
+    stored_energy_rate_lb,
+    conventional_supply_lb,
+    charge_rate_lb,
+    conventional_supply_lb,
+    exchange_lb,
+))
+nonleaf_rect_ub = np.hstack((
+    stored_energy_ub,
+    stored_energy_rate_ub,
+    conventional_supply_ub,
+    charge_rate_ub,
+    conventional_supply_ub,
+    exchange_ub,
+))
+nonleaf_rect = s.build.Rectangle(nonleaf_rect_lb, nonleaf_rect_ub)
+poly_mat_x = np.hstack((np.zeros((n_p, n_s * 2)), -eye_p))
+poly_mat_u = np.hstack((np.zeros((n_p, n_s)), eye_p, zero_p))
+poly_mat = np.hstack((poly_mat_x, poly_mat_u))
+nonleaf_poly = s.build.Polyhedron(poly_mat, conventional_supply_rate_lb, conventional_supply_rate_ub)
+nonleaf_constraint = s.build.PolyhedronWithIdentity(nonleaf_rect, nonleaf_poly)
+
+leaf_lb = np.hstack((
+    stored_energy_lb,
+    stored_energy_rate_lb,
+    conventional_supply_lb,
+))
+leaf_ub = np.hstack((
+    stored_energy_ub,
+    stored_energy_rate_ub,
+    conventional_supply_ub,
+))
+leaf_constraint = s.build.Rectangle(leaf_lb, leaf_ub)
+
+# Risk
+alpha = .95
+risk = s.build.AVaR(alpha)
+
+# Generate
+problem = (
+    s.problem.Factory(scenario_tree=tree, num_states=num_states, num_inputs=num_inputs)
+    .with_dynamics_list(dynamics)
+    .with_cost_nonleaf_list(nonleaf_costs)
+    .with_cost_leaf(leaf_cost)
+    .with_constraint_nonleaf(nonleaf_constraint)
+    .with_constraint_leaf(leaf_constraint)
+    .with_risk(risk)
+    .with_julia()
+    .generate_problem()
+)
+print(problem)
+
+# --------------------------------------------------------
+# Initial state
+# --------------------------------------------------------
+x0 = np.zeros(num_states)
+for k in range(num_states):
+    x0[k] = .5 * (leaf_lb[k] + leaf_ub[k])
+tree.write_to_file_fp("initialState", x0)

@@ -84,11 +84,11 @@ problem = (
         scenario_tree=tree,
         num_states=num_states,
         num_inputs=num_inputs)
-    .with_stochastic_dynamics(dynamics)
-    .with_stochastic_nonleaf_costs(nonleaf_costs)
-    .with_leaf_cost(leaf_cost)
-    .with_nonleaf_constraint(nonleaf_constraint)
-    .with_leaf_constraint(leaf_constraint)
+    .with_dynamics_events(dynamics)
+    .with_cost_nonleaf_events(nonleaf_costs)
+    .with_cost_leaf(leaf_cost)
+    .with_constraint_nonleaf(nonleaf_constraint)
+    .with_constraint_leaf(leaf_constraint)
     .with_risk(risk)
     .with_preconditioning()
     .with_tests()

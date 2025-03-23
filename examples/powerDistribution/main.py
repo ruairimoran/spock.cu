@@ -22,7 +22,7 @@ def set_ticks(ax_, times_):
     ax_.set_xlim(min(times_), max(times_) + 25)
 
 
-def compute_error(df):
+def compute_multiplier(df):
     if np.any(np.isclose(df["forecast"], 0.)):
         raise Exception("Trying to divide by zero!")
     return df["actual"] / df["forecast"]
@@ -43,7 +43,7 @@ def sanitize_and_group(df, max_steps):
     df_per_day = df.groupby("date")  # Group by date
     df_list = []
     for _, group in df_per_day:
-        df_err_per_day = group.sort_values("time")["error"].values  # Sort by time of day
+        df_err_per_day = group.sort_values("time")["multiplier"].values  # Sort by time of day
         df_err_per_day = daylight_savings(df_err_per_day, max_steps)
         if len(df_err_per_day) != max_steps or np.isnan(df_err_per_day).any():
             print("Bad sample!")
@@ -74,7 +74,7 @@ demand["actual"] = pd.to_numeric(demand_actual["grid load [MWh]"].str.replace(",
 demand_forecast = pd.read_csv(folder + "demandForecast24.csv", sep=";")
 demand["forecast"] = pd.to_numeric(demand_forecast["grid load [MWh]"].str.replace(",", "", regex=True), errors="raise")
 # Error
-demand["error"] = compute_error(demand)
+demand["multiplier"] = compute_multiplier(demand)
 # Sanitize and group by day
 err_demand = sanitize_and_group(demand, max_time_steps)
 print(f"Done: ({err_demand.shape[0]}) demand samples.")
@@ -95,7 +95,7 @@ renewables["actual"] = renewables["offshore"] + renewables["onshore"] + renewabl
 renewables_forecast = pd.read_csv(folder + "renewablesForecast24.csv", sep=";")
 renewables["forecast"] = pd.to_numeric(renewables_forecast["Photovoltaics and wind [MWh]"].str.replace(",", "", regex=True), errors="raise")
 # Error
-renewables["error"] = compute_error(renewables)
+renewables["multiplier"] = compute_multiplier(renewables)
 # Sanitize and group by day
 err_renewables = sanitize_and_group(renewables, max_time_steps)
 print(f"Done: ({err_renewables.shape[0]}) renewables samples.")
@@ -113,7 +113,7 @@ price["actual"] = pd.to_numeric(price_actual["price [ct/kWh]"], errors="raise") 
 price_forecast = pd.read_csv(folder + "priceForecast24.csv", sep=";")
 price["forecast"] = pd.to_numeric(price_forecast["price [ct/kWh]"], errors="raise") * 10  # euro/MWh
 # Error
-price["error"] = compute_error(price)
+price["multiplier"] = compute_multiplier(price)
 # Sanitize and group by day
 err_price = sanitize_and_group(price, max_time_steps)
 print(f"Done: ({err_price.shape[0]}) price samples.")
@@ -130,11 +130,21 @@ idx_p = 2
 # --------------------------------------------------------
 # Create tree from data
 # --------------------------------------------------------
-horizon = 3  # max_time_steps - 1  # 1 hour periods
-branching = np.ones(horizon, dtype=np.int32)
-branching[0] = 5
-data = err_samples
-tree = s.tree.FromData(data, branching).build()
+horizon = 5  # max_time_steps - 1  # 1 hour periods
+# branching = np.ones(horizon, dtype=np.int32)
+# branching[0] = 5
+# data = err_samples
+# tree = s.tree.FromData(data, branching).build()
+
+r = np.ones(2)
+v = r / sum(r)
+(final_stage, stop_branching_stage) = (horizon, horizon)
+tree = s.tree.IidProcess(
+    distribution=v,
+    horizon=final_stage,
+    stopping_stage=stop_branching_stage
+).build()
+
 print(tree)
 
 # --------------------------------------------------------
@@ -143,14 +153,12 @@ print(tree)
 # fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(15, 10))
 # start = 0  # 1 hour periods
 # times = np.arange(start, start + max_time_steps) * 100
-# lims = [[-.2, .2], [-.2, .2], [-5., 5.]]
 # titles = ["demand", "renewables", "price"]
 # axes[1].set_ylabel("Error (1. = 100% of forecast value)")
 # for i, ax in enumerate(axes):
 #     ax.set_xlabel("Time (24 hr)")
-#     ax.set_title(f"Error vs. Time ({titles[i]})")
+#     ax.set_title(f"Multiplier vs. Time ({titles[i]})")
 #     ax.grid(True)
-#     # ax.set_ylim(lims[i])
 #     plot_scenario_values(ax, tree, times, i)
 #     set_ticks(ax, times)
 # plt.tight_layout()
@@ -179,10 +187,10 @@ n_p = 2  # number of conventional generators
 n_m = 1
 n_r = 1  # number of renewables
 beta = np.ones((n_s, 1)) * 1 / n_s  # relative sizes of storage units
-T = 1  # sampling time (hours)
-fuel_cost = 2.  # euro/MWh
+T = 1.  # sampling time (hours)
+fuel_cost = 1.  # euro/MWh
 
-num_states = n_s + n_s + n_p
+num_states = n_s #+ n_s + n_p
 num_inputs = n_s + n_p + n_m
 
 # Dynamics
@@ -191,44 +199,47 @@ eye_s = np.eye(n_s)
 eye_p = np.eye(n_p)
 zero_p = np.zeros((n_p, n_m))
 A = .98 * eye_s
-A_aug = np.zeros((num_states, num_states))
-A_aug[:n_s, :n_s] = A
-A_aug[n_s:n_s*2, :n_s] = A
+# A_aug = np.zeros((num_states, num_states))
+# A_aug[:n_s, :n_s] = A
+# A_aug[n_s:n_s*2, :n_s] = A - eye_s
 B = np.hstack((
     eye_s - beta @ np.ones((1, n_s)),
     beta @ np.ones((1, n_p)),
     beta,
 )) * T
-B_ = np.hstack((
-    np.zeros((n_p, n_s)),
-    eye_p,
-    zero_p,
-))
-B_aug = np.vstack((B, B, B_))
+B = np.ones((num_states, num_inputs))
+# B_ = np.hstack((
+#     np.zeros((n_p, n_s)),
+#     eye_p,
+#     zero_p,
+# ))
+# B_aug = np.vstack((B, B, B_))
 for node in range(1, tree.num_nodes):
-    c = T * beta * (fc_r[tree.stage_of_node(node)] * tree.data_values[node, idx_r]
-                    - fc_d[tree.stage_of_node(node)] * tree.data_values[node, idx_d])
-    c_aug = np.vstack((c, c, zero_p))
-    dynamics += [s.build.AffineDynamics(A_aug, B_aug, c_aug)]
+    # c = T * beta * (fc_r[tree.stage_of_node(node)] * tree.data_values[node, idx_r]
+    #                 - fc_d[tree.stage_of_node(node)] * tree.data_values[node, idx_d])
+    # c_aug = np.vstack((c, c, zero_p))
+    dynamics += [s.build.LinearDynamics(A, B)]
 
 # Costs
+zero = 10.
 nonleaf_costs = [None]
-Q = np.zeros((num_states, num_states))
+# Q = np.diag(np.ones(num_states) * zero) * .1
+Q = np.diag(np.ones(num_states) * 10.)
 q = None
 for node in range(1, tree.num_nodes):
-    R = np.diag(np.concatenate(
-        (np.zeros(n_s), np.ones(n_p) * fuel_cost, np.array([0.])), axis=0
-    ))
-    r = np.concatenate((
-        np.zeros(n_s),
-        np.ones(n_p) * fuel_cost,
-        np.array([-T * fc_p[tree.stage_of_node(node)] * tree.data_values[node, idx_p]])), axis=0
-    )
-    nonleaf_costs += [s.build.NonleafCost(Q, R, q, r)]
+    # R = np.diag(np.concatenate(
+    #     (np.ones(n_s) * zero, np.ones(n_p) * fuel_cost, np.array([zero])), axis=0
+    # ))
+    # r = np.concatenate((
+    #     np.zeros(n_s),
+    #     np.ones(n_p) * fuel_cost,
+    #     np.array([-T * fc_p[tree.stage_of_node(node)] * tree.data_values[node, idx_p]])), axis=0
+    # )
+    nonleaf_costs += [s.build.NonleafCost(Q, np.diag(np.ones(num_inputs)))]
 leaf_cost = s.build.LeafCost(Q)
 
 # Constraints
-large = 1000
+large = 1e4  # conventional generation at midnight on 1st Jan 25 was ~4000 MW
 stored_energy_lb = np.ones(n_s) * 1.  # MWh
 stored_energy_ub = np.ones(n_s) * large  # MWh
 stored_energy_rate_lb = np.ones(n_s) * -large  # MWh
@@ -244,36 +255,36 @@ conventional_supply_rate_ub = np.ones(n_p) * large  # MW
 
 nonleaf_rect_lb = np.hstack((
     stored_energy_lb,
-    stored_energy_rate_lb,
-    conventional_supply_lb,
+    # stored_energy_rate_lb,
+    # conventional_supply_lb,
     charge_rate_lb,
     conventional_supply_lb,
     exchange_lb,
 ))
 nonleaf_rect_ub = np.hstack((
     stored_energy_ub,
-    stored_energy_rate_ub,
-    conventional_supply_ub,
+    # stored_energy_rate_ub,
+    # conventional_supply_ub,
     charge_rate_ub,
     conventional_supply_ub,
     exchange_ub,
 ))
-nonleaf_rect = s.build.Rectangle(nonleaf_rect_lb, nonleaf_rect_ub)
-poly_mat_x = np.hstack((np.zeros((n_p, n_s * 2)), -eye_p))
-poly_mat_u = np.hstack((np.zeros((n_p, n_s)), eye_p, zero_p))
-poly_mat = np.hstack((poly_mat_x, poly_mat_u))
-nonleaf_poly = s.build.Polyhedron(poly_mat, conventional_supply_rate_lb, conventional_supply_rate_ub)
-nonleaf_constraint = s.build.PolyhedronWithIdentity(nonleaf_rect, nonleaf_poly)
+nonleaf_constraint = s.build.Rectangle(nonleaf_rect_lb, nonleaf_rect_ub)
+# poly_mat_x = np.hstack((np.zeros((n_p, n_s * 2)), -eye_p))
+# poly_mat_u = np.hstack((np.zeros((n_p, n_s)), eye_p, zero_p))
+# poly_mat = np.hstack((poly_mat_x, poly_mat_u))
+# nonleaf_poly = s.build.Polyhedron(poly_mat, conventional_supply_rate_lb, conventional_supply_rate_ub)
+# nonleaf_constraint = s.build.PolyhedronWithIdentity(nonleaf_rect, nonleaf_poly)
 
 leaf_lb = np.hstack((
     stored_energy_lb,
-    stored_energy_rate_lb,
-    conventional_supply_lb,
+    # stored_energy_rate_lb,
+    # conventional_supply_lb,
 ))
 leaf_ub = np.hstack((
     stored_energy_ub,
-    stored_energy_rate_ub,
-    conventional_supply_ub,
+    # stored_energy_rate_ub,
+    # conventional_supply_ub,
 ))
 leaf_constraint = s.build.Rectangle(leaf_lb, leaf_ub)
 

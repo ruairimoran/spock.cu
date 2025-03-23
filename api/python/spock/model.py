@@ -31,9 +31,13 @@ class Model:
                 "MSK_DPAR_INTPNT_CO_TOL_REL_GAP": tol,
                 "MSK_DPAR_INTPNT_QO_TOL_REL_GAP": tol,
                 "MSK_DPAR_OPTIMIZER_MAX_TIME": max_time,
+                "MSK_IPAR_LOG": 3,
+                "MSK_IPAR_INFEAS_REPORT_AUTO": 1,
+                "MSK_IPAR_INFEAS_REPORT_LEVEL": 3,
             }
             return self.__cvx.solve(solver=solver,
                                     mosek_params=mosek_params,
+                                    verbose=True,
                                     )
         elif solver == cp.SCS:
             scs_params = {
@@ -69,12 +73,12 @@ class Model:
 
     def __build(self):
         """Build an optimisation model using cp."""
-        self.__x = cp.Variable((self.__tree.num_nodes * self.__problem.num_states,))
-        self.__u = cp.Variable((self.__tree.num_nonleaf_nodes * self.__problem.num_inputs,))
+        self.__x = cp.Variable((self.__tree.num_nodes * self.__problem.num_states,), name="x")
+        self.__u = cp.Variable((self.__tree.num_nonleaf_nodes * self.__problem.num_inputs,), name="u")
         self.__y = cp.Variable((sum(self.__problem.risk_at_node(i).b.size
-                                       for i in range(self.__tree.num_nonleaf_nodes))), )
-        self.__t = cp.Variable((self.__tree.num_nodes - 1,))
-        self.__s = cp.Variable((self.__tree.num_nodes,))
+                                    for i in range(self.__tree.num_nonleaf_nodes))), name="y")
+        self.__t = cp.Variable((self.__tree.num_nodes - 1,), name="t")
+        self.__s = cp.Variable((self.__tree.num_nodes,), name="s")
         self.__objective = cp.Minimize(self.__s[0])
         self.__impose_dynamics()
         self.__impose_cost()

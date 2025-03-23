@@ -162,10 +162,7 @@ class Cost:
 
     @staticmethod
     def _inv(A, b):
-        try:
-            return np.linalg.solve(A, b)
-        except np.linalg.LinAlgError as e:
-            return np.linalg.pinv(A) @ b
+        return np.linalg.solve(A, b)
 
 
 # --------------------------------------------------------

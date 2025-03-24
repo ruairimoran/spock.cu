@@ -1191,7 +1191,7 @@ public:
         return *this;
     }
 
-    CacheBuilder<T> &enableDebug(bool enable) {
+    CacheBuilder<T> &enableDebug(bool enable = true) {
         if (enable && m_maxOuterIters == 0) {
             m_maxOuterIters = 1000;
         }

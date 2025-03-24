@@ -3,7 +3,7 @@ import argparse
 import spock as s
 
 
-parser = argparse.ArgumentParser(description='Example: admm for server air conditioning.')
+parser = argparse.ArgumentParser(description='Example: server air conditioning.')
 parser.add_argument("--dt", type=str, default='d')
 parser.add_argument("--h", type=int, default=5)
 args = parser.parse_args()

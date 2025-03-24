@@ -109,6 +109,7 @@ protected:
     size_t m_matAxis = 2;
     size_t m_callsToL = 0;
     bool m_debug = false;
+    bool m_admm = false;
     bool m_errInit = false;  ///< Whether to initialise tolerances
     bool m_status = false;  ///< General status use
     int m_exitCode = notRun;  ///< Algorithm exit code
@@ -301,9 +302,10 @@ public:
           size_t maxOuterIters = 1000,
           size_t maxInnerIters = 8,
           size_t andBuff = 3,
-          bool debug = false) :
+          bool debug = false,
+          bool admm = false) :
         m_tree(tree), m_data(data), m_tolAbs(absTol), m_tolRel(relTol), m_maxTimeSecs(maxTimeSecs),
-        m_maxOuterIters(maxOuterIters), m_maxInnerIters(maxInnerIters), m_andBuff(andBuff), m_debug(debug) {
+        m_maxOuterIters(maxOuterIters), m_maxInnerIters(maxInnerIters), m_andBuff(andBuff), m_debug(debug), m_admm(admm) {
         /* Tolerances */
         if (m_data.preconditioned()) {
             T tolScale = *std::min_element(m_data.scaling().begin(), m_data.scaling().end());
@@ -1273,7 +1275,7 @@ public:
         return *this;
     }
 
-    CacheBuilder<T> &enableDebug(bool enable) {
+    CacheBuilder<T> &enableDebug(bool enable = true) {
         if (enable && m_maxOuterIters == 0) {
             m_maxOuterIters = 1000;
         }
@@ -1281,10 +1283,10 @@ public:
         return *this;
     }
 
-//    CacheBuilder<T> &enableAdmm(bool enable) {
-//        m_admm = enable;
-//        return *this;
-//    }
+    CacheBuilder<T> &enableAdmm(bool enable = true) {
+        m_admm = enable;
+        return *this;
+    }
 
     /**
      * Build Cache
@@ -1299,7 +1301,8 @@ public:
             m_maxOuterIters,
             m_maxInnerIters,
             m_andBuff,
-            m_debug
+            m_debug,
+            m_admm
         );
     }
 
@@ -1316,7 +1319,8 @@ public:
             m_maxOuterIters,
             m_maxInnerIters,
             m_andBuff,
-            m_debug
+            m_debug,
+            m_admm
         );
     }
 };

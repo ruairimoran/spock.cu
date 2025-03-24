@@ -125,7 +125,7 @@ function read_data()
     else
         cost_nonleaf_q = nothing
     end
-    if true
+    if false
         cost_nonleaf_r = read_tensor_from_binary(TR, folder * "uncond_cost_nonleaf_r" * file_ext_r)
     else
         cost_nonleaf_r = nothing

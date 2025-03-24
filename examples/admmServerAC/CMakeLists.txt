@@ -1,9 +1,9 @@
-add_executable(server)
-target_sources(server
+add_executable(admm)
+target_sources(admm
     PRIVATE
     main.cu
 )
-target_link_libraries(server
+target_link_libraries(admm
     PRIVATE
     spock_compiler_flags
     spock_src
@@ -11,7 +11,7 @@ target_link_libraries(server
     cusolver
     cudadevrt
 )
-target_include_directories(server
+target_include_directories(admm
     PRIVATE
     "${GPUTILS_SOURCE_DIR}/include"  # includes GPUtils directory
     "${PROJECT_SOURCE_DIR}/src"

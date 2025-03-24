@@ -54,7 +54,7 @@ static void isFinite(DTensor<T> &d_vec) {
     d_vec.download(vec);
     for (const T &value: vec) {
         if (!std::isfinite(value)) {
-            std::cout << d_vec.tr();
+//            std::cout << d_vec.tr();
             throw std::invalid_argument("[isFinite] DTensor has entries that are not finite.\n");
         }
     }
@@ -940,7 +940,7 @@ template<typename T>
 void Cache<T>::computeError(size_t idx) {
     cudaDeviceSynchronize();  // DO NOT REMOVE !!!
     if (m_debug) isFinite(*m_d_iterateCandidate);
-    if (m_admm) {
+    if (false) {
         m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
         Ltr();
         T tol;
@@ -986,10 +986,10 @@ void Cache<T>::computeError(size_t idx) {
                 m_cacheError2[idx] = m_d_admmErrDual->normF();
 
                 /* err3 = Lz+ - n+ */
-                m_d_iterateCandidatePrim->deviceCopyTo(*m_d_workIteratePrim);
-                L();
-                *m_d_workIterateDual -= *m_d_iterateCandidateDual;
-                m_cacheError3[idx] = m_d_workIterateDual->normF();
+//                m_d_iterateCandidatePrim->deviceCopyTo(*m_d_workIteratePrim);
+//                L();
+//                *m_d_workIterateDual -= *m_d_iterateCandidateDual;
+                m_cacheError3[idx] = m_d_iterateDual->maxAbs();
             }
         }
     } else {
@@ -1036,11 +1036,19 @@ void Cache<T>::computeError(size_t idx) {
     //                *m_d_err += *m_d_workIteratePrim;
     //                m_cacheError0[idx] = m_d_err->maxAbs();
 
-                    m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
-                    Ltr();
-                    *m_d_err *= -1.;
-                    *m_d_err += *m_d_iterateCandidatePrim;
-                    m_cacheError0[idx] = m_d_err->normF();
+                    m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
+                    L();
+                    *m_d_workIterateDual *= -1.;
+                    *m_d_workIterateDual += *m_d_iterateDual;
+//                    std::cout << "i: \n" << *m_d_i;
+//                    std::cout << "ii: \n" << *m_d_ii;
+//                    std::cout << "iii: \n" << *m_d_iii;
+//                    std::cout << "iv: \n" << *m_d_iv;
+//                    std::cout << "v: \n" << *m_d_v;
+//                    std::cout << "vi: \n" << *m_d_vi;
+                    m_cacheError0[idx] = m_d_workIterateDual->normF();
+
+                    m_cacheError3[idx] = m_d_iterateDual->maxAbs();
                 }
             }
         }
@@ -1052,6 +1060,7 @@ void Cache<T>::computeError(size_t idx) {
  */
 template<typename T>
 int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution) {
+    m_timeStart = std::chrono::high_resolution_clock::now();
     /* Load initial state */
     initialiseState(initState);
     /* Load previous solution if given */
@@ -1388,7 +1397,7 @@ void Cache<T>::printToJson(std::string &file) {
     addArray(doc, "err0", m_cacheError0);
     addArray(doc, "err1", m_cacheError1);
     addArray(doc, "err2", m_cacheError2);
-    if (m_admm) addArray(doc, "err3", m_cacheError3);
+    addArray(doc, "err3", m_cacheError3);
     std::vector<T> x = this->states();
     addArray(doc, "states", x);
     std::vector<T> u = this->inputs();

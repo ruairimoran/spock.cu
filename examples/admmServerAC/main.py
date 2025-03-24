@@ -5,7 +5,7 @@ import spock as s
 
 parser = argparse.ArgumentParser(description='Example: server air conditioning.')
 parser.add_argument("--dt", type=str, default='d')
-parser.add_argument("--h", type=int, default=5)
+parser.add_argument("--h", type=int, default=2)
 args = parser.parse_args()
 dt = args.dt
 
@@ -13,7 +13,7 @@ dt = args.dt
 horizon = args.h
 stopping = horizon
 num_events = 2
-num_inputs = 50
+num_inputs = 2
 num_states = num_inputs
 
 # --------------------------------------------------------
@@ -60,7 +60,7 @@ leaf_cost = s.build.LeafCost(T)
 # Constraints (the states saturate)
 nonleaf_state_ub = np.ones(num_states) * 1.
 nonleaf_state_lb = -nonleaf_state_ub
-nonleaf_input_ub = np.ones(num_inputs) * 1.5
+nonleaf_input_ub = np.ones(num_inputs) * .1
 nonleaf_input_lb = -nonleaf_input_ub
 nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
 nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))

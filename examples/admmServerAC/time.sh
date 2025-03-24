@@ -10,14 +10,13 @@ main() {
     mkdir -p ./build
     for n in {3..15}; do
         python main.py --dt="d" --h="$n"
-        julia ../../tests/julia/julia.jl
         exit_code=$?
         if [ $exit_code -eq 0 ]; then
             cmake -S $path -B ./build -Wno-dev
             cmake --build ./build
-            ./build/examples/serverAirCondition/server
+            ./build/examples/admmServerAC/admm
         else
-            printf "Skipping bad problem."
+            printf "Python error!"
         fi
     done
 }

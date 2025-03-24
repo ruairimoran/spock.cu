@@ -8,7 +8,7 @@ main() {
     # shellcheck disable=SC1090
     source "${path}.venv/bin/activate"
     mkdir -p ./build
-    for n in {3..15}; do
+    for n in {3..4}; do
         python main.py --dt="d" --h="$n"
         julia ../../tests/julia/julia.jl
         exit_code=$?

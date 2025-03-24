@@ -155,12 +155,12 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_ellResidual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_ellResidualPrim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_ellResidualDual = nullptr;
-//    std::unique_ptr<DTensor<T>> m_d_admmIterate = nullptr;
-//    std::unique_ptr<DTensor<T>> m_d_admmIterateCandidate = nullptr;
-//    std::unique_ptr<DTensor<T>> m_d_admmErrPrim = nullptr;
-//    std::unique_ptr<DTensor<T>> m_d_admmErrDual = nullptr;
-//    T m_admmTolPrim = 0.;
-//    T m_admmTolDual = 0.;
+    std::unique_ptr<DTensor<T>> m_d_admmIterate = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_admmIterateCandidate = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_admmErrPrim = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_admmErrDual = nullptr;
+    T m_admmTolPrim = 0.;
+    T m_admmTolDual = 0.;
     /* Workspaces */
     std::vector<T> m_sizeIterateOnes;
     std::vector<T> m_initState;
@@ -350,12 +350,12 @@ public:
         m_d_workIterate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_workYTS = std::make_unique<DTensor<T>>(m_data.nullDim(), 1, m_tree.numNonleafNodes(), true);
         m_d_workDot = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
-//        if (m_admm) {
-//            m_d_admmIterate = std::make_unique<DTensor<T>>(m_sizeDual, 1, 1, true);
-//            m_d_admmIterateCandidate = std::make_unique<DTensor<T>>(m_sizeDual, 1, 1, true);
-//            m_d_admmErrPrim = std::make_unique<DTensor<T>>(m_sizePrim, 1, 1, true);
-//            m_d_admmErrDual = std::make_unique<DTensor<T>>(m_sizePrim, 1, 1, true);
-//        }
+        if (m_admm) {
+            m_d_admmIterate = std::make_unique<DTensor<T>>(m_sizeDual, 1, 1, true);
+            m_d_admmIterateCandidate = std::make_unique<DTensor<T>>(m_sizeDual, 1, 1, true);
+            m_d_admmErrPrim = std::make_unique<DTensor<T>>(m_sizePrim, 1, 1, true);
+            m_d_admmErrDual = std::make_unique<DTensor<T>>(m_sizePrim, 1, 1, true);
+        }
         /* Slice and reshape tensors */
         reshape();
         /* Initialise projectable objects */
@@ -472,10 +472,10 @@ void Cache<T>::reset() {
     m_d_workIterate->upload(sizeIterate);
     m_d_workYTS->upload(nullDimNumNonleafNodes);
     m_d_workDot->upload(sizeIterate);
-//    if (m_admm) {
-//        m_d_admmIterate->upload(sizeDual);
-//        m_d_admmIterateCandidate->upload(sizeDual);
-//    }
+    if (m_admm) {
+        m_d_admmIterate->upload(sizeDual);
+        m_d_admmIterateCandidate->upload(sizeDual);
+    }
 }
 
 template<typename T>
@@ -752,20 +752,20 @@ T Cache<T>::normM(DTensor<T> &x, DTensor<T> &y) {
  */
 template<typename T>
 void Cache<T>::modifyPrimal() {
-//    if (m_admm) {
-//        m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
-//        L(true);
-//        *m_d_workIterateDual -= *m_d_iterateDual;
-//        *m_d_workIterateDual += *m_d_admmIterate;
-//        Ltr(true);
-//        *m_d_workIteratePrim *= -m_data.stepSize();
-//        *m_d_workIteratePrim += *m_d_iteratePrim;
-//    } else {
-    m_d_iterateDual->deviceCopyTo(*m_d_workIterateDual);
-    Ltr(true);
-    *m_d_workIteratePrim *= -m_data.stepSize();
-    *m_d_workIteratePrim += *m_d_iteratePrim;
-//    }
+    if (m_admm) {
+        m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
+        L(true);
+        *m_d_workIterateDual -= *m_d_iterateDual;
+        *m_d_workIterateDual += *m_d_admmIterate;
+        Ltr(true);
+        *m_d_workIteratePrim *= -m_data.stepSize();
+        *m_d_workIteratePrim += *m_d_iteratePrim;
+    } else {
+        m_d_iterateDual->deviceCopyTo(*m_d_workIterateDual);
+        Ltr(true);
+        *m_d_workIteratePrim *= -m_data.stepSize();
+        *m_d_workIteratePrim += *m_d_iteratePrim;
+    }
 }
 
 /**
@@ -784,17 +784,17 @@ void Cache<T>::proximalPrimal() {
  */
 template<typename T>
 void Cache<T>::modifyDual() {
-//    if (m_admm) {
-//        L(true);
-//        *m_d_workIterateDual += *m_d_admmIterate;
-//        m_d_workIterateDual->deviceCopyTo(*m_d_admmIterateCandidate); // Save (Lz+ + u) for later in iteration
-//    } else {
-    *m_d_workIteratePrim *= 2.;
-    *m_d_workIteratePrim -= *m_d_iteratePrim;
-    L(true);
-    *m_d_workIterateDual *= m_data.stepSize();
-    *m_d_workIterateDual += *m_d_iterateDual;
-//    }
+    if (m_admm) {
+        L(true);
+        *m_d_workIterateDual += *m_d_admmIterate;
+        m_d_workIterateDual->deviceCopyTo(*m_d_admmIterateCandidate); // Save (Lz+ + u) for later in iteration
+    } else {
+        *m_d_workIteratePrim *= 2.;
+        *m_d_workIteratePrim -= *m_d_iteratePrim;
+        L(true);
+        *m_d_workIterateDual *= m_data.stepSize();
+        *m_d_workIterateDual += *m_d_iterateDual;
+    }
 }
 
 /**
@@ -802,18 +802,18 @@ void Cache<T>::modifyDual() {
  */
 template<typename T>
 void Cache<T>::proximalDual() {
-//    if (m_admm) {
-//        translateSocs();
-//        projectDualWorkspaceOnConstraints();
-//        m_d_workIterateDual->deviceCopyTo(*m_d_iterateCandidateDual);  // Store dual
-//    } else {
-    *m_d_workIterateDual *= m_data.stepSizeRecip();
-    translateSocs();
-    m_d_workIterateDual->deviceCopyTo(*m_d_iterateCandidateDual);
-    projectDualWorkspaceOnConstraints();
-    *m_d_iterateCandidateDual -= *m_d_workIterateDual;
-    *m_d_iterateCandidateDual *= m_data.stepSize();  // Store dual
-//    }
+    if (m_admm) {
+        translateSocs();
+        projectDualWorkspaceOnConstraints();
+        m_d_workIterateDual->deviceCopyTo(*m_d_iterateCandidateDual);  // Store dual
+    } else {
+        *m_d_workIterateDual *= m_data.stepSizeRecip();
+        translateSocs();
+        m_d_workIterateDual->deviceCopyTo(*m_d_iterateCandidateDual);
+        projectDualWorkspaceOnConstraints();
+        *m_d_iterateCandidateDual -= *m_d_workIterateDual;
+        *m_d_iterateCandidateDual *= m_data.stepSize();  // Store dual
+    }
 }
 
 /**
@@ -826,7 +826,7 @@ void Cache<T>::iter() {
     proximalPrimal();
     modifyDual();
     proximalDual();
-//    if (m_admm) *m_d_admmIterateCandidate -= *m_d_iterateCandidateDual;  // Compute auxiliary for ADMM
+    if (m_admm) *m_d_admmIterateCandidate -= *m_d_iterateCandidateDual;  // Compute auxiliary for ADMM
 }
 
 template<typename T>
@@ -881,7 +881,7 @@ void Cache<T>::saveToPrev() {
 template<typename T>
 void Cache<T>::acceptCandidate() {
     m_d_iterateCandidate->deviceCopyTo(*m_d_iterate);
-//    if (m_admm) m_d_admmIterateCandidate->deviceCopyTo(*m_d_admmIterate);
+    if (m_admm) m_d_admmIterateCandidate->deviceCopyTo(*m_d_admmIterate);
 }
 
 /**
@@ -940,65 +940,28 @@ template<typename T>
 void Cache<T>::computeError(size_t idx) {
     cudaDeviceSynchronize();  // DO NOT REMOVE !!!
     if (m_debug) isFinite(*m_d_iterateCandidate);
-//    if (m_admm) {
-//        m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
-//        Ltr();
-//        T tol;
-//        if (m_errInit) tol = m_d_workIteratePrim->normF();
-//        *m_d_workIteratePrim *= -1.;
-//        m_d_workIteratePrim->deviceCopyTo(*m_d_admmErrPrim);
-//        m_d_workIteratePrim->deviceCopyTo(*m_d_admmErrDual);
-//        /* prim = z+ - L'n+ */
-//        *m_d_admmErrPrim += *m_d_iterateCandidatePrim;
-//        /* dual = L'n - L'n+ */
-//        m_d_iterateDual->deviceCopyTo(*m_d_workIterateDual);
-//        Ltr();
-//        *m_d_admmErrDual += *m_d_workIteratePrim;
-//        if (m_errInit) {
-//            m_admmTolPrim = m_tolAbs * sqrt(m_sizePrim) + m_tolRel * std::max(m_d_iterateCandidatePrim->normF(), tol);
-//            m_admmTolDual = m_tolAbs * sqrt(m_sizeDual) + m_tolRel * m_d_admmIterateCandidate->normF();
-//            m_errInit = false;
-//            m_status = false;
-//        } else {
-//            m_status = (m_d_admmErrPrim->normF() <= m_admmTolPrim && m_d_admmErrDual->normF() <= m_admmTolDual);
-//            if (m_debug) {
-//                isFinite(*m_d_admmIterateCandidate);
-//
-//                m_cacheCallsToL[idx] = m_callsToL;
-//                m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
-//                *m_d_workIteratePrim -= *m_d_iterateCandidatePrim;
-//                m_cacheError0[idx] = m_d_admmErrPrim->normF();
-//                m_cacheError1[idx] = m_d_workIteratePrim->normF();
-//                m_cacheError2[idx] = m_d_admmErrDual->normF();
-//
-//                /* err3 = Lz+ - n+ */
-//                m_d_iterateCandidatePrim->deviceCopyTo(*m_d_workIteratePrim);
-//                L();
-//                *m_d_workIterateDual -= *m_d_iterateCandidateDual;
-//                m_cacheError3[idx] = m_d_workIterateDual->normF();
-//            }
-//        }
-//    } else {
-    computeResidual();
-    if (idx % 25 == 0) {
-        /* L(residualPrim) and L'(residualDual) */
-        m_d_residualDual->deviceCopyTo(*m_d_workIterateDual);
+    if (m_admm) {
+        m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
         Ltr();
-        m_d_workIteratePrim->deviceCopyTo(*m_d_ellResidualPrim);
-        m_d_residualPrim->deviceCopyTo(*m_d_workIteratePrim);
-        L();
-        m_d_workIterateDual->deviceCopyTo(*m_d_ellResidualDual);
-        /* residual/step - ell(residual) */
-        m_d_residual->deviceCopyTo(*m_d_workIterate);
-        *m_d_workIterate *= m_data.stepSizeRecip();
-        *m_d_workIterate -= *m_d_ellResidual;
+        T tol;
+        if (m_errInit) tol = m_d_workIteratePrim->normF();
+        *m_d_workIteratePrim *= -1.;
+        m_d_workIteratePrim->deviceCopyTo(*m_d_admmErrPrim);
+        m_d_workIteratePrim->deviceCopyTo(*m_d_admmErrDual);
+        /* prim = z+ - L'n+ */
+        *m_d_admmErrPrim += *m_d_iterateCandidatePrim;
+        /* dual = L'n - L'n+ */
+        m_d_iterateDual->deviceCopyTo(*m_d_workIterateDual);
+        Ltr();
+        *m_d_admmErrDual += *m_d_workIteratePrim;
         if (m_errInit) {
-            m_tol = std::max(m_tolAbs, m_tolRel * m_d_workIterate->maxAbs());
-            m_exitCode = notRun;
+            m_admmTolPrim = m_tolAbs * sqrt(m_sizePrim) + m_tolRel * std::max(m_d_iterateCandidatePrim->normF(), tol);
+            m_admmTolDual = m_tolAbs * sqrt(m_sizeDual) + m_tolRel * m_d_admmIterateCandidate->normF();
             m_errInit = false;
+            m_status = false;
         } else {
-            m_errAbs = m_d_workIterate->maxAbs();
-            if (m_errAbs <= m_tol) m_exitCode = converged;
+            if (m_d_admmErrPrim->normF() <= m_admmTolPrim && m_d_admmErrDual->normF() <= m_admmTolDual)
+                m_exitCode = converged;
             if (m_maxOuterIters) {
                 if (idx >= m_maxOuterIters) m_exitCode = outOfIter;
             }
@@ -1013,24 +976,75 @@ void Cache<T>::computeError(size_t idx) {
                     std::chrono::high_resolution_clock::now() - m_timeStart).count();
             }
             if (m_debug) {
-                m_cacheError1[idx] = m_d_workIteratePrim->maxAbs();
-                m_cacheError2[idx] = m_d_workIterateDual->maxAbs();
-                m_cacheCallsToL[idx] = m_callsToL;
-                /* errPrim + L'(errDual) */
-//                m_d_workIteratePrim->deviceCopyTo(*m_d_err);
-//                Ltr();
-//                *m_d_err += *m_d_workIteratePrim;
-//                m_cacheError0[idx] = m_d_err->maxAbs();
+                isFinite(*m_d_admmIterateCandidate);
 
-                m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
-                Ltr();
-                *m_d_err *= -1.;
-                *m_d_err += *m_d_iterateCandidatePrim;
-                m_cacheError0[idx] = m_d_err->normF();
+                m_cacheCallsToL[idx] = m_callsToL;
+                m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
+                *m_d_workIteratePrim -= *m_d_iterateCandidatePrim;
+                m_cacheError0[idx] = m_d_admmErrPrim->normF();
+                m_cacheError1[idx] = m_d_workIteratePrim->normF();
+                m_cacheError2[idx] = m_d_admmErrDual->normF();
+
+                /* err3 = Lz+ - n+ */
+                m_d_iterateCandidatePrim->deviceCopyTo(*m_d_workIteratePrim);
+                L();
+                *m_d_workIterateDual -= *m_d_iterateCandidateDual;
+                m_cacheError3[idx] = m_d_workIterateDual->normF();
+            }
+        }
+    } else {
+        computeResidual();
+        if (idx % 25 == 0) {
+            /* L(residualPrim) and L'(residualDual) */
+            m_d_residualDual->deviceCopyTo(*m_d_workIterateDual);
+            Ltr();
+            m_d_workIteratePrim->deviceCopyTo(*m_d_ellResidualPrim);
+            m_d_residualPrim->deviceCopyTo(*m_d_workIteratePrim);
+            L();
+            m_d_workIterateDual->deviceCopyTo(*m_d_ellResidualDual);
+            /* residual/step - ell(residual) */
+            m_d_residual->deviceCopyTo(*m_d_workIterate);
+            *m_d_workIterate *= m_data.stepSizeRecip();
+            *m_d_workIterate -= *m_d_ellResidual;
+            if (m_errInit) {
+                m_tol = std::max(m_tolAbs, m_tolRel * m_d_workIterate->maxAbs());
+                m_exitCode = notRun;
+                m_errInit = false;
+            } else {
+                m_errAbs = m_d_workIterate->maxAbs();
+                if (m_errAbs <= m_tol) m_exitCode = converged;
+                if (m_maxOuterIters) {
+                    if (idx >= m_maxOuterIters) m_exitCode = outOfIter;
+                }
+                if (m_maxTimeSecs && idx % 1000 == 0) {
+                    m_timeElapsed = std::chrono::duration<T>(
+                        std::chrono::high_resolution_clock::now() - m_timeStart).count();
+                    if (m_timeElapsed >= m_maxTimeSecs) m_exitCode = outOfTime;
+                }
+                if (m_exitCode != notRun) {
+                    m_countIterations = idx;
+                    m_timeElapsed = std::chrono::duration<T>(
+                        std::chrono::high_resolution_clock::now() - m_timeStart).count();
+                }
+                if (m_debug) {
+                    m_cacheError1[idx] = m_d_workIteratePrim->maxAbs();
+                    m_cacheError2[idx] = m_d_workIterateDual->maxAbs();
+                    m_cacheCallsToL[idx] = m_callsToL;
+                    /* errPrim + L'(errDual) */
+    //                m_d_workIteratePrim->deviceCopyTo(*m_d_err);
+    //                Ltr();
+    //                *m_d_err += *m_d_workIteratePrim;
+    //                m_cacheError0[idx] = m_d_err->maxAbs();
+
+                    m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
+                    Ltr();
+                    *m_d_err *= -1.;
+                    *m_d_err += *m_d_iterateCandidatePrim;
+                    m_cacheError0[idx] = m_d_err->normF();
+                }
             }
         }
     }
-//    }
 }
 
 /**
@@ -1366,15 +1380,15 @@ void Cache<T>::printToJson(std::string &file) {
     doc.AddMember("numStates", m_tree.numStates(), doc.GetAllocator());
     doc.AddMember("numInputs", m_tree.numInputs(), doc.GetAllocator());
     doc.AddMember("sizeCache", m_maxOuterIters, doc.GetAllocator());
-//    if (m_admm) {
-//        doc.AddMember("admmTolPrim", m_admmTolPrim, doc.GetAllocator());
-//        doc.AddMember("admmTolDual", m_admmTolDual, doc.GetAllocator());
-//    }
+    if (m_admm) {
+        doc.AddMember("admmTolPrim", m_admmTolPrim, doc.GetAllocator());
+        doc.AddMember("admmTolDual", m_admmTolDual, doc.GetAllocator());
+    }
     addArray(doc, "callsL", m_cacheCallsToL);
     addArray(doc, "err0", m_cacheError0);
     addArray(doc, "err1", m_cacheError1);
     addArray(doc, "err2", m_cacheError2);
-//    if (m_admm) addArray(doc, "err3", m_cacheError3);
+    if (m_admm) addArray(doc, "err3", m_cacheError3);
     std::vector<T> x = this->states();
     addArray(doc, "states", x);
     std::vector<T> u = this->inputs();

@@ -45,7 +45,7 @@ for w in range(num_events):
     for j in range(num_states):
         diag = 1. + (1. + j / num_states) * w / num_events
         As[w][j][j] = diag
-    dynamics += [s.build.LinearDynamics(As[w], B)]
+    dynamics += [s.build.Dynamics(As[w], B)]
 
 # Costs
 nonleaf_costs = []

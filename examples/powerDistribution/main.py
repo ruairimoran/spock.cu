@@ -55,8 +55,12 @@ def sanitize_and_group(df, max_steps):
 
 parser = argparse.ArgumentParser(description='Example: power distribution: generate scenario tree.')
 parser.add_argument("--dt", type=str, default='d')
+parser.add_argument("--br", type=int, default=0)
+parser.add_argument("--ch", type=int, default=2)
 args = parser.parse_args()
 dt = args.dt
+br = args.br
+ch = args.ch
 
 max_time_steps = 24  # 1-hour sampling time
 folder = "deEnergyData/"
@@ -132,7 +136,11 @@ idx_p = 2
 # --------------------------------------------------------
 horizon = 23  # max_time_steps - 1  # 1 hour periods
 branching = np.ones(horizon, dtype=np.int32)
-branching[0] = 5
+match br:
+    case 0:
+        branching[0:3] = [ch, ch, ch]
+    case 1:
+        branching[0] = np.power(ch, 3)
 data = err_samples
 tree = s.tree.FromData(data, branching).build()
 print(tree)
@@ -172,12 +180,12 @@ fc_p = np.array(fc["forecast"])
 # state = [x, dx, p-] = [stored energy, change in stored energy, prev conventional power]
 # input = [s, p, -m] = [charge, conventional power, exchanged power]
 # --------------------------------------------------------
-n_s = 4  # number of storage units. CAUTION! MUST MAKE NON-RECURRING ENTRIES IN BETA!
-n_p = 3  # number of conventional generators
+n_s = 100  # number of storage units. CAUTION! MUST MAKE NON-RECURRING ENTRIES IN BETA!
+n_p = 2  # number of conventional generators
 n_m = 1  # number of markets
 beta = np.ones((n_s, 1)) * 1 / n_s  # relative sizes of storage units. CAUTION! MUST BE NON-RECURRING ENTRIES!
 T = 1.  # sampling time (hours)
-fuel_cost = 10.  # euro/MWh
+fuel_cost = 100.  # euro/MWh
 
 num_states = n_s + n_s + n_p
 num_inputs = n_s + n_p + n_m
@@ -297,7 +305,8 @@ print(problem)
 # --------------------------------------------------------
 # Initial state
 # --------------------------------------------------------
-x0 = np.zeros(num_states)
-for k in range(num_states):
-    x0[k] = .5 * (leaf_lb[k] + leaf_ub[k])
-tree.write_to_file_fp("initialState", x0)
+if br == 0:
+    x0 = np.zeros(num_states)
+    for k in range(num_states):
+        x0[k] = .5 * (leaf_lb[k] + leaf_ub[k])
+    tree.write_to_file_fp("initialState", x0)

@@ -1,0 +1,19 @@
+add_executable(buffer)
+target_sources(buffer
+    PRIVATE
+    main.cu
+)
+target_link_libraries(buffer
+    PRIVATE
+    spock_compiler_flags
+    spock_src
+    cublas
+    cusolver
+    cudadevrt
+)
+target_include_directories(buffer
+    PRIVATE
+    "${GPUTILS_SOURCE_DIR}/include"  # includes GPUtils directory
+    "${PROJECT_SOURCE_DIR}/src"
+    "${PROJECT_BINARY_DIR}"
+)

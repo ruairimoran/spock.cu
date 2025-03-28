@@ -8,9 +8,25 @@ main() {
     # shellcheck disable=SC1090
     source "${path}.venv/bin/activate"
     mkdir -p ./build
+
+    n=10
     start=10000
     width=10000
-    n=10
+
+    for i in $(seq 1 $n); do
+        printf '\n\n---------------------- Problem #%s ----------------------\n\n' "$i"
+        python main.py --dt="d" --lo=1000 --hi="$start"
+        julia ../../tests/julia/julia.jl
+        exit_code=$?
+        if [ $exit_code -eq 0 ]; then
+            cmake -S $path -B ./build -Wno-dev
+            cmake --build ./build
+            ./build/examples/random/random
+        else
+            printf "Skipping bad problem."
+        fi
+    done
+
     for interval in {0..8}; do
         lo=$((start + width * interval))
         hi=$((start + width * (interval + 1)))

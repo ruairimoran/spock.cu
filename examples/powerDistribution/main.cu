@@ -5,6 +5,7 @@
 int main() {
     real_t minute = 60.;
     real_t avgTime = 0.;
+    real_t avgIter = 0.;
     /* SCENARIO TREE */
     std::cout << "Reading tree files...\n";
     ScenarioTree<real_t> tree;
@@ -29,16 +30,20 @@ int main() {
         size_t warm = 1;
         size_t totalRuns = runs + warm;
         std::vector<real_t> runTimes(totalRuns, 0.);
+        std::vector<real_t> runIters(totalRuns, 0.);
         std::cout << "Computing average solve time over (" << runs << ") runs with (" << warm << ") warm up runs...\n";
         for (size_t i = 0; i < totalRuns; i++) {
             int status = cache.runSpock(initState);
             if (status != converged) throw std::runtime_error(toString(status));
             runTimes[i] = cache.solveTime();
+            runIters[i] = cache.solveIter();
             cache.reset();
-            std::cout << "Run (" << i << ") : " << runTimes[i] << " s.\n";
+            std::cout << "Run (" << i << ") : " << runTimes[i] << " s, " << runIters[i] << " iters.\n";
         }
         real_t time = std::reduce(runTimes.begin() + warm, runTimes.end());
+        real_t iter = std::reduce(runIters.begin() + warm, runIters.end());
         avgTime = time / runs;
+        avgIter = iter / runs;
     } catch (const std::exception &e) {
         std::cout << "SPOCK failed! : " << e.what() << std::endl;
     } catch (...) {
@@ -48,9 +53,9 @@ int main() {
     /* SAVE */
     std::ofstream timeScaling;
     timeScaling.open("time.csv", std::ios::app);
-    timeScaling << avgTime << std::endl;
+    timeScaling << avgTime << ", " << avgIter << std::endl;
     timeScaling.close();
-    std::cout << "Saved (avgTime = " << avgTime << " s).\n";
+    std::cout << "Saved (avgTime = " << avgTime << " s) (avgIter = " << avgIter << " s).\n";
 
     return 0;
 }

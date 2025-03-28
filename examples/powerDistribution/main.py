@@ -138,9 +138,9 @@ horizon = 23  # max_time_steps - 1  # 1 hour periods
 branching = np.ones(horizon, dtype=np.int32)
 match br:
     case 0:
-        branching[0:3] = [ch, ch, ch]
+        branching[0:2] = [ch, ch]
     case 1:
-        branching[0] = np.power(ch, 3)
+        branching[0] = np.power(ch, 2)
 data = err_samples
 tree = s.tree.FromData(data, branching).build()
 print(tree)

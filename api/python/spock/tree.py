@@ -117,6 +117,13 @@ class Tree:
         """
         return self.__data_values
 
+    @property
+    def max_num_children(self):
+        """
+        :return: maximum number of children per node
+        """
+        return max(self.__num_children)
+
     def ancestor_of_node(self, node_idx):
         """
         :param node_idx: node index

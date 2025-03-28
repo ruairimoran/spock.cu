@@ -31,7 +31,8 @@ while not (lo_vars < num_vars < hi_vars):
     num_inputs = rng.integers(10, 300, endpoint=True)
     num_states = num_inputs * 2
     num_nodes = ((num_events**(stopping + 1) - 1) / (num_events - 1)) + ((num_events**stopping) * (horizon - stopping))
-    num_vars = num_nodes * (num_states + num_inputs)
+    num_nonleaf_nodes = num_nodes - (num_events**stopping)
+    num_vars = num_nodes * num_states + num_nonleaf_nodes * num_inputs
 
 print(
     "\n",

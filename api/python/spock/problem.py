@@ -180,6 +180,9 @@ class Problem:
                 if scale > scale_u[ele]:
                     scale_u[ele] = scale
 
+        mul = np.sqrt(self.__tree.max_num_children)
+        scale_x *= mul
+        scale_u *= mul
         self.__precondition_worth_it = not (np.allclose(scale_x, 1.) and np.allclose(scale_u, 1.))
         return scale_x, scale_u
 

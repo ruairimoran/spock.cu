@@ -14,10 +14,8 @@ def check_spd(mat, name):
 
 parser = argparse.ArgumentParser(description='Example: preconditioning.')
 parser.add_argument("--dt", type=str, default='d')
-parser.add_argument("--precondition", type=int, default=True)
 args = parser.parse_args()
 dt = args.dt
-precondition = bool(args.precondition)
 
 # Sizes
 horizon = 3
@@ -51,7 +49,7 @@ B_base = np.ones((num_states, num_inputs)) * .5
 for i in range(1, num_events + 1):
     A = A_base * i
     B = B_base * i
-    dynamics += [s.build.LinearDynamics(A, B)]
+    dynamics += [s.build.Dynamics(A, B)]
 
 # Costs
 rng = np.random.default_rng()
@@ -99,10 +97,26 @@ problem = (
     .with_constraint_nonleaf(nonleaf_constraint)
     .with_constraint_leaf(leaf_constraint)
     .with_risk(risk)
-    .with_preconditioning(precondition)
+    .with_preconditioning(False)
     .generate_problem()
 )
-print(problem)
+print("Unconditioned: \n", problem)
+
+problem_cond = (
+    s.problem.Factory(
+        scenario_tree=tree,
+        num_states=num_states,
+        num_inputs=num_inputs)
+    .with_dynamics_events(dynamics)
+    .with_cost_nonleaf_events(nonleaf_costs)
+    .with_cost_leaf(leaf_cost)
+    .with_constraint_nonleaf(nonleaf_constraint)
+    .with_constraint_leaf(leaf_constraint)
+    .with_risk(risk)
+    .with_preconditioning(True)
+    .generate_problem()
+)
+print("Conditioned: \n", problem)
 
 # Initial state
 x0 = np.ones(num_states) * 5.
@@ -120,7 +134,7 @@ def run_unconditioned(sol):
 
 
 def run_conditioned(sol):
-    model = s.model.ModelWithPrecondition(tree, problem)
+    model = s.model.ModelWithPrecondition(tree, problem_cond)
     model.solve(x0, sol, tol=1e-8)
     print("---- Preconditioned problem ----")
     print(sol.__str__(), "preconditioned status: ", model.status)
@@ -133,12 +147,12 @@ try:
 except:
     solver = cp.SCS
     states, inputs = run_unconditioned(solver)
-if problem.preconditioned:
-    states_, inputs_, status = run_conditioned(solver)
-    if status != "infeasible":
-        tol = 1e-2
-        print("States:\n", states_, "\nInputs:\n", inputs_, "\n")
-        print("Equal: ",
-              np.allclose(states_, states, tol) and
-              np.allclose(inputs_, inputs, tol),
-              "\n")
+
+states_, inputs_, status = run_conditioned(solver)
+if status != "infeasible":
+    tol = 1e-2
+    print("States:\n", states_, "\nInputs:\n", inputs_, "\n")
+    print("Equal: ",
+          np.allclose(states_, states, tol) and
+          np.allclose(inputs_, inputs, tol),
+          "\n")

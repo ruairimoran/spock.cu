@@ -22,8 +22,8 @@ int main() {
         Cache cache = builder.tol(tol).maxTimeSecs(maxTime).build();
 
         /* TIMING ALGORITHM */
-        size_t runs = 2;
-        size_t warm = 3;
+        size_t runs = 1;
+        size_t warm = 0;
         size_t totalRuns = runs + warm;
         std::vector<real_t> runTimes(totalRuns, 0.);
         DTensor<real_t> d_initState = DTensor<real_t>::parseFromFile(tree.path() + "initialState" + tree.fpFileExt());

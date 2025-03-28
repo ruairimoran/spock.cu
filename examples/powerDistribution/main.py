@@ -235,19 +235,18 @@ for node in range(1, tree.num_nodes):
 leaf_cost = s.build.LeafCost(Q)
 
 # Constraints
-large = 5e3  # conventional generation at midnight on 1st Jan 25 was ~4000 MW
-stored_energy_lb = np.ones(n_s) * 1.  # MWh
-stored_energy_ub = np.ones(n_s) * large  # MWh
-stored_energy_rate_lb = np.ones(n_s) * -large  # MWh
-stored_energy_rate_ub = np.ones(n_s) * large  # MWh
-charge_rate_lb = np.ones(n_s) * -large  # MW
-charge_rate_ub = np.ones(n_s) * large  # MW
-conventional_supply_lb = np.ones(n_p) * 0.  # MW
-conventional_supply_ub = np.ones(n_p) * large  # MW
-exchange_lb = np.ones(n_m) * -large  # MW
-exchange_ub = np.ones(n_m) * large  # MW
-conventional_supply_rate_lb = np.ones(n_p) * -large  # MW
-conventional_supply_rate_ub = np.ones(n_p) * large  # MW
+stored_energy_lb = np.ones(n_s) * .01  # MWh
+stored_energy_ub = np.ones(n_s) * 1.  # MWh
+stored_energy_rate_lb = np.ones(n_s) * -1.  # MWh
+stored_energy_rate_ub = np.ones(n_s) * 1.  # MWh
+charge_rate_lb = np.ones(n_s) * -1.  # MW
+charge_rate_ub = np.ones(n_s) * 1.  # MW
+conventional_supply_lb = np.ones(n_p) * 10.  # MW
+conventional_supply_ub = np.ones(n_p) * 50.  # MW
+exchange_lb = np.ones(n_m) * -50.  # MW
+exchange_ub = np.ones(n_m) * 50.  # MW
+conventional_supply_rate_lb = np.ones(n_p) * -20  # MW
+conventional_supply_rate_ub = np.ones(n_p) * 20  # MW
 
 nonleaf_rect_lb = np.hstack((
     stored_energy_lb,

@@ -175,10 +175,10 @@ fc = pd.read_csv(folder + "priceForecast25.csv", sep=";")
 fc["forecast"] = pd.to_numeric(fc["price [ct/kWh]"], errors="raise") * 10  # euro/MWh
 fc_p = np.array(fc["forecast"])
 
-print(np.mean(fc_r - fc_d))
+print(np.mean(fc_r - fc_d), np.std(fc_r - fc_d))
 
-fc_d = np.ones(len(fc_d)) * 50.
-fc_r = np.ones(len(fc_r)) * 10.
+# plt.plot(fc_p[:24])
+# plt.show()
 
 # --------------------------------------------------------
 # Generate problem data
@@ -186,7 +186,7 @@ fc_r = np.ones(len(fc_r)) * 10.
 # input = [s, p, m] = [charge, conventional power, exchanged power]
 # --------------------------------------------------------
 n_s = 100  # number of storage units. CAUTION! MUST MAKE NON-RECURRING ENTRIES IN BETA!
-n_p = 1  # number of conventional generators
+n_p = 2  # number of conventional generators
 n_m = 1  # number of markets
 beta = np.ones((n_s, 1)) * 1 / n_s  # relative sizes of storage units. CAUTION! MUST BE NON-RECURRING ENTRIES!
 T = 1.  # sampling time (hours)
@@ -230,11 +230,14 @@ q = None
 for node in range(1, tree.num_nodes):
     price_node = fc_p[tree.stage_of_node(node)] * tree.data_values[node, idx_p]
     R = np.diag(np.concatenate(
-        (np.ones(n_s) * zero, np.ones(n_p) * np.sqrt(fuel_cost), np.array([zero])), axis=0
+        (np.ones(n_s) * zero,
+         np.ones(n_p) * 1e-3,
+         np.array([zero])), axis=0
     ))
     r = np.concatenate((
-        np.zeros(n_s + n_p),
-        np.array([-T * price_node])), axis=0
+        np.zeros(n_s),
+        np.ones(n_p) * fuel_cost,
+        np.array([-price_node])), axis=0
     ).reshape(-1, 1)
     nonleaf_costs += [s.build.NonleafCost(Q, R, q, r)]
 leaf_cost = s.build.LeafCost(Q)
@@ -256,16 +259,16 @@ leaf_cost = s.build.LeafCost(Q)
 big = 5e3
 stored_energy_lb = np.ones(n_s) * .01  # MWh
 stored_energy_ub = np.ones(n_s) * 1.  # MWh
-stored_energy_rate_lb = np.ones(n_s) * -big  # MWh
-stored_energy_rate_ub = np.ones(n_s) * big  # MWh
-charge_rate_lb = np.ones(n_s) * -big  # MW
-charge_rate_ub = np.ones(n_s) * big  # MW
-conventional_supply_lb = np.ones(n_p) * 1.  # MW
-conventional_supply_ub = np.ones(n_p) * big  # MW
-exchange_lb = np.ones(n_m) * -big  # MW
-exchange_ub = np.ones(n_m) * big  # MW
-conventional_supply_rate_lb = np.ones(n_p) * -big  # MW
-conventional_supply_rate_ub = np.ones(n_p) * big  # MW
+stored_energy_rate_lb = np.ones(n_s) * -1.  # MWh
+stored_energy_rate_ub = np.ones(n_s) * 1.  # MWh
+charge_rate_lb = np.ones(n_s) * -1.  # MW
+charge_rate_ub = np.ones(n_s) * 1.  # MW
+conventional_supply_lb = np.ones(n_p) * 10.  # MW
+conventional_supply_ub = np.ones(n_p) * 50.  # MW
+exchange_lb = np.ones(n_m) * -50.  # MW
+exchange_ub = np.ones(n_m) * 50.  # MW
+conventional_supply_rate_lb = np.ones(n_p) * -20.  # MW
+conventional_supply_rate_ub = np.ones(n_p) * 20.  # MW
 
 nonleaf_rect_lb = np.hstack((
     stored_energy_lb,
@@ -326,5 +329,5 @@ print(problem)
 if br == 0:
     x0 = np.zeros(num_states)
     for k in range(num_states):
-        x0[k] = .5 * (leaf_lb[k] + leaf_ub[k])
+        x0[k] = max(0., leaf_lb[k])
     tree.write_to_file_fp("initialState", x0)

@@ -257,7 +257,7 @@ function impose_cost(
             (
                 u[node_to_u(d, d.ancestors[node])]' * d.cost_nonleaf_R[node] * u[node_to_u(d, d.ancestors[node])]
                 +
-                (d.cost_nonleaf_r[node][end] * u[node_to_u(d, d.ancestors[node])][end])
+                (d.cost_nonleaf_r[node]' * u[node_to_u(d, d.ancestors[node])])[1]
             )
             <= t[node - 1]
         )

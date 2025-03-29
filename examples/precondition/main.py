@@ -100,7 +100,7 @@ problem = (
     .with_preconditioning(False)
     .generate_problem()
 )
-print(problem)
+print("Unconditioned: \n", problem)
 
 problem_cond = (
     s.problem.Factory(
@@ -116,7 +116,7 @@ problem_cond = (
     .with_preconditioning(True)
     .generate_problem()
 )
-print(problem_cond)
+print("Preconditioned: \n", problem_cond)
 
 # Initial state
 x0 = np.ones(num_states) * 5.

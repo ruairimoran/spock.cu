@@ -47,12 +47,12 @@ function check_bounds(model :: Model, status, d, tol)
 #         println("[$(MOI.get(model, MOI.SolverName()))] Constraint saturation: states = ", sat_x, ", inputs = ", sat_u)
         if true  # print states and inputs
             println("[$(MOI.get(model, MOI.SolverName()))] States:")
-            for state in value.(model[:x])
-                println(state)
+            for node in range(1, d.num_nodes)
+                println(value.(model[:x])[node*d.num_states-1:node*d.num_states])
             end
             println("[$(MOI.get(model, MOI.SolverName()))] Inputs:")
-            for input in value.(model[:u])
-                println(input)
+            for node in range(1, d.num_nonleaf_nodes)
+                println(value.(model[:u])[node*d.num_inputs])
             end
         end
     end

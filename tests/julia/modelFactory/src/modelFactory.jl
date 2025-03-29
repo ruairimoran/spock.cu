@@ -255,6 +255,8 @@ function impose_cost(
             model,
             nonleaf_cost[node=2:d.num_nodes],
             (
+                x[node_to_x(d, d.ancestors[node])]' * d.cost_nonleaf_Q[node] * x[node_to_x(d, d.ancestors[node])]
+                +
                 u[node_to_u(d, d.ancestors[node])]' * d.cost_nonleaf_R[node] * u[node_to_u(d, d.ancestors[node])]
                 +
                 (d.cost_nonleaf_r[node]' * u[node_to_u(d, d.ancestors[node])])[1]

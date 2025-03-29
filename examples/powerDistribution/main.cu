@@ -20,7 +20,7 @@ int main() {
         real_t maxTime = 5 * minute;
         std::cout << "Allocating cache...\n";
         CacheBuilder builder(tree, problem);
-        Cache cache = builder.tol(tol).maxTimeSecs(maxTime).maxIters(10000).enableDebug(true).build();
+        Cache cache = builder.tol(tol).maxTimeSecs(maxTime).build();
 
         /* TIMING ALGORITHM */
         DTensor<real_t> d_initState = DTensor<real_t>::parseFromFile(tree.path() + "initialState" + tree.fpFileExt());
@@ -37,13 +37,25 @@ int main() {
             if (status != converged) throw std::runtime_error(toString(status));
             runTimes[i] = cache.solveTime();
             runIters[i] = cache.solveIter();
-            cache.reset();
+            if (i < totalRuns - 1) cache.reset();
             std::cout << "Run (" << i << ") : " << runTimes[i] << " s, " << runIters[i] << " iters.\n";
         }
         real_t time = std::reduce(runTimes.begin() + warm, runTimes.end());
         real_t iter = std::reduce(runIters.begin() + warm, runIters.end());
         avgTime = time / runs;
         avgIter = iter / runs;
+
+        /* PRINT */
+//        std::vector<real_t> states = cache.states();
+//        std::vector<real_t> inputs = cache.inputs();
+//        std::cout << "States:\n";
+//        for (size_t i = 0; i < tree.numStates() * tree.numNodes(); i++) {
+//            std::cout << "    " << states[i] << "\n";
+//        }
+//        std::cout << "Inputs:\n";
+//        for (size_t i = 0; i < tree.numNonleafNodes(); i++) {
+//            std::cout << "    " << inputs[(i * tree.numInputs()) + tree.numInputs() - 1] << "\n";
+//        }
     } catch (const std::exception &e) {
         std::cout << "SPOCK failed! : " << e.what() << std::endl;
     } catch (...) {

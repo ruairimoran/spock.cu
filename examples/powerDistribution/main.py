@@ -167,25 +167,30 @@ print(tree)
 # --------------------------------------------------------
 fc = pd.read_csv(folder + "demandForecast25.csv", sep=";")
 fc["forecast"] = pd.to_numeric(fc["grid load [MWh]"].str.replace(",", "", regex=True), errors="raise")
-fc_d = np.array(fc["forecast"])
+fc_d = np.array(fc["forecast"] / 1e3)
 fc = pd.read_csv(folder + "renewablesForecast25.csv", sep=";")
 fc["forecast"] = pd.to_numeric(fc["Photovoltaics and wind [MWh]"].str.replace(",", "", regex=True), errors="raise")
-fc_r = np.array(fc["forecast"])
+fc_r = np.array(fc["forecast"] / 4e3)
 fc = pd.read_csv(folder + "priceForecast25.csv", sep=";")
 fc["forecast"] = pd.to_numeric(fc["price [ct/kWh]"], errors="raise") * 10  # euro/MWh
 fc_p = np.array(fc["forecast"])
 
+print(np.mean(fc_r - fc_d))
+
+fc_d = np.ones(len(fc_d)) * 50.
+fc_r = np.ones(len(fc_r)) * 10.
+
 # --------------------------------------------------------
 # Generate problem data
 # state = [x, dx, p-] = [stored energy, change in stored energy, prev conventional power]
-# input = [s, p, -m] = [charge, conventional power, exchanged power]
+# input = [s, p, m] = [charge, conventional power, exchanged power]
 # --------------------------------------------------------
 n_s = 100  # number of storage units. CAUTION! MUST MAKE NON-RECURRING ENTRIES IN BETA!
-n_p = 2  # number of conventional generators
+n_p = 1  # number of conventional generators
 n_m = 1  # number of markets
 beta = np.ones((n_s, 1)) * 1 / n_s  # relative sizes of storage units. CAUTION! MUST BE NON-RECURRING ENTRIES!
 T = 1.  # sampling time (hours)
-fuel_cost = 100.  # euro/MWh
+fuel_cost = 50.  # euro/MWh
 
 num_states = n_s + n_s + n_p
 num_inputs = n_s + n_p + n_m
@@ -202,7 +207,7 @@ A_aug[n_s:n_s*2, :n_s] = A - eye_s
 B = np.hstack((
     eye_s - beta @ np.ones((1, n_s)),
     beta @ np.ones((1, n_p)),
-    beta,
+    -beta,
 )) * T
 B_ = np.hstack((
     np.zeros((n_p, n_s)),
@@ -229,24 +234,38 @@ for node in range(1, tree.num_nodes):
     ))
     r = np.concatenate((
         np.zeros(n_s + n_p),
-        np.array([T * price_node])), axis=0
+        np.array([-T * price_node])), axis=0
     ).reshape(-1, 1)
     nonleaf_costs += [s.build.NonleafCost(Q, R, q, r)]
 leaf_cost = s.build.LeafCost(Q)
 
 # Constraints
+# stored_energy_lb = np.ones(n_s) * .01  # MWh
+# stored_energy_ub = np.ones(n_s) * 1.  # MWh
+# stored_energy_rate_lb = np.ones(n_s) * -1.  # MWh
+# stored_energy_rate_ub = np.ones(n_s) * 1.  # MWh
+# charge_rate_lb = np.ones(n_s) * -1.  # MW
+# charge_rate_ub = np.ones(n_s) * 1.  # MW
+# conventional_supply_lb = np.ones(n_p) * 10.  # MW
+# conventional_supply_ub = np.ones(n_p) * 50.  # MW
+# exchange_lb = np.ones(n_m) * -50.  # MW
+# exchange_ub = np.ones(n_m) * 50.  # MW
+# conventional_supply_rate_lb = np.ones(n_p) * -20.  # MW
+# conventional_supply_rate_ub = np.ones(n_p) * 20.  # MW
+
+big = 5e3
 stored_energy_lb = np.ones(n_s) * .01  # MWh
 stored_energy_ub = np.ones(n_s) * 1.  # MWh
-stored_energy_rate_lb = np.ones(n_s) * -1.  # MWh
-stored_energy_rate_ub = np.ones(n_s) * 1.  # MWh
-charge_rate_lb = np.ones(n_s) * -1.  # MW
-charge_rate_ub = np.ones(n_s) * 1.  # MW
-conventional_supply_lb = np.ones(n_p) * 10.  # MW
-conventional_supply_ub = np.ones(n_p) * 50.  # MW
-exchange_lb = np.ones(n_m) * -50.  # MW
-exchange_ub = np.ones(n_m) * 50.  # MW
-conventional_supply_rate_lb = np.ones(n_p) * -20  # MW
-conventional_supply_rate_ub = np.ones(n_p) * 20  # MW
+stored_energy_rate_lb = np.ones(n_s) * -big  # MWh
+stored_energy_rate_ub = np.ones(n_s) * big  # MWh
+charge_rate_lb = np.ones(n_s) * -big  # MW
+charge_rate_ub = np.ones(n_s) * big  # MW
+conventional_supply_lb = np.ones(n_p) * 1.  # MW
+conventional_supply_ub = np.ones(n_p) * big  # MW
+exchange_lb = np.ones(n_m) * -big  # MW
+exchange_ub = np.ones(n_m) * big  # MW
+conventional_supply_rate_lb = np.ones(n_p) * -big  # MW
+conventional_supply_rate_ub = np.ones(n_p) * big  # MW
 
 nonleaf_rect_lb = np.hstack((
     stored_energy_lb,

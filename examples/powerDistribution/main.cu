@@ -20,7 +20,7 @@ int main() {
         real_t maxTime = 5 * minute;
         std::cout << "Allocating cache...\n";
         CacheBuilder builder(tree, problem);
-        Cache cache = builder.tol(tol).maxTimeSecs(maxTime).build();
+        Cache cache = builder.tol(tol).maxTimeSecs(maxTime).maxIters(10000).enableDebug(true).build();
 
         /* TIMING ALGORITHM */
         DTensor<real_t> d_initState = DTensor<real_t>::parseFromFile(tree.path() + "initialState" + tree.fpFileExt());
@@ -55,7 +55,7 @@ int main() {
     timeScaling.open("time.csv", std::ios::app);
     timeScaling << avgTime << ", " << avgIter << std::endl;
     timeScaling.close();
-    std::cout << "Saved (avgTime = " << avgTime << " s) (avgIter = " << avgIter << " s).\n";
+    std::cout << "Saved (avgTime = " << avgTime << " s) (avgIter = " << avgIter << ").\n";
 
     return 0;
 }

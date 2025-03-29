@@ -32,7 +32,7 @@ For example::random only!
 Checks if any of the bounds are active.
 """
 function check_bounds(model :: Model, status, d, tol)
-#     if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED
+    if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED
 #         n = d.num_states + 1
 #         sat_x_max = any(isapprox.(maximum(value.(model[:x])),
 #             d.constraint_nonleaf_max[1]; atol = tol))
@@ -45,17 +45,17 @@ function check_bounds(model :: Model, status, d, tol)
 #         sat_x = sat_x_max || sat_x_min
 #         sat_u = sat_u_max || sat_u_min
 #         println("[$(MOI.get(model, MOI.SolverName()))] Constraint saturation: states = ", sat_x, ", inputs = ", sat_u)
-#         if false  # print states and inputs
-#             println("[$(MOI.get(model, MOI.SolverName()))] States:")
-#             for state in value.(model[:x])
-#                 println(state)
-#             end
-#             println("[$(MOI.get(model, MOI.SolverName()))] Inputs:")
-#             for input in value.(model[:u])
-#                 println(input)
-#             end
-#         end
-#     end
+        if true  # print states and inputs
+            println("[$(MOI.get(model, MOI.SolverName()))] States:")
+            for state in value.(model[:x])
+                println(state)
+            end
+            println("[$(MOI.get(model, MOI.SolverName()))] Inputs:")
+            for input in value.(model[:u])
+                println(input)
+            end
+        end
+    end
 end
 
 
@@ -116,15 +116,15 @@ for run in [0, 1]
         global status = 0
     end
 
-    status_g, time_g, ram_g = get_stats(Gurobi.Optimizer, data, risk, tol_f64, max_time_f64)
-
-    status_i, time_i, ram_i = get_stats(Ipopt.Optimizer, data, risk, tol_f64, max_time_f64)
+#     status_g, time_g, ram_g = get_stats(Gurobi.Optimizer, data, risk, tol_f64, max_time_f64)
+#
+#     status_i, time_i, ram_i = get_stats(Ipopt.Optimizer, data, risk, tol_f64, max_time_f64)
 
     if run == 1
         println("Saving julia times...")
         num_vars = data.num_nodes * (data.num_states + data.num_inputs)
         open("time.csv", "a") do f
-            write(f, "$(data.ch_num[1]), $(time_g), $(time_m), $(time_i), ")
+#             write(f, "$(data.ch_num[1]), $(time_g), $(time_m), $(time_i), ")
             # write(f, "$(num_vars), $(time_g), $(ram_g), $(time_m), $(ram_m), $(time_i), $(ram_i), ")
             # write(f, "$(num_vars), $(time_m), $(ram_m), ")
         end

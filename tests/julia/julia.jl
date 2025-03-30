@@ -97,6 +97,11 @@ function get_stats(optimizer, data, risk, tol, max_time)
 end
 
 
+function check_run(run, status)
+    return run == 0 || status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED
+end
+
+
 data = read_data()
 risk = build_risk(data)
 x0 = read_vector_from_binary(TR, folder * "initialState" * file_ext_r)
@@ -106,23 +111,31 @@ status = Int64(1)
 tol_f64 = Float64(tol)
 max_time_f64 = Float64(max_time)
 
+status_m = nothing
+status_g = nothing
+status_i = nothing
 
 for run in [0, 1]
-
-    status_m, time_m, ram_m = get_stats(Mosek.Optimizer, data, risk, tol_f64, max_time_f64)
-    if status_m == MOI.INFEASIBLE
-       break
-    else
-        global status = 0
+    if check_run(run, status_m)
+        global status_m, time_m, ram_m = get_stats(Mosek.Optimizer, data, risk, tol_f64, max_time_f64)
+        if status_m == MOI.INFEASIBLE
+            break
+        else
+            global status = 0
+        end
     end
 
-    status_g, time_g, ram_g = get_stats(Gurobi.Optimizer, data, risk, tol_f64, max_time_f64)
+    if check_run(run, status_g)
+        global status_g, time_g, ram_g = get_stats(Gurobi.Optimizer, data, risk, tol_f64, max_time_f64)
+    end
 
-    status_i, time_i, ram_i = get_stats(Ipopt.Optimizer, data, risk, tol_f64, max_time_f64)
+    if check_run(run, status_i)
+        global status_i, time_i, ram_i = get_stats(Ipopt.Optimizer, data, risk, tol_f64, max_time_f64)
+    end
 
     if run == 1
         println("Saving julia times...")
-        num_vars = data.num_nodes * (data.num_states + data.num_inputs)
+        num_vars = data.num_nodes * data.num_states + data.num_nonleaf_nodes * data.num_inputs
         open("time.csv", "a") do f
             write(f, "$(num_vars), $(time_g), $(ram_g), $(time_m), $(ram_m), $(time_i), $(ram_i), ")
             # write(f, "$(num_vars), $(time_m), $(ram_m), ")

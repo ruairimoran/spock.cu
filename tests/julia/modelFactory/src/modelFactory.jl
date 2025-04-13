@@ -121,11 +121,13 @@ end
 function read_data()
     json = JSON.parse(read(folder * "data.json", String))
     if false
+        println("[JuMP] Nonleaf linear state cost added!")
         cost_nonleaf_q = read_tensor_from_binary(TR, folder * "uncond_cost_nonleaf_q" * file_ext_r)
     else
         cost_nonleaf_q = nothing
     end
     if false
+        println("[JuMP] Nonleaf linear input cost added!")
         cost_nonleaf_r = read_tensor_from_binary(TR, folder * "uncond_cost_nonleaf_r" * file_ext_r)
     else
         cost_nonleaf_r = nothing

@@ -25,12 +25,12 @@ class Problem:
         :param scenario_tree: instance of ScenarioTree
         :param num_states: number of system states
         :param num_inputs: number of system inputs
-        :param dynamics: list of dynamics (size: num_nodes, used: 1 to num_nodes)
-        :param nonleaf_cost: list of nonleaf costs (size: num_nodes, used: 1 to num_nodes)
-        :param leaf_cost: list of leaf cost (size: num_leaf_nodes, used: all)
+        :param dynamics: list of dynamics (size: num_events)
+        :param nonleaf_cost: list of nonleaf costs (size: num_events)
+        :param leaf_cost: list of leaf costs (size: num_events)
         :param nonleaf_constraint: state-input constraint class (size: 1)
         :param leaf_constraint: state constraint class (size: 1)
-        :param risk: list of risk classes (size: num_nonleaf_nodes, used: all)
+        :param risk: list of risk classes (size: num_events)
         :param precondition: whether to precondition problem data
         :param test: whether to compute test data
         :param julia: whether to compute julia data

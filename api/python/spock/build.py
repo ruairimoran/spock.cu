@@ -119,17 +119,16 @@ class Cost:
     def dim_per_node(self, d):
         self.__dim_per_node = d
 
-    def assign_dual(self, dual, idx, num_vec):
+    def assign_dual(self, dual, idx):
         """
         Assign dual memory for costs in operator L*
         :param dual: existing memory
         :param idx: dual memory index to start assigning from
-        :param num_vec: number of nodes constrained
         :return: assigned memory, index + assigned memory size
         """
         pass
 
-    def op_nonleaf(self, x, n, u):
+    def op_nonleaf(self, x_anc, u_anc, t):
         """
         Operator: cost part of L on nonleaf nodes
         :param x: states
@@ -139,7 +138,7 @@ class Cost:
         """
         pass
 
-    def op_leaf(self, x, n):
+    def op_leaf(self, x, s):
         """
         Operator: cost part of L on leaf nodes
         :param x: leaf states
@@ -167,9 +166,15 @@ class Cost:
         """
         pass
 
-    def condition(self, scale_x, scale_u):
+    def condition(self, scale_x, scale_u=None):
         """
         Scale cost
+        """
+        return self
+
+    def node_zero(self):
+        """
+        Set to zero
         """
         return self
 
@@ -186,36 +191,36 @@ class Quadratic(Cost):
     Quadratic costs
     """
 
-    def __init__(self, Q, R=None, leaf=False, node_zero=False):
+    def __init__(self, Q, R=None, leaf=False):
         """
         :param Q: quadratic state cost matrix
         :param R: quadratic input cost matrix
         :param leaf: for leaf nodes
-        :param node_zero: whether this is for node zero (setup with all zeros)
         """
         super().__init__(leaf)
         self.__Q = Q
         self.__Q_sqrt = sqrtm(self.__Q)
         self.__Q_unconditioned = deepcopy(self.__Q)
-        self.__R = R
-        self.__R_sqrt = sqrtm(self.__R)
+        r_ = R is not None
+        self.__R = R if r_ else None
+        self.__R_sqrt = sqrtm(self.__R) if r_ else None
         self.__R_unconditioned = deepcopy(self.__R)
-        self.__node_zero = node_zero
         self.__translation = None
+        self.__node_zero = False
         self.__set_translation()
 
-    def __set_translation(self):
+    def __set_translation(self, zero=False):
         a = np.zeros((self.Q.shape[0], 1))
-        b = np.zeros((self.R.shape[0], 1))
-        if self.__node_zero:
-            c = np.zeros((1, 1))
-            d = np.zeros((1, 1))
+        if zero:
+            c = 0
+            d = 0
         else:
             c = -.5
             d = .5
         if self.is_leaf:
             self.__translation = np.vstack((a, c, d))
         else:
+            b = np.zeros((self.R.shape[0], 1))
             self.__translation = np.vstack((a, b, c, d))
 
     @property
@@ -250,6 +255,40 @@ class Quadratic(Cost):
     def translation(self):
         return self.__translation
 
+    def assign_dual(self, dual, idx, num_vec):
+        return dual[np.zeros((2, 1))
+
+    def op_nonleaf(self, x_anc, u_anc, t):
+        if self.__node_zero:
+            return np.zeros((self.Q.shape[0] + self.R.shape[0] + 2, 1))
+        else:
+            half_t = t * 0.5
+            return np.vstack((self.__Q_sqrt @ x_anc, self.__R_sqrt @ u_anc, half_t, half_t))
+
+    def op_leaf(self, x, s):
+        if self.__node_zero:
+            return np.zeros((self.Q.shape[0] + 2, 1))
+        else:
+            half_s = s * 0.5
+            return np.vstack((self.__Q_sqrt @ x, half_s, half_s))
+
+    def adj_nonleaf(self, dual, x, n, u):
+        pass
+
+    def adj_leaf(self, dual, x, n):
+        pass
+
+    def condition(self, scaling_state_inv, scaling_input_inv=None):
+        self.__Q = scaling_state_inv.T @ self.Q_uncond @ scaling_state_inv if scaling_state_inv is not None else None
+        self.__R = scaling_input_inv.T @ self.R_uncond @ scaling_input_inv if scaling_input_inv is not None else None
+        self.__set_translation()
+        return self
+
+    def node_zero(self):
+        self.__node_zero = True
+        self.__set_translation(True)
+        return self
+
 
 # --------------------------------------------------------
 # Linear cost
@@ -259,12 +298,11 @@ class Linear(Cost):
     Linear costs
     """
 
-    def __init__(self, q, r=None, leaf=False, node_zero=False):
+    def __init__(self, q, r=None, leaf=False):
         """
         :param q: linear state cost vector
         :param r: linear input cost vector
         :param leaf: for leaf nodes
-        :param node_zero: whether this is for node zero (setup with all zeros)
         """
         super().__init__(leaf)
         self.__q = np.array(q).reshape(-1, 1)
@@ -273,8 +311,9 @@ class Linear(Cost):
         self.__r_unconditioned = deepcopy(self.__r)
         self.__lin_q = self.__q is not None
         self.__lin_r = self.__r is not None
-        self.__node_zero = node_zero
         self.__gradient = None
+        self.__node_zero = False
+        self.dim_per_node = 2
         self.__set_gradient()
 
     @property
@@ -288,6 +327,10 @@ class Linear(Cost):
             self.__gradient = np.vstack((self.__q, self.__r))
 
     @property
+    def gradient(self):
+        return self.__gradient
+
+    @property
     def q_uncond(self):
         return self.__q_unconditioned
 
@@ -295,10 +338,40 @@ class Linear(Cost):
     def r_uncond(self):
         return self.__r_unconditioned
 
-    def condition(self, scaling_state_inv, scaling_input_inv):
+    def assign_dual(self, dual, idx):
+        d = np.array(dual[idx:idx + self.dim_per_node]).reshape(self.dim_per_node, 1)
+        idx += self.dim_per_node
+        return d, idx
+
+    def op_nonleaf(self, x_anc, u_anc, t):
+        if self.__node_zero:
+            return np.zeros((2, 1))
+        else:
+            return np.vstack((self.__q @ x_anc + self.__r @ u_anc, t))
+
+    def op_leaf(self, x, s):
+        if self.__node_zero:
+            return np.zeros((2, 1))
+        else:
+            return np.vstack((self.__q @ x, s))
+
+    def adj_nonleaf(self, dual, x, n, u):
+        pass
+
+    def adj_leaf(self, dual, x, n):
+        pass
+
+    def condition(self, scaling_state_inv, scaling_input_inv=None):
         self.__q = scaling_state_inv.T @ self.q_uncond if self.__lin_q else None
         self.__r = scaling_input_inv.T @ self.r_uncond if self.__lin_r else None
-        self.__set_translation()
+        self.__set_gradient()
+        return self
+
+    def node_zero(self):
+        self.__node_zero = True
+        self.__q = np.zeros(self.q_uncond.shape) if self.__lin_q else None
+        self.__r = np.zeros(self.r_uncond.shape) if self.__lin_r else None
+        self.__set_gradient()
         return self
 
 
@@ -310,7 +383,7 @@ class QuadraticPlusLinear(Cost):
     Quadratic and linear costs
     """
 
-    def __init__(self, Q, q, R=None, r=None, leaf=False, node_zero=False):
+    def __init__(self, Q, R=None, q=None, r=None, leaf=False):
         """
         :param Q: quadratic state cost matrix
         :param R: quadratic input cost matrix
@@ -332,15 +405,15 @@ class QuadraticPlusLinear(Cost):
         self.__r_unconditioned = deepcopy(self.__r)
         self.__lin_q = self.__q is not None
         self.__lin_r = self.__r is not None
-        self.__node_zero = node_zero
+        self.__node_zero = False
         self.__set_translation()
 
     @property
     def is_quadratic_plus_linear(self):
         return True
 
-    def __set_translation(self):
-        if self.__node_zero:
+    def __set_translation(self, zero=False):
+        if zero:
             a = np.zeros((self.Q.shape[0], 1))
             b = np.zeros((self.R.shape[0], 1))
             c = np.zeros((1, 1))
@@ -390,12 +463,32 @@ class QuadraticPlusLinear(Cost):
     def r_uncond(self):
         return self.__r_unconditioned
 
-    def condition(self, scaling_state_inv, scaling_input_inv):
-        self.__Q = scaling_state_inv.T @ self.Q_uncond @ scaling_state_inv
-        self.__R = scaling_input_inv.T @ self.R_uncond @ scaling_input_inv
+    def assign_dual(self, dual, idx, num_vec):
+        pass
+
+    def op_nonleaf(self, x_anc, u_anc, t):
+        pass
+
+    def op_leaf(self, x, s):
+        pass
+
+    def adj_nonleaf(self, dual, x, n, u):
+        pass
+
+    def adj_leaf(self, dual, x, n):
+        pass
+
+    def condition(self, scaling_state_inv, scaling_input_inv=None):
+        self.__Q = scaling_state_inv.T @ self.Q_uncond @ scaling_state_inv if scaling_state_inv is not None else None
+        self.__R = scaling_input_inv.T @ self.R_uncond @ scaling_input_inv if scaling_input_inv is not None else None
         self.__q = scaling_state_inv.T @ self.q_uncond if self.__lin_q else None
         self.__r = scaling_input_inv.T @ self.r_uncond if self.__lin_r else None
         self.__set_translation()
+        return self
+
+    def node_zero(self):
+        self.__node_zero = True
+        self.__set_translation(True)
         return self
 
 

@@ -92,11 +92,13 @@ struct Data
     dynamics_A :: Vector{Matrix{TR}}
     dynamics_B :: Vector{Matrix{TR}}
     dynamics_c :: Vector{Matrix{TR}}
-    cost_nonleaf_Q :: Vector{Matrix{TR}}
-    cost_nonleaf_R :: Vector{Matrix{TR}}
+    cost_nonleaf :: String
+    cost_leaf :: String
+    cost_nonleaf_Q :: Union{Vector{Matrix{TR}}, Nothing}
+    cost_nonleaf_R :: Union{Vector{Matrix{TR}}, Nothing}
     cost_nonleaf_q :: Union{Vector{Matrix{TR}}, Nothing}
     cost_nonleaf_r :: Union{Vector{Matrix{TR}}, Nothing}
-    cost_leaf_Q :: Vector{Matrix{TR}}
+    cost_leaf_Q :: Union{Matrix{TR}, Nothing}
     constraint_nonleaf :: String
     constraint_leaf :: String
     constraint_nonleaf_ilb :: Union{Vector{TR}, Nothing}
@@ -120,18 +122,27 @@ end
 
 function read_data()
     json = JSON.parse(read(folder * "data.json", String))
-    if false
-        println("[JuMP] Nonleaf linear state cost added!")
-        cost_nonleaf_q = read_tensor_from_binary(TR, folder * "uncond_cost_nonleaf_q" * file_ext_r)
-    else
-        cost_nonleaf_q = nothing
+    cost_nonleaf = json["cost"]["nonleaf"]
+    cost_leaf = json["cost"]["leaf"]
+    cost_nonleaf_Q = nothing
+    cost_nonleaf_R = nothing
+    cost_nonleaf_q = nothing
+    cost_nonleaf_r = nothing
+    cost_leaf_Q = nothing
+    if cost_nonleaf == "quadratic" || cost_nonleaf == "quadraticPlusLinear"
+        cost_nonleaf_Q = read_tensor_from_binary(TR, folder * "uncond_cost_nonleaf_Q" * file_ext_r)
+        cost_nonleaf_R = read_tensor_from_binary(TR, folder * "uncond_cost_nonleaf_R" * file_ext_r)
     end
-    if false
-        println("[JuMP] Nonleaf linear input cost added!")
+    if cost_nonleaf == "linear" || cost_nonleaf == "quadraticPlusLinear"
+        cost_nonleaf_q = read_tensor_from_binary(TR, folder * "uncond_cost_nonleaf_q" * file_ext_r)
         cost_nonleaf_r = read_tensor_from_binary(TR, folder * "uncond_cost_nonleaf_r" * file_ext_r)
-    else
-        cost_nonleaf_r = nothing
-    end    
+    end
+    if cost_leaf == "quadratic" || cost_leaf == "quadraticPlusLinear"
+        cost_leaf_Q = read_tensor_from_binary(TR, folder * "uncond_cost_leaf_Q" * file_ext_r)
+    end
+    if cost_leaf == "linear" || cost_leaf == "quadraticPlusLinear"
+        cost_leaf_q = read_tensor_from_binary(TR, folder * "uncond_cost_leaf_q" * file_ext_r)
+    end
     constraint_nonleaf = json["constraint"]["nonleaf"]
     constraint_leaf = json["constraint"]["leaf"]
     constraint_nonleaf_ilb = nothing
@@ -173,11 +184,13 @@ function read_data()
         read_tensor_from_binary(TR, folder * "uncond_dynamics_A" * file_ext_r),
         read_tensor_from_binary(TR, folder * "uncond_dynamics_B" * file_ext_r),
         read_tensor_from_binary(TR, folder * "uncond_dynamics_c" * file_ext_r),
-        read_tensor_from_binary(TR, folder * "uncond_cost_nonleaf_Q" * file_ext_r),
-        read_tensor_from_binary(TR, folder * "uncond_cost_nonleaf_R" * file_ext_r),
+        cost_nonleaf,
+        cost_leaf,
+        cost_nonleaf_Q,
+        cost_nonleaf_R,
         cost_nonleaf_q,
         cost_nonleaf_r,
-        read_tensor_from_binary(TR, folder * "uncond_cost_leaf_Q" * file_ext_r),
+        cost_leaf_Q,
         constraint_nonleaf,
         constraint_leaf,
         constraint_nonleaf_ilb,
@@ -251,17 +264,12 @@ function impose_cost(
     u = model[:u]
     t = model[:t]
     s = model[:s]
-    if false
+    if d.cost_nonleaf == "linear"
         println("[JuMP] Costs have been modified for power example!")
         @constraint(
             model,
             nonleaf_cost[node=2:d.num_nodes],
-            (
-                u[node_to_u(d, d.ancestors[node])]' * d.cost_nonleaf_R[node] * u[node_to_u(d, d.ancestors[node])]
-                +
-                (d.cost_nonleaf_r[node][end] * u[node_to_u(d, d.ancestors[node])][end])
-            )
-            <= t[node - 1]
+            (d.cost_nonleaf_r[node] * u[node_to_u(d, d.ancestors[node])]) <= t[node - 1]
         )
     else
         @constraint(

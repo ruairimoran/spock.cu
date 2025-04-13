@@ -42,7 +42,7 @@ class Problem:
         self.__num_inputs = num_inputs
         self.__list_of_dynamics = dynamics
         self.__list_of_nonleaf_costs = nonleaf_cost
-        self.__list_of_leaf_costs = leaf_cost
+        self.__leaf_cost = leaf_cost
         self.__list_of_risks = risk
         self.__nonleaf_constraint = nonleaf_constraint
         self.__leaf_constraint = leaf_constraint
@@ -107,8 +107,8 @@ class Problem:
     def nonleaf_cost_at_node(self, idx):
         return self.__list_of_nonleaf_costs[idx]
 
-    def leaf_cost_at_node(self, idx):
-        return self.__list_of_leaf_costs[idx - self.__tree.num_nonleaf_nodes]
+    def leaf_cost(self):
+        return self.__leaf_cost
 
     def nonleaf_constraint(self):
         return self.__nonleaf_constraint
@@ -163,20 +163,28 @@ class Problem:
         Caution! Only use diagonal scaling matrices.
         """
         scale_x = np.ones(self.__num_states)
+        scale_u = np.ones(self.__num_inputs)
         for ele in range(self.__num_states):
             for cost in self.__list_of_nonleaf_costs[1:]:
-                scale = np.sqrt(cost.Q_uncond[ele, ele])
+                if self.__list_of_nonleaf_costs[1].is_linear:
+                    scale = cost.q_uncond[ele]
+                else:
+                    scale = np.sqrt(cost.Q_uncond[ele, ele])
                 if scale > scale_x[ele]:
                     scale_x[ele] = scale
-            for cost in self.__list_of_leaf_costs:
+            cost = self.__leaf_cost
+            if cost.is_linear:
+                scale = cost.q_uncond[ele]
+            else:
                 scale = np.sqrt(cost.Q_uncond[ele, ele])
-                if scale > scale_x[ele]:
-                    scale_x[ele] = scale
-
-        scale_u = np.ones(self.__num_inputs)
+            if scale > scale_x[ele]:
+                scale_x[ele] = scale
         for ele in range(self.__num_inputs):
             for cost in self.__list_of_nonleaf_costs[1:]:
-                scale = np.sqrt(cost.R_uncond[ele, ele])
+                if self.__list_of_nonleaf_costs[1].is_linear:
+                    scale = cost.r_uncond[ele]
+                else:
+                    scale = np.sqrt(cost.R_uncond[ele, ele])
                 if scale > scale_u[ele]:
                     scale_u[ele] = scale
 
@@ -198,7 +206,7 @@ class Problem:
         scale_x_mat = np.diag(scale_x)
         self.__list_of_dynamics = [d.condition(scale_x_inv, scale_u_inv, scale_x_mat) for d in self.__list_of_dynamics]
         self.__list_of_nonleaf_costs = [c.condition(scale_x_inv, scale_u_inv) for c in self.__list_of_nonleaf_costs]
-        self.__list_of_leaf_costs = [c.condition(scale_x_inv) for c in self.__list_of_leaf_costs]
+        self.__leaf_cost.condition(scale_x_inv)
         self.__nonleaf_constraint.condition(np.diag(self.__scaling))
         self.__leaf_constraint.condition(scale_x_mat)
 
@@ -313,23 +321,34 @@ class Problem:
         iii = self.__nonleaf_constraint.op_nonleaf(x, self.__tree.num_nonleaf_nodes, u)
 
         # -> iv
-        iv = [np.zeros((num_si + 2, 1)) for _ in range(self.__tree.num_nodes)]
-        for i in range(1, self.__tree.num_nodes):
-            anc = self.__tree.ancestor_of_node(i)
-            half_t = t[i] * 0.5
-            iv[i] = np.vstack((self.__list_of_nonleaf_costs[i].Q_sqrt @ x[anc],
-                               self.__list_of_nonleaf_costs[i].R_sqrt @ u[anc],
-                               half_t, half_t))
+        iv = [self.__list_of_nonleaf_costs[i].op_nonleaf(
+            x[self.__tree.ancestor_of_node(i)],
+            u[self.__tree.ancestor_of_node(i)],
+            t[i]
+            )
+            for i in range(self.__tree.num_nonleaf_nodes)]
+        # iv = [np.zeros((num_si + 2, 1)) for _ in range(self.__tree.num_nodes)]
+        # for i in range(1, self.__tree.num_nodes):
+        #     anc = self.__tree.ancestor_of_node(i)
+        #     half_t = t[i] * 0.5
+        #     iv[i] = np.vstack((self.__list_of_nonleaf_costs[i].Q_sqrt @ x[anc],
+        #                        self.__list_of_nonleaf_costs[i].R_sqrt @ u[anc],
+        #                        half_t, half_t))
 
         # -> v
         v = self.__leaf_constraint.op_leaf(x[self.__tree.num_nonleaf_nodes:], self.__tree.num_leaf_nodes)
 
         # -> vi
-        vi = [np.zeros((self.__num_states + 2, 1)) for _ in range(self.__tree.num_leaf_nodes)]
-        for i in range(self.__tree.num_leaf_nodes):
-            half_s = s[i + self.__tree.num_nonleaf_nodes] * 0.5
-            vi[i] = np.vstack((self.__list_of_leaf_costs[i].Q_sqrt @ x[i + self.__tree.num_nonleaf_nodes],
-                               half_s, half_s))
+        vi = [self.__leaf_cost.op_leaf(
+            x[i + self.__tree.num_nonleaf_nodes],
+            s[i + self.__tree.num_nonleaf_nodes]
+            )
+            for i in range(self.__tree.num_leaf_nodes)]
+        # vi = [np.zeros((self.__num_states + 2, 1)) for _ in range(self.__tree.num_leaf_nodes)]
+        # for i in range(self.__tree.num_leaf_nodes):
+        #     half_s = s[i + self.__tree.num_nonleaf_nodes] * 0.5
+        #     vi[i] = np.vstack((self.__leaf_cost.Q_sqrt @ x[i + self.__tree.num_nonleaf_nodes],
+        #                        half_s, half_s))
 
         # Gather dual
         dual = []
@@ -492,6 +511,8 @@ class Problem:
                                  num_states=self.__num_states,
                                  num_inputs=self.__num_inputs,
                                  dynamics=self.__list_of_dynamics[0],
+                                 nonleaf_cost=self.__list_of_nonleaf_costs[0],
+                                 leaf_cost=self.__leaf_cost,
                                  nonleaf_constraint=self.__nonleaf_constraint,
                                  leaf_constraint=self.__leaf_constraint,
                                  risk=self.__list_of_risks[0],
@@ -508,11 +529,6 @@ class Problem:
         # Generate stacks
         stack_input_dyn_tr = np.dstack([a.B.T for a in self.__list_of_dynamics])
         stack_AB_dyn = np.dstack([a.A_B for a in self.__list_of_dynamics])
-        stack_sqrt_state_cost = np.dstack([cost.Q_sqrt for cost in self.__list_of_nonleaf_costs])
-        stack_sqrt_input_cost = np.dstack([cost.R_sqrt for cost in self.__list_of_nonleaf_costs])
-        stack_sqrt_terminal_cost = np.dstack([cost.Q_sqrt for cost in self.__list_of_leaf_costs])
-        stack_nonleaf_translation = np.dstack([cost.translation for cost in self.__list_of_nonleaf_costs])
-        stack_leaf_translation = np.dstack([cost.translation for cost in self.__list_of_leaf_costs])
         stack_P = np.dstack(self.__P)
         stack_K = np.dstack(self.__K)
         stack_dyn_tr = np.dstack(self.__sum_of_dynamics_tr)
@@ -532,11 +548,6 @@ class Problem:
             "dynamics_ABKTr": stack_dyn_tr,
             "dynamics_APB": stack_APB,
             "dynamics_lowCholesky": stack_low_chol,
-            "nonleafCost_sqrtQ": stack_sqrt_state_cost,
-            "nonleafCost_sqrtR": stack_sqrt_input_cost,
-            "leafCost_sqrtQ": stack_sqrt_terminal_cost,
-            "nonleafCost_translation": stack_nonleaf_translation,
-            "leafCost_translation": stack_leaf_translation,
             "risk_NNtr": stack_null,
             "risk_b": stack_b
         })
@@ -549,6 +560,29 @@ class Problem:
             stack_scaling = self.__scaling.reshape(-1)
             tensors.update({
                 "scaling": stack_scaling,
+            })
+        cost = self.__list_of_nonleaf_costs
+        cost_txt_nl = "nonleafCost"
+        cost_txt_l = "leafCost"
+        if cost[0].is_quadratic or cost[0].is_quadratic_plus_linear:
+            stack_sqrt_state_cost = np.dstack([cost.Q_sqrt for cost in self.__list_of_nonleaf_costs])
+            stack_sqrt_input_cost = np.dstack([cost.R_sqrt for cost in self.__list_of_nonleaf_costs])
+            stack_sqrt_terminal_cost = np.dstack([self.__leaf_cost.Q_sqrt])
+            stack_nonleaf_translation = np.dstack([cost.translation for cost in self.__list_of_nonleaf_costs])
+            stack_leaf_translation = np.dstack([self.__leaf_cost.translation])
+            tensors.update({
+                cost_txt_nl + "_sqrtQ": stack_sqrt_state_cost,
+                cost_txt_nl + "_sqrtR": stack_sqrt_input_cost,
+                cost_txt_l + "_sqrtQ": stack_sqrt_terminal_cost,
+                cost_txt_nl + "_translation": stack_nonleaf_translation,
+                cost_txt_l + "_translation": stack_leaf_translation,
+            })
+        elif cost[0].is_linear:
+            stack_gradient_cost = np.dstack([cost.gradient for cost in self.__list_of_nonleaf_costs])
+            stack_gradient_terminal_cost = np.dstack([self.__leaf_cost.gradient])
+            tensors.update({
+                cost_txt_nl + "_gradient": stack_gradient_cost,
+                cost_txt_l + "_gradient": stack_gradient_terminal_cost,
             })
         for i in range(len(l_con)):
             con = l_con[i]
@@ -596,17 +630,21 @@ class Problem:
             stack_dyn_A = np.dstack([dyn.A_uncond for dyn in self.__list_of_dynamics])
             stack_dyn_B = np.dstack([dyn.B_uncond for dyn in self.__list_of_dynamics])
             stack_dyn_c = np.dstack([dyn.c_uncond for dyn in self.__list_of_dynamics])
-            stack_cost_nonleaf_Q = np.dstack([cost.Q_uncond for cost in self.__list_of_nonleaf_costs])
-            stack_cost_nonleaf_R = np.dstack([cost.R_uncond for cost in self.__list_of_nonleaf_costs])
-            stack_cost_leaf_Q = np.dstack([cost.Q_uncond for cost in self.__list_of_leaf_costs])
             tensors.update({
                 prefix + "dynamics_A": stack_dyn_A,
                 prefix + "dynamics_B": stack_dyn_B,
                 prefix + "dynamics_c": stack_dyn_c,
-                prefix + "cost_nonleaf_Q": stack_cost_nonleaf_Q,
-                prefix + "cost_nonleaf_R": stack_cost_nonleaf_R,
-                prefix + "cost_leaf_Q": stack_cost_leaf_Q,
             })
+            if self.__list_of_nonleaf_costs[-1].Q_uncond is not None:
+                stack_cost_nonleaf_Q = np.dstack([cost.Q_uncond for cost in self.__list_of_nonleaf_costs])
+                tensors.update({
+                    prefix + "cost_nonleaf_Q": stack_cost_nonleaf_Q,
+                })
+            if self.__list_of_nonleaf_costs[-1].R_uncond is not None:
+                stack_cost_nonleaf_R = np.dstack([cost.R_uncond for cost in self.__list_of_nonleaf_costs])
+                tensors.update({
+                    prefix + "cost_nonleaf_R": stack_cost_nonleaf_R,
+                })
             if self.__list_of_nonleaf_costs[-1].q_uncond is not None:
                 stack_cost_nonleaf_q = np.dstack([cost.q_uncond for cost in self.__list_of_nonleaf_costs])
                 tensors.update({
@@ -616,6 +654,11 @@ class Problem:
                 stack_cost_nonleaf_r = np.dstack([cost.r_uncond for cost in self.__list_of_nonleaf_costs])
                 tensors.update({
                     prefix + "cost_nonleaf_r": stack_cost_nonleaf_r,
+                })
+            if self.__leaf_cost.Q_uncond is not None:
+                stack_cost_leaf_Q = np.dstack([self.__leaf_cost.Q_uncond])
+                tensors.update({
+                    prefix + "cost_leaf_Q": stack_cost_leaf_Q,
                 })
             for i in range(len(l_con)):
                 con = l_con[i]
@@ -670,9 +713,9 @@ class Factory:
         self.__num_inputs = num_inputs
         self.__list_of_dynamics = [None for _ in range(self.__tree.num_nodes)]
         self.__list_of_nonleaf_costs = [None for _ in range(self.__tree.num_nodes)]
-        self.__list_of_leaf_costs = [None for _ in range(self.__tree.num_leaf_nodes)]
-        self.__nonleaf_constraint = [None for _ in range(self.__tree.num_nonleaf_nodes)]
-        self.__leaf_constraint = [None for _ in range(self.__tree.num_leaf_nodes)]
+        self.__leaf_cost = None
+        self.__nonleaf_constraint = None
+        self.__leaf_constraint = None
         self.__list_of_risks = [None for _ in range(self.__tree.num_nonleaf_nodes)]
         self.__precondition = True
         self.__test = False
@@ -732,23 +775,14 @@ class Factory:
     # Costs
     # --------------------------------------------------------
     def with_cost_nonleaf(self, cost):
-        q = np.zeros((cost.Q_uncond.shape[0], 1)) if cost.q_uncond is not None else None
-        r = np.zeros((cost.R_uncond.shape[0], 1)) if cost.r_uncond is not None else None
-        self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(cost.Q_sqrt.shape),
-                                                            np.zeros(cost.R_sqrt.shape),
-                                                            q, r, True)
+        self.__list_of_nonleaf_costs[0] = deepcopy(cost).node_zero()
         for i in range(1, self.__tree.num_nodes):
             self.__list_of_nonleaf_costs[i] = deepcopy(cost)
         return self
 
     def with_cost_nonleaf_events(self, cost):
         self.__check_eventful("costs")
-        temp = cost[0]
-        q = np.zeros((temp.Q_uncond.shape[0], 1)) if temp.q_uncond is not None else None
-        r = np.zeros((temp.R_uncond.shape[0], 1)) if temp.r_uncond is not None else None
-        self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(temp.Q_sqrt.shape),
-                                                            np.zeros(temp.R_sqrt.shape),
-                                                            q, r, True)
+        self.__list_of_nonleaf_costs[0] = deepcopy(cost[0]).node_zero()
         for i in range(1, self.__tree.num_nodes):
             event = self.__tree.event_of_node(i)
             self.__list_of_nonleaf_costs[i] = deepcopy(cost[event])
@@ -757,24 +791,15 @@ class Factory:
     def with_cost_nonleaf_list(self, cost):
         if cost[0] is not None:
             raise Exception(f"[ProblemFactory] First nonleaf cost in list must be ({None})!")
-        temp = cost[1]
-        q = np.zeros((temp.Q_uncond.shape[0], 1)) if temp.q_uncond is not None else None
-        r = np.zeros((temp.R_uncond.shape[0], 1)) if temp.r_uncond is not None else None
-        self.__list_of_nonleaf_costs[0] = build.NonleafCost(np.zeros(temp.Q_sqrt.shape),
-                                                            np.zeros(temp.R_sqrt.shape),
-                                                            q, r, True)
+        self.__list_of_nonleaf_costs[0] = deepcopy(cost[1]).node_zero()
         for i in range(1, self.__tree.num_nodes):
             self.__list_of_nonleaf_costs[i] = deepcopy(cost[i])
         return self
 
     def with_cost_leaf(self, cost):
-        for i in range(self.__tree.num_leaf_nodes):
-            self.__list_of_leaf_costs[i] = deepcopy(cost)
-        return self
-
-    def with_cost_leaf_list(self, cost):
-        for i in range(self.__tree.num_leaf_nodes):
-            self.__list_of_leaf_costs[i] = deepcopy(cost[i])
+        if not cost.is_leaf:
+            raise Exception("[ProblemFactory] Cannot use nonleaf cost for leaf nodes!")
+        self.__leaf_cost = deepcopy(cost)
         return self
 
     # --------------------------------------------------------
@@ -836,7 +861,7 @@ class Factory:
             self.__num_inputs,
             self.__list_of_dynamics,
             self.__list_of_nonleaf_costs,
-            self.__list_of_leaf_costs,
+            self.__leaf_cost,
             self.__nonleaf_constraint,
             self.__leaf_constraint,
             self.__list_of_risks,

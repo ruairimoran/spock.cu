@@ -210,21 +210,18 @@ for node in range(1, tree.num_nodes):
     dynamics += [s.build.Dynamics(A_aug, B_aug, c_aug)]
 
 # Costs
-zero = 1e-16
 nonleaf_costs = [None]
-Q = np.diag(np.ones(num_states) * zero)
-q = None
+q = np.zeros(num_states)
 for node in range(1, tree.num_nodes):
     price_node = fc_p[tree.stage_of_node(node)] * tree.data_values[node, idx_p]
-    R = np.diag(np.concatenate(
-        (np.ones(n_s) * zero, np.ones(n_p) * np.sqrt(fuel_cost), np.array([zero])), axis=0
-    ))
     r = np.concatenate((
         np.zeros(n_s + n_p),
         np.array([T * price_node])), axis=0
     ).reshape(-1, 1)
-    nonleaf_costs += [s.build.NonleafCost(Q, R, q, r)]
-leaf_cost = s.build.LeafCost(Q)
+    nonleaf_costs += [s.build.Linear(q, r)]
+zero = 1e-16
+Q = np.diag(np.ones(num_states) * zero)
+leaf_cost = s.build.Quadratic(Q, leaf=True)
 
 # Constraints
 large = 5e3  # conventional generation at midnight on 1st Jan 25 was ~4000 MW

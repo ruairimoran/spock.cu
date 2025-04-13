@@ -15,6 +15,10 @@
 \# DYNAMICS #\
 "dynamics": {"type": \% if dynamics.is_linear %\"linear"\% elif dynamics.is_affine %\"affine"\% endif %\
 },
+\# COSTS #\
+"cost": {"nonleaf": \% if nonleaf_cost.is_quadratic %\"quadratic"\% elif nonleaf_cost.is_linear %\"linear"\% elif nonleaf_cost.is_quadratic_plus_linear %\"quadraticPlusLinear"\% endif
+%\, "leaf": \% if leaf_cost.is_quadratic %\"quadratic"\% elif leaf_cost.is_linear %\"linear"\% elif leaf_cost.is_quadratic_plus_linear %\"quadraticPlusLinear"\% endif %\
+},
 \# CONSTRAINTS #\
 "constraint": {"nonleaf": \% if nonleaf_constraint.is_no %\"no"\% elif nonleaf_constraint.is_rectangle %\"rectangle"\% elif nonleaf_constraint.is_polyhedron %\"polyhedron"\% elif nonleaf_constraint.is_polyhedron_with_identity %\"polyhedronWithIdentity"\% endif
 %\, "leaf": \% if leaf_constraint.is_no %\"no"\% elif leaf_constraint.is_rectangle %\"rectangle"\% elif leaf_constraint.is_polyhedron %\"polyhedron"\% elif leaf_constraint.is_polyhedron_with_identity %\"polyhedronWithIdentity"\% endif %\

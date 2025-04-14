@@ -1,6 +1,7 @@
 import numpy as np
 import argparse
 import pandas as pd
+import pickle
 import matplotlib.pyplot as plt
 import spock as s
 
@@ -60,81 +61,85 @@ dt = args.dt
 
 max_time_steps = 24  # 1-hour sampling time
 folder = "deEnergyData/"
+make_tree = False
 
-# --------------------------------------------------------
-# Read demand data
-# --------------------------------------------------------
-print("Read demand...")
-demand = pd.DataFrame()
-# Actual
-demand_actual = pd.read_csv(folder + "demandActual24.csv", sep=";")
-demand["date&time"] = pd.to_datetime(demand_actual["Start date"], format="%b %d, %Y %I:%M %p")
-demand["actual"] = pd.to_numeric(demand_actual["grid load [MWh]"].str.replace(",", "", regex=True), errors="raise")
-# Forecast
-demand_forecast = pd.read_csv(folder + "demandForecast24.csv", sep=";")
-demand["forecast"] = pd.to_numeric(demand_forecast["grid load [MWh]"].str.replace(",", "", regex=True), errors="raise")
-# Error
-demand["multiplier"] = compute_multiplier(demand)
-# Sanitize and group by day
-err_demand = sanitize_and_group(demand, max_time_steps)
-print(f"Done: ({err_demand.shape[0]}) demand samples.")
+if make_tree:
+    # --------------------------------------------------------
+    # Read demand data
+    # --------------------------------------------------------
+    print("Read demand...")
+    demand = pd.DataFrame()
+    # Actual
+    demand_actual = pd.read_csv(folder + "demandActual24.csv", sep=";")
+    demand["date&time"] = pd.to_datetime(demand_actual["Start date"], format="%b %d, %Y %I:%M %p")
+    demand["actual"] = pd.to_numeric(demand_actual["grid load [MWh]"].str.replace(",", "", regex=True), errors="raise")
+    # Forecast
+    demand_forecast = pd.read_csv(folder + "demandForecast24.csv", sep=";")
+    demand["forecast"] = pd.to_numeric(demand_forecast["grid load [MWh]"].str.replace(",", "", regex=True), errors="raise")
+    # Error
+    demand["multiplier"] = compute_multiplier(demand)
+    # Sanitize and group by day
+    err_demand = sanitize_and_group(demand, max_time_steps)
+    print(f"Done: ({err_demand.shape[0]}) demand samples.")
 
-# --------------------------------------------------------
-# Read renewables data
-# --------------------------------------------------------
-print("Read renewables...")
-renewables = pd.DataFrame()
-# Actual
-renewables_actual = pd.read_csv(folder + "renewablesActual24.csv", sep=";")
-renewables["date&time"] = pd.to_datetime(renewables_actual["Start date"], format="%b %d, %Y %I:%M %p")
-renewables["offshore"] = pd.to_numeric(renewables_actual["Wind offshore [MWh]"].str.replace(",", "", regex=True), errors="raise")
-renewables["onshore"] = pd.to_numeric(renewables_actual["Wind onshore [MWh]"].str.replace(",", "", regex=True), errors="raise")
-renewables["pv"] = pd.to_numeric(renewables_actual["Photovoltaics [MWh]"].str.replace(",", "", regex=True), errors="raise")
-renewables["actual"] = renewables["offshore"] + renewables["onshore"] + renewables["pv"]
-# Forecast
-renewables_forecast = pd.read_csv(folder + "renewablesForecast24.csv", sep=";")
-renewables["forecast"] = pd.to_numeric(renewables_forecast["Photovoltaics and wind [MWh]"].str.replace(",", "", regex=True), errors="raise")
-# Error
-renewables["multiplier"] = compute_multiplier(renewables)
-# Sanitize and group by day
-err_renewables = sanitize_and_group(renewables, max_time_steps)
-print(f"Done: ({err_renewables.shape[0]}) renewables samples.")
+    # --------------------------------------------------------
+    # Read renewables data
+    # --------------------------------------------------------
+    print("Read renewables...")
+    renewables = pd.DataFrame()
+    # Actual
+    renewables_actual = pd.read_csv(folder + "renewablesActual24.csv", sep=";")
+    renewables["date&time"] = pd.to_datetime(renewables_actual["Start date"], format="%b %d, %Y %I:%M %p")
+    renewables["offshore"] = pd.to_numeric(renewables_actual["Wind offshore [MWh]"].str.replace(",", "", regex=True), errors="raise")
+    renewables["onshore"] = pd.to_numeric(renewables_actual["Wind onshore [MWh]"].str.replace(",", "", regex=True), errors="raise")
+    renewables["pv"] = pd.to_numeric(renewables_actual["Photovoltaics [MWh]"].str.replace(",", "", regex=True), errors="raise")
+    renewables["actual"] = renewables["offshore"] + renewables["onshore"] + renewables["pv"]
+    # Forecast
+    renewables_forecast = pd.read_csv(folder + "renewablesForecast24.csv", sep=";")
+    renewables["forecast"] = pd.to_numeric(renewables_forecast["Photovoltaics and wind [MWh]"].str.replace(",", "", regex=True), errors="raise")
+    # Error
+    renewables["multiplier"] = compute_multiplier(renewables)
+    # Sanitize and group by day
+    err_renewables = sanitize_and_group(renewables, max_time_steps)
+    print(f"Done: ({err_renewables.shape[0]}) renewables samples.")
 
-# --------------------------------------------------------
-# Read price data
-# --------------------------------------------------------
-print("Read price...")
-price = pd.DataFrame()
-# Actual
-price_actual = pd.read_csv(folder + "priceActual24.csv", sep=";")
-price["date&time"] = pd.to_datetime(price_actual["date"] + " " + price_actual["from"], dayfirst=True)
-price["actual"] = pd.to_numeric(price_actual["price [ct/kWh]"], errors="raise") * 10  # euro/MWh
-# Forecast
-price_forecast = pd.read_csv(folder + "priceForecast24.csv", sep=";")
-price["forecast"] = pd.to_numeric(price_forecast["price [ct/kWh]"], errors="raise") * 10  # euro/MWh
-# Error
-price["multiplier"] = compute_multiplier(price)
-# Sanitize and group by day
-err_price = sanitize_and_group(price, max_time_steps)
-print(f"Done: ({err_price.shape[0]}) price samples.")
+    # --------------------------------------------------------
+    # Read price data
+    # --------------------------------------------------------
+    print("Read price...")
+    price = pd.DataFrame()
+    # Actual
+    price_actual = pd.read_csv(folder + "priceActual24.csv", sep=";")
+    price["date&time"] = pd.to_datetime(price_actual["date"] + " " + price_actual["from"], dayfirst=True)
+    price["actual"] = pd.to_numeric(price_actual["price [ct/kWh]"], errors="raise") * 10  # euro/MWh
+    # Forecast
+    price_forecast = pd.read_csv(folder + "priceForecast24.csv", sep=";")
+    price["forecast"] = pd.to_numeric(price_forecast["price [ct/kWh]"], errors="raise") * 10  # euro/MWh
+    # Error
+    price["multiplier"] = compute_multiplier(price)
+    # Sanitize and group by day
+    err_price = sanitize_and_group(price, max_time_steps)
+    print(f"Done: ({err_price.shape[0]}) price samples.")
 
-# --------------------------------------------------------
-# Combine samples [demand, renewables, price]
-# into [samples x dim x time] array
-# --------------------------------------------------------
-err_samples = np.concatenate((err_demand, err_renewables, err_price), axis=1)
-idx_d = 0
-idx_r = 1
-idx_p = 2
+    # --------------------------------------------------------
+    # Combine samples [demand, renewables, price]
+    # into [samples x dim x time] array
+    # --------------------------------------------------------
+    err_samples = np.concatenate((err_demand, err_renewables, err_price), axis=1)
 
-# --------------------------------------------------------
-# Create tree from data
-# --------------------------------------------------------
-horizon = 23  # max_time_steps - 1  # 1 hour periods
-branching = np.ones(horizon, dtype=np.int32)
-branching[0] = 5
-data = err_samples
-tree = s.tree.FromData(data, branching).build()
+    # --------------------------------------------------------
+    # Create tree from data
+    # --------------------------------------------------------
+    horizon = 23  # max_time_steps - 1  # 1 hour periods
+    branching = np.ones(horizon, dtype=np.int32)
+    branching[0] = 5
+    data = err_samples
+    tree = s.tree.FromData(data, branching).build()
+    with open('tree.pkl', 'wb') as f:
+        pickle.dump(tree, f)
+else:
+    with open('tree.pkl', 'rb') as f:
+        tree = pickle.load(f)
 print(tree)
 
 # --------------------------------------------------------
@@ -157,6 +162,9 @@ print(tree)
 # --------------------------------------------------------
 # Read forecast for problem
 # --------------------------------------------------------
+idx_d = 0
+idx_r = 1
+idx_p = 2
 fc = pd.read_csv(folder + "demandForecast25.csv", sep=";")
 fc["forecast"] = pd.to_numeric(fc["grid load [MWh]"].str.replace(",", "", regex=True), errors="raise")
 fc_d = np.array(fc["forecast"])
@@ -215,13 +223,12 @@ q = np.zeros(num_states)
 for node in range(1, tree.num_nodes):
     price_node = fc_p[tree.stage_of_node(node)] * tree.data_values[node, idx_p]
     r = np.concatenate((
-        np.zeros(n_s + n_p),
+        np.zeros(n_s),
+        np.ones(n_p) * fuel_cost,
         np.array([T * price_node])), axis=0
     ).reshape(-1, 1)
     nonleaf_costs += [s.build.Linear(q, r)]
-zero = 1e-16
-Q = np.diag(np.ones(num_states) * zero)
-leaf_cost = s.build.Quadratic(Q, leaf=True)
+leaf_cost = s.build.Linear(q, leaf=True)
 
 # Constraints
 large = 5e3  # conventional generation at midnight on 1st Jan 25 was ~4000 MW

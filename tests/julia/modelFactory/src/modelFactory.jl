@@ -99,6 +99,7 @@ struct Data
     cost_nonleaf_q :: Union{Vector{Matrix{TR}}, Nothing}
     cost_nonleaf_r :: Union{Vector{Matrix{TR}}, Nothing}
     cost_leaf_Q :: Union{Matrix{TR}, Nothing}
+    cost_leaf_q :: Union{Matrix{TR}, Nothing}
     constraint_nonleaf :: String
     constraint_leaf :: String
     constraint_nonleaf_ilb :: Union{Vector{TR}, Nothing}
@@ -191,6 +192,7 @@ function read_data()
         cost_nonleaf_q,
         cost_nonleaf_r,
         cost_leaf_Q,
+        cost_leaf_q,
         constraint_nonleaf,
         constraint_leaf,
         constraint_nonleaf_ilb,
@@ -265,11 +267,10 @@ function impose_cost(
     t = model[:t]
     s = model[:s]
     if d.cost_nonleaf == "linear"
-        println("[JuMP] Costs have been modified for power example!")
         @constraint(
             model,
             nonleaf_cost[node=2:d.num_nodes],
-            (d.cost_nonleaf_r[node] * u[node_to_u(d, d.ancestors[node])]) <= t[node - 1]
+            (d.cost_nonleaf_r[node]' * u[node_to_u(d, d.ancestors[node])])[1] <= t[node - 1]
         )
     else
         @constraint(
@@ -283,12 +284,19 @@ function impose_cost(
             <= t[node - 1]
         )
     end
-    @constraint(
-        model,
-        leaf_cost[node=d.num_nonleaf_nodes+1:d.num_nodes],
-        x[node_to_x(d, node)]' * d.cost_leaf_Q[node - d.num_nonleaf_nodes] * x[node_to_x(d, node)]
-        <= s[node]
-    )
+    if d.cost_leaf == "linear"
+        @constraint(
+            model,
+            leaf_cost[node=d.num_nonleaf_nodes+1:d.num_nodes],
+            (d.cost_leaf_q' * x[node_to_x(d, node)])[1] <= s[node]
+        )
+    else
+        @constraint(
+            model,
+            leaf_cost[node=d.num_nonleaf_nodes+1:d.num_nodes],
+            x[node_to_x(d, node)]' * d.cost_leaf_Q * x[node_to_x(d, node)] <= s[node]
+        )
+    end
 end
 
 """

@@ -289,8 +289,8 @@ class Quadratic(Cost):
 
     def condition(self, scaling_state_inv, scaling_input_inv=None):
         if not self.__node_zero:
-            self.__Q = scaling_state_inv.T @ self.Q_uncond @ scaling_state_inv if scaling_state_inv is not None else None
-            self.__R = scaling_input_inv.T @ self.R_uncond @ scaling_input_inv if scaling_input_inv is not None else None
+            self.__Q = scaling_state_inv.T @ self.Q_uncond @ scaling_state_inv
+            self.__R = scaling_input_inv.T @ self.R_uncond @ scaling_input_inv if not self.is_leaf else None
             self.__set_translation()
         return self
 
@@ -319,8 +319,6 @@ class Linear(Cost):
         self.__q_unconditioned = deepcopy(self.__q)
         self.__r = np.array(r).reshape(-1, 1)
         self.__r_unconditioned = deepcopy(self.__r)
-        self.__lin_q = self.__q is not None
-        self.__lin_r = self.__r is not None
         self.__gradient = None
         self.__node_zero = False
         self.dim_per_node = 2
@@ -378,15 +376,15 @@ class Linear(Cost):
 
     def condition(self, scaling_state_inv, scaling_input_inv=None):
         if not self.__node_zero:
-            self.__q = scaling_state_inv.T @ self.q_uncond if self.__lin_q else None
-            self.__r = scaling_input_inv.T @ self.r_uncond if self.__lin_r else None
+            self.__q = np.diagonal(scaling_state_inv).reshape(-1, 1) * self.q_uncond
+            self.__r = np.diagonal(scaling_input_inv).reshape(-1, 1) * self.r_uncond if not self.is_leaf else None
             self.__set_gradient()
         return self
 
     def node_zero(self):
         self.__node_zero = True
-        self.__q = np.zeros(self.q_uncond.shape) if self.__lin_q else None
-        self.__r = np.zeros(self.r_uncond.shape) if self.__lin_r else None
+        self.__q = np.zeros(self.q_uncond.shape)
+        self.__r = np.zeros(self.r_uncond.shape) if not self.is_leaf else None
         self.__set_gradient()
         return self
 
@@ -418,10 +416,8 @@ class QuadraticPlusLinear(Cost):
         self.__q_unconditioned = deepcopy(self.__q)
         self.__r = np.array(r).reshape(-1, 1)
         self.__r_unconditioned = deepcopy(self.__r)
-        self.__lin_q = self.__q is not None
-        self.__lin_r = self.__r is not None
         self.__node_zero = False
-        self.dim_per_node = self.Q.shape[0] + self.R.shape[0] + 2
+        self.dim_per_node = self.Q.shape[0] + self.R.shape[0] + 2 if not leaf else self.Q.shape[0] + 2
         self.__set_translation()
 
     @property
@@ -435,11 +431,11 @@ class QuadraticPlusLinear(Cost):
             c = np.zeros((1, 1))
             d = np.zeros((1, 1))
         else:
-            nrm_q = self.__q.T @ self._inv(self.Q, self.__q) if self.__lin_q else 0
-            nrm_r = self.__r.T @ self._inv(self.R, self.__r) if self.__lin_r else 0
+            nrm_q = self.__q.T @ self._inv(self.Q, self.__q)
+            nrm_r = self.__r.T @ self._inv(self.R, self.__r)
             scaled_nrm = .125 * (nrm_q + nrm_r)
-            a = self._inv(self.Q_sqrt, self.__q).reshape(-1, 1) if self.__lin_q else np.zeros((self.Q.shape[0], 1))
-            b = self._inv(self.__R_sqrt, self.__r).reshape(-1, 1) if self.__lin_r else np.zeros((self.R.shape[0], 1))
+            a = self._inv(self.Q_sqrt, self.__q).reshape(-1, 1)
+            b = self._inv(self.__R_sqrt, self.__r).reshape(-1, 1) if not self.is_leaf else None
             c = -.5 + scaled_nrm
             d = .5 + scaled_nrm
         if self.is_leaf:
@@ -490,18 +486,18 @@ class QuadraticPlusLinear(Cost):
     def op_leaf(self, x, s):
         pass
 
-    def adj_nonleaf(self, dual, x, n, u):
+    def adj_nonleaf(self, dual, num_states, num_inputs):
         pass
 
-    def adj_leaf(self, dual, x, n):
+    def adj_leaf(self, dual, num_states):
         pass
 
     def condition(self, scaling_state_inv, scaling_input_inv=None):
         if not self.__node_zero:
-            self.__Q = scaling_state_inv.T @ self.Q_uncond @ scaling_state_inv if scaling_state_inv is not None else None
-            self.__R = scaling_input_inv.T @ self.R_uncond @ scaling_input_inv if scaling_input_inv is not None else None
-            self.__q = scaling_state_inv.T @ self.q_uncond if self.__lin_q else None
-            self.__r = scaling_input_inv.T @ self.r_uncond if self.__lin_r else None
+            self.__Q = scaling_state_inv.T @ self.Q_uncond @ scaling_state_inv
+            self.__R = scaling_input_inv.T @ self.R_uncond @ scaling_input_inv if not self.is_leaf else None
+            self.__q = scaling_state_inv.T @ self.q_uncond
+            self.__r = scaling_input_inv.T @ self.r_uncond if not self.is_leaf else None
             self.__set_translation()
         return self
 

@@ -545,7 +545,7 @@ class Problem:
         cost = self.__list_of_nonleaf_costs
         cost_txt_nl = "nonleafCost"
         if cost[0].is_linear:
-            stack_gradient_cost = np.dstack([cost.gradient for cost in self.__list_of_nonleaf_costs])
+            stack_gradient_cost = np.dstack([cost.grad_vec for cost in self.__list_of_nonleaf_costs])
             tensors.update({
                 cost_txt_nl + "_gradient": stack_gradient_cost,
             })
@@ -561,7 +561,7 @@ class Problem:
         cost = self.__leaf_cost
         cost_txt_l = "leafCost"
         if cost.is_linear:
-            stack_gradient_terminal_cost = np.dstack([self.__leaf_cost.gradient])
+            stack_gradient_terminal_cost = np.dstack([self.__leaf_cost.grad_vec])
             tensors.update({
                 cost_txt_l + "_gradient": stack_gradient_terminal_cost,
             })

@@ -175,10 +175,8 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_ii = nullptr;
     std::unique_ptr<DTensor<T>> m_d_iii = nullptr;
     std::unique_ptr<DTensor<T>> m_d_iv = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_ivSoc = nullptr;
     std::unique_ptr<DTensor<T>> m_d_v = nullptr;
     std::unique_ptr<DTensor<T>> m_d_vi = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_viSoc = nullptr;
     std::unique_ptr<DTensor<T>> m_d_input = nullptr;
     /* Projections */
     std::unique_ptr<NonnegativeOrthantCone<T>> m_nnoc = nullptr;
@@ -550,11 +548,7 @@ void Cache<T>::reshapeDualWorkspace() {
     start += m_sizeIII;
     m_d_iv = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeIV - 1);
     m_d_iv->reshape(m_data.nonleafCost()->dimPerNode(), 1, m_data.nonleafCost()->numNodes());
-    /*
-     * SocProjection requires one matrix, where the columns are the vectors.
-     */
-    m_d_ivSoc = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeIV - 1);
-    m_d_ivSoc->reshape(m_data.nonleafCost()->dimPerNode(), m_data.nonleafCost()->numNodes(), 1);
+    m_data.nonleafCost()->reshape(*m_d_workIterateDual, start, start + m_sizeIV - 1);
     start += m_sizeIV;
     if (m_sizeV) {
         m_d_v = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeV - 1);
@@ -563,11 +557,7 @@ void Cache<T>::reshapeDualWorkspace() {
     start += m_sizeV;
     m_d_vi = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeVI - 1);
     m_d_vi->reshape(m_data.leafCost()->dimPerNode(), 1, m_data.leafCost()->numNodes());
-    /*
-     * SocProjection requires one matrix, where the columns are the vectors.
-     */
-    m_d_viSoc = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeVI - 1);
-    m_d_viSoc->reshape(m_data.leafCost()->dimPerNode(), m_data.leafCost()->numNodes(), 1);
+    m_data.leafCost()->reshape(*m_d_workIterateDual, start, start + m_sizeVI - 1);
 }
 
 template<typename T>
@@ -678,11 +668,11 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
     /* III */
     m_data.nonleafConstraint()->project(*m_d_iii);
     /* IV */
-    m_data.nonleafCost()->project(*m_d_ivSoc);
+    m_data.nonleafCost()->project(*m_d_t);
     /* V */
     m_data.leafConstraint()->project(*m_d_v);
     /* VI */
-    m_data.leafCost()->project(*m_d_viSoc);
+    m_data.leafCost()->project(*m_d_s);
 }
 
 /**
@@ -769,7 +759,7 @@ void Cache<T>::modifyDual() {
 template<typename T>
 void Cache<T>::proximalDual() {
     *m_d_workIterateDual *= m_data.stepSizeRecip();
-    translateSocs();
+    if (m_data.nonleafCost()) translateSocs();
     m_d_workIterateDual->deviceCopyTo(*m_d_iterateCandidateDual);
     projectDualWorkspaceOnConstraints();
     *m_d_iterateCandidateDual -= *m_d_workIterateDual;

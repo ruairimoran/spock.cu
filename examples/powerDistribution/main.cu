@@ -27,7 +27,7 @@ int main() {
         std::vector<real_t> initState(tree.numStates());
         d_initState.download(initState);
         size_t runs = 1;
-        size_t warm = 1;
+        size_t warm = 0;
         size_t totalRuns = runs + warm;
         std::vector<real_t> runTimes(totalRuns, 0.);
         std::vector<real_t> runIters(totalRuns, 0.);

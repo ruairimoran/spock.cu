@@ -319,24 +319,24 @@ class Linear(Cost):
         self.__q_unconditioned = deepcopy(self.__q)
         self.__r = np.array(r).reshape(-1, 1)
         self.__r_unconditioned = deepcopy(self.__r)
-        self.__gradient = None
+        self.__grad = None
         self.__node_zero = False
         self.dim_per_node = 2
-        self.__set_gradient()
+        self.__set_grad()
 
     @property
     def is_linear(self):
         return True
 
-    def __set_gradient(self):
+    def __set_grad(self):
         if self.is_leaf:
-            self.__gradient = self.__q
+            self.__grad = self.__q.T
         else:
-            self.__gradient = np.vstack((self.__q, self.__r))
+            self.__grad = np.hstack((self.__q.T, self.__r.T))
 
     @property
-    def gradient(self):
-        return self.__gradient
+    def grad_vec(self):
+        return self.__grad
 
     @property
     def q_uncond(self):
@@ -378,14 +378,14 @@ class Linear(Cost):
         if not self.__node_zero:
             self.__q = np.diagonal(scaling_state_inv).reshape(-1, 1) * self.q_uncond
             self.__r = np.diagonal(scaling_input_inv).reshape(-1, 1) * self.r_uncond if not self.is_leaf else None
-            self.__set_gradient()
+            self.__set_grad()
         return self
 
     def node_zero(self):
         self.__node_zero = True
         self.__q = np.zeros(self.q_uncond.shape)
         self.__r = np.zeros(self.r_uncond.shape) if not self.is_leaf else None
-        self.__set_gradient()
+        self.__set_grad()
         return self
 
 

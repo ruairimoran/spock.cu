@@ -52,6 +52,25 @@ private:
         }
     }
 
+    void parseCost(const rapidjson::Value &value, std::unique_ptr<Cost<T>> &cost, TreePart part) {
+        std::string modeStr = m_tree.strOfPart(part);
+        std::string typeStr = value[modeStr.c_str()].GetString();
+        std::string filePrefix = m_tree.path() + modeStr + "Cost";
+        if (typeStr == std::string("quadratic")) {
+            cost = std::make_unique<CostQuadratic<T>>(m_tree, part);
+        } else if (typeStr == std::string("linear")) {
+            cost = std::make_unique<CostLinear<T>>(m_tree, part);
+        } else if (typeStr == std::string("quadraticPlusLinear")) {
+            err << "[parseCost] Cost type " << typeStr
+                << " is not supported yet!\n";
+            throw ERR;
+        } else {
+            err << "[parseCost] Cost type " << typeStr
+                << " is not supported. Supported types include: quadratic, linear\n";
+            throw ERR;
+        }
+    }
+
     void parseConstraint(const rapidjson::Value &value, std::unique_ptr<Constraint<T>> &constraint, TreePart part) {
         std::string modeStr = m_tree.strOfPart(part);
         size_t numNodes = m_tree.numNodesOfPart(part);
@@ -127,8 +146,8 @@ public:
         /* Parse files */
         m_d_stepSize = std::make_unique<DTensor<T>>(std::vector(1, m_stepSize), 1);
         parseDynamics(doc["dynamics"]);
-        m_nonleafCost = std::make_unique<CostNonleaf<T>>(m_tree);
-        m_leafCost = std::make_unique<CostLeaf<T>>(m_tree);
+        parseCost(doc["cost"], m_nonleafCost, nonleaf);
+        parseCost(doc["cost"], m_leafCost, leaf);
         parseConstraint(doc["constraint"], m_nonleafConstraint, nonleaf);
         parseConstraint(doc["constraint"], m_leafConstraint, leaf);
         parseRisk(doc["risk"]);

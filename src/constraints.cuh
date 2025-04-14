@@ -6,10 +6,6 @@
 #include "cones.cuh"
 
 
-TEMPLATE_WITH_TYPE_T
-__global__ void k_projectRectangle(size_t, T *, T *, T *);
-
-
 /**
  * Base constraint class
  */

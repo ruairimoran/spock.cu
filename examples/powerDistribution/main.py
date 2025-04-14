@@ -58,7 +58,7 @@ parser = argparse.ArgumentParser(description='Example: power distribution: gener
 parser.add_argument("--dt", type=str, default='d')
 parser.add_argument("--br", type=int, default=0)
 parser.add_argument("--ch", type=int, default=2)
-parser.add_argument("--tree", type=bool, default=True)
+parser.add_argument("--tree", type=int, default=1)
 args = parser.parse_args()
 dt = args.dt
 br = args.br

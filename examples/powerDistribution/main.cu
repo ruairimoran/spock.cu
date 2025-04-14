@@ -46,16 +46,16 @@ int main() {
         avgIter = iter / runs;
 
         /* PRINT */
-//        std::vector<real_t> states = cache.states();
-//        std::vector<real_t> inputs = cache.inputs();
-//        std::cout << "States:\n";
-//        for (size_t i = 0; i < tree.numStates() * tree.numNodes(); i++) {
-//            std::cout << "    " << states[i] << "\n";
-//        }
-//        std::cout << "Inputs:\n";
-//        for (size_t i = 0; i < tree.numNonleafNodes(); i++) {
-//            std::cout << "    " << inputs[(i * tree.numInputs()) + tree.numInputs() - 1] << "\n";
-//        }
+        std::vector<real_t> states = cache.states();
+        std::vector<real_t> inputs = cache.inputs();
+        std::cout << "States:\n";
+        for (size_t i = 0; i < tree.numStates() * tree.numNodes(); i++) {
+            std::cout << "    " << states[i] << "\n";
+        }
+        std::cout << "Inputs:\n";
+        for (size_t i = 0; i < tree.numNonleafNodes(); i++) {
+            std::cout << "    " << inputs[(i * tree.numInputs()) + tree.numInputs() - 1] << "\n";
+        }
     } catch (const std::exception &e) {
         std::cout << "SPOCK failed! : " << e.what() << std::endl;
     } catch (...) {

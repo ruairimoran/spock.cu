@@ -115,7 +115,7 @@ status_m = nothing
 status_g = nothing
 status_i = nothing
 
-for run in [0, 1]
+for run in [0]
     if check_run(run, status_m)
         global status_m, time_m, ram_m = get_stats(Mosek.Optimizer, data, risk, tol_f64, max_time_f64)
         if status_m == MOI.INFEASIBLE

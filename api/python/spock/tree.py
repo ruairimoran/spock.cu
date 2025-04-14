@@ -116,6 +116,10 @@ class Tree:
         :return: data values array where `row=node number` and `col=given data`
         """
         return self.__data_values
+    
+    @property
+    def max_num_children(self):
+        return max(self.__num_children)
 
     @property
     def max_num_children(self):

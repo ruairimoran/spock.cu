@@ -76,7 +76,7 @@ nonleaf_input_ub = np.ones(num_inputs) * 7.
 nonleaf_input_lb = -nonleaf_input_ub
 nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
 nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))
-nonleaf_constraint = s.build.Rectangle(nonleaf_lb, nonleaf_ub)
+nonleaf_constraint = s.build.Polyhedron(np.eye(num_states + num_inputs), nonleaf_lb, nonleaf_ub)
 leaf_ub = np.ones(num_states) * 1.
 leaf_lb = -leaf_ub
 leaf_constraint = s.build.Rectangle(leaf_lb, leaf_ub)
@@ -116,7 +116,7 @@ problem_cond = (
     .with_preconditioning(True)
     .generate_problem()
 )
-print("Conditioned: \n", problem)
+print("Preconditioned: \n", problem_cond)
 
 # Initial state
 x0 = np.ones(num_states) * 5.
@@ -147,7 +147,6 @@ try:
 except:
     solver = cp.SCS
     states, inputs = run_unconditioned(solver)
-
 states_, inputs_, status = run_conditioned(solver)
 if status != "infeasible":
     tol = 1e-2

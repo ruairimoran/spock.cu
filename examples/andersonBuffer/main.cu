@@ -1,6 +1,4 @@
 #include <spock.cuh>
-#include <sys/resource.h>
-#include <nvml.h>
 #define real_t double  // templates type defaults to double
 
 

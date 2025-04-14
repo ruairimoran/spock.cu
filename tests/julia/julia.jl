@@ -47,12 +47,12 @@ function check_bounds(model :: Model, status, d, tol)
 #         println("[$(MOI.get(model, MOI.SolverName()))] Constraint saturation: states = ", sat_x, ", inputs = ", sat_u)
         if true  # print states and inputs
             println("[$(MOI.get(model, MOI.SolverName()))] States:")
-            for state in value.(model[:x])
-                println(state)
+            for node in range(1, d.num_nodes)
+                println(value.(model[:x])[node*d.num_states-1:node*d.num_states])
             end
             println("[$(MOI.get(model, MOI.SolverName()))] Inputs:")
-            for input in value.(model[:u])
-                println(input)
+            for node in range(1, d.num_nonleaf_nodes)
+                println(value.(model[:u])[node*d.num_inputs])
             end
         end
     end
@@ -106,7 +106,7 @@ data = read_data()
 risk = build_risk(data)
 x0 = read_vector_from_binary(TR, folder * "initialState" * file_ext_r)
 tol = 1e-3
-max_time = 5 * minute
+max_time = .25 * minute
 status = Int64(1)
 tol_f64 = Float64(tol)
 max_time_f64 = Float64(max_time)
@@ -137,8 +137,9 @@ for run in [0, 1]
         println("Saving julia times...")
         num_vars = data.num_nodes * data.num_states + data.num_nonleaf_nodes * data.num_inputs
         open("time.csv", "a") do f
-#             write(f, "$(num_vars), $(time_g), $(ram_g), $(time_m), $(ram_m), $(time_i), $(ram_i), ")
-            write(f, "$(num_vars), $(time_m), $(ram_m), ")
+            # write(f, "$(data.ch_num[1]), $(time_g), $(time_m), $(time_i), ")
+            # write(f, "$(data.ch_num[1]), $(time_g), $(ram_g), $(time_m), $(ram_m), $(time_i), $(ram_i), ")
+            # write(f, "$(data.ch_num[1]), $(time_m), $(ram_m), ")
         end
         println("Saved!")
     end

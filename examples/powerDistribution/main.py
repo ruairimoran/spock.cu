@@ -58,14 +58,15 @@ parser = argparse.ArgumentParser(description='Example: power distribution: gener
 parser.add_argument("--dt", type=str, default='d')
 parser.add_argument("--br", type=int, default=0)
 parser.add_argument("--ch", type=int, default=2)
+parser.add_argument("--tree", type=bool, default=True)
 args = parser.parse_args()
 dt = args.dt
 br = args.br
 ch = args.ch
+make_tree = args.tree
 
 max_time_steps = 24  # 1-hour sampling time
 folder = "deEnergyData/"
-make_tree = False
 
 if make_tree:
     # --------------------------------------------------------

@@ -18,8 +18,8 @@ target_sources(spock_tests  # add files
     cuda/testRisks.cu
     cuda/testProblem.cu
     cuda/testProjections.cu
-    cuda/testCache.cu
     cuda/testOperator.cu
+    cuda/testCache.cu
 )
 target_link_libraries(spock_tests
     PRIVATE

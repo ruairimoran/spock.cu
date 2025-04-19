@@ -45,12 +45,12 @@ B = 0.5 * np.ones((num_states, num_inputs))
 dynamics = [s.build.Dynamics(1.5 * A, 1.5 * B), s.build.Dynamics(A, B)]
 
 # State cost
-q = np.ones(num_states)
+q = np.eye(num_states)
 
 # Input cost
-r = np.ones(num_inputs)
+r = np.eye(num_inputs)
 
-nonleaf_costs = [s.build.Linear(2 * q, r), s.build.Linear(1 * q, r)]
+nonleaf_costs = [s.build.Quadratic(2 * q, r), s.build.Quadratic(1 * q, r)]
 
 # Terminal state cost
 T = 3 * np.eye(num_states)

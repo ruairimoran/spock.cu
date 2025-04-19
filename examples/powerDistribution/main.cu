@@ -20,7 +20,7 @@ int main() {
         real_t maxTime = 5 * minute;
         std::cout << "Allocating cache...\n";
         CacheBuilder builder(tree, problem);
-        Cache cache = builder.tol(tol).maxTimeSecs(maxTime).build();
+        Cache cache = builder.tol(tol).maxTimeSecs(maxTime).enableDebug().build();
 
         /* TIMING ALGORITHM */
         DTensor<real_t> d_initState = DTensor<real_t>::parseFromFile(tree.path() + "initialState" + tree.fpFileExt());

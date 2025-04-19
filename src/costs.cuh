@@ -69,6 +69,7 @@ class CostQuadratic : public Cost<T> {
 private:
     std::unique_ptr<DTensor<T>> m_d_sqrtQ = nullptr;
     std::unique_ptr<DTensor<T>> m_d_sqrtR = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_sqrtQLeaf = nullptr;
     std::unique_ptr<DTensor<T>> m_d_translation = nullptr;
     std::unique_ptr<SocProjection<T>> m_socs = nullptr;
     std::unique_ptr<DTensor<T>> m_d_uWorkspace = nullptr;
@@ -84,25 +85,28 @@ public:
     explicit CostQuadratic(ScenarioTree<T> &tree, TreePart part = nonleaf): Cost<T>(tree) {
         /* Read data from files */
         this->m_prefix = tree.strOfPart(part) + this->m_prefix;
-        m_d_sqrtQ = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "sqrtQ" + tree.fpFileExt()));
+        DTensor<T> sqrtQ = DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "sqrtQ" + tree.fpFileExt());
         m_d_translation = std::make_unique<DTensor<T>>(
             DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "translation" + tree.fpFileExt()));
         if (part == nonleaf) {
-            m_d_sqrtR = std::make_unique<DTensor<T>>(
-                DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "sqrtR" + tree.fpFileExt()));
             this->m_dimPerNode = tree.numStatesAndInputs() + 2;
             this->m_numNodes = tree.numNodes();
-            m_d_uWorkspace = std::make_unique<DTensor<T>>(tree.numInputs(), 1, tree.numNodes(), true);
+            m_d_sqrtQ = std::make_unique<DTensor<T>>(sqrtQ);
+            m_d_sqrtR = std::make_unique<DTensor<T>>(
+                DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "sqrtR" + tree.fpFileExt()));
+            m_d_uWorkspace = std::make_unique<DTensor<T>>(tree.numInputs(), 1, this->m_numNodes, true);
         } else {
             this->m_dimPerNode = tree.numStates() + 2;
             this->m_numNodes = tree.numLeafNodes();
+            m_d_sqrtQ = std::make_unique<DTensor<T>>(sqrtQ.numRows(), sqrtQ.numCols(), this->m_numNodes);
+            for (size_t i = 0; i < this->m_numNodes; i++) {
+                DTensor<T> sqrtQ_slice(*m_d_sqrtQ, this->m_matAxis, i, i);
+                sqrtQ.deviceCopyTo(sqrtQ_slice);
+            }
         }
         m_d_xWorkspace = std::make_unique<DTensor<T>>(tree.numStates(), 1, this->m_numNodes, true);
         m_d_scalarWorkspace = std::make_unique<DTensor<T>>(1, 1, this->m_numNodes, true);
-        DTensor<T> d_soc(this->m_dimPerNode, this->m_numNodes, 1);
-        m_socs = std::make_unique<SocProjection<T>>(d_soc);
-        this->m_dim = d_soc.numEl();
+        this->m_dim = this->m_dimPerNode * this->m_numNodes;
     }
 
     bool isQuadratic() { return true; }
@@ -113,6 +117,7 @@ public:
          */
         this->m_d_reshapedData = std::make_unique<DTensor<T>>(work, this->m_rowAxis, start, end);
         this->m_d_reshapedData->reshape(this->m_dimPerNode, this->m_numNodes, 1);
+        m_socs = std::make_unique<SocProjection<T>>(*(this->m_d_reshapedData));
     }
 
     void op(DTensor<T> &iv, DTensor<T> &x, DTensor<T> &u, DTensor<T> &t) {
@@ -215,6 +220,7 @@ public:
         this->m_prefix = tree.strOfPart(part) + this->m_prefix;
         m_d_gradient = std::make_unique<DTensor<T>>(
             DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "gradient" + tree.fpFileExt()));
+        std::cout << "Does this need changed for leaf costs? (i.e., repeated for each node)\n";
         m_d_gradientTr = std::make_unique<DTensor<T>>(m_d_gradient->tr());
         this->m_dimPerNode = 1;
         if (part == nonleaf) {

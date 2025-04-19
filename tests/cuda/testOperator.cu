@@ -25,7 +25,7 @@ public:
     OperatorTestData() {
         m_tree = std::make_unique<ScenarioTree<T>>(m_path);
         m_data = std::make_unique<ProblemData<T>>(*m_tree);
-        m_cache = std::make_unique<Cache<T>>(*m_tree, *m_data, m_tol, m_maxIters);
+        m_cache = CacheBuilder<T>(*m_tree, *m_data).tol(m_tol).maxIters(m_maxIters).enableDebug().make_unique();
     };
 
     virtual ~OperatorTestData() = default;
@@ -48,7 +48,7 @@ void testOperator(OperatorTestData<T> &d, T epsilon) {
              *c.m_d_i, *c.m_d_ii, *c.m_d_iii, *c.m_d_iv, *c.m_d_v, *c.m_d_vi);
     std::vector<T> test(c.m_sizeDual);
     c.m_d_workIterateDual->download(test);
-    for (size_t i = 0; i < c.m_sizeDual; i++) { EXPECT_NEAR(test[i], d.m_dualAfterOpBeforeAdj[i], epsilon); }
+    for (size_t i = 0; i < c.m_sizeDual; i++) { std::cout << i << "\n"; EXPECT_NEAR(test[i], d.m_dualAfterOpBeforeAdj[i], epsilon); }
 }
 
 TEST_F(OperatorTest, op) {

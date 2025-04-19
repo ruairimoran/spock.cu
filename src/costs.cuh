@@ -86,12 +86,12 @@ public:
         /* Read data from files */
         this->m_prefix = tree.strOfPart(part) + this->m_prefix;
         DTensor<T> sqrtQ = DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "sqrtQ" + tree.fpFileExt());
-        m_d_translation = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "translation" + tree.fpFileExt()));
+        DTensor<T> trans = DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "translation" + tree.fpFileExt());
         if (part == nonleaf) {
             this->m_dimPerNode = tree.numStatesAndInputs() + 2;
             this->m_numNodes = tree.numNodes();
             m_d_sqrtQ = std::make_unique<DTensor<T>>(sqrtQ);
+            m_d_translation = std::make_unique<DTensor<T>>(trans);
             m_d_sqrtR = std::make_unique<DTensor<T>>(
                 DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "sqrtR" + tree.fpFileExt()));
             m_d_uWorkspace = std::make_unique<DTensor<T>>(tree.numInputs(), 1, this->m_numNodes, true);
@@ -99,9 +99,12 @@ public:
             this->m_dimPerNode = tree.numStates() + 2;
             this->m_numNodes = tree.numLeafNodes();
             m_d_sqrtQ = std::make_unique<DTensor<T>>(sqrtQ.numRows(), sqrtQ.numCols(), this->m_numNodes);
+            m_d_translation = std::make_unique<DTensor<T>>(trans.numRows(), trans.numCols(), this->m_numNodes);
             for (size_t i = 0; i < this->m_numNodes; i++) {
                 DTensor<T> sqrtQ_slice(*m_d_sqrtQ, this->m_matAxis, i, i);
                 sqrtQ.deviceCopyTo(sqrtQ_slice);
+                DTensor<T> trans_slice(*m_d_translation, this->m_matAxis, i, i);
+                trans.deviceCopyTo(trans_slice);
             }
         }
         m_d_xWorkspace = std::make_unique<DTensor<T>>(tree.numStates(), 1, this->m_numNodes, true);

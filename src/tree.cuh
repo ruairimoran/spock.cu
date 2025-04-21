@@ -280,8 +280,8 @@ public:
 
 static void setKernelDimensions(dim3 &blocks, dim3 &threads, size_t nX, size_t nY) {
     size_t threadsPerBlockPerAxis = 32;  // Do not change! Max number of threads per block is 32x32=1024
-    threads = dim3(threadsPerBlockPerAxis, threadsPerBlockPerAxis);
-    blocks = dim3(numBlocks(nX, threadsPerBlockPerAxis), numBlocks(nY, threadsPerBlockPerAxis));
+    threads = dim3(std::min(nX, threadsPerBlockPerAxis), std::min(nY, threadsPerBlockPerAxis));
+    blocks = dim3(numBlocks(nX, threads.x), numBlocks(nY, threads.y));
 }
 
 template<typename T>

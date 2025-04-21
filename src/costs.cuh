@@ -87,6 +87,7 @@ public:
         this->m_prefix = tree.strOfPart(part) + this->m_prefix;
         DTensor<T> sqrtQ = DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "sqrtQ" + tree.fpFileExt());
         DTensor<T> trans = DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "translation" + tree.fpFileExt());
+        m_d_scalarWorkspace = std::make_unique<DTensor<T>>(1, 1, tree.numNodes(), true);
         if (part == nonleaf) {
             this->m_dimPerNode = tree.numStatesAndInputs() + 2;
             this->m_numNodes = tree.numNodes();
@@ -108,7 +109,6 @@ public:
             }
         }
         m_d_xWorkspace = std::make_unique<DTensor<T>>(tree.numStates(), 1, this->m_numNodes, true);
-        m_d_scalarWorkspace = std::make_unique<DTensor<T>>(1, 1, this->m_numNodes, true);
         this->m_dim = this->m_dimPerNode * this->m_numNodes;
     }
 
@@ -221,20 +221,24 @@ public:
     explicit CostLinear(ScenarioTree<T> &tree, TreePart part = nonleaf): Cost<T>(tree) {
         /* Read data from files */
         this->m_prefix = tree.strOfPart(part) + this->m_prefix;
-        m_d_gradient = std::make_unique<DTensor<T>>(
-            DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "gradient" + tree.fpFileExt()));
-        std::cout << "Does this need changed for leaf costs? (i.e., repeated for each node)\n";
-        m_d_gradientTr = std::make_unique<DTensor<T>>(m_d_gradient->tr());
+        DTensor<T> grad = DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "gradient" + tree.fpFileExt());
         this->m_dimPerNode = 1;
         if (part == nonleaf) {
             this->m_numNodes = tree.numNodes();
+            m_d_gradient = std::make_unique<DTensor<T>>(grad);
             m_d_xuWorkspace = std::make_unique<DTensor<T>>(tree.numStatesAndInputs(), 1, this->m_numNodes, true);
             m_d_xWorkspace = std::make_unique<DTensor<T>>(tree.numStates(), 1, this->m_numNodes, true);
             m_d_uWorkspace = std::make_unique<DTensor<T>>(tree.numInputs(), 1, this->m_numNodes, true);
         } else {
             this->m_numNodes = tree.numLeafNodes();
+            m_d_gradient = std::make_unique<DTensor<T>>(grad.numRows(), grad.numCols(), this->m_numNodes);
+            for (size_t i = 0; i < this->m_numNodes; i++) {
+                DTensor<T> grad_slice(*m_d_gradient, this->m_matAxis, i, i);
+                grad.deviceCopyTo(grad_slice);
+            }
         }
-        this->m_dim = this->m_numNodes;
+        m_d_gradientTr = std::make_unique<DTensor<T>>(m_d_gradient->tr());
+        this->m_dim = this->m_dimPerNode * this->m_numNodes;
         m_d_lowerBound = std::make_unique<DTensor<T>>(std::vector<T>(this->m_dim, -INFINITY), this->m_dim);
     }
 

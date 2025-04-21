@@ -267,7 +267,7 @@ public:
     void adj(DTensor<T> &iv, DTensor<T> &x, DTensor<T> &u, DTensor<T> &t) {
         m_d_xuWorkspace->addAB(*m_d_gradientTr, *m_d_sum);
         memCpyNode2Node(*m_d_xWorkspace, *m_d_xuWorkspace, 1, this->m_tree.numNodesMinus1(), this->m_tree.numStates());
-        memCpyNode2Node(*m_d_uWorkspace, *m_d_xuWorkspace, 1, this->m_tree.numNodesMinus1(), this->m_tree.numInputs(), this->m_tree.numStates());
+        memCpyNode2Node(*m_d_uWorkspace, *m_d_xuWorkspace, 1, this->m_tree.numNodesMinus1(), this->m_tree.numInputs(), 0, this->m_tree.numStates());
         /* -> Add children of each nonleaf node */
         for (size_t chIdx = 0; chIdx < this->m_tree.numEvents(); chIdx++) {
             /* -> Add to `x` all children `Qiv1` */

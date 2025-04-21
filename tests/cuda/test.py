@@ -45,17 +45,17 @@ B = 0.5 * np.ones((num_states, num_inputs))
 dynamics = [s.build.Dynamics(1.5 * A, 1.5 * B), s.build.Dynamics(A, B)]
 
 # State cost
-q = np.eye(num_states)
+q = np.ones(num_states)
 
 # Input cost
-r = np.eye(num_inputs)
+r = np.ones(num_inputs)
 
-nonleaf_costs = [s.build.CostQuadratic(1 * q, r), s.build.CostQuadratic(2 * q, r)]
+nonleaf_costs = [s.build.CostLinear(1 * q, r), s.build.CostLinear(2 * q, r)]
 
 # Terminal state cost
-T = 3 * np.eye(num_states)
+T = 3 * np.ones(num_states)
 
-leaf_cost = s.build.CostQuadratic(T, leaf=True)
+leaf_cost = s.build.CostLinear(T, leaf=True)
 
 # State-input constraint
 state_lim = 1.

@@ -50,12 +50,12 @@ q = np.eye(num_states)
 # Input cost
 r = np.eye(num_inputs)
 
-nonleaf_costs = [s.build.Quadratic(1 * q, r), s.build.Quadratic(2 * q, r)]
+nonleaf_costs = [s.build.CostQuadratic(1 * q, r), s.build.CostQuadratic(2 * q, r)]
 
 # Terminal state cost
 T = 3 * np.eye(num_states)
 
-leaf_cost = s.build.Quadratic(T, leaf=True)
+leaf_cost = s.build.CostQuadratic(T, leaf=True)
 
 # State-input constraint
 state_lim = 1.

@@ -222,7 +222,7 @@ public:
         /* Read data from files */
         this->m_prefix = tree.strOfPart(part) + this->m_prefix;
         DTensor<T> grad = DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "gradient" + tree.fpFileExt());
-        this->m_dimPerNode = 1;
+        this->m_dimPerNode = 2;
         if (part == nonleaf) {
             this->m_numNodes = tree.numNodes();
             m_d_gradient = std::make_unique<DTensor<T>>(grad);
@@ -251,11 +251,12 @@ public:
     void op(DTensor<T> &iv, DTensor<T> &x, DTensor<T> &u, DTensor<T> &t) {
         this->m_tree.memCpyAnc2Node(*m_d_xuWorkspace, x, 1, this->m_tree.numNodesMinus1(), this->m_tree.numStates());
         this->m_tree.memCpyAnc2Node(*m_d_xuWorkspace, u, 1, this->m_tree.numNodesMinus1(), this->m_tree.numInputs(), this->m_tree.numStates());
-        iv = *m_d_gradient * *m_d_xuWorkspace;
+        DTensor<T> iv_xu(iv, this->m_rowAxis, )
+        iv.addAB(*m_d_gradient, *m_d_xuWorkspace);
     }
 
     void op(DTensor<T> &vi, DTensor<T> &xLeaf, DTensor<T> &s) {
-        vi = *m_d_gradient * xLeaf;
+        vi.addAB(*m_d_gradient, xLeaf);
     }
 
     void adj(DTensor<T> &iv, DTensor<T> &x, DTensor<T> &u, DTensor<T> &t) {

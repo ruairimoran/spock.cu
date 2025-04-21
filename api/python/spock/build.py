@@ -175,7 +175,7 @@ class Cost:
 # --------------------------------------------------------
 class Quadratic(Cost):
     """
-    Quadratic costs
+    Quadratic costs (internal use)
     """
 
     def __init__(self, list_of_costs):
@@ -288,7 +288,7 @@ class Quadratic(Cost):
             for i in range(self.__start, self.nodes):
                 scale = np.sqrt(self.__Q_unconditioned[i][ele, ele])
                 if scale > scale_x[ele]:
-                    scale_x[ele] = scale
+                    scale_x[ele] = scale[0]
         return scale_x
 
     def get_scaling_inputs(self, scale_u, num_inputs):
@@ -296,7 +296,7 @@ class Quadratic(Cost):
             for i in range(self.__start, self.nodes):
                 scale = np.sqrt(self.__R_unconditioned[i][ele, ele])
                 if scale > scale_u[ele]:
-                    scale_u[ele] = scale
+                    scale_u[ele] = scale[0]
         return scale_u
 
     def condition(self, scaling_state_inv, scaling_input_inv=None):
@@ -332,116 +332,140 @@ class CostQuadratic:
         return Quadratic
 
 
-# # --------------------------------------------------------
-# # Linear cost
-# # --------------------------------------------------------
-# class Linear(Cost):
-#     """
-#     Linear costs
-#     """
-#
-#     def __init__(self, q, r=None, leaf=False):
-#         """
-#         :param q: linear state cost vector
-#         :param r: linear input cost vector
-#         :param leaf: for leaf nodes
-#         """
-#         super().__init__(leaf)
-#         self.__q = np.array(q).reshape(-1, 1)
-#         self.__q_unconditioned = deepcopy(self.__q)
-#         self.__r = np.array(r).reshape(-1, 1)
-#         self.__r_unconditioned = deepcopy(self.__r)
-#         self.__grad = None
-#         self.__node_zero = False
-#         self.dim_per_node = 1
-#         self.__set_grad()
-#
-#     @property
-#     def is_linear(self):
-#         return True
-#
-#     def __set_grad(self):
-#         if self.is_leaf:
-#             self.__grad = self.__q.T
-#         else:
-#             self.__grad = np.hstack((self.__q.T, self.__r.T))
-#
-#     @property
-#     def grad_vec(self):
-#         return self.__grad
-#
-#     @property
-#     def q_uncond(self):
-#         return self.__q_unconditioned
-#
-#     @property
-#     def r_uncond(self):
-#         return self.__r_unconditioned
-#
-#     def assign_dual(self, dual, idx):
-#         d = np.array(dual[idx:idx + self.dim_per_node]).reshape(self.dim_per_node, 1)
-#         idx += self.dim_per_node
-#         return d, idx
-#
-#     def op_nonleaf(self, x_anc, u_anc, t):
-#         if self.__node_zero:
-#             return np.zeros((self.dim_per_node, 1))
-#         else:
-#             return np.array(self.__q.T @ x_anc + self.__r.T @ u_anc)
-#
-#     def op_leaf(self, x, s):
-#         if self.__node_zero:
-#             return np.zeros((self.dim_per_node, 1))
-#         else:
-#             return np.array(self.__q.T @ x)
-#
-#     def adj_nonleaf(self, dual, num_states, num_inputs):
-#         x_ = (self.__q @ dual).reshape(-1, 1)
-#         u_ = (self.__r @ dual).reshape(-1, 1)
-#         return x_, u_
-#
-#     def adj_leaf(self, dual, num_states):
-#         x_ = (self.__q @ dual).reshape(-1, 1)
-#         return x_
-#
-#     def get_scaling_states(self, scale_x, num_states):
-#         for ele in range(num_states):
-#             for i in range(self.__start, self.nodes):
-#                 scale = cost.q_uncond[ele]
-#                 if scale > scale_x[ele]:
-#                     scale_x[ele] = scale
-#         return scale_x
-#
-#     def get_scaling_inputs(self, scale_u, num_inputs):
-#         for ele in range(num_inputs):
-#             for i in range(self.__start, self.nodes):
-#                 scale = cost.r_uncond[ele]
-#                 if scale > scale_u[ele]:
-#                     scale_u[ele] = scale
-#         return scale_u
-#
-#     def condition(self, scaling_state_inv, scaling_input_inv=None):
-#         if not self.__node_zero:
-#             self.__q = np.diagonal(scaling_state_inv).reshape(-1, 1) * self.q_uncond
-#             self.__r = np.diagonal(scaling_input_inv).reshape(-1, 1) * self.r_uncond if not self.is_leaf else None
-#             self.__set_grad()
-#         return self
-#
-#
-# class CostLinear:
-#     """
-#     Linear costs builder
-#     """
-#
-#     def __init__(self, q, r=None, leaf=False):
-#         """
-#         :param q: linear state cost vector
-#         :param r: linear input cost vector
-#         :param leaf: for leaf nodes
-#         """
-#         self.q = q
-#         self.r = r
-#         self.leaf = leaf
+# --------------------------------------------------------
+# Linear cost
+# --------------------------------------------------------
+class Linear(Cost):
+    """
+    Linear costs (internal use)
+    """
+
+    def __init__(self, list_of_costs):
+        super().__init__(list_of_costs[-1].leaf)
+        self.nodes = len(list_of_costs)
+        self.__q = [np.array(cost.q).reshape(-1, 1) for cost in list_of_costs]
+        self.__q_unconditioned = deepcopy(self.__q)
+        self.dim_per_node = self.__q[0].shape[0]
+        self.__start = 0
+        if not self.is_leaf:
+            self.__r = [np.array(cost.r).reshape(-1, 1) for cost in list_of_costs]
+            self.__r_unconditioned = deepcopy(self.__r)
+            self.dim_per_node = self.dim_per_node + self.__r[0].shape[0]
+            self.__start = 1
+        self.__grad = [np.zeros((1, self.dim_per_node)) for _ in list_of_costs]
+        self.dim = self.nodes * self.dim_per_node
+        self.__blocks = 2
+        self.__set_grad()
+
+    @property
+    def is_linear(self):
+        return True
+
+    def __set_grad(self):
+        for i in range(self.__start, self.nodes):
+            if self.is_leaf:
+                self.__grad[i] = self.__q[i].T
+            else:
+                self.__grad[i] = np.hstack((self.__q[i].T, self.__r[i].T))
+
+    @property
+    def cost_gradient(self):
+        return self.__grad
+
+    @property
+    def q_uncond(self):
+        return self.__q_unconditioned
+
+    @property
+    def r_uncond(self):
+        return self.__r_unconditioned
+
+    def assign_dual(self, dual, idx):
+        d = [None, None]
+        for i in range(self.__blocks):
+            d[i] = np.array(dual[idx:idx + self.nodes]).reshape(self.nodes, 1)
+            idx += self.nodes
+        return d, idx
+
+    def op_nonleaf(self, x, u, t, ancestors):
+        d = [np.zeros((self.nodes, 1)) for _ in range(self.__blocks)]
+        for i in range(self.__start, self.nodes):
+            anc = ancestors[i]
+            d[0][i] = np.array(self.__q[i].T @ x[anc] + self.__r[i].T @ u[anc])
+        d[1] = np.array(t).reshape(-1, 1)
+        return d
+
+    def op_leaf(self, x, s):
+        d = [np.zeros((self.nodes, 1)) for _ in range(self.__blocks)]
+        for i in range(self.__start, self.nodes):
+            d[0][i] = np.array(self.__q[i].T @ x[i])
+        d[1] = np.array(s).reshape(-1, 1)
+        return d
+
+    def adj_nonleaf(self, dual, num_states, num_inputs, ancestors):
+        x_ = [np.zeros((num_states, 1)) for _ in range(self.nodes)]
+        u_ = [np.zeros((num_inputs, 1)) for _ in range(self.nodes)]
+        for i in range(self.__start, self.nodes):
+            anc = ancestors[i]
+            x_[anc] += (self.__q[i] @ dual[0][i]).reshape(-1, 1)
+            u_[anc] += (self.__r[i] @ dual[0][i]).reshape(-1, 1)
+        t_ = np.array(dual[1]).reshape(-1, 1)
+        return x_, u_, t_
+
+    def adj_leaf(self, dual, num_states):
+        x_ = [np.zeros((num_states, 1)) for _ in range(self.nodes)]
+        for i in range(self.__start, self.nodes):
+            x_[i] = (self.__q[i] @ dual[0][i]).reshape(-1, 1)
+        s_ = np.array(dual[1]).reshape(-1, 1)
+        return x_, s_
+
+    def get_scaling_states(self, scale_x, num_states):
+        for ele in range(num_states):
+            for i in range(self.__start, self.nodes):
+                scale = self.__q_unconditioned[i][ele]
+                if scale > scale_x[ele]:
+                    scale_x[ele] = scale[0]
+        return scale_x
+
+    def get_scaling_inputs(self, scale_u, num_inputs):
+        for ele in range(num_inputs):
+            for i in range(self.__start, self.nodes):
+                scale = self.__r_unconditioned[i][ele]
+                if scale > scale_u[ele]:
+                    scale_u[ele] = scale[0]
+        return scale_u
+
+    def condition(self, scaling_state_inv, scaling_input_inv=None):
+        for i in range(self.__start, self.nodes):
+            self.__q[i] = np.diagonal(scaling_state_inv).reshape(-1, 1) * self.__q_unconditioned[i]
+            if not self.is_leaf:
+                self.__r[i] = np.diagonal(scaling_input_inv).reshape(-1, 1) * self.__r_unconditioned[i]
+        self.__set_grad()
+        return self
+
+
+class CostLinear:
+    """
+    Linear costs builder
+    """
+
+    def __init__(self, q, r=None, leaf=False):
+        """
+        :param q: linear state cost vector
+        :param r: linear input cost vector
+        :param leaf: for leaf nodes
+        """
+        self.q = q
+        self.r = r
+        self.leaf = leaf
+
+    def node_zero(self):
+        self.q[:] = 0.
+        self.r[:] = 0.
+
+    @staticmethod
+    def get_class():
+        return Linear
 
 
 # # --------------------------------------------------------

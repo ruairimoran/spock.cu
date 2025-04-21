@@ -39,10 +39,10 @@ class TestProblem(unittest.TestCase):
             nonleaf_state_weights = [nonleaf_state_weight, 2 * nonleaf_state_weight, 3 * nonleaf_state_weight]
             control_weight = np.ones(TestProblem.__num_inputs)  # u x u matrix OR scalar
             control_weights = [control_weight, 2 * control_weight, 3 * control_weight]
-            nonleaf_costs = [s.build.Linear(nonleaf_state_weights[0], control_weights[0]),
-                             s.build.Linear(nonleaf_state_weights[1], control_weights[1]),
-                             s.build.Linear(nonleaf_state_weights[2], control_weights[2])]
-            leaf_cost = s.build.Quadratic(5 * np.eye(TestProblem.__num_states), leaf=True)
+            nonleaf_costs = [s.build.CostLinear(nonleaf_state_weights[0], control_weights[0]),
+                             s.build.CostLinear(nonleaf_state_weights[1], control_weights[1]),
+                             s.build.CostLinear(nonleaf_state_weights[2], control_weights[2])]
+            leaf_cost = s.build.CostQuadratic(5 * np.eye(TestProblem.__num_states), leaf=True)
 
             # state-input constraint
             state_lim = 6
@@ -101,16 +101,8 @@ class TestProblem(unittest.TestCase):
             self.assertTrue(problem.dynamics_at_node(i) is not None)
 
     def test_stochastic_nonleaf_costs_list(self):
-        tree = TestProblem.__tree
         problem = TestProblem.__problem
-        for i in range(tree.num_nodes):
-            self.assertTrue(problem.nonleaf_cost_at_node(i) is not None)
-
-    def test_stochastic_all_nonleaf_costs_list(self):
-        tree = TestProblem.__tree
-        problem = TestProblem.__problem
-        for i in range(tree.num_nodes):
-            self.assertTrue(problem.nonleaf_cost_at_node(i) is not None)
+        self.assertTrue(problem.nonleaf_cost is not None)
 
     def test_stochastic_leaf_costs_list(self):
         problem = TestProblem.__problem

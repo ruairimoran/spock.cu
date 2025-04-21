@@ -508,14 +508,14 @@ class Problem:
         cost = self.__nonleaf_cost
         cost_txt_nl = "nonleafCost"
         if cost.is_linear:
-            stack_gradient_cost = np.dstack([self.__nonleaf_cost.grad_vec])
+            stack_gradient_cost = np.dstack(cost.cost_gradient)
             tensors.update({
                 cost_txt_nl + "_gradient": stack_gradient_cost,
             })
         else:
-            stack_sqrt_state_cost = np.dstack([self.__nonleaf_cost.Q_sqrt])
-            stack_sqrt_input_cost = np.dstack([self.__nonleaf_cost.R_sqrt])
-            stack_nonleaf_translation = np.dstack([self.__nonleaf_cost.translation])
+            stack_sqrt_state_cost = np.dstack(cost.Q_sqrt)
+            stack_sqrt_input_cost = np.dstack(cost.R_sqrt)
+            stack_nonleaf_translation = np.dstack(cost.translation)
             tensors.update({
                 cost_txt_nl + "_sqrtQ": stack_sqrt_state_cost,
                 cost_txt_nl + "_sqrtR": stack_sqrt_input_cost,
@@ -524,13 +524,13 @@ class Problem:
         cost = self.__leaf_cost
         cost_txt_l = "leafCost"
         if cost.is_linear:
-            stack_gradient_terminal_cost = np.dstack([self.__leaf_cost.grad_vec])
+            stack_gradient_terminal_cost = np.dstack([cost.cost_gradient[-1]])
             tensors.update({
                 cost_txt_l + "_gradient": stack_gradient_terminal_cost,
             })
         else:
-            stack_sqrt_terminal_cost = np.dstack([self.__leaf_cost.Q_sqrt])
-            stack_leaf_translation = np.dstack([self.__leaf_cost.translation])
+            stack_sqrt_terminal_cost = np.dstack([cost.Q_sqrt[-1]])
+            stack_leaf_translation = np.dstack([cost.translation[-1]])
             tensors.update({
                 cost_txt_l + "_sqrtQ": stack_sqrt_terminal_cost,
                 cost_txt_l + "_translation": stack_leaf_translation,
@@ -588,7 +588,7 @@ class Problem:
             })
             try:
                 if self.__nonleaf_cost[-1].Q_uncond is not None:
-                    stack_cost_nonleaf_Q = np.dstack([cost.Q_uncond for cost in self.__nonleaf_cost])
+                    stack_cost_nonleaf_Q = np.dstack(self.__nonleaf_cost.Q_uncond)
                     tensors.update({
                         prefix + "cost_nonleaf_Q": stack_cost_nonleaf_Q,
                     })
@@ -596,7 +596,7 @@ class Problem:
                 pass
             try:
                 if self.__nonleaf_cost[-1].R_uncond is not None:
-                    stack_cost_nonleaf_R = np.dstack([cost.R_uncond for cost in self.__nonleaf_cost])
+                    stack_cost_nonleaf_R = np.dstack(self.__nonleaf_cost.R_uncond)
                     tensors.update({
                         prefix + "cost_nonleaf_R": stack_cost_nonleaf_R,
                     })
@@ -604,7 +604,7 @@ class Problem:
                 pass
             try:
                 if self.__nonleaf_cost[-1].q_uncond is not None:
-                    stack_cost_nonleaf_q = np.dstack([cost.q_uncond for cost in self.__nonleaf_cost])
+                    stack_cost_nonleaf_q = np.dstack(self.__nonleaf_cost.q_uncond)
                     tensors.update({
                         prefix + "cost_nonleaf_q": stack_cost_nonleaf_q,
                     })
@@ -612,7 +612,7 @@ class Problem:
                 pass
             try:
                 if self.__nonleaf_cost[-1].r_uncond is not None:
-                    stack_cost_nonleaf_r = np.dstack([cost.r_uncond for cost in self.__nonleaf_cost])
+                    stack_cost_nonleaf_r = np.dstack(self.__nonleaf_cost.r_uncond)
                     tensors.update({
                         prefix + "cost_nonleaf_r": stack_cost_nonleaf_r,
                     })
@@ -620,7 +620,7 @@ class Problem:
                 pass
             try:
                 if self.__leaf_cost.Q_uncond is not None:
-                    stack_cost_leaf_Q = np.dstack([self.__leaf_cost.Q_uncond])
+                    stack_cost_leaf_Q = np.dstack([self.__leaf_cost.Q_uncond[-1]])
                     tensors.update({
                         prefix + "cost_leaf_Q": stack_cost_leaf_Q,
                     })
@@ -628,7 +628,7 @@ class Problem:
                 pass
             try:
                 if self.__leaf_cost.q_uncond is not None:
-                    stack_cost_leaf_q = np.dstack([self.__leaf_cost.q_uncond])
+                    stack_cost_leaf_q = np.dstack([self.__leaf_cost.q_uncond[-1]])
                     tensors.update({
                         prefix + "cost_leaf_q": stack_cost_leaf_q,
                     })
@@ -686,7 +686,7 @@ class Factory:
         self.__num_states = num_states
         self.__num_inputs = num_inputs
         self.__list_of_dynamics = [None for _ in range(self.__tree.num_nodes)]
-        self.__nonleaf_cost = [None for _ in range(self.__tree.num_nodes)]
+        self.__nonleaf_cost = None
         self.__leaf_cost = None
         self.__nonleaf_constraint = None
         self.__leaf_constraint = None
@@ -749,7 +749,7 @@ class Factory:
     # Costs
     # --------------------------------------------------------
     def with_cost_nonleaf(self, cost):
-        list_ = [None for _ in self.__tree.num_nodes]
+        list_ = [None for _ in range(self.__tree.num_nodes)]
         list_[0] = deepcopy(cost)
         list_[0].node_zero()
         for i in range(1, self.__tree.num_nodes):
@@ -773,7 +773,7 @@ class Factory:
             raise Exception(f"[ProblemFactory] First nonleaf cost in list must be ({None})!")
         cost[0] = deepcopy(cost[1])
         cost[0].node_zero()
-        self.__nonleaf_cost = cost.get_class()(cost)
+        self.__nonleaf_cost = cost[0].get_class()(cost)
         return self
 
     def with_cost_leaf(self, cost):

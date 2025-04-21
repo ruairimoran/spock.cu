@@ -90,7 +90,7 @@ problem = (
     .with_constraint_nonleaf(nonleaf_constraint)
     .with_constraint_leaf(leaf_constraint)
     .with_risk(risk)
-    .with_preconditioning()
+    .with_preconditioning(False)
     .with_tests()
     .generate_problem()
 )

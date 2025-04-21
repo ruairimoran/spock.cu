@@ -241,8 +241,8 @@ for node in range(1, tree.num_nodes):
         np.ones(n_p) * fuel_cost,
         np.array([T * price_node])), axis=0
     ).reshape(-1, 1)
-    nonleaf_costs += [s.build.Linear(q, r)]
-leaf_cost = s.build.Linear(q, leaf=True)
+    nonleaf_costs += [s.build.CostLinear(q, r)]
+leaf_cost = s.build.CostLinear(q, leaf=True)
 
 # Constraints
 big = 5e3  # MWh

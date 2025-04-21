@@ -48,7 +48,7 @@ void testOperator(OperatorTestData<T> &d, T epsilon) {
              *c.m_d_i, *c.m_d_ii, *c.m_d_iii, *c.m_d_iv, *c.m_d_v, *c.m_d_vi);
     std::vector<T> test(c.m_sizeDual);
     c.m_d_workIterateDual->download(test);
-    for (size_t i = 0; i < c.m_sizeDual; i++) { std::cout << i << "\n"; EXPECT_NEAR(test[i], d.m_dualAfterOpBeforeAdj[i], epsilon); }
+    for (size_t i = 0; i < c.m_sizeDual; i++) { EXPECT_NEAR(test[i], d.m_dualAfterOpBeforeAdj[i], epsilon); }
 }
 
 TEST_F(OperatorTest, op) {

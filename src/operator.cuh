@@ -55,7 +55,8 @@ void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<
     DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodesMinus1());
     m_data.leafConstraint()->op(v, xLeaf);
     /* VI */
-    m_data.leafCost()->op(vi, xLeaf, s);
+    DTensor<T> sLeaf(s, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodesMinus1());
+    m_data.leafCost()->op(vi, xLeaf, sLeaf);
 }
 
 template<typename T>
@@ -76,7 +77,8 @@ void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor
     DTensor<T> xLeaf(x, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodesMinus1());
     m_data.leafConstraint()->adj(v, xLeaf);
     /* x (leaf) and s (leaf) */
-    m_data.leafCost()->adj(vi, xLeaf, s);
+    DTensor<T> sLeaf(s, m_matAxis, m_tree.numNonleafNodes(), m_tree.numNodesMinus1());
+    m_data.leafCost()->adj(vi, xLeaf, sLeaf);
 }
 
 

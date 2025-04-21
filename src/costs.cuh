@@ -143,18 +143,18 @@ public:
         memCpyNode2Node(iv, t, 1, this->m_tree.numNodesMinus1(), 1, this->m_tree.numStatesAndInputs() + 1);
     }
 
-    void op(DTensor<T> &vi, DTensor<T> &xLeaf, DTensor<T> &s) {
+    void op(DTensor<T> &vi, DTensor<T> &xLeaf, DTensor<T> &sLeaf) {
         /* VI:1 */
         m_d_xWorkspace->addAB(*m_d_sqrtQ, xLeaf);
         /* VI:2,3 */
-        s *= 0.5;  // This affects the current 's'!!! But it shouldn't matter...
+        sLeaf *= 0.5;  // This affects the current 's'!!! But it shouldn't matter...
         /* VI (organise VI:1-3) */
         /* :1 */
         memCpyNode2Node(vi, *m_d_xWorkspace, 0, this->m_tree.numLeafNodesMinus1(), this->m_tree.numStates());
         /* :2 */
-        this->m_tree.memCpyLeaf2Zero(vi, s, 1, this->m_tree.numStates(), 0);
+        memCpyNode2Node(vi, sLeaf, 0, this->m_tree.numLeafNodesMinus1(), 1, this->m_tree.numStates(), 0);
         /* :3 */
-        this->m_tree.memCpyLeaf2Zero(vi, s, 1, this->m_tree.numStates() + 1, 0);
+        memCpyNode2Node(vi, sLeaf, 0, this->m_tree.numLeafNodesMinus1(), 1, this->m_tree.numStates() + 1, 0);
     }
 
     void adj(DTensor<T> &iv, DTensor<T> &x, DTensor<T> &u, DTensor<T> &t) {
@@ -178,12 +178,11 @@ public:
         t *= 0.5;
     }
 
-    void adj(DTensor<T> &vi, DTensor<T> &xLeaf, DTensor<T> &s) {
+    void adj(DTensor<T> &vi, DTensor<T> &xLeaf, DTensor<T> &sLeaf) {
         memCpyNode2Node(*m_d_xWorkspace, vi, 0, this->m_tree.numLeafNodesMinus1(), this->m_tree.numStates());
         xLeaf.addAB(*m_d_sqrtQ, *m_d_xWorkspace, 1., 1.);
-        this->m_tree.memCpyZero2Leaf(s, vi, 1, 0, this->m_tree.numStates());
+        memCpyNode2Node(sLeaf, vi, 0, this->m_tree.numLeafNodesMinus1(), 1, 0, this->m_tree.numStates());
         this->m_tree.memCpyZero2Leaf(*m_d_scalarWorkspace, vi, 1, 0, this->m_tree.numStates() + 1);
-        DTensor<T> sLeaf(s, this->m_matAxis, this->m_tree.numNonleafNodes(), this->m_tree.numNodesMinus1());
         DTensor<T> wsLeaf(*m_d_scalarWorkspace, this->m_matAxis, this->m_tree.numNonleafNodes(), this->m_tree.numNodesMinus1());
         sLeaf += wsLeaf;
         sLeaf *= 0.5;
@@ -208,8 +207,8 @@ private:
     std::unique_ptr<DTensor<T>> m_d_gradient = nullptr;
     std::unique_ptr<DTensor<T>> m_d_gradientTr = nullptr;
     std::unique_ptr<DTensor<T>> m_d_lowerBound = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_sumWorkspace = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_setWorkspace = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_sum = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_set = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xuWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_uWorkspace = nullptr;
@@ -247,25 +246,26 @@ public:
     bool isLinear() { return true; }
 
     void reshape(DTensor<T> &work, size_t start, size_t end) {
-        this->m_d_reshapedData = std::make_unique<DTensor<T>>(work, this->m_rowAxis, start, end);
-        m_d_sumWorkspace = std::make_unique<DTensor<T>>(work, this->m_rowAxis, start, start + this->m_numNodes - 1);
-        m_d_setWorkspace = std::make_unique<DTensor<T>>(work, this->m_rowAxis, start + this->m_numNodes, end);
+        m_d_sum = std::make_unique<DTensor<T>>(work, this->m_rowAxis, start, start + this->m_numNodes - 1);
+        m_d_sum->reshape(1, 1, this->m_numNodes);
+        m_d_set = std::make_unique<DTensor<T>>(work, this->m_rowAxis, start + this->m_numNodes, end);
+        m_d_set->reshape(1, 1, this->m_numNodes);
     }
 
     void op(DTensor<T> &iv, DTensor<T> &x, DTensor<T> &u, DTensor<T> &t) {
         this->m_tree.memCpyAnc2Node(*m_d_xuWorkspace, x, 1, this->m_tree.numNodesMinus1(), this->m_tree.numStates());
         this->m_tree.memCpyAnc2Node(*m_d_xuWorkspace, u, 1, this->m_tree.numNodesMinus1(), this->m_tree.numInputs(), this->m_tree.numStates());
-        m_d_sumWorkspace->addAB(*m_d_gradient, *m_d_xuWorkspace);
-        t.deviceCopyTo(*m_d_setWorkspace);
+        m_d_sum->addAB(*m_d_gradient, *m_d_xuWorkspace);
+        t.deviceCopyTo(*m_d_set);
     }
 
     void op(DTensor<T> &vi, DTensor<T> &xLeaf, DTensor<T> &sLeaf) {
-        m_d_sumWorkspace->addAB(*m_d_gradient, xLeaf);
-        sLeaf.deviceCopyTo(*m_d_setWorkspace);
+        m_d_sum->addAB(*m_d_gradient, xLeaf);
+        sLeaf.deviceCopyTo(*m_d_set);
     }
 
     void adj(DTensor<T> &iv, DTensor<T> &x, DTensor<T> &u, DTensor<T> &t) {
-        m_d_xuWorkspace->addAB(*m_d_gradientTr, *m_d_sumWorkspace);
+        m_d_xuWorkspace->addAB(*m_d_gradientTr, *m_d_sum);
         memCpyNode2Node(*m_d_xWorkspace, *m_d_xuWorkspace, 1, this->m_tree.numNodesMinus1(), this->m_tree.numStates());
         memCpyNode2Node(*m_d_uWorkspace, *m_d_xuWorkspace, 1, this->m_tree.numNodesMinus1(), this->m_tree.numInputs(), this->m_tree.numStates());
         /* -> Add children of each nonleaf node */
@@ -275,21 +275,21 @@ public:
             /* -> Add to `u` all children `Riv2` */
             this->m_tree.memCpyCh2Node(u, *m_d_uWorkspace, 0, this->m_tree.numNonleafNodesMinus1(), chIdx, true);
         }
-        m_d_setWorkspace->deviceCopyTo(t);
+        m_d_set->deviceCopyTo(t);
     }
 
     void adj(DTensor<T> &vi, DTensor<T> &xLeaf, DTensor<T> &sLeaf) {
-        xLeaf.addAB(*m_d_gradientTr, *m_d_sumWorkspace, 1., 1.);
-        m_d_setWorkspace->deviceCopyTo(sLeaf);
+        xLeaf.addAB(*m_d_gradientTr, *m_d_sum, 1., 1.);
+        m_d_set->deviceCopyTo(sLeaf);
     }
 
     void translate(DTensor<T> &) {}
 
     void project(DTensor<T> &) {
         k_projectRectangle<<<numBlocks(this->m_dim, TPB), TPB>>>(this->m_dim,
-                                                                 this->m_d_sumWorkspace->raw(),
+                                                                 this->m_d_sum->raw(),
                                                                  m_d_lowerBound->raw(),
-                                                                 m_d_setWorkspace->raw());
+                                                                 m_d_set->raw());
     }
 };
 

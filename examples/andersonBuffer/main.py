@@ -81,11 +81,11 @@ for i in range(num_events):
     if i == 0:
         check_spd(Q, "Q")
         check_spd(R, "R")
-    nonleaf_costs += [s.build.NonleafCost(Q, R)]
+    nonleaf_costs += [s.build.CostQuadratic(Q, R)]
 
 T = Q_base
 check_spd(T, "T")
-leaf_cost = s.build.LeafCost(T)
+leaf_cost = s.build.CostQuadratic(T, leaf=True)
 
 # Constraints
 nonleaf_state_ub = rng.uniform(1., 2., num_states)

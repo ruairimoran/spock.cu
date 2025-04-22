@@ -105,22 +105,23 @@ class Model:
 
     def __impose_cost(self):
         """Impose cost constraints on the optimisation model."""
-        if self.__problem.nonleaf_cost_at_node(1).is_linear:
+        if self.__problem.nonleaf_cost().is_linear:
             raise Exception("[Model] only supports quadratic nonleaf costs.\n")
-        if self.__problem.leaf_cost_at_node(self.__tree.num_nonleaf_nodes).is_linear:
+        if self.__problem.leaf_cost().is_linear:
             raise Exception("[Model] only supports quadratic leaf costs.\n")
         # nonleaf
         for node in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(node)
             self.__constraints.append(
-                cp.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost_at_node(node).Q_uncond) +
-                cp.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost_at_node(node).R_uncond)
+                cp.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost().Q_uncond[node]) +
+                cp.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost().R_uncond[node])
                 <= self.__t[node - 1]
             )
         # leaf
         for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
+            leaf_idx = node - self.__tree.num_nonleaf_nodes
             self.__constraints.append(
-                cp.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost_at_node(node).Q_uncond)
+                cp.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost().Q_uncond[leaf_idx])
                 <= self.__s[node]
             )
 
@@ -326,23 +327,24 @@ class ModelWithPrecondition:
 
     def __impose_cost(self):
         """Impose cost constraints on the optimisation model."""
-        if self.__problem.nonleaf_cost_at_node(1).is_linear:
+        if self.__problem.nonleaf_cost().is_linear:
             raise Exception("[Model] only supports quadratic nonleaf costs.\n")
-        if self.__problem.leaf_cost_at_node(self.__tree.num_nonleaf_nodes).is_linear:
+        if self.__problem.leaf_cost().is_linear:
             raise Exception("[Model] only supports quadratic leaf costs.\n")
         # nonleaf
         for node in range(1, self.__tree.num_nodes):
             anc = self.__tree.ancestor_of_node(node)
             self.__constraints.append(
-                cp.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost_at_node(node).Q) +
-                cp.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost_at_node(node).R)
+                cp.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost().Q[node]) +
+                cp.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost().R[node])
                 <= self.__t[node - 1]
             )
 
         # leaf
         for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
+            leaf_idx = node - self.__tree.num_nonleaf_nodes
             self.__constraints.append(
-                cp.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost_at_node(node).Q)
+                cp.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost().Q[leaf_idx])
                 <= self.__s[node]
             )
 

@@ -302,9 +302,11 @@ class Quadratic(Cost):
     def condition(self, scaling_state_inv, scaling_input_inv=None):
         for i in range(self.__start, self.nodes):
             self.__Q[i] = scaling_state_inv.T @ self.Q_uncond[i] @ scaling_state_inv
+            self.__Q_sqrt[i] = sqrtm(self.__Q[i])
             if not self.is_leaf:
                 self.__R[i] = scaling_input_inv.T @ self.R_uncond[i] @ scaling_input_inv
-            self.__set_translation()
+                self.__R_sqrt[i] = sqrtm(self.__R[i])
+        self.__set_translation()
         return self
 
 

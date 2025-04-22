@@ -283,20 +283,20 @@ class Quadratic(Cost):
             s_[i] = 0.5 * (dual_i[num_states] + dual_i[num_states + 1])
         return x_, s_
 
-    def get_scaling_states(self, scale_x, num_states):
-        for ele in range(num_states):
+    def get_scaling_states(self, scale_x):
+        for ele in range(scale_x.size):
             for i in range(self.__start, self.nodes):
                 scale = np.sqrt(self.__Q_unconditioned[i][ele, ele])
                 if scale > scale_x[ele]:
-                    scale_x[ele] = scale[0]
+                    scale_x[ele] = np.asarray(scale).item()
         return scale_x
 
-    def get_scaling_inputs(self, scale_u, num_inputs):
-        for ele in range(num_inputs):
+    def get_scaling_inputs(self, scale_u):
+        for ele in range(scale_u.size):
             for i in range(self.__start, self.nodes):
                 scale = np.sqrt(self.__R_unconditioned[i][ele, ele])
                 if scale > scale_u[ele]:
-                    scale_u[ele] = scale[0]
+                    scale_u[ele] = np.asarray(scale).item()
         return scale_u
 
     def condition(self, scaling_state_inv, scaling_input_inv=None):
@@ -419,20 +419,20 @@ class Linear(Cost):
         s_ = np.array(dual[1]).reshape(-1, 1)
         return x_, s_
 
-    def get_scaling_states(self, scale_x, num_states):
-        for ele in range(num_states):
+    def get_scaling_states(self, scale_x):
+        for ele in range(scale_x.size):
             for i in range(self.__start, self.nodes):
                 scale = self.__q_unconditioned[i][ele]
                 if scale > scale_x[ele]:
-                    scale_x[ele] = scale[0]
+                    scale_x[ele] = np.asarray(scale).item()
         return scale_x
 
-    def get_scaling_inputs(self, scale_u, num_inputs):
-        for ele in range(num_inputs):
+    def get_scaling_inputs(self, scale_u):
+        for ele in range(scale_u.size):
             for i in range(self.__start, self.nodes):
                 scale = self.__r_unconditioned[i][ele]
                 if scale > scale_u[ele]:
-                    scale_u[ele] = scale[0]
+                    scale_u[ele] = np.asarray(scale).item()
         return scale_u
 
     def condition(self, scaling_state_inv, scaling_input_inv=None):

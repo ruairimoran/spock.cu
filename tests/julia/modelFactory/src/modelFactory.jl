@@ -130,6 +130,7 @@ function read_data()
     cost_nonleaf_q = nothing
     cost_nonleaf_r = nothing
     cost_leaf_Q = nothing
+    cost_leaf_q = nothing
     if cost_nonleaf == "quadratic" || cost_nonleaf == "quadraticPlusLinear"
         cost_nonleaf_Q = read_tensor_from_binary(TR, folder * "uncond_cost_nonleaf_Q" * file_ext_r)
         cost_nonleaf_R = read_tensor_from_binary(TR, folder * "uncond_cost_nonleaf_R" * file_ext_r)

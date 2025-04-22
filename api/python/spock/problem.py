@@ -164,9 +164,9 @@ class Problem:
         """
         scale_x = np.ones(self.__num_states)
         scale_u = np.ones(self.__num_inputs)
-        scale_x = self.__nonleaf_cost.get_scaling_states(scale_x, self.__num_states)
-        scale_u = self.__nonleaf_cost.get_scaling_inputs(scale_u, self.__num_inputs)
-        scale_x = self.__leaf_cost.get_scaling_states(scale_x, self.__num_states)
+        scale_x = self.__nonleaf_cost.get_scaling_states(scale_x)
+        scale_u = self.__nonleaf_cost.get_scaling_inputs(scale_u)
+        scale_x = self.__leaf_cost.get_scaling_states(scale_x)
         mul = np.sqrt(self.__tree.max_num_children)
         scale_x *= mul
         scale_u *= mul
@@ -587,7 +587,7 @@ class Problem:
                 prefix + "dynamics_c": stack_dyn_c,
             })
             try:
-                if self.__nonleaf_cost[-1].Q_uncond is not None:
+                if self.__nonleaf_cost.Q_uncond[-1] is not None:
                     stack_cost_nonleaf_Q = np.dstack(self.__nonleaf_cost.Q_uncond)
                     tensors.update({
                         prefix + "cost_nonleaf_Q": stack_cost_nonleaf_Q,
@@ -595,7 +595,7 @@ class Problem:
             except:
                 pass
             try:
-                if self.__nonleaf_cost[-1].R_uncond is not None:
+                if self.__nonleaf_cost.R_uncond[-1] is not None:
                     stack_cost_nonleaf_R = np.dstack(self.__nonleaf_cost.R_uncond)
                     tensors.update({
                         prefix + "cost_nonleaf_R": stack_cost_nonleaf_R,
@@ -603,7 +603,7 @@ class Problem:
             except:
                 pass
             try:
-                if self.__nonleaf_cost[-1].q_uncond is not None:
+                if self.__nonleaf_cost.q_uncond[-1] is not None:
                     stack_cost_nonleaf_q = np.dstack(self.__nonleaf_cost.q_uncond)
                     tensors.update({
                         prefix + "cost_nonleaf_q": stack_cost_nonleaf_q,
@@ -611,7 +611,7 @@ class Problem:
             except:
                 pass
             try:
-                if self.__nonleaf_cost[-1].r_uncond is not None:
+                if self.__nonleaf_cost.r_uncond[-1] is not None:
                     stack_cost_nonleaf_r = np.dstack(self.__nonleaf_cost.r_uncond)
                     tensors.update({
                         prefix + "cost_nonleaf_r": stack_cost_nonleaf_r,

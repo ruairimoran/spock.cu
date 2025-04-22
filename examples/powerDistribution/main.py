@@ -308,6 +308,7 @@ problem = (
     .with_constraint_leaf(leaf_constraint)
     .with_risk(risk)
     .with_julia()
+    .with_preconditioning(False)
     .generate_problem()
 )
 print(problem)

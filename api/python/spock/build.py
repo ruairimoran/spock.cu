@@ -375,8 +375,16 @@ class Linear(Cost):
         return self.__grad
 
     @property
+    def q(self):
+        return self.__q
+
+    @property
     def q_uncond(self):
         return self.__q_unconditioned
+
+    @property
+    def r(self):
+        return self.__r
 
     @property
     def r_uncond(self):

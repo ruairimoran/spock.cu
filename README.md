@@ -4,7 +4,7 @@ A `CUDA C++` implementation of the SPOCK algorithm (available [here](https://arx
 
 The solver handles RAOCPs with:
 - affine dynamics,
-- quadratic(-plus-linear) stage and terminal costs,
+- quadratic and/or linear stage and terminal costs,
 - coherent risk measures,
 - convex state-input constraints.
 

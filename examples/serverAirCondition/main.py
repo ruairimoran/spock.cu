@@ -45,17 +45,17 @@ for w in range(num_events):
     for j in range(num_states):
         diag = 1. + (1. + j / num_states) * w / num_events
         As[w][j][j] = diag
-    dynamics += [s.build.LinearDynamics(As[w], B)]
+    dynamics += [s.build.Dynamics(As[w], B)]
 
 # Costs
 nonleaf_costs = []
 for i in range(num_events):
     Q = np.eye(num_states) * .1
     R = np.eye(num_inputs) * 1.
-    nonleaf_costs += [s.build.NonleafCost(Q, R)]
+    nonleaf_costs += [s.build.CostQuadratic(Q, R)]
 
 T = np.eye(num_states) * .1
-leaf_cost = s.build.LeafCost(T)
+leaf_cost = s.build.CostQuadratic(T, leaf=True)
 
 # Constraints (the states saturate)
 nonleaf_state_ub = np.ones(num_states) * 1.

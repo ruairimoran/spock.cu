@@ -668,11 +668,11 @@ void Cache<T>::projectDualWorkspaceOnConstraints() {
     /* III */
     m_data.nonleafConstraint()->project(*m_d_iii);
     /* IV */
-    m_data.nonleafCost()->project(*m_d_t);
+    m_data.nonleafCost()->project();
     /* V */
     m_data.leafConstraint()->project(*m_d_v);
     /* VI */
-    m_data.leafCost()->project(*m_d_s);
+    m_data.leafCost()->project();
 }
 
 /**

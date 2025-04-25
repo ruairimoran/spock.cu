@@ -96,11 +96,11 @@ protected:
     ScenarioTree<T> &m_tree;  ///< Previously created scenario tree
     ProblemData<T> &m_data;  ///< Previously created problem
     LinearOperator<T> m_L = LinearOperator<T>(m_tree, m_data);  ///< Linear operator and its adjoint
-    T m_tolAbs = 0;
-    T m_tolRel = 0;
-    T m_tol = 0;
-    T m_errAbs = 0;
-    T m_maxTimeSecs = 0;
+    T m_tolAbs = 0.;
+    T m_tolRel = 0.;
+    T m_tol = 0.;
+    T m_errAbs = 0.;
+    T m_maxTimeSecs = 0.;
     size_t m_maxOuterIters = 0;
     size_t m_andBuff = 0;
     size_t m_countIterations = 0;
@@ -108,6 +108,7 @@ protected:
     size_t m_colAxis = 1;
     size_t m_matAxis = 2;
     size_t m_callsToL = 0;
+    size_t m_computeErrorIters = 25;
     bool m_debug = false;
     bool m_errInit = false;  ///< Whether to initialise tolerances
     bool m_status = false;  ///< General status use
@@ -361,6 +362,24 @@ public:
     /**
      * Debug functions (slow).
      */
+
+    size_t sizePrimal() { return m_sizePrim; }
+
+    size_t sizeDual() { return m_sizeDual; }
+
+    DTensor<T> getDual(DTensor<T> &primal) {
+        primal.deviceCopyTo(*m_d_workIteratePrim);
+        modifyDual();
+        proximalDual();
+        return *m_d_iterateCandidateDual;
+    }
+
+    DTensor<T> &solution() { return *m_d_iterate; }
+
+    DTensor<T> &solutionPrim() { return *m_d_iteratePrim; }
+
+    DTensor<T> &solutionDual() { return *m_d_iterateDual; }
+
     void reset();
 
     std::vector<T> inputs() {
@@ -590,7 +609,9 @@ void Cache<T>::initialiseState(std::vector<T> &initState) {
  */
 template<typename T>
 void Cache<T>::initialiseIter(std::vector<T> *previousSolution) {
-    if (previousSolution) m_d_iterate->upload(*previousSolution);
+    if (previousSolution) {
+        m_d_iterate->upload(*previousSolution);
+    }
 }
 
 /**
@@ -759,7 +780,7 @@ void Cache<T>::modifyDual() {
 template<typename T>
 void Cache<T>::proximalDual() {
     *m_d_workIterateDual *= m_data.stepSizeRecip();
-    if (m_data.nonleafCost()) translateSocs();
+    translateSocs();
     m_d_workIterateDual->deviceCopyTo(*m_d_iterateCandidateDual);
     projectDualWorkspaceOnConstraints();
     *m_d_iterateCandidateDual -= *m_d_workIterateDual;
@@ -889,7 +910,7 @@ void Cache<T>::computeError(size_t idx) {
     cudaDeviceSynchronize();  // DO NOT REMOVE !!!
     if (m_debug) isFinite(*m_d_iterateCandidate);
     computeResidual();
-    if (idx % 25 == 0) {
+    if (idx % m_computeErrorIters == 0) {
         /* L(residualPrim) and L'(residualDual) */
         m_d_residualDual->deviceCopyTo(*m_d_workIterateDual);
         Ltr();
@@ -921,22 +942,19 @@ void Cache<T>::computeError(size_t idx) {
                 m_timeElapsed = std::chrono::duration<T>(
                     std::chrono::high_resolution_clock::now() - m_timeStart).count();
             }
-            if (m_debug) {
-                m_cacheError1[idx] = m_d_workIteratePrim->maxAbs();
-                m_cacheError2[idx] = m_d_workIterateDual->maxAbs();
-                m_cacheCallsToL[idx] = m_callsToL;
-                /* errPrim + L'(errDual) */
-//                m_d_workIteratePrim->deviceCopyTo(*m_d_err);
-//                Ltr();
-//                *m_d_err += *m_d_workIteratePrim;
-//                m_cacheError0[idx] = m_d_err->maxAbs();
-
-                m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
-                Ltr();
-                *m_d_err *= -1.;
-                *m_d_err += *m_d_iterateCandidatePrim;
-                m_cacheError0[idx] = m_d_err->normF();
-            }
+        }
+        if (m_debug) {
+            m_cacheError1[idx] = m_d_workIteratePrim->maxAbs();
+            m_cacheError2[idx] = m_d_workIterateDual->maxAbs();
+            m_cacheCallsToL[idx] = m_callsToL;
+            /* new_iter - T(old_iter) */
+            m_cacheError3[idx] = (*m_d_iterate - *m_d_iterateCandidate).normF();
+            /* cand_prim - L'(cand_dual) */
+            m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
+            Ltr();
+            *m_d_err *= -1.;
+            *m_d_err += *m_d_iterateCandidatePrim;
+            m_cacheError0[idx] = m_d_err->normF();
         }
     }
 }
@@ -946,6 +964,7 @@ void Cache<T>::computeError(size_t idx) {
  */
 template<typename T>
 int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution) {
+    m_timeStart = std::chrono::high_resolution_clock::now();
     /* Load initial state */
     initialiseState(initState);
     /* Load previous solution if given */

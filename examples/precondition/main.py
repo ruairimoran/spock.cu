@@ -54,13 +54,13 @@ for i in range(1, num_events + 1):
 # Costs
 rng = np.random.default_rng()
 nonleaf_costs = []
-Q_base = np.eye(num_states) * 10.
-R_base = np.eye(num_inputs) * 1.
+Q_base = np.eye(num_states) * 1.
+R_base = np.eye(num_inputs) * 3.
 for i in range(1, num_events + 1):
-    Q_noise = rng.normal(0., .1, size=(num_states, num_states))
-    R_noise = rng.normal(0., .1, size=(num_inputs, num_inputs))
-    Q = Q_base + (Q_noise @ Q_noise.T)
-    R = R_base + (R_noise @ R_noise.T)
+    Q_noise = np.diag(rng.normal(0., .1, size=num_states))
+    R_noise = np.diag(rng.normal(0., .1, size=num_inputs))
+    Q = Q_base + Q_noise
+    R = R_base + R_noise
     check_spd(Q, "Q")
     check_spd(R, "R")
     nonleaf_costs += [s.build.CostQuadratic(Q, R)]
@@ -72,7 +72,7 @@ leaf_cost = s.build.CostQuadratic(T, leaf=True)
 # Constraints
 nonleaf_state_ub = np.ones(num_states) * 10.
 nonleaf_state_lb = -nonleaf_state_ub
-nonleaf_input_ub = np.ones(num_inputs) * 7.
+nonleaf_input_ub = np.ones(num_inputs) * 6.
 nonleaf_input_lb = -nonleaf_input_ub
 nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
 nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))
@@ -130,7 +130,7 @@ def run_unconditioned(sol):
     print("\n---- Normal problem ----")
     print(sol.__str__(), "normal status: ", model.status)
     print("States:\n", model.states, "\nInputs:\n", model.inputs, "\n")
-    return model.states, model.inputs
+    return model.states, model.inputs, model.primal
 
 
 def run_conditioned(sol):
@@ -143,10 +143,10 @@ def run_conditioned(sol):
 
 try:
     solver = cp.MOSEK
-    states, inputs = run_unconditioned(solver)
+    states, inputs, primal = run_unconditioned(solver)
 except:
     solver = cp.SCS
-    states, inputs = run_unconditioned(solver)
+    states, inputs, primal = run_unconditioned(solver)
 states_, inputs_, status = run_conditioned(solver)
 if status != "infeasible":
     tol = 1e-2
@@ -155,3 +155,7 @@ if status != "infeasible":
           np.allclose(states_, states, tol) and
           np.allclose(inputs_, inputs, tol),
           "\n")
+
+# Primal solution
+tree.write_to_file_fp("primal", primal)
+print(primal.size)

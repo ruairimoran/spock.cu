@@ -64,6 +64,33 @@ class Model:
         return np.array(self.__u.value).reshape(-1, 1)
 
     @property
+    def primal(self):
+        y = []
+        y_offset = 0
+        max_dim = max(self.__problem.risk_at_node(node).k for node in range(self.__tree.num_nonleaf_nodes))
+        for node in range(self.__tree.num_nonleaf_nodes):
+            risk = self.__problem.risk_at_node(node)
+            dim = risk.k
+            y_node = self.__y[y_offset: y_offset + dim]
+            pad = max_dim - dim
+            if pad:
+                y_padded = np.concatenate((y_node.value, np.zeros(pad)))
+                y_add = [y_padded]
+            else:
+                y_add = [y_node.value]
+            y += y_add
+            y_offset += dim
+        y_stack = np.concatenate(y)
+        return np.vstack((
+            np.array(self.__u.value).reshape(-1, 1),
+            np.array(self.__x.value).reshape(-1, 1),
+            y_stack.reshape(-1, 1),
+            0.,
+            np.array(self.__t.value).reshape(-1, 1),
+            np.array(self.__s.value).reshape(-1, 1)
+        ))
+
+    @property
     def solve_time(self):
         return self.__cvx.solver_stats.solve_time
 

@@ -67,7 +67,7 @@ for i in range(1, num_events + 1):
 
 T = Q_base
 check_spd(T, "T")
-leaf_cost = s.build.CostQuadratic(T, leaf=True)
+leaf_cost = s.build.CostQuadraticPlusLinear(T, np.diagonal(T), leaf=True)
 
 # Constraints
 nonleaf_state_ub = np.ones(num_states) * 10.

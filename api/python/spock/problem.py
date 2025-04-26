@@ -619,7 +619,7 @@ class Problem:
             except:
                 pass
             try:
-                if self.__leaf_cost.Q_uncond is not None:
+                if self.__leaf_cost.Q_uncond[-1] is not None:
                     stack_cost_leaf_Q = np.dstack([self.__leaf_cost.Q_uncond[-1]])
                     tensors.update({
                         prefix + "cost_leaf_Q": stack_cost_leaf_Q,
@@ -627,7 +627,7 @@ class Problem:
             except:
                 pass
             try:
-                if self.__leaf_cost.q_uncond is not None:
+                if self.__leaf_cost.q_uncond[-1] is not None:
                     stack_cost_leaf_q = np.dstack([self.__leaf_cost.q_uncond[-1]])
                     tensors.update({
                         prefix + "cost_leaf_q": stack_cost_leaf_q,

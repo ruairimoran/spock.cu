@@ -79,6 +79,14 @@ class Dynamics:
 # Costs
 # =====================================================================================================================
 
+def check_spd(mat, name):
+    eigs = np.linalg.eigvals(mat)
+    is_positive_definite = eigs.all() > 0
+    is_symmetric = np.allclose(mat, mat.T)
+    if not (is_positive_definite and is_symmetric):
+        raise Exception(f"Invalid cost. The matrix ({name}) is not symmetric positive-definite.")
+
+
 # --------------------------------------------------------
 # Base
 # --------------------------------------------------------
@@ -204,7 +212,7 @@ class Quadratic(Cost):
             if self.is_leaf:
                 self.__translation[i] = np.vstack((a, c, d))
             else:
-                b = np.zeros((self.R[i].shape[0], 1))
+                b = np.zeros((self.__R[i].shape[0], 1))
                 self.__translation[i] = np.vstack((a, b, c, d))
 
     @property
@@ -321,6 +329,9 @@ class CostQuadratic:
         :param R: quadratic input cost matrix
         :param leaf: for leaf nodes
         """
+        check_spd(Q, "Q")
+        if not leaf:
+            check_spd(R, "R")
         self.Q = Q
         self.R = R
         self.leaf = leaf
@@ -478,122 +489,216 @@ class CostLinear:
         return Linear
 
 
-# # --------------------------------------------------------
-# # Quadratic-plus-linear cost
-# # --------------------------------------------------------
-# class QuadraticPlusLinear(Cost):
-#     """
-#     Quadratic and linear costs
-#     """
-#
-#     def __init__(self, Q, R=None, q=None, r=None, leaf=False):
-#         """
-#         :param Q: quadratic state cost matrix
-#         :param R: quadratic input cost matrix
-#         :param q: linear state cost vector
-#         :param r: linear input cost vector
-#         :param leaf: for leaf nodes
-#         """
-#         super().__init__(leaf)
-#         self.__Q = Q
-#         self.__Q_sqrt = sqrtm(self.__Q)
-#         self.__Q_unconditioned = deepcopy(self.__Q)
-#         self.__R = R
-#         self.__R_sqrt = sqrtm(self.__R)
-#         self.__R_unconditioned = deepcopy(self.__R)
-#         self.__q = np.array(q).reshape(-1, 1)
-#         self.__q_unconditioned = deepcopy(self.__q)
-#         self.__r = np.array(r).reshape(-1, 1)
-#         self.__r_unconditioned = deepcopy(self.__r)
-#         self.__node_zero = False
-#         self.dim_per_node = self.Q.shape[0] + self.R.shape[0] + 2 if not leaf else self.Q.shape[0] + 2
-#         self.__set_translation()
-#
-#     @property
-#     def is_quadratic_plus_linear(self):
-#         return True
-#
-#     def __set_translation(self, zero=False):
-#         if zero:
-#             a = np.zeros((self.Q.shape[0], 1))
-#             b = np.zeros((self.R.shape[0], 1))
-#             c = np.zeros((1, 1))
-#             d = np.zeros((1, 1))
-#         else:
-#             nrm_q = self.__q.T @ self._inv(self.Q, self.__q)
-#             nrm_r = self.__r.T @ self._inv(self.R, self.__r)
-#             scaled_nrm = .125 * (nrm_q + nrm_r)
-#             a = self._inv(self.Q_sqrt, self.__q).reshape(-1, 1)
-#             b = self._inv(self.__R_sqrt, self.__r).reshape(-1, 1) if not self.is_leaf else None
-#             c = -.5 + scaled_nrm
-#             d = .5 + scaled_nrm
-#         if self.is_leaf:
-#             self.__translation = np.vstack((a, c, d))
-#         else:
-#             self.__translation = np.vstack((a, b, c, d))
-#
-#     @property
-#     def Q(self):
-#         return self.__Q
-#
-#     @property
-#     def Q_sqrt(self):
-#         return self.__Q_sqrt
-#
-#     @property
-#     def Q_uncond(self):
-#         return self.__Q_unconditioned
-#
-#     @property
-#     def R(self):
-#         return self.__R
-#
-#     @property
-#     def R_sqrt(self):
-#         return self.__R_sqrt
-#
-#     @property
-#     def R_uncond(self):
-#         return self.__R_unconditioned
-#
-#     @property
-#     def q_uncond(self):
-#         return self.__q_unconditioned
-#
-#     @property
-#     def r_uncond(self):
-#         return self.__r_unconditioned
-#
-#     def assign_dual(self, dual, idx):
-#         d = np.array(dual[idx:idx + self.dim_per_node]).reshape(self.dim_per_node, 1)
-#         idx += self.dim_per_node
-#         return d, idx
-#
-#     def op_nonleaf(self, x, u, t, ancestors):
-#         pass
-#
-#     def op_leaf(self, x, s):
-#         pass
-#
-#     def adj_nonleaf(self, dual, num_states, num_inputs):
-#         pass
-#
-#     def adj_leaf(self, dual, num_states):
-#         pass
-#
-#     def condition(self, scaling_state_inv, scaling_input_inv=None):
-#         if not self.__node_zero:
-#             self.__Q = scaling_state_inv.T @ self.Q_uncond @ scaling_state_inv
-#             self.__R = scaling_input_inv.T @ self.R_uncond @ scaling_input_inv if not self.is_leaf else None
-#             self.__q = scaling_state_inv.T @ self.q_uncond
-#             self.__r = scaling_input_inv.T @ self.r_uncond if not self.is_leaf else None
-#             self.__set_translation()
-#         return self
-#
-#     def node_zero(self):
-#         self.__node_zero = True
-#         self.__set_translation(True)
-#         return self
+# --------------------------------------------------------
+# Quadratic-plus-linear cost
+# --------------------------------------------------------
+class QuadraticPlusLinear(Cost):
+    """
+    Quadratic-plus-linear costs (internal use)
+    """
+
+    def __init__(self, list_of_costs):
+        super().__init__(list_of_costs[-1].leaf)
+        self.nodes = len(list_of_costs)
+        self.__Q = [cost.Q for cost in list_of_costs]
+        self.__Q_sqrt = [sqrtm(Q) for Q in self.__Q]
+        self.__Q_unconditioned = deepcopy(self.__Q)
+        self.__q = [np.array(cost.q).reshape(-1, 1) for cost in list_of_costs]
+        self.__q_unconditioned = deepcopy(self.__q)
+        self.dim_per_node = self.__Q[0].shape[0] + 2
+        self.__start = 0
+        if not self.is_leaf:
+            self.__R = [cost.R for cost in list_of_costs]
+            self.__R_sqrt = [sqrtm(R) for R in self.__R]
+            self.__R_unconditioned = deepcopy(self.__R)
+            self.__r = [np.array(cost.r).reshape(-1, 1) for cost in list_of_costs]
+            self.__r_unconditioned = deepcopy(self.__r)
+            self.dim_per_node = self.dim_per_node + self.__R[0].shape[0]
+            self.__start = 1
+        self.dim = self.nodes * self.dim_per_node
+        self.__translation = [np.zeros((self.dim_per_node, 1)) for _ in list_of_costs]
+        self.__set_translation()
+
+    def __set_translation(self):
+        for i in range(self.__start, self.nodes):
+            a = .5 * self._inv(self.__Q_sqrt[i], self.__q[i]).reshape(-1, 1)
+            nrm_q = -.125 * self.__q[i].T @ self._inv(self.__Q[i], self.__q[i])
+            c = -.5 + nrm_q
+            d = .5 + nrm_q
+            if self.is_leaf:
+                self.__translation[i] = np.vstack((a, c, d))
+            else:
+                b = .5 * self._inv(self.__R_sqrt[i], self.__r[i]).reshape(-1, 1)
+                nrm_r = -.125 * self.__r[i].T @ self._inv(self.__R[i], self.__r[i])
+                c = c + nrm_r
+                d = d + nrm_r
+                self.__translation[i] = np.vstack((a, b, c, d))
+
+    @property
+    def is_quadratic_plus_linear(self):
+        return True
+
+    @property
+    def Q(self):
+        return self.__Q
+
+    @property
+    def Q_sqrt(self):
+        return self.__Q_sqrt
+
+    @property
+    def Q_uncond(self):
+        return self.__Q_unconditioned
+
+    @property
+    def R(self):
+        return self.__R
+
+    @property
+    def R_sqrt(self):
+        return self.__R_sqrt
+
+    @property
+    def R_uncond(self):
+        return self.__R_unconditioned
+
+    @property
+    def q(self):
+        return self.__q
+
+    @property
+    def q_uncond(self):
+        return self.__q_unconditioned
+
+    @property
+    def r(self):
+        return self.__r
+
+    @property
+    def r_uncond(self):
+        return self.__r_unconditioned
+
+    @property
+    def translation(self):
+        return self.__translation
+
+    def assign_dual(self, dual, idx):
+        d = [None for _ in range(self.nodes)]
+        for i in range(self.nodes):
+            d[i] = np.array(dual[idx:idx + self.dim_per_node]).reshape(self.dim_per_node, 1)
+            idx += self.dim_per_node
+        return d, idx
+
+    def op_nonleaf(self, x, u, t, ancestors):
+        d = [np.zeros((self.dim_per_node, 1)) for _ in range(self.nodes)]
+        for i in range(self.__start, self.nodes):
+            anc = ancestors[i]
+            half_t = .5 * t[i] - .5 * (self.__q[i].T @ x[anc] + self.__r[i].T @ u[anc])
+            d[i] = np.vstack((self.__Q_sqrt[i] @ x[anc], self.__R_sqrt[i] @ u[anc], half_t, half_t))
+        return d
+
+    def op_leaf(self, x, s):
+        d = [np.zeros((self.dim_per_node, 1)) for _ in range(self.nodes)]
+        for i in range(self.__start, self.nodes):
+            half_s = .5 * s[i] - .5 * self.__q[i].T @ x[i]
+            d[i] = np.vstack((self.__Q_sqrt[i] @ x[i], half_s, half_s))
+        return d
+
+    def adj_nonleaf(self, dual, num_states, num_inputs, ancestors):
+        num_si = num_states + num_inputs
+        x_ = [np.zeros((num_states, 1)) for _ in range(self.nodes)]
+        u_ = [np.zeros((num_inputs, 1)) for _ in range(self.nodes)]
+        t_ = [0. for _ in range(self.nodes)]
+        for i in range(self.__start, self.nodes):
+            dual_i = dual[i]
+            d0 = dual_i[:num_states]
+            d1 = dual_i[num_states:num_si]
+            d2 = dual_i[num_si].reshape(1, 1)
+            d3 = dual_i[num_si + 1].reshape(1, 1)
+            anc = ancestors[i]
+            x_[anc] += self.__Q_sqrt[i] @ d0 - .5 * self.__q[i] @ d2 - .5 * self.__q[i] @ d3
+            u_[anc] += self.__R_sqrt[i] @ d1 - .5 * self.__r[i] @ d2 - .5 * self.__r[i] @ d3
+            t_[i] = 0.5 * (d2 + d3)
+        return x_, u_, t_
+
+    def adj_leaf(self, dual, num_states):
+        x_ = [np.zeros((num_states, 1)) for _ in range(self.nodes)]
+        s_ = [0. for _ in range(self.nodes)]
+        for i in range(self.__start, self.nodes):
+            dual_i = dual[i]
+            d0 = dual_i[:num_states]
+            d2 = dual_i[num_states].reshape(1, 1)
+            d3 = dual_i[num_states + 1].reshape(1, 1)
+            x_[i] = self.__Q_sqrt[i] @ d0 - .5 * self.__q[i] @ d2 - .5 * self.__q[i] @ d3
+            s_[i] = 0.5 * (d2 + d3)
+        return x_, s_
+
+    def get_scaling_states(self, scale_x):
+        for ele in range(scale_x.size):
+            for i in range(self.__start, self.nodes):
+                scale = np.sqrt(self.__Q_unconditioned[i][ele, ele])
+                if scale > scale_x[ele]:
+                    scale_x[ele] = np.asarray(scale).item()
+                scale = np.sqrt(abs(self.__q_unconditioned[i][ele]))
+                if scale > scale_x[ele]:
+                    scale_x[ele] = np.asarray(scale).item()
+        return scale_x
+
+    def get_scaling_inputs(self, scale_u):
+        for ele in range(scale_u.size):
+            for i in range(self.__start, self.nodes):
+                scale = np.sqrt(self.__R_unconditioned[i][ele, ele])
+                if scale > scale_u[ele]:
+                    scale_u[ele] = np.asarray(scale).item()
+                scale = np.sqrt(abs(self.__r_unconditioned[i][ele]))
+                if scale > scale_u[ele]:
+                    scale_u[ele] = np.asarray(scale).item()
+        return scale_u
+
+    def condition(self, scaling_state_inv, scaling_input_inv=None):
+        for i in range(self.__start, self.nodes):
+            self.__Q[i] = scaling_state_inv.T @ self.Q_uncond[i] @ scaling_state_inv
+            self.__Q_sqrt[i] = sqrtm(self.__Q[i])
+            self.__q[i] = np.diagonal(scaling_state_inv).reshape(-1, 1) * self.__q_unconditioned[i]
+            if not self.is_leaf:
+                self.__R[i] = scaling_input_inv.T @ self.R_uncond[i] @ scaling_input_inv
+                self.__R_sqrt[i] = sqrtm(self.__R[i])
+                self.__r[i] = np.diagonal(scaling_input_inv).reshape(-1, 1) * self.__r_unconditioned[i]
+        self.__set_translation()
+        return self
+
+
+class CostQuadraticPlusLinear:
+    """
+    Quadratic-plus-linear costs
+    """
+
+    def __init__(self, Q, q, R=None, r=None, leaf=False):
+        """
+        :param Q: quadratic state cost matrix
+        :param q: linear state cost vector
+        :param R: quadratic input cost matrix
+        :param r: linear input cost vector
+        :param leaf: for leaf nodes
+        """
+        check_spd(Q, "Q")
+        if not leaf:
+            check_spd(R, "R")
+        self.Q = Q
+        self.R = R
+        self.q = q
+        self.r = r
+        self.leaf = leaf
+
+    def node_zero(self):
+        self.Q[:] = 0.
+        self.R[:] = 0.
+        self.q[:] = 0.
+        self.r[:] = 0.
+
+    @staticmethod
+    def get_class():
+        return QuadraticPlusLinear
 
 
 # =====================================================================================================================

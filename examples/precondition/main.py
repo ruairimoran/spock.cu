@@ -4,21 +4,13 @@ import spock as s
 import cvxpy as cp
 
 
-def check_spd(mat, name):
-    eigs = np.linalg.eigvals(mat)
-    is_positive_definite = eigs.all() > 0
-    is_symmetric = np.allclose(mat, mat.T)
-    print("Is " + name + " symmetric positive-definite?", is_positive_definite and is_symmetric,
-          " with norm (", np.linalg.norm(mat), ").")
-
-
 parser = argparse.ArgumentParser(description='Example: preconditioning.')
 parser.add_argument("--dt", type=str, default='d')
 args = parser.parse_args()
 dt = args.dt
 
 # Sizes
-horizon = 3
+horizon = 2
 stopping = 1
 num_events = 2
 num_inputs = 1
@@ -44,41 +36,40 @@ print(tree)
 # --------------------------------------------------------
 # Dynamics
 dynamics = []
-A_base = np.eye(num_states) * 1.
+A_base = np.eye(num_states)
 B_base = np.ones((num_states, num_inputs)) * .5
 for i in range(1, num_events + 1):
-    A = A_base * i
-    B = B_base * i
+    A = A_base * 1/i
+    B = B_base * 1/i
     dynamics += [s.build.Dynamics(A, B)]
 
 # Costs
 rng = np.random.default_rng()
 nonleaf_costs = []
-Q_base = np.eye(num_states) * 1.
-R_base = np.eye(num_inputs) * 3.
+zero = 1e-1
+Q_base = np.eye(num_states) * zero
+R_base = np.eye(num_inputs) * zero
 for i in range(1, num_events + 1):
-    Q_noise = np.diag(rng.normal(0., .1, size=num_states))
-    R_noise = np.diag(rng.normal(0., .1, size=num_inputs))
-    Q = Q_base + Q_noise
-    R = R_base + R_noise
-    check_spd(Q, "Q")
-    check_spd(R, "R")
-    nonleaf_costs += [s.build.CostQuadratic(Q, R)]
+    Q = Q_base
+    R = R_base
+    q = np.ones(num_states) * zero
+    r = np.ones(num_inputs) * i * 3
+    nonleaf_costs += [s.build.CostQuadraticPlusLinear(Q, q, R, r)]
 
 T = Q_base
-check_spd(T, "T")
-leaf_cost = s.build.CostQuadratic(T, leaf=True)
+t = np.ones(num_states) * zero
+leaf_cost = s.build.CostQuadraticPlusLinear(T, t, leaf=True)
 
 # Constraints
-nonleaf_state_ub = np.ones(num_states) * 10.
-nonleaf_state_lb = -nonleaf_state_ub
-nonleaf_input_ub = np.ones(num_inputs) * 6.
+nonleaf_state_ub = np.ones(num_states) * 5.
+nonleaf_state_lb = np.zeros(num_states)
+nonleaf_input_ub = np.ones(num_inputs) * 4.
 nonleaf_input_lb = -nonleaf_input_ub
 nonleaf_lb = np.hstack((nonleaf_state_lb, nonleaf_input_lb))
 nonleaf_ub = np.hstack((nonleaf_state_ub, nonleaf_input_ub))
 nonleaf_constraint = s.build.Polyhedron(np.eye(num_states + num_inputs), nonleaf_lb, nonleaf_ub)
 leaf_ub = np.ones(num_states) * 1.
-leaf_lb = -leaf_ub
+leaf_lb = np.zeros(num_states)
 leaf_constraint = s.build.Rectangle(leaf_lb, leaf_ub)
 
 # Risk
@@ -98,6 +89,7 @@ problem = (
     .with_constraint_leaf(leaf_constraint)
     .with_risk(risk)
     .with_preconditioning(False)
+    .with_julia()
     .generate_problem()
 )
 print("Unconditioned: \n", problem)
@@ -141,6 +133,7 @@ def run_conditioned(sol):
     return model.states, model.inputs, model.status
 
 
+np.set_printoptions(suppress=True)
 try:
     solver = cp.MOSEK
     states, inputs, primal = run_unconditioned(solver)
@@ -158,4 +151,3 @@ if status != "infeasible":
 
 # Primal solution
 tree.write_to_file_fp("primal", primal)
-print(primal.size)

@@ -16,10 +16,10 @@ int main() {
 
         /* CACHE */
         real_t tol = 1e-3;
-        real_t maxTime = 5 * minute;
+        real_t maxTime = .25 * minute;
         std::cout << "Allocating cache...\n";
         CacheBuilder builder(tree, problem);
-        Cache cache = builder.tol(tol).maxTimeSecs(maxTime).build();
+        Cache cache = builder.toleranceAbsolute(tol).maxTimeSecs(maxTime).build();
 
         /* TIMING ALGORITHM */
         size_t runs = 1;

@@ -278,7 +278,7 @@ function impose_cost(
             )[1]
             <= t[node - 1]
         )
-    else
+    elseif d.cost_nonleaf == "quadratic"
         @constraint(
             model,
             nonleaf_cost[node=2:d.num_nodes],
@@ -289,6 +289,23 @@ function impose_cost(
             )
             <= t[node - 1]
         )
+    elseif d.cost_nonleaf == "quadraticPlusLinear"
+        @constraint(
+            model,
+            nonleaf_cost[node=2:d.num_nodes],
+            (
+                x[node_to_x(d, d.ancestors[node])]' * d.cost_nonleaf_Q[node] * x[node_to_x(d, d.ancestors[node])]
+                +
+                u[node_to_u(d, d.ancestors[node])]' * d.cost_nonleaf_R[node] * u[node_to_u(d, d.ancestors[node])]
+                +
+                d.cost_nonleaf_q[node]' * x[node_to_x(d, d.ancestors[node])]
+                +
+                d.cost_nonleaf_r[node]' * u[node_to_u(d, d.ancestors[node])]
+            )
+            <= t[node - 1]
+        )
+    else
+        throw("Cost (nonleaf) type ($(d.cost_nonleaf)) not supported!")
     end
     if d.cost_leaf == "linear"
         @constraint(
@@ -296,12 +313,22 @@ function impose_cost(
             leaf_cost[node=d.num_nonleaf_nodes+1:d.num_nodes],
             (d.cost_leaf_q' * x[node_to_x(d, node)])[1] <= s[node]
         )
-    else
+    elseif d.cost_nonleaf == "quadratic"
         @constraint(
             model,
             leaf_cost[node=d.num_nonleaf_nodes+1:d.num_nodes],
             x[node_to_x(d, node)]' * d.cost_leaf_Q * x[node_to_x(d, node)] <= s[node]
         )
+    elseif d.cost_nonleaf == "quadraticPlusLinear"
+        @constraint(
+            model,
+            leaf_cost[node=d.num_nonleaf_nodes+1:d.num_nodes],
+            x[node_to_x(d, node)]' * d.cost_leaf_Q * x[node_to_x(d, node)] +
+            d.cost_leaf_q' * x[node_to_x(d, node)]
+            <= s[node]
+        )
+    else
+        throw("Cost (leaf) type ($(d.cost_leaf)) not supported!")
     end
 end
 

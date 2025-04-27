@@ -233,6 +233,9 @@ for node in range(1, tree.num_nodes):
 
 # Costs
 nonleaf_costs = [None]
+zero = 1.
+Q = np.eye(num_states) * zero
+R = np.eye(num_inputs) * zero
 q = np.zeros(num_states)
 for node in range(1, tree.num_nodes):
     price_node = fc_p[tree.stage_of_node(node)] * tree.data_values[node, idx_p]
@@ -241,8 +244,8 @@ for node in range(1, tree.num_nodes):
         np.ones(n_p) * fuel_cost,
         np.array([T * price_node])), axis=0
     ).reshape(-1, 1)
-    nonleaf_costs += [s.build.CostLinear(q, r)]
-leaf_cost = s.build.CostLinear(q, leaf=True)
+    nonleaf_costs += [s.build.CostQuadraticPlusLinear(Q, q, R, r)]
+leaf_cost = s.build.CostQuadraticPlusLinear(Q, q, leaf=True)
 
 # Constraints
 big = 5e3  # MWh
@@ -308,7 +311,7 @@ problem = (
     .with_constraint_leaf(leaf_constraint)
     .with_risk(risk)
     .with_julia()
-    .with_preconditioning(False)
+    .with_preconditioning()
     .generate_problem()
 )
 print(problem)

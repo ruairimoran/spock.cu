@@ -57,17 +57,22 @@ nonleaf_costs = []
 Q_base = np.eye(num_states) * 1.
 R_base = np.eye(num_inputs) * 3.
 for i in range(1, num_events + 1):
-    Q_noise = np.diag(rng.normal(0., .1, size=num_states))
-    R_noise = np.diag(rng.normal(0., .1, size=num_inputs))
-    Q = Q_base + Q_noise
-    R = R_base + R_noise
+    # Q_noise = np.diag(rng.normal(0., .1, size=num_states))
+    # R_noise = np.diag(rng.normal(0., .1, size=num_inputs))
+    Q = Q_base# + Q_noise
+    R = R_base * i# + R_noise
     check_spd(Q, "Q")
     check_spd(R, "R")
-    nonleaf_costs += [s.build.CostQuadratic(Q, R)]
+    q = np.ones(num_states)
+    r = np.ones(num_inputs)
+    nonleaf_costs += [s.build.CostQuadraticPlusLinear(Q, q, R, r)]
+    # nonleaf_costs += [s.build.CostQuadratic(Q, R)]
 
 T = Q_base
 check_spd(T, "T")
-leaf_cost = s.build.CostQuadraticPlusLinear(T, np.diagonal(T), leaf=True)
+t = np.zeros(num_states)
+leaf_cost = s.build.CostQuadraticPlusLinear(T, t, leaf=True)
+# leaf_cost = s.build.CostQuadratic(T, leaf=True)
 
 # Constraints
 nonleaf_state_ub = np.ones(num_states) * 10.
@@ -103,21 +108,21 @@ problem = (
 )
 print("Unconditioned: \n", problem)
 
-problem_cond = (
-    s.problem.Factory(
-        scenario_tree=tree,
-        num_states=num_states,
-        num_inputs=num_inputs)
-    .with_dynamics_events(dynamics)
-    .with_cost_nonleaf_events(nonleaf_costs)
-    .with_cost_leaf(leaf_cost)
-    .with_constraint_nonleaf(nonleaf_constraint)
-    .with_constraint_leaf(leaf_constraint)
-    .with_risk(risk)
-    .with_preconditioning(True)
-    .generate_problem()
-)
-print("Preconditioned: \n", problem_cond)
+# problem_cond = (
+#     s.problem.Factory(
+#         scenario_tree=tree,
+#         num_states=num_states,
+#         num_inputs=num_inputs)
+#     .with_dynamics_events(dynamics)
+#     .with_cost_nonleaf_events(nonleaf_costs)
+#     .with_cost_leaf(leaf_cost)
+#     .with_constraint_nonleaf(nonleaf_constraint)
+#     .with_constraint_leaf(leaf_constraint)
+#     .with_risk(risk)
+#     .with_preconditioning(True)
+#     .generate_problem()
+# )
+# print("Preconditioned: \n", problem_cond)
 
 # Initial state
 x0 = np.ones(num_states) * 5.
@@ -134,12 +139,12 @@ def run_unconditioned(sol):
     return model.states, model.inputs, model.primal
 
 
-def run_conditioned(sol):
-    model = s.model.ModelWithPrecondition(tree, problem_cond)
-    model.solve(x0, sol, tol=1e-8)
-    print("---- Preconditioned problem ----")
-    print(sol.__str__(), "preconditioned status: ", model.status)
-    return model.states, model.inputs, model.status
+# def run_conditioned(sol):
+#     model = s.model.ModelWithPrecondition(tree, problem_cond)
+#     model.solve(x0, sol, tol=1e-8)
+#     print("---- Preconditioned problem ----")
+#     print(sol.__str__(), "preconditioned status: ", model.status)
+#     return model.states, model.inputs, model.status
 
 
 try:
@@ -148,14 +153,14 @@ try:
 except:
     solver = cp.SCS
     states, inputs, primal = run_unconditioned(solver)
-states_, inputs_, status = run_conditioned(solver)
-if status != "infeasible":
-    tol = 1e-2
-    print("States:\n", states_, "\nInputs:\n", inputs_, "\n")
-    print("Equal: ",
-          np.allclose(states_, states, tol) and
-          np.allclose(inputs_, inputs, tol),
-          "\n")
+# states_, inputs_, status = run_conditioned(solver)
+# if status != "infeasible":
+#     tol = 1e-2
+#     print("States:\n", states_, "\nInputs:\n", inputs_, "\n")
+#     print("Equal: ",
+#           np.allclose(states_, states, tol) and
+#           np.allclose(inputs_, inputs, tol),
+#           "\n")
 
 # Primal solution
 tree.write_to_file_fp("primal", primal)

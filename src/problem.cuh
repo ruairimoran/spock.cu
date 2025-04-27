@@ -61,12 +61,10 @@ private:
         } else if (typeStr == std::string("linear")) {
             cost = std::make_unique<CostLinear<T>>(m_tree, part);
         } else if (typeStr == std::string("quadraticPlusLinear")) {
-            err << "[parseCost] Cost type " << typeStr
-                << " is not supported yet!\n";
-            throw ERR;
+            cost = std::make_unique<CostQuadraticPlusLinear<T>>(m_tree, part);
         } else {
             err << "[parseCost] Cost type " << typeStr
-                << " is not supported. Supported types include: quadratic, linear\n";
+                << " is not supported. Supported types include: quadratic, linear, quadraticPlusLinear\n";
             throw ERR;
         }
     }

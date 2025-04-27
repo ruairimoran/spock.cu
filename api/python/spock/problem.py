@@ -512,7 +512,7 @@ class Problem:
             tensors.update({
                 cost_txt_nl + "_gradient": stack_gradient_cost,
             })
-        else:
+        elif cost.is_quadratic:
             stack_sqrt_state_cost = np.dstack(cost.Q_sqrt)
             stack_sqrt_input_cost = np.dstack(cost.R_sqrt)
             stack_nonleaf_translation = np.dstack(cost.translation)
@@ -521,6 +521,21 @@ class Problem:
                 cost_txt_nl + "_sqrtR": stack_sqrt_input_cost,
                 cost_txt_nl + "_translation": stack_nonleaf_translation,
             })
+        elif cost.is_quadratic_plus_linear:
+            stack_sqrt_state_cost = np.dstack(cost.Q_sqrt)
+            stack_lin_state_cost = np.dstack(cost.q)
+            stack_sqrt_input_cost = np.dstack(cost.R_sqrt)
+            stack_lin_input_cost = np.dstack(cost.r)
+            stack_nonleaf_translation = np.dstack(cost.translation)
+            tensors.update({
+                cost_txt_nl + "_sqrtQ": stack_sqrt_state_cost,
+                cost_txt_nl + "_q": stack_lin_state_cost,
+                cost_txt_nl + "_sqrtR": stack_sqrt_input_cost,
+                cost_txt_nl + "_r": stack_lin_input_cost,
+                cost_txt_nl + "_translation": stack_nonleaf_translation,
+            })
+        else:
+            raise Exception("Nonleaf cost type not supported!")
         cost = self.__leaf_cost
         cost_txt_l = "leafCost"
         if cost.is_linear:
@@ -528,13 +543,24 @@ class Problem:
             tensors.update({
                 cost_txt_l + "_gradient": stack_gradient_terminal_cost,
             })
-        else:
+        elif cost.is_quadratic:
             stack_sqrt_terminal_cost = np.dstack([cost.Q_sqrt[-1]])
             stack_leaf_translation = np.dstack([cost.translation[-1]])
             tensors.update({
                 cost_txt_l + "_sqrtQ": stack_sqrt_terminal_cost,
                 cost_txt_l + "_translation": stack_leaf_translation,
             })
+        elif cost.is_quadratic_plus_linear:
+            stack_sqrt_terminal_cost = np.dstack([cost.Q_sqrt[-1]])
+            stack_lin_terminal_cost = np.dstack([cost.q[-1]])
+            stack_leaf_translation = np.dstack([cost.translation[-1]])
+            tensors.update({
+                cost_txt_l + "_sqrtQ": stack_sqrt_terminal_cost,
+                cost_txt_l + "_q": stack_lin_terminal_cost,
+                cost_txt_l + "_translation": stack_leaf_translation,
+            })
+        else:
+            raise Exception("Leaf cost type not supported!")
         for i in range(len(l_con)):
             con = l_con[i]
             txt = l_txt[i]

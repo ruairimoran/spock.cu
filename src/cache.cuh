@@ -52,10 +52,11 @@ template<typename T>
 static void isFinite(DTensor<T> &d_vec) {
     std::vector<T> vec(d_vec.numEl());
     d_vec.download(vec);
-    for (const T &value: vec) {
-        if (!std::isfinite(value)) {
+    for (size_t i = 0; i < vec.size(); i++) {
+        if (!std::isfinite(vec[i])) {
             std::cout << d_vec.tr();
-            throw std::invalid_argument("[isFinite] DTensor has entries that are not finite.\n");
+            err << "[isFinite] DTensor has a non-finite entry at (" << i << ").\n";
+            throw ERR;
         }
     }
 }

@@ -19,7 +19,7 @@ int main() {
         real_t maxTime = 5 * minute;
         std::cout << "Allocating cache...\n";
         CacheBuilder builder(tree, problem);
-        Cache cache = builder.tol(tol).maxTimeSecs(maxTime).build();
+        Cache cache = builder.toleranceAbsolute(tol).maxTimeSecs(maxTime).enableDebug().maxIters(50000).build();
 
         /* TIMING ALGORITHM */
         size_t runs = 1;

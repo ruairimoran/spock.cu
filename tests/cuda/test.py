@@ -50,7 +50,10 @@ q = np.eye(num_states)
 # Input cost
 r = np.eye(num_inputs)
 
-nonleaf_costs = [s.build.CostQuadratic(1 * q, r), s.build.CostQuadratic(2 * q, r)]
+nonleaf_costs = []
+for i in range(1, 3):
+    q *= i
+    nonleaf_costs += [s.build.CostQuadratic(q, r)]
 
 # Terminal state cost
 T = 3 * np.eye(num_states)

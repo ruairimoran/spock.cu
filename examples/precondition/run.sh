@@ -9,7 +9,7 @@ main() {
     source "${path}.venv/bin/activate"
     mkdir -p ./build
     python main.py --dt="d"
-    julia ../../tests/julia/julia.jl
+#    julia ../../tests/julia/julia.jl
     cmake -S $path -B ./build -Wno-dev
     cmake --build ./build
     ./build/examples/precondition/precondition

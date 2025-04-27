@@ -86,6 +86,7 @@ def check_spd(mat, name):
     if not (is_positive_definite and is_symmetric):
         raise Exception(f"Invalid cost. The matrix ({name}) is not symmetric positive-definite.")
 
+
 # --------------------------------------------------------
 # Base
 # --------------------------------------------------------
@@ -522,16 +523,16 @@ class QuadraticPlusLinear(Cost):
         for i in range(self.__start, self.nodes):
             a = .5 * self._inv(self.__Q_sqrt[i], self.__q[i]).reshape(-1, 1)
             nrm_q = -.125 * self.__q[i].T @ self._inv(self.__Q[i], self.__q[i])
-            c = .5 + nrm_q
-            d = -.5 + nrm_q
+            c = -.5 + nrm_q
+            d = .5 + nrm_q
             if self.is_leaf:
-                self.__translation = np.vstack((a, c, d))
+                self.__translation[i] = np.vstack((a, c, d))
             else:
                 b = .5 * self._inv(self.__R_sqrt[i], self.__r[i]).reshape(-1, 1)
                 nrm_r = -.125 * self.__r[i].T @ self._inv(self.__R[i], self.__r[i])
                 c = c + nrm_r
                 d = d + nrm_r
-                self.__translation = np.vstack((a, b, c, d))
+                self.__translation[i] = np.vstack((a, b, c, d))
 
     @property
     def is_quadratic_plus_linear(self):

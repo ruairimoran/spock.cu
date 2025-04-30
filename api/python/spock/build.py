@@ -443,7 +443,7 @@ class Linear(Cost):
     def get_scaling_states(self, scale_x):
         for ele in range(scale_x.size):
             for i in range(self.__start, self.nodes):
-                scale = self.__q_unconditioned[i][ele]
+                scale = abs(self.__q_unconditioned[i][ele])
                 if scale > scale_x[ele]:
                     scale_x[ele] = np.asarray(scale).item()
         return scale_x
@@ -451,7 +451,7 @@ class Linear(Cost):
     def get_scaling_inputs(self, scale_u):
         for ele in range(scale_u.size):
             for i in range(self.__start, self.nodes):
-                scale = self.__r_unconditioned[i][ele]
+                scale = abs(self.__r_unconditioned[i][ele])
                 if scale > scale_u[ele]:
                     scale_u[ele] = np.asarray(scale).item()
         return scale_u
@@ -639,7 +639,7 @@ class QuadraticPlusLinear(Cost):
                 scale = np.sqrt(self.__Q_unconditioned[i][ele, ele])
                 if scale > scale_x[ele]:
                     scale_x[ele] = np.asarray(scale).item()
-                scale = np.sqrt(abs(self.__q_unconditioned[i][ele]))
+                scale = abs(self.__q_unconditioned[i][ele])
                 if scale > scale_x[ele]:
                     scale_x[ele] = np.asarray(scale).item()
         return scale_x
@@ -650,7 +650,7 @@ class QuadraticPlusLinear(Cost):
                 scale = np.sqrt(self.__R_unconditioned[i][ele, ele])
                 if scale > scale_u[ele]:
                     scale_u[ele] = np.asarray(scale).item()
-                scale = np.sqrt(abs(self.__r_unconditioned[i][ele]))
+                scale = abs(self.__r_unconditioned[i][ele])
                 if scale > scale_u[ele]:
                     scale_u[ele] = np.asarray(scale).item()
         return scale_u

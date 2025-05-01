@@ -3,6 +3,7 @@ import argparse
 import pickle
 import matplotlib.pyplot as plt
 from scipy import stats
+from scipy.linalg import expm
 import spock as s
 
 
@@ -107,10 +108,10 @@ def make_beta_tree(gam_, s0_, bf_, plot=False):
         for j in range(1, len(nodes)):
             if j == 1:
                 continue  # Skip the root (has no parent)
-            st_j = stages_[j-1]
-            parent_index = anc_[j-1]
+            st_j = stages_[j - 1]
+            parent_index = anc_[j - 1]
             v_parent = data_[parent_index - 1]
-            v_current = data_[j-1]
+            v_current = data_[j - 1]
             plt.plot([st_j - 1, st_j], [v_parent, v_current], '-o',
                      color=(0.3, 0.3, 0.3, 0.5))  # Gray with transparency
 
@@ -125,22 +126,64 @@ def make_beta_tree(gam_, s0_, bf_, plot=False):
     return stages_, anc_, probs_, data_
 
 
+def integrate_matrix_function(f_, a_, b_, num_points=20):
+    """Integrate a matrix-valued function f(s) over [a, b] using Gauss–Legendre quadrature."""
+    if a_ == b_:
+        return np.zeros_like(f_((a_ + b_) / 2))  # Return zero matrix if interval is empty
+
+    # Gauss–Legendre nodes and weights in [-1, 1]
+    x, w = np.polynomial.legendre.leggauss(num_points)
+
+    # Map to [a, b]
+    s_vals = 0.5 * (b_ - a_) * x + 0.5 * (a_ + b_)
+    weights = 0.5 * (b_ - a_) * w
+
+    # Evaluate integrand at all points and sum weighted values
+    result = np.zeros_like(f_(s_vals[0]))
+    for s, weight in zip(s_vals, weights):
+        result += weight * f_(s)
+    return result
+
+
+def make_matrix_integrand(Ac_, Bc_):
+    """Returns a matrix-valued function f(s) = expm(Ac * s) @ Bc."""
+    def integrand(s):
+        return expm(Ac_ * s) @ Bc_
+    return integrand
+
+
+def compute_Ai_Bi(Ac_, Bc_, tau_, h_, num_quad_points=20):
+    n, m = Ac_.shape[0], Bc_.shape[1]
+    integrand = make_matrix_integrand(Ac_, Bc_)
+
+    # Ai components
+    int_Ai = integrate_matrix_function(integrand, h_ - tau_, h_, num_quad_points)
+    top_Ai = np.hstack((expm(Ac_ * h_), int_Ai))
+    bot_Ai = np.hstack((np.zeros((m, n)), np.zeros((m, m))))
+    Ai = np.vstack((top_Ai, bot_Ai))
+
+    # Bi components
+    int_Bi = integrate_matrix_function(integrand, 0, h_ - tau_, num_quad_points)
+    Bi = np.vstack((int_Bi, np.eye(m)))
+
+    return Ai, Bi
+
+
 # --------------------------------------------------------
 # Create tree
 # --------------------------------------------------------
+max_delay = 16  # milliseconds
 if make_tree:
     horizon = 3
     gam = 100
     s0 = 0.2
-    max_delay = 16  # milliseconds
     branching = np.ones(horizon, dtype=np.int32).tolist()
-    # match br:
-    #     case 0:
-    #         branching[0:2] = [ch, ch]
-    #     case 1:
-    #         branching[0] = np.power(ch, 2)
-    branching[0] = 3
-    stages, anc, probs, data = make_beta_tree(gam, s0, branching, plot=True)
+    match br:
+        case 0:
+            branching[0:2] = [ch, ch]
+        case 1:
+            branching[0] = np.power(ch, 2)
+    stages, anc, probs, data = make_beta_tree(gam, s0, branching, plot=False)
     data = np.array([d * max_delay for d in data])
     tree = s.tree.FromStructure(stages, anc, probs, data).build()
     with open('tree.pkl', 'wb') as f:
@@ -152,23 +195,29 @@ print(tree)
 
 # --------------------------------------------------------
 # Generate problem data
+# state = [x(k), u(k-1)]
+# input = [u(k)]
 # --------------------------------------------------------
 num_states = 2
 num_inputs = 1
+state_size = num_states + num_inputs
 
 # Dynamics
 dynamics = [None]
-A = np.array([[0., 1.],
-              [0., 0.]])
-B = np.array([[0.],
-              [126.7]])
+Ac = np.array([[0., 1.],
+               [0., 0.]])
+Bc = np.array([[0.],
+               [126.7]])
 for node in range(1, tree.num_nodes):
+    t = tree.data_values[node][0]
+    A, B = compute_Ai_Bi(Ac, Bc, t, max_delay)
     dynamics += [s.build.Dynamics(A, B)]
 
 # Costs
+zero = 1e-6
 nonleaf_costs = [None]
-Q = np.eye(num_states) * 10.
-R = np.eye(num_inputs) * 1.
+Q = np.diag([10. for _ in range(num_states)] + [zero for _ in range(num_inputs)])
+R = np.diag([1. for _ in range(num_inputs)])
 for node in range(1, tree.num_nodes):
     nonleaf_costs += [s.build.CostQuadratic(Q, R)]
 leaf_cost = s.build.CostQuadratic(Q, leaf=True)
@@ -178,8 +227,10 @@ states_ub = np.ones(num_states) * 10.
 inputs_ub = np.ones(num_inputs) * 2.
 states_lb = -states_ub
 inputs_lb = -inputs_ub
-nonleaf_constraint = s.build.Rectangle(np.hstack((states_lb, inputs_lb)), np.hstack((states_ub, inputs_ub)))
-leaf_constraint = s.build.Rectangle(states_lb, states_ub)
+nonleaf_constraint = s.build.Rectangle(np.hstack((states_lb, inputs_lb, inputs_lb)),
+                                       np.hstack((states_ub, inputs_ub, inputs_ub)))
+leaf_constraint = s.build.Rectangle(np.hstack((states_lb, inputs_lb)),
+                                    np.hstack((states_ub, inputs_ub)))
 
 # Risk
 alpha = .1
@@ -187,7 +238,7 @@ risk = s.build.AVaR(alpha)
 
 # Generate
 problem = (
-    s.problem.Factory(scenario_tree=tree, num_states=num_states, num_inputs=num_inputs)
+    s.problem.Factory(scenario_tree=tree, num_states=state_size, num_inputs=num_inputs)
     .with_dynamics_list(dynamics)
     .with_cost_nonleaf_list(nonleaf_costs)
     .with_cost_leaf(leaf_cost)
@@ -204,7 +255,7 @@ print(problem)
 # Initial state
 # --------------------------------------------------------
 if br == 0:
-    x0 = np.zeros(num_states)
+    x0 = np.zeros(state_size)
     for k in range(num_states):
-        x0[k] = .5 * (states_lb[k] + states_ub[k])
+        x0[k] = np.random.uniform(.5 * states_lb[k], .5 * states_ub[k])
     tree.write_to_file_fp("initialState", x0)

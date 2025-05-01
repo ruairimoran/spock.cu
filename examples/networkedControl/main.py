@@ -151,26 +151,36 @@ print(tree)
 # --------------------------------------------------------
 # Generate problem data
 # --------------------------------------------------------
-num_states = 3
-num_inputs = 2
+num_states = 2
+num_inputs = 1
 
 # Dynamics
 dynamics = [None]
+A = np.array([[0., 1.],
+              [0., 0.]])
+B = np.array([[0.],
+              [126.7]])
 for node in range(1, tree.num_nodes):
-    dynamics += [s.build.Dynamics()]
+    dynamics += [s.build.Dynamics(A, B)]
 
 # Costs
 nonleaf_costs = [None]
+Q = np.eye(num_states) * 10.
+R = np.eye(num_inputs) * 1.
 for node in range(1, tree.num_nodes):
     nonleaf_costs += [s.build.CostQuadratic(Q, R)]
 leaf_cost = s.build.CostQuadratic(Q, leaf=True)
 
 # Constraints
-nonleaf_constraint = s.build.PolyhedronWithIdentity(nonleaf_rect, nonleaf_poly)
-leaf_constraint = s.build.Rectangle(leaf_lb, leaf_ub)
+states_ub = np.ones(num_states) * 10.
+inputs_ub = np.ones(num_inputs) * 2.
+states_lb = -states_ub
+inputs_lb = -inputs_ub
+nonleaf_constraint = s.build.Rectangle(np.hstack((states_lb, inputs_lb)), np.hstack((states_ub, inputs_ub)))
+leaf_constraint = s.build.Rectangle(states_lb, states_ub)
 
 # Risk
-alpha = .95
+alpha = .1
 risk = s.build.AVaR(alpha)
 
 # Generate
@@ -191,8 +201,8 @@ print(problem)
 # --------------------------------------------------------
 # Initial state
 # --------------------------------------------------------
-# if br == 0:
-#     x0 = np.zeros(num_states)
-#     for k in range(num_states):
-#         x0[k] = .5 * (leaf_lb[k] + leaf_ub[k])
-#     tree.write_to_file_fp("initialState", x0)
+if br == 0:
+    x0 = np.zeros(num_states)
+    for k in range(num_states):
+        x0[k] = .5 * (states_lb[k] + states_ub[k])
+    tree.write_to_file_fp("initialState", x0)

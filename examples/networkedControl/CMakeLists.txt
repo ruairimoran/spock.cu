@@ -1,9 +1,9 @@
-add_executable(network)
-target_sources(network
+add_executable(networked)
+target_sources(networked
     PRIVATE
-    main.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/main.cu
 )
-target_link_libraries(network
+target_link_libraries(networked
     PRIVATE
     spock_compiler_flags
     spock_src
@@ -11,7 +11,7 @@ target_link_libraries(network
     cusolver
     cudadevrt
 )
-target_include_directories(network
+target_include_directories(networked
     PRIVATE
     "${GPUTILS_SOURCE_DIR}/include"  # includes GPUtils directory
     "${PROJECT_SOURCE_DIR}/src"

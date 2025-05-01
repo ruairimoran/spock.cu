@@ -37,15 +37,16 @@ def approx_beta_dist(n_points, alp, bet):
     return x
 
 
-def make_beta_tree(gam, s0, bf, plot=False):
+def make_beta_tree(gam_, s0_, bf_, plot=False):
     """
     Builds a tree of nodes with values from a Beta distribution.
     Each stage builds upon the nodes of the previous stage, generating children according to a
     Beta distribution that depends on the parent's value.
     Parameters:
-        gam (float): Scaling factor used to derive alpha and beta parameters.
-        s0 (float): Initial root value at stage 0.
-        bf (list[int]): A list where bf[i] is the number of points to generate at stage i.
+        gam_ (float): Scaling factor used to derive alpha and beta parameters.
+        s0_ (float): Initial root value at stage 0.
+        bf_ (list[int]): A list where bf[i] is the number of points to generate at stage i.
+        plot (bool): whether to plot values
     Returns:
         nodes (list[dict]): All nodes in a list (1-based index).
             Each node is a dictionary with:
@@ -55,21 +56,20 @@ def make_beta_tree(gam, s0, bf, plot=False):
             - 'stage': Tree stage (int)
         anc_ (list[int]): List of parent indices for each node in 1-based indexing.
     """
-    num_stages = len(bf)
+    num_stages = len(bf_)
     # 1-based index is used consistently (like MATLAB)
-    nodes = [None]  # Index 0 is unused, nodes[1] is the root
-    nodes.append({'index': 1, 'parent': 0, 'value': s0, 'stage': 0})
+    nodes = [None, {'index': 1, 'parent': 0, 'value': s0_, 'stage': 0}]  # Index 0 is unused, nodes[1] is the root
     current_indices = [1]
     current_stage = 0
 
     while current_stage < num_stages:
-        n_points = bf[current_stage]
+        n_points = bf_[current_stage]
         next_indices = []
 
         for idx in current_indices:
             node = nodes[idx]
-            alp = gam * node['value']
-            bet = gam * (1 - node['value'])
+            alp = gam_ * node['value']
+            bet = gam_ * (1 - node['value'])
             children = approx_beta_dist(n_points, alp, bet)
 
             for child_val in children:
@@ -88,7 +88,7 @@ def make_beta_tree(gam, s0, bf, plot=False):
 
     # Extract value, parent (anc_), and stage for each node
     data_ = [node['value'] for node in nodes if node is not None]
-    anc_ = [node['parent'] - 1 for node in nodes if node is not None]  # 0 based indexing of nodes inside anc_
+    anc_ = [node['parent'] - 1 for node in nodes if node is not None]  # remove 1-based naming inside
     stages_ = [node['stage'] for node in nodes if node is not None]
 
     # Assign equiprobable probabilities
@@ -117,7 +117,7 @@ def make_beta_tree(gam, s0, bf, plot=False):
 
         plt.xlabel('Stage')
         plt.ylabel('Value')
-        plt.title(f'γ={gam}, s0={s0}')
+        plt.title(f'γ={gam_}, s0={s0_}')
         plt.tight_layout()
         plt.show()
 
@@ -138,7 +138,6 @@ if make_tree:
             branching[0:2] = [ch, ch]
         case 1:
             branching[0] = np.power(ch, 2)
-
     stages, anc, probs, data = make_beta_tree(gam, s0, branching, plot=False)
     data = np.array([d * max_delay for d in data])
     tree = s.tree.FromStructure(stages, anc, probs, data).build()
@@ -150,70 +149,48 @@ else:
 print(tree)
 
 # --------------------------------------------------------
-# Plot scenarios
+# Generate problem data
 # --------------------------------------------------------
-# fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(15, 10))
-# start = 0  # 1 hour periods
-# times = np.arange(start, start + max_time_steps) * 100
-# titles = ["demand", "renewables", "price"]
-# axes[1].set_ylabel("Error (1. = 100% of forecast value)")
-# for i, ax in enumerate(axes):
-#     ax.set_xlabel("Time (24 hr)")
-#     ax.set_title(f"Multiplier vs. Time ({titles[i]})")
-#     ax.grid(True)
-#     plot_scenario_values(ax, tree, times, i)
-#     set_ticks(ax, times)
-# plt.tight_layout()
-# plt.show()
+num_states = 3
+num_inputs = 2
+
+# Dynamics
+dynamics = [None]
+for node in range(1, tree.num_nodes):
+    dynamics += [s.build.Dynamics()]
+
+# Costs
+nonleaf_costs = [None]
+for node in range(1, tree.num_nodes):
+    nonleaf_costs += [s.build.CostQuadratic(Q, R)]
+leaf_cost = s.build.CostQuadratic(Q, leaf=True)
+
+# Constraints
+nonleaf_constraint = s.build.PolyhedronWithIdentity(nonleaf_rect, nonleaf_poly)
+leaf_constraint = s.build.Rectangle(leaf_lb, leaf_ub)
+
+# Risk
+alpha = .95
+risk = s.build.AVaR(alpha)
+
+# Generate
+problem = (
+    s.problem.Factory(scenario_tree=tree, num_states=num_states, num_inputs=num_inputs)
+    .with_dynamics_list(dynamics)
+    .with_cost_nonleaf_list(nonleaf_costs)
+    .with_cost_leaf(leaf_cost)
+    .with_constraint_nonleaf(nonleaf_constraint)
+    .with_constraint_leaf(leaf_constraint)
+    .with_risk(risk)
+    .with_julia()
+    .with_preconditioning(True)
+    .generate_problem()
+)
+print(problem)
 
 # --------------------------------------------------------
-# Create forecast for problem
+# Initial state
 # --------------------------------------------------------
-
-
-# # --------------------------------------------------------
-# # Generate problem data
-# # --------------------------------------------------------
-# num_states = 10
-# num_inputs = 5
-#
-# # Dynamics
-# dynamics = [None]
-# for node in range(1, tree.num_nodes):
-#     dynamics += [s.build.Dynamics()]
-#
-# # Costs
-# nonleaf_costs = [None]
-# for node in range(1, tree.num_nodes):
-#     nonleaf_costs += [s.build.CostQuadratic(Q, R)]
-# leaf_cost = s.build.CostQuadratic(Q, leaf=True)
-#
-# # Constraints
-# nonleaf_constraint = s.build.PolyhedronWithIdentity(nonleaf_rect, nonleaf_poly)
-# leaf_constraint = s.build.Rectangle(leaf_lb, leaf_ub)
-#
-# # Risk
-# alpha = .95
-# risk = s.build.AVaR(alpha)
-#
-# # Generate
-# problem = (
-#     s.problem.Factory(scenario_tree=tree, num_states=num_states, num_inputs=num_inputs)
-#     .with_dynamics_list(dynamics)
-#     .with_cost_nonleaf_list(nonleaf_costs)
-#     .with_cost_leaf(leaf_cost)
-#     .with_constraint_nonleaf(nonleaf_constraint)
-#     .with_constraint_leaf(leaf_constraint)
-#     .with_risk(risk)
-#     .with_julia()
-#     .with_preconditioning(True)
-#     .generate_problem()
-# )
-# print(problem)
-#
-# # --------------------------------------------------------
-# # Initial state
-# # --------------------------------------------------------
 # if br == 0:
 #     x0 = np.zeros(num_states)
 #     for k in range(num_states):

@@ -27,16 +27,20 @@ draw = [
     'PythonTurtle',
 ]
 example = [
+    'argparse',
     'pandas',
     'mosek',
+    'pickle',
 ]
 test = [
     'cvxpy',
 ]
 all = [
     'PythonTurtle',
+    'argparse',
     'pandas',
     'mosek',
+    'pickle',
     'cvxpy',
 ]
 
@@ -47,9 +51,6 @@ Issues = "https://github.com/ruairimoran/raocp-parallel/issues"
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
-
-#[tool.setuptools.packages.find]
-#where = ["api/python"]
 
 [tool.setuptools.packages]
 find = {}

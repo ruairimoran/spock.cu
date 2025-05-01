@@ -1,6 +1,5 @@
 import numpy as np
 import argparse
-import pandas as pd
 import pickle
 import matplotlib.pyplot as plt
 from scipy import stats

@@ -131,11 +131,23 @@ class Tree:
         """
         return self.__ancestors[node_idx]
 
+    def stages(self):
+        """
+        :return: stages of all nodes
+        """
+        return self.__stages
+
     def ancestors(self):
         """
         :return: ancestors of all nodes
         """
         return self.__ancestors
+
+    def probabilities(self):
+        """
+        :return: stages of all nodes
+        """
+        return self.__probability
 
     def children_of_node(self, node_idx):
         """
@@ -649,7 +661,8 @@ class FromData:
         """
         resulting_probabilities = np.zeros(probs.shape)
         for kept_node in kept_scenarios:
-            resulting_probabilities[kept_node] = sum(probs[np.argwhere(closest_nodes == kept_node)])
+            mask = np.argwhere(closest_nodes == kept_node)
+            resulting_probabilities[kept_node] = np.sum(probs[mask])
         return resulting_probabilities
 
     @staticmethod
@@ -879,6 +892,58 @@ class FromData:
                     self.__dict['prob'],
                     children=self.__dict['children'],
                     data=self.__dict['value'],
+                    )
+        if files:
+            print("Generating tree files...")
+            tree.generate_tree_files()
+        return tree
+
+
+class FromStructure:
+    """
+    Factory class to construct scenario trees from tree structure
+    """
+
+    def __init__(self, stages, ancestors, probabilities, data=None, dt='d'):
+        """
+        :param stages: (list or array) stage of each node
+        :param ancestors: (list or array) ancestors of each node
+        :param probabilities: (list or array) unconditional probabilities of each node
+        :param data: (array) data at each node [node x dimension]
+        :param dt: data type
+        """
+        self.__stages = np.asarray(stages)
+        self.__num_nodes = self.__stages.size
+        self.__ancestors = np.asarray(ancestors)
+        self.__probs = np.asarray(probabilities)
+        if data is not None and type(data) is not np.ndarray:
+            raise Exception("[FromStructure] Data must be a numpy array!")
+        self.__data = np.atleast_2d(data) if data is not None else np.zeros((self.__num_nodes, 1))
+        self.__dt = dt
+        if self.__num_nodes != self.__ancestors.size or self.__num_nodes != self.__probs.size:
+            raise Exception("[FromStructure] Arguments have differing sizes!")
+        if self.__stages[0] != 0:
+            raise Exception("[FromStructure] No root node!")
+        if self.__ancestors[0] != -1:
+            raise Exception("[FromStructure] Ancestor of root node must be (-1)!")
+        for stage in range(max(self.__stages)):
+            idx = np.where(self.__stages == stage)[0]
+            if not np.isclose(sum([self.__probs[i] for i in idx]), 1.0):
+                raise Exception(f"[FromStructure] Probabilities of nodes at stage ({stage}) do not sum to (1.0)!")
+        if self.__data.shape[0] != self.__num_nodes:
+            self.__data = self.__data.T
+        if self.__data.shape[0] != self.__num_nodes:
+            raise Exception("[FromStructure] Data does not fit tree!")
+
+    def build(self, files=True):
+        """
+        Generates a scenario tree from the given structure.
+        """
+        tree = Tree(self.__dt,
+                    self.__stages,
+                    self.__ancestors,
+                    self.__probs,
+                    data=self.__data,
                     )
         if files:
             print("Generating tree files...")

@@ -87,7 +87,7 @@ def make_beta_tree(gam_, s0_, bf_, plot=False):
 
     # Extract value, parent (anc_), and stage for each node
     data_ = [node['value'] for node in nodes if node is not None]
-    anc_ = [node['parent'] - 1 for node in nodes if node is not None]  # remove 1-based naming inside
+    anc_ = [node['parent'] for node in nodes if node is not None]  # remove 1-based naming inside
     stages_ = [node['stage'] for node in nodes if node is not None]
 
     # Assign equiprobable probabilities
@@ -120,6 +120,8 @@ def make_beta_tree(gam_, s0_, bf_, plot=False):
         plt.tight_layout()
         plt.show()
 
+    anc_ = [a - 1 for a in anc_]  # remove 1-based naming inside
+
     return stages_, anc_, probs_, data_
 
 
@@ -128,16 +130,17 @@ def make_beta_tree(gam_, s0_, bf_, plot=False):
 # --------------------------------------------------------
 if make_tree:
     horizon = 3
-    gam = 10
-    s0 = 0.1
-    max_delay = 20  # milliseconds
+    gam = 100
+    s0 = 0.2
+    max_delay = 16  # milliseconds
     branching = np.ones(horizon, dtype=np.int32).tolist()
-    match br:
-        case 0:
-            branching[0:2] = [ch, ch]
-        case 1:
-            branching[0] = np.power(ch, 2)
-    stages, anc, probs, data = make_beta_tree(gam, s0, branching, plot=False)
+    # match br:
+    #     case 0:
+    #         branching[0:2] = [ch, ch]
+    #     case 1:
+    #         branching[0] = np.power(ch, 2)
+    branching[0] = 3
+    stages, anc, probs, data = make_beta_tree(gam, s0, branching, plot=True)
     data = np.array([d * max_delay for d in data])
     tree = s.tree.FromStructure(stages, anc, probs, data).build()
     with open('tree.pkl', 'wb') as f:

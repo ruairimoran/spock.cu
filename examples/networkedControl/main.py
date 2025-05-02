@@ -3,7 +3,7 @@ import argparse
 import pickle
 import matplotlib.pyplot as plt
 from scipy import stats
-from scipy.linalg import expm
+from scipy.linalg import expm, inv
 import spock as s
 
 
@@ -126,47 +126,300 @@ def make_beta_tree(gam_, s0_, bf_, plot=False):
     return stages_, anc_, probs_, data_
 
 
-def integrate_matrix_function(f_, a_, b_, num_points=20):
-    """Integrate a matrix-valued function f(s) over [a, b] using Gauss–Legendre quadrature."""
-    if a_ == b_:
-        return np.zeros_like(f_((a_ + b_) / 2))  # Return zero matrix if interval is empty
+def compute_exp_integral(Ac, Bc, t):
+    """
+    Computes e^{Ac t} and Phi(t) = integral_0^t e^{Ac s} ds Bc
+    using the augmented matrix exponential method.
 
-    # Gauss–Legendre nodes and weights in [-1, 1]
-    x, w = np.polynomial.legendre.leggauss(num_points)
+    Args:
+        Ac (np.ndarray): Square matrix (n x n).
+        Bc (np.ndarray): Matrix (n x m).
+        t (float): Time duration.
 
-    # Map to [a, b]
-    s_vals = 0.5 * (b_ - a_) * x + 0.5 * (a_ + b_)
-    weights = 0.5 * (b_ - a_) * w
+    Returns:
+        tuple: (exp_Ac_t, phi_t) where
+               exp_Ac_t is e^{Ac t} (n x n)
+               phi_t is integral_0^t e^{Ac s} ds Bc (n x m)
+    """
+    if not isinstance(Ac, np.ndarray) or Ac.ndim != 2 or Ac.shape[0] != Ac.shape[1]:
+        raise ValueError("Ac must be a square numpy array.")
+    if not isinstance(Bc, np.ndarray) or Bc.ndim != 2:
+        raise ValueError("Bc must be a 2D numpy array.")
+    if Ac.shape[0] != Bc.shape[0]:
+        raise ValueError(f"Incompatible shapes: Ac ({Ac.shape}) and Bc ({Bc.shape})")
+    if not isinstance(t, (int, float)):
+        raise ValueError("t must be a scalar number.")
 
-    # Evaluate integrand at all points and sum weighted values
-    result = np.zeros_like(f_(s_vals[0]))
-    for s, weight in zip(s_vals, weights):
-        result += weight * f_(s)
-    return result
+    n = Ac.shape[0]
+    m = Bc.shape[1]
+
+    if t == 0:
+        return np.eye(n), np.zeros((n, m))
+    if t < 0:
+        raise Exception("[compute_exp_integral] Require (tau_i >= 0.).")
+
+    # Construct the augmented matrix M
+    M = np.zeros((n + m, n + m), dtype=float) # Use float for broader compatibility
+    M[:n, :n] = Ac
+    M[:n, n:] = Bc
+    # Lower blocks are already zeros
+
+    # Compute the exponential of M*t
+    exp_M_t = expm(M * t)
+
+    # Extract the relevant blocks
+    exp_Ac_t = exp_M_t[:n, :n]
+    phi_t = exp_M_t[:n, n:]
+
+    return exp_Ac_t, phi_t
 
 
-def make_matrix_integrand(Ac_, Bc_):
-    """Returns a matrix-valued function f(s) = expm(Ac * s) @ Bc."""
-    def integrand(s):
-        return expm(Ac_ * s) @ Bc_
-    return integrand
+def compute_Ai_Bi(Ac, Bc, h, tau_i):
+    """
+    Computes the matrices Ai and Bi based on the provided formulas.
 
+    Ai = [ e^{Ac h}   integral_{h-tau_i}^{h} e^{Ac s} ds Bc ]
+         [   0            0                               ]
 
-def compute_Ai_Bi(Ac_, Bc_, tau_, h_, num_quad_points=20):
-    n, m = Ac_.shape[0], Bc_.shape[1]
-    integrand = make_matrix_integrand(Ac_, Bc_)
+    Bi = [ integral_{0}^{h-tau_i} e^{Ac s} ds Bc ]
+         [          I                           ]
 
-    # Ai components
-    int_Ai = integrate_matrix_function(integrand, h_ - tau_, h_, num_quad_points)
-    top_Ai = np.hstack((expm(Ac_ * h_), int_Ai))
-    bot_Ai = np.hstack((np.zeros((m, n)), np.zeros((m, m))))
-    Ai = np.vstack((top_Ai, bot_Ai))
+    Args:
+        Ac (np.ndarray): Square matrix (n x n).
+        Bc (np.ndarray): Matrix (n x m).
+        h (float): Positive scalar time duration.
+        tau_i (float): Scalar delay, expected 0 <= tau_i <= h.
 
-    # Bi components
-    int_Bi = integrate_matrix_function(integrand, 0, h_ - tau_, num_quad_points)
-    Bi = np.vstack((int_Bi, np.eye(m)))
+    Returns:
+        tuple: (Ai, Bi) numpy arrays.
+    """
+    if not isinstance(h, (int, float)) or h <= 0:
+        raise ValueError("[compute_Ai_Bi] h must be a positive scalar number.")
+    if not isinstance(tau_i, (int, float)) or tau_i < 0:
+        raise ValueError("[compute_Ai_Bi] tau_i must be a non-negative scalar number.")
+    if tau_i > h:
+        raise ValueError(f"[compute_Ai_Bi] tau_i ({tau_i}) > h ({h}). Integral limits might reverse.")
+
+    n = Ac.shape[0]
+    m = Bc.shape[1]  # Assuming Bc is n x m, then I should be m x m
+
+    # Calculate terms at t = h
+    exp_Ac_h, phi_h = compute_exp_integral(Ac, Bc, h)
+
+    # Calculate terms at t = h - tau_i
+    t_lower = h - tau_i
+    _, phi_h_minus_tau = compute_exp_integral(Ac, Bc, t_lower)
+
+    # Calculate the definite integrals needed
+    # Integral for Ai: integral_{h-tau_i}^{h} (...) = phi(h) - phi(h-tau_i)
+    integral_Ai = phi_h - phi_h_minus_tau
+
+    # Integral for Bi: integral_{0}^{h-tau_i} (...) = phi(h-tau_i)
+    integral_Bi = phi_h_minus_tau
+
+    # Assemble the block matrices
+    # Ai: top-left=exp_Ac_h, top-right=integral_Ai, bottom-left=0(m x n), bottom-right=0(m x m)
+    zero_mn = np.zeros((m, n))
+    zero_mm = np.zeros((m, m))
+    Ai = np.block([
+        [exp_Ac_h, integral_Ai],
+        [zero_mn,  zero_mm    ]
+    ])
+
+    # Bi: top=integral_Bi, bottom=I(m x m)
+    identity_m = np.eye(m)
+    Bi = np.block([
+        [integral_Bi],
+        [identity_m ]
+    ])
 
     return Ai, Bi
+
+
+# --- Tests ---
+
+# Test Case 1: Ac = 0
+def test_Ac_zero():
+    n, m = 2, 1
+    Ac = np.zeros((n, n))
+    Bc = np.array([[1.0], [2.0]])
+    h = 1.0
+    tau_i = 0.3
+
+    Ai_expected = np.array([
+        [1.0, 0.0, 0.3 * 1.0],  # [ I   tau_i * Bc ]
+        [0.0, 1.0, 0.3 * 2.0],
+        [0.0, 0.0, 0.0      ],  # [ 0      0       ]
+        [0.0, 0.0, 0.0      ]
+    ])
+    # Reshape Ai_expected to match block structure (n+m) x (n+m)
+    Ai_expected = np.block([
+        [np.eye(n), tau_i * Bc],
+        [np.zeros((m,n)), np.zeros((m,m))]
+    ])
+
+
+    Bi_expected = np.array([
+        [(h - tau_i) * 1.0], # [ (h-tau_i)*Bc ]
+        [(h - tau_i) * 2.0],
+        [1.0              ]  # [      I       ]
+    ])
+    # Reshape Bi_expected to match block structure (n+m) x m
+    Bi_expected = np.block([
+        [(h - tau_i) * Bc],
+        [np.eye(m)]
+    ])
+
+
+    Ai_calc, Bi_calc = compute_Ai_Bi(Ac, Bc, h, tau_i)
+
+    print("\nTest Ac = 0:")
+    print("Ai expected:\n", Ai_expected)
+    print("Ai calculated:\n", Ai_calc)
+    print("Bi expected:\n", Bi_expected)
+    print("Bi calculated:\n", Bi_calc)
+
+    assert np.allclose(Ai_calc, Ai_expected), "Test Ac=0 Failed for Ai"
+    assert np.allclose(Bi_calc, Bi_expected), "Test Ac=0 Failed for Bi"
+
+
+# Test Case 2: Scalar case (n=1, m=1)
+def test_scalar():
+    Ac = np.array([[-0.5]]) # a = -0.5
+    Bc = np.array([[2.0]])  # b = 2.0
+    a = Ac[0, 0]
+    b = Bc[0, 0]
+    h = 2.0
+    tau_i = 0.5
+
+    # Analytical formulas for scalar case (a != 0)
+    e_ah = np.exp(a * h)
+    e_a_h_tau = np.exp(a * (h - tau_i))
+
+    int_Ai_analytic = (b / a) * (e_ah - e_a_h_tau)
+    int_Bi_analytic = (b / a) * (e_a_h_tau - 1.0)
+
+    Ai_expected = np.block([
+        [e_ah,          int_Ai_analytic],
+        [0.0,           0.0            ]
+    ])
+
+    Bi_expected = np.block([
+        [int_Bi_analytic],
+        [1.0            ]
+    ])
+
+    Ai_calc, Bi_calc = compute_Ai_Bi(Ac, Bc, h, tau_i)
+
+    print("\nTest Scalar:")
+    print("Ai expected:\n", Ai_expected)
+    print("Ai calculated:\n", Ai_calc)
+    print("Bi expected:\n", Bi_expected)
+    print("Bi calculated:\n", Bi_calc)
+
+    assert np.allclose(Ai_calc, Ai_expected), "Scalar Test Failed for Ai"
+    assert np.allclose(Bi_calc, Bi_expected), "Scalar Test Failed for Bi"
+
+
+# Test Case 3: Invertible Ac - Compare integral computation
+def test_invertible_Ac_integral():
+    Ac = np.array([[1.0, 1.0], [0.0, -0.5]])
+    Bc = np.array([[1.0], [0.5]])
+    h = 1.0
+    tau_i = 0.2
+    t_lower = h - tau_i
+    t_upper = h
+
+    # Compute using augmented matrix method
+    exp_Ac_upper, phi_upper = compute_exp_integral(Ac, Bc, t_upper)
+    exp_Ac_lower, phi_lower = compute_exp_integral(Ac, Bc, t_lower)
+
+    integral_Ai_augmented = phi_upper - phi_lower
+    integral_Bi_augmented = phi_lower
+
+    # Compute using Ac inverse method: integral_a^b = Ac^{-1} (e^{Ac b} - e^{Ac a}) Bc
+    try:
+        Ac_inv = inv(Ac)
+        integral_Ai_inv = Ac_inv @ (exp_Ac_upper - exp_Ac_lower) @ Bc
+        integral_Bi_inv = Ac_inv @ (exp_Ac_lower - np.eye(Ac.shape[0])) @ Bc # Integral from 0 to t_lower
+
+        print("\nTest Invertible Ac Integral:")
+        print("Integral Ai (Augmented):\n", integral_Ai_augmented)
+        print("Integral Ai (Inverse):\n", integral_Ai_inv)
+        print("Integral Bi (Augmented):\n", integral_Bi_augmented)
+        print("Integral Bi (Inverse):\n", integral_Bi_inv)
+
+        assert np.allclose(integral_Ai_augmented, integral_Ai_inv), "Invertible test failed for Ai integral"
+        assert np.allclose(integral_Bi_augmented, integral_Bi_inv), "Invertible test failed for Bi integral"
+
+    except np.linalg.LinAlgError:
+        print("Skipping invertible test as Ac is singular.")
+
+
+# Test Case 4: Edge case tau_i = 0
+def test_tau_i_zero():
+    n, m = 2, 1
+    Ac = np.array([[0.1, 0.0], [0.2, -0.1]])
+    Bc = np.array([[1.0], [0.0]])
+    h = 1.5
+    tau_i = 0.0
+
+    Ai_calc, Bi_calc = compute_Ai_Bi(Ac, Bc, h, tau_i)
+
+    # Expected results when tau_i = 0:
+    # Integral Ai = integral_h^h = 0
+    # Integral Bi = integral_0^h = Phi(h)
+    exp_Ac_h, phi_h = compute_exp_integral(Ac, Bc, h)
+
+    Ai_expected = np.block([
+        [exp_Ac_h, np.zeros((n,m))],
+        [np.zeros((m,n)), np.zeros((m,m))]
+    ])
+
+    Bi_expected = np.block([
+        [phi_h],
+        [np.eye(m)]
+    ])
+
+    print("\nTest tau_i = 0:")
+    print("Ai calculated:\n", Ai_calc)
+    print("Bi calculated:\n", Bi_calc)
+
+    assert np.allclose(Ai_calc, Ai_expected), "Test tau_i=0 Failed for Ai"
+    assert np.allclose(Bi_calc, Bi_expected), "Test tau_i=0 Failed for Bi"
+
+
+# Test Case 5: Edge case tau_i = h
+def test_tau_i_h():
+    n, m = 2, 1
+    Ac = np.array([[0.1, 0.0], [0.2, -0.1]])
+    Bc = np.array([[1.0], [0.0]])
+    h = 1.5
+    tau_i = h # tau_i = 1.5
+
+    Ai_calc, Bi_calc = compute_Ai_Bi(Ac, Bc, h, tau_i)
+
+    # Expected results when tau_i = h:
+    # Integral Ai = integral_0^h = Phi(h)
+    # Integral Bi = integral_0^0 = 0
+    exp_Ac_h, phi_h = compute_exp_integral(Ac, Bc, h)
+
+    Ai_expected = np.block([
+        [exp_Ac_h, phi_h],
+        [np.zeros((m,n)), np.zeros((m,m))]
+    ])
+
+    Bi_expected = np.block([
+        [np.zeros((n,m))],
+        [np.eye(m)]
+    ])
+
+    print("\nTest tau_i = h:")
+    print("Ai calculated:\n", Ai_calc)
+    print("Bi calculated:\n", Bi_calc)
+
+    assert np.allclose(Ai_calc, Ai_expected), "Test tau_i=h Failed for Ai"
+    assert np.allclose(Bi_calc, Bi_expected), "Test tau_i=h Failed for Bi"
 
 
 # --------------------------------------------------------
@@ -203,6 +456,16 @@ num_inputs = 1
 state_size = num_states + num_inputs
 
 # Dynamics
+"""
+Test integrals
+"""
+print("Running tests...")
+test_Ac_zero()
+test_scalar()
+test_invertible_Ac_integral()
+test_tau_i_zero()
+test_tau_i_h()
+""""""
 dynamics = [None]
 Ac = np.array([[0., 1.],
                [0., 0.]])
@@ -210,7 +473,7 @@ Bc = np.array([[0.],
                [126.7]])
 for node in range(1, tree.num_nodes):
     t = tree.data_values[node][0]
-    A, B = compute_Ai_Bi(Ac, Bc, t, max_delay)
+    A, B = compute_Ai_Bi(Ac, Bc, max_delay, t)
     dynamics += [s.build.Dynamics(A, B)]
 
 # Costs

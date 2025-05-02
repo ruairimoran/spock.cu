@@ -916,7 +916,7 @@ class FromStructure:
         self.__num_nodes = self.__stages.size
         self.__ancestors = np.asarray(ancestors)
         self.__probs = np.asarray(probabilities)
-        if data is not None and type(data) is not np.ndarray:
+        if not isinstance(data, (type(None), np.ndarray)):
             raise Exception("[FromStructure] Data must be a numpy array!")
         self.__data = np.atleast_2d(data) if data is not None else np.zeros((self.__num_nodes, 1))
         self.__dt = dt

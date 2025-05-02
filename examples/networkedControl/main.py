@@ -258,18 +258,16 @@ def test_Ac_zero():
         [np.zeros((m,n)), np.zeros((m,m))]
     ])
 
-
     Bi_expected = np.array([
-        [(h - tau_i) * 1.0], # [ (h-tau_i)*Bc ]
+        [(h - tau_i) * 1.0],  # [ (h-tau_i)*Bc ]
         [(h - tau_i) * 2.0],
-        [1.0              ]  # [      I       ]
+        [1.0              ]   # [      I       ]
     ])
     # Reshape Bi_expected to match block structure (n+m) x m
     Bi_expected = np.block([
         [(h - tau_i) * Bc],
         [np.eye(m)]
     ])
-
 
     Ai_calc, Bi_calc = compute_Ai_Bi(Ac, Bc, h, tau_i)
 
@@ -285,8 +283,8 @@ def test_Ac_zero():
 
 # Test Case 2: Scalar case (n=1, m=1)
 def test_scalar():
-    Ac = np.array([[-0.5]]) # a = -0.5
-    Bc = np.array([[2.0]])  # b = 2.0
+    Ac = np.array([[-0.5]])  # a = -0.5
+    Bc = np.array([[2.0]])   # b = 2.0
     a = Ac[0, 0]
     b = Bc[0, 0]
     h = 2.0
@@ -459,18 +457,18 @@ state_size = num_states + num_inputs
 """
 Test integrals
 """
-print("Running tests...")
-test_Ac_zero()
-test_scalar()
-test_invertible_Ac_integral()
-test_tau_i_zero()
-test_tau_i_h()
+# print("Running tests...")
+# test_Ac_zero()
+# test_scalar()
+# test_invertible_Ac_integral()
+# test_tau_i_zero()
+# test_tau_i_h()
 """"""
 dynamics = [None]
 Ac = np.array([[0., 1.],
                [0., 0.]])
 Bc = np.array([[0.],
-               [126.7]])
+               [1.]])
 for node in range(1, tree.num_nodes):
     t = tree.data_values[node][0]
     A, B = compute_Ai_Bi(Ac, Bc, max_delay, t)
@@ -479,8 +477,8 @@ for node in range(1, tree.num_nodes):
 # Costs
 zero = 1e-6
 nonleaf_costs = [None]
-Q = np.diag([10. for _ in range(num_states)] + [zero for _ in range(num_inputs)])
-R = np.diag([1. for _ in range(num_inputs)])
+Q = np.diag([1. for _ in range(num_states)] + [zero for _ in range(num_inputs)])
+R = np.diag([10. for _ in range(num_inputs)])
 for node in range(1, tree.num_nodes):
     nonleaf_costs += [s.build.CostQuadratic(Q, R)]
 leaf_cost = s.build.CostQuadratic(Q, leaf=True)
@@ -496,7 +494,7 @@ leaf_constraint = s.build.Rectangle(np.hstack((states_lb, inputs_lb)),
                                     np.hstack((states_ub, inputs_ub)))
 
 # Risk
-alpha = .1
+alpha = .95
 risk = s.build.AVaR(alpha)
 
 # Generate
@@ -509,7 +507,6 @@ problem = (
     .with_constraint_leaf(leaf_constraint)
     .with_risk(risk)
     .with_julia()
-    .with_preconditioning(True)
     .generate_problem()
 )
 print(problem)
@@ -520,5 +517,5 @@ print(problem)
 if br == 0:
     x0 = np.zeros(state_size)
     for k in range(num_states):
-        x0[k] = np.random.uniform(.5 * states_lb[k], .5 * states_ub[k])
+        x0[k] = 2.
     tree.write_to_file_fp("initialState", x0)

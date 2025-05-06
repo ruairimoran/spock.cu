@@ -1,7 +1,7 @@
 add_executable(networked)
 target_sources(networked
     PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/main.cu
+    main.cu
 )
 target_link_libraries(networked
     PRIVATE

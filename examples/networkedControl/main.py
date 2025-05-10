@@ -2,8 +2,9 @@ import numpy as np
 import argparse
 import pickle
 import matplotlib.pyplot as plt
+import tikzplotlib
 from scipy import stats
-from scipy.linalg import expm, inv
+from scipy.linalg import expm, inv, block_diag
 import spock as s
 
 
@@ -17,7 +18,7 @@ dt = args.dt
 br = args.br
 ch = args.ch
 make_tree = args.tree
-test_integrals = True
+test_integrals = False
 
 
 def approx_beta_dist(n_points, alp, bet):
@@ -38,7 +39,7 @@ def approx_beta_dist(n_points, alp, bet):
     return x
 
 
-def make_beta_tree(gam_, s0_, bf_, plot=False):
+def make_beta_tree(gam_, s0_, bf_, trick_=1., plot=False):
     """
     Builds a tree of nodes with values from a Beta distribution.
     Each stage builds upon the nodes of the previous stage, generating children according to a
@@ -63,14 +64,15 @@ def make_beta_tree(gam_, s0_, bf_, plot=False):
     current_indices = [1]
     current_stage = 0
 
+    gam = gam_
     while current_stage < num_stages:
         n_points = bf_[current_stage]
         next_indices = []
 
         for idx in current_indices:
             node = nodes[idx]
-            alp = gam_ * node['value']
-            bet = gam_ * (1 - node['value'])
+            alp = gam / (1 - node['value'])
+            bet = gam / node['value']
             children = approx_beta_dist(n_points, alp, bet)
 
             for child_val in children:
@@ -86,6 +88,7 @@ def make_beta_tree(gam_, s0_, bf_, plot=False):
 
         current_indices = next_indices
         current_stage += 1
+        gam *= trick_
 
     # Extract value, parent (anc_), and stage for each node
     data_ = [node['value'] for node in nodes if node is not None]
@@ -121,6 +124,7 @@ def make_beta_tree(gam_, s0_, bf_, plot=False):
         plt.title(f'γ={gam_}, s0={s0_}')
         plt.tight_layout()
         plt.show()
+        tikzplotlib.save("beta_tree.tex")
 
     anc_ = [a - 1 for a in anc_]  # remove 1-based naming inside
 
@@ -392,18 +396,18 @@ def test_t_h():
 # --------------------------------------------------------
 # Create tree
 # --------------------------------------------------------
-max_delay = 16  # milliseconds
+max_delay = 1 / 12  # hours
 if make_tree:
-    horizon = 3
-    gam = 100
-    s0 = 0.2
-    branching = np.ones(horizon, dtype=np.int32).tolist()
+    horizon = 48
+    gam = 1.
+    s0 = .1
+    branching = (1 * np.ones(horizon, dtype=np.int32)).tolist()
     match br:
         case 0:
-            branching[0:2] = [ch, ch]
+            branching[0:3] = [ch, ch]
         case 1:
             branching[0] = np.power(ch, 2)
-    stages, anc, probs, data = make_beta_tree(gam, s0, branching, plot=False)
+    stages, anc, probs, data = make_beta_tree(gam, s0, branching, trick_=2., plot=0)
     data = np.array([d * max_delay for d in data])
     tree = s.tree.FromStructure(stages, anc, probs, data).build()
     with open('tree.pkl', 'wb') as f:
@@ -414,15 +418,9 @@ else:
 print(tree)
 
 # --------------------------------------------------------
-# Generate problem data
-# state = [x(k), u(k-1)]
-# input = [u(k)]
+# Test formulation of A and B
+# > Literally integration tests, ha!
 # --------------------------------------------------------
-num_states = 2
-num_inputs = 1
-state_size = num_states + num_inputs
-
-# Literally integration tests, ha!
 if test_integrals:
     print("Running tests...")
     test_Ac_zero()
@@ -431,12 +429,24 @@ if test_integrals:
     test_t_zero()
     test_t_h()
 
+# --------------------------------------------------------
+# Generate problem data
+# > state = [x(k), u(k-1)]
+# > input = [u(k)]
+# --------------------------------------------------------
+rng = np.random.default_rng(seed=1)
+num_states = 100
+num_inputs = 50
+state_size = num_states + num_inputs
+
 # Dynamics
 dynamics = [None]
-Ac = np.array([[0., 1.],
-               [0., 0.]])
-Bc = np.array([[0.],
-               [1.]])
+# A_base = np.eye(num_states)
+# B_base = rng.normal(0., 1., size=(num_states, num_inputs))
+# Ac = A_base + rng.normal(0., .01, size=(num_states, num_states))
+# Bc = B_base + rng.normal(0., .01, size=(num_states, num_inputs))
+Ac = np.diag(np.ones(num_states) + rng.normal(0., .01, size=num_states))
+Bc = np.ones((num_states, num_inputs)) * .1
 for node in range(1, tree.num_nodes):
     t = tree.data_values[node][0]
     A, B = compute_Ai_Bi(Ac, Bc, max_delay, t)
@@ -445,15 +455,16 @@ for node in range(1, tree.num_nodes):
 # Costs
 zero = 1e-6
 nonleaf_costs = [None]
-Q = np.diag([1. for _ in range(num_states)] + [zero for _ in range(num_inputs)])
-R = np.diag([10. for _ in range(num_inputs)])
+Q = np.diag(np.hstack((np.ones(num_states) * zero, np.ones(num_inputs) * zero)))
+R = np.diag(np.ones(num_inputs) * .1)
 for node in range(1, tree.num_nodes):
     nonleaf_costs += [s.build.CostQuadratic(Q, R)]
-leaf_cost = s.build.CostQuadratic(Q, leaf=True)
+Q_leaf = np.diag(np.hstack((np.ones(num_states) * 1., np.ones(num_inputs) * zero)))
+leaf_cost = s.build.CostQuadratic(Q_leaf, leaf=True)
 
 # Constraints
-states_ub = np.ones(num_states) * 10.
-inputs_ub = np.ones(num_inputs) * 2.
+states_ub = np.ones(num_states) * 3.
+inputs_ub = np.ones(num_inputs) * .9
 states_lb = -states_ub
 inputs_lb = -inputs_ub
 nonleaf_constraint = s.build.Rectangle(np.hstack((states_lb, inputs_lb, inputs_lb)),

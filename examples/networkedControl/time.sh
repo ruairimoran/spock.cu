@@ -9,9 +9,8 @@ main() {
     source "${path}.venv/bin/activate"
     mkdir -p ./build
     n=10
-    ch=2
-    branching=0
-    for ch in $(seq 2 $n); do
+    for ch_half in $(seq 1 $n); do
+        ch=$((ch_half * 2));
         for branching in {0..1}; do
             python main.py --dt="d" --br="$branching" --ch="$ch" --tree=1
             julia ../../tests/julia/julia.jl |& tee log/julia.txt

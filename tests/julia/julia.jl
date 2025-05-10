@@ -22,7 +22,7 @@ function run_model(model :: Model, max_time)
         println(e)
     end
     status, time = check_status(model, time, max_time)
-    println("[$(MOI.get(model, MOI.SolverName()))] Done! ($(time) s) ($(status))")
+    println("[$(MOI.get(model, MOI.SolverName()))] Done!")
     return status, time
 end
 
@@ -45,7 +45,7 @@ function check_bounds(model :: Model, status, d, tol)
 #         sat_x = sat_x_max || sat_x_min
 #         sat_u = sat_u_max || sat_u_min
 #         println("[$(MOI.get(model, MOI.SolverName()))] Constraint saturation: states = ", sat_x, ", inputs = ", sat_u)
-        if true  # print states and inputs
+        if false  # print states and inputs
             println("[$(MOI.get(model, MOI.SolverName()))] States:")
             x = round.(value.(model[:x]), digits=2)
             for node in 1:d.num_nodes
@@ -68,6 +68,7 @@ end
 
 
 function build_and_run(optimizer, data, risk, tol, max_time)
+    println("[$(MOI.get(Model(optimizer), MOI.SolverName()))] Building ...")
     model = build_model(optimizer, data, risk)
     if optimizer == Gurobi.Optimizer
         set_attribute(model, "FeasibilityTol", tol)
@@ -87,6 +88,7 @@ function build_and_run(optimizer, data, risk, tol, max_time)
     end
     status, time = run_model(model, max_time)
     check_bounds(model, status, data, tol)
+    println("[$(MOI.get(model, MOI.SolverName()))] Stats: ($(time) s) ($(status))")
     return status, time
 end
 
@@ -114,7 +116,7 @@ data = read_data()
 risk = build_risk(data)
 x0 = read_vector_from_binary(TR, folder * "initialState" * file_ext_r)
 tol = 1e-3
-max_time = .25 * minute
+max_time = 5 * minute
 status = Int64(1)
 tol_f64 = Float64(tol)
 max_time_f64 = Float64(max_time)
@@ -123,7 +125,7 @@ status_m = nothing
 status_g = nothing
 status_i = nothing
 
-for run in [0]
+for run in [0, 1]
     if check_run(run, status_m)
         global status_m, time_m, ram_m = get_stats(Mosek.Optimizer, data, risk, tol_f64, max_time_f64)
         if status_m == MOI.INFEASIBLE
@@ -136,10 +138,12 @@ for run in [0]
 #     if check_run(run, status_g)
 #         global status_g, time_g, ram_g = get_stats(Gurobi.Optimizer, data, risk, tol_f64, max_time_f64)
 #     end
-#
+    time_g = 0.
+
 #     if check_run(run, status_i)
 #         global status_i, time_i, ram_i = get_stats(Ipopt.Optimizer, data, risk, tol_f64, max_time_f64)
 #     end
+#     time_i = 0.
 
     if run == 1
         println("Saving julia times...")
@@ -147,7 +151,7 @@ for run in [0]
         open("time.csv", "a") do f
             # write(f, "$(data.ch_num[1]), $(time_g), $(time_m), $(time_i), ")
             # write(f, "$(data.ch_num[1]), $(time_g), $(ram_g), $(time_m), $(ram_m), $(time_i), $(ram_i), ")
-            # write(f, "$(data.ch_num[1]), $(time_m), $(ram_m), ")
+            write(f, "$(data.ch_num[1]), $(time_m), $(time_g), ")
         end
         println("Saved!")
     end

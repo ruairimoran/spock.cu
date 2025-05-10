@@ -30,7 +30,6 @@ example = [
     'argparse',
     'pandas',
     'mosek',
-    'pickle',
 ]
 test = [
     'cvxpy',
@@ -40,7 +39,6 @@ all = [
     'argparse',
     'pandas',
     'mosek',
-    'pickle',
     'cvxpy',
 ]
 

@@ -2,7 +2,7 @@ import numpy as np
 import argparse
 import pickle
 import matplotlib.pyplot as plt
-import tikzplotlib
+import tikzplotlib  # requires matplotlib==3.5.1
 from scipy import stats
 from scipy.linalg import expm, inv, block_diag
 import spock as s
@@ -123,8 +123,8 @@ def make_beta_tree(gam_, s0_, bf_, trick_=1., plot=False):
         plt.ylabel('Value')
         plt.title(f'γ={gam_}, s0={s0_}')
         plt.tight_layout()
-        plt.show()
         tikzplotlib.save("beta_tree.tex")
+        plt.show()
 
     anc_ = [a - 1 for a in anc_]  # remove 1-based naming inside
 
@@ -398,16 +398,18 @@ def test_t_h():
 # --------------------------------------------------------
 max_delay = 1 / 12  # hours
 if make_tree:
-    horizon = 48
+    horizon = 12
     gam = 1.
     s0 = .1
-    branching = (1 * np.ones(horizon, dtype=np.int32)).tolist()
-    match br:
-        case 0:
-            branching[0:3] = [ch, ch]
-        case 1:
-            branching[0] = np.power(ch, 2)
-    stages, anc, probs, data = make_beta_tree(gam, s0, branching, trick_=2., plot=0)
+    branching = (2 * np.ones(horizon, dtype=np.int32)).tolist()
+    # match br:
+    #     case 0:
+    #         branching[0:3] = [ch, ch]
+    #     case 1:
+    #         branching[0] = np.power(ch, 2)
+    branching[0] = 3
+    stages, anc, probs, data = make_beta_tree(gam, s0, branching, trick_=2., plot=1)
+    exit()
     data = np.array([d * max_delay for d in data])
     tree = s.tree.FromStructure(stages, anc, probs, data).build()
     with open('tree.pkl', 'wb') as f:

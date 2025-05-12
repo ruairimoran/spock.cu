@@ -2,9 +2,8 @@ import numpy as np
 import argparse
 import pickle
 import matplotlib.pyplot as plt
-import tikzplotlib
 from scipy import stats
-from scipy.linalg import expm, inv, block_diag
+from scipy.linalg import expm, inv
 import spock as s
 
 
@@ -124,7 +123,6 @@ def make_beta_tree(gam_, s0_, bf_, trick_=1., plot=False):
         plt.title(f'γ={gam_}, s0={s0_}')
         plt.tight_layout()
         plt.show()
-        tikzplotlib.save("beta_tree.tex")
 
     anc_ = [a - 1 for a in anc_]  # remove 1-based naming inside
 

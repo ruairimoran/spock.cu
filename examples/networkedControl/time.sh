@@ -8,7 +8,7 @@ main() {
     # shellcheck disable=SC1090
     source "${path}.venv/bin/activate"
     mkdir -p ./build
-    n=10
+    n=5
     for ch_half in $(seq 1 $n); do
         ch=$((ch_half * 2));
         for branching in {0..1}; do

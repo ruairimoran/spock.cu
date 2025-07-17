@@ -50,7 +50,7 @@ function check_bounds(model :: Model, status, d, tol)
             x = round.(value.(model[:x]), digits=2)
             for node in 1:d.num_nodes
                 for ele in x[(node-1)*d.num_states+1:node*d.num_states]
-                    print(lpad(ele, 8))
+                    print(lpad(ele, 10))
                 end
                 print("\n")
             end

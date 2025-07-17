@@ -2,12 +2,6 @@
 #define real_t double  // templates type defaults to double
 
 
-template <typename T>
-size_t argmin(const std::vector<T>& v) {
-    return std::distance(v.begin(), std::min_element(v.begin(), v.end()));
-}
-
-
 int main() {
     real_t minute = 60.;
     real_t avgTime = 0.;
@@ -46,32 +40,31 @@ int main() {
             if (i < totalRuns - 1) cache.reset();
             std::cout << "Run (" << i << ") : " << runTimes[i] << " s, " << runIters[i] << " iters." << std::endl;
         }
-//        real_t time = std::reduce(runTimes.begin() + warm, runTimes.end());
-//        real_t iter = std::reduce(runIters.begin() + warm, runIters.end());
-//        avgTime = time / runs;
-//        avgIter = iter / runs;
-        size_t minIdx = argmin(runTimes);
-        avgTime = runTimes[minIdx];
-        avgIter = runIters[minIdx];
+        real_t time = std::reduce(runTimes.begin() + warm, runTimes.end());
+        real_t iter = std::reduce(runIters.begin() + warm, runIters.end());
+        avgTime = time / runs;
+        avgIter = iter / runs;
 
         /* PRINT */
-//        std::cout << std::fixed << std::setprecision(2);
-//        std::vector<real_t> states = cache.states();
-//        std::vector<real_t> inputs = cache.inputs();
-//        std::cout << "States:\n";
-//        for (size_t i = 0; i < tree.numNodes(); i++) {
-//            for (size_t j = 0; j < tree.numStates(); j++) {
-//                std::cout << "\t\t" << states[i*tree.numStates()+j];// << "\n";
-//            }
-//            std::cout << "\n";
-//        }
-//        std::cout << "Inputs:\n";
-//        for (size_t i = 0; i < tree.numNonleafNodes(); i++) {
-//            for (size_t j = 0; j < tree.numInputs(); j++) {
-//                std::cout << "\t\t" << inputs[i*tree.numInputs()+j];// << "\n";
-//            }
-//            std::cout << "\n";
-//        }
+        if (false) {
+            std::cout << std::fixed << std::setprecision(2);
+            std::vector<real_t> states = cache.states();
+            std::vector<real_t> inputs = cache.inputs();
+            std::cout << "States:\n";
+            for (size_t i = 0; i < tree.numNodes(); i++) {
+                for (size_t j = 0; j < tree.numStates(); j++) {
+                    std::cout << "\t\t" << states[i * tree.numStates() + j];// << "\n";
+                }
+                std::cout << "\n";
+            }
+            std::cout << "Inputs:\n";
+            for (size_t i = 0; i < tree.numNonleafNodes(); i++) {
+                for (size_t j = 0; j < tree.numInputs(); j++) {
+                    std::cout << "\t\t" << inputs[i * tree.numInputs() + j];// << "\n";
+                }
+                std::cout << "\n";
+            }
+        }
     } catch (const std::exception &e) {
         std::cout << "SPOCK failed! : " << e.what() << std::endl;
     } catch (...) {

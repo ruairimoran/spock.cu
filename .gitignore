@@ -1,4 +1,5 @@
 # Custom
+_deps/
 *.pkl
 Manifest.toml
 data/

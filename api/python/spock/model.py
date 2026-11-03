@@ -44,7 +44,8 @@ class Model:
                 "eps_abs": tol,
                 "eps_rel": tol,
                 "eps_infeas": tol,
-                "time_limit_secs": max_time,
+                # SCS represents an unlimited solve time with zero.
+                "time_limit_secs": 0.0 if np.isposinf(max_time) else max_time,
             }
             return self.__cvx.solve(solver=solver,
                                     **scs_params,
@@ -318,7 +319,8 @@ class ModelWithPrecondition:
                 "eps_abs": tol,
                 "eps_rel": tol,
                 "eps_infeas": tol,
-                "time_limit_secs": max_time,
+                # SCS represents an unlimited solve time with zero.
+                "time_limit_secs": 0.0 if np.isposinf(max_time) else max_time,
             }
             return self.__cvx.solve(solver=solver,
                                     **scs_params,

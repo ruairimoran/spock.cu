@@ -1,13 +1,17 @@
 # ---- cmake for CUDA with googleTest
 cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
+if(POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+endif()
 project(SPOCK
     DESCRIPTION "Solver for risk-averse optimal control problems."
     HOMEPAGE_URL "https://github.com/ruairimoran/raocp-parallel"
     LANGUAGES CXX)
 # ----
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)  # required for calling cuda kernels from cuda kernels
-set(CMAKE_CUDA_COMPILER "/usr/local/cuda-12.3/bin/nvcc")  # or, wherever your cuda toolkit is stored
-set(CMAKE_CUDA_ARCHITECTURES 86)
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES 86)
+endif()
 set(CMAKE_CUDA_STANDARD 20)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CUDA_FLAGS "-std=c++20")
@@ -20,7 +24,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # ----
 add_library(spock_developer_flags INTERFACE)
 set(cxx_flags -Wall)
-set(cuda_flags -arch=sm_60 -std=c++20 -Xcompiler=-Wall -Xcudafe=--display_error_number -g)
+set(cuda_flags -std=c++20 -Xcompiler=-Wall -Xcudafe=--display_error_number -g)
 target_compile_options(spock_developer_flags
     INTERFACE
     # flags for CXX builds

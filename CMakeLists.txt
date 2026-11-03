@@ -61,4 +61,5 @@ add_subdirectory(examples/random)
 add_subdirectory(examples/serverAirCondition)
 add_subdirectory(examples/networkedControl)
 add_subdirectory(examples/powerDistribution)
+add_subdirectory(examples/networkedControlMpc)
 # ----

@@ -1,4 +1,4 @@
-"""Case Study 2 MPC, retaining the existing example's parameters and topology."""
+"""Case Study 2 MPC, with an optional early-stage branching override."""
 import argparse
 import ast
 import contextlib
@@ -107,7 +107,7 @@ def generate_problem(p, phi, gamma, workspace):
                    .with_constraint_nonleaf(nonleaf).with_constraint_leaf(leaf)
                    .with_risk(s.build.AVaR(p["alpha"]))
                    .with_preconditioning(p["stored"]["preconditioned"]).generate_problem())
-        if tree.num_nodes != p["stored"]["numNodes"]:
+        if tree.num_nodes != p.get("expected_nodes", p["stored"]["numNodes"]):
             raise ValueError("Tree topology changed")
         del problem
     return time.perf_counter() - begin
@@ -122,6 +122,8 @@ def main():
     parser.add_argument("--seed", type=int, default=20261103)
     parser.add_argument("--tolerance", type=float, default=1e-3)
     parser.add_argument("--max-time", type=float, default=300.0)
+    parser.add_argument("--branching", type=int, nargs="+",
+                        help="Override early-stage branching factors; remaining stages use factor 1")
     args = parser.parse_args()
     repo, output = args.repo.resolve(), args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -139,6 +141,17 @@ def main():
         error = float(np.max(np.abs(reference - generated)))
         comparisons[name] = error
         np.testing.assert_allclose(generated, reference, rtol=1e-10, atol=1e-12)
+    original_branching = p["branching"].copy()
+    if args.branching is not None:
+        if len(args.branching) > len(original_branching) or any(factor < 1 for factor in args.branching):
+            raise ValueError("Branching factors must be positive and fit the stored prediction horizon")
+        p["branching"] = args.branching + [1] * (len(original_branching) - len(args.branching))
+    stage_nodes = [1]
+    for factor in p["branching"]:
+        stage_nodes.append(stage_nodes[-1] * factor)
+    p["expected_nodes"] = sum(stage_nodes)
+    if args.branching is not None:
+        base_generation = generate_problem(p, p["phi0"], p["gam"], workspace)
     gpu = subprocess.check_output(
         ["nvidia-smi", "--query-gpu=name,driver_version,memory.total", "--format=csv,noheader"], text=True).strip()
     metadata = {
@@ -147,14 +160,18 @@ def main():
         "source_path": p["source_path"], "source_sha256": p["source_sha256"],
         "physical_states": p["num_states"], "augmented_states": p["state_size"], "inputs": p["num_inputs"],
         "prediction_transitions": len(p["branching"]), "branching": p["branching"], "stored_problem": p["stored"],
+        "original_branching": original_branching, "branching_override": args.branching,
+        "tree_nodes": sum(stage_nodes), "tree_nonleaf_nodes": sum(stage_nodes[:-1]),
+        "tree_scenarios": stage_nodes[-1], "maximum_stage_width": max(stage_nodes),
+        "state_control_variables": sum(stage_nodes) * p["state_size"] + sum(stage_nodes[:-1]) * p["num_inputs"],
         "sampling_time_hours": p["max_delay"], "phi0": p["phi0"], "gamma0": p["gam"], "gamma_growth": p["trick"],
         "absolute_tolerance": args.tolerance, "relative_tolerance": args.tolerance,
         "max_solver_time_s": args.max_time, "step_zero_tensor_max_errors": comparisons,
         "warm_start": "Previous complete unshifted primal-dual iterate; cold at step zero of every trajectory.",
         "timing": "CUDA-event elapsed interval around runSpock, including its GPU transfers and host-paced gaps; not a sum of kernel durations. CPU generation, problem/cache setup, extraction and plant simulation excluded.",
-        "prediction": "Tree reconditioned on current phi at every MPC step, preserving stored topology and Beta parameters. Gamma at absolute step k is gamma0 * gamma_growth**k.",
+        "prediction": "Tree reconditioned on current phi at every MPC step, using the configured topology and stored Beta parameters. Gamma at absolute step k is gamma0 * gamma_growth**k.",
         "plant": "Sample next phi from Beta(gamma_k/(1-phi_k), gamma_k/phi_k), then propagate the stored edge-based A(T*phi_next), B(T*phi_next) with the root control.",
-        "retained_source_details": "Existing br=0 stored tree has 47 transitions (48 stages), although source variable horizon=48. No horizon, risk, cost, or distribution corrections applied.",
+        "retained_source_details": "Existing br=0 stored tree has 47 transitions (48 stages), although source variable horizon=48. No horizon, risk, cost, or distribution corrections applied. Early branching is changed only if --branching is supplied.",
     }
     (output / "parameters.json").write_text(json.dumps(metadata, indent=2) + "\n")
     np.savez(output / "plant_parameters.npz", Ac=p["Ac"], Bc=p["Bc"], Q=p["Q"], R=p["R"],

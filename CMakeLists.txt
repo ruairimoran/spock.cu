@@ -2,6 +2,7 @@
 cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 if(POLICY CMP0135)
     cmake_policy(SET CMP0135 NEW)
+    set(CMAKE_POLICY_DEFAULT_CMP0135 NEW)
 endif()
 project(SPOCK
     DESCRIPTION "Solver for risk-averse optimal control problems."
@@ -38,7 +39,8 @@ target_link_libraries(spock_compiler_flags INTERFACE $<BUILD_INTERFACE:spock_dev
 include(FetchContent)
 FetchContent_Declare(
     gputils
-    URL https://github.com/GPUEngineering/GPUtils/archive/refs/heads/main.zip  # specify release version
+    URL https://github.com/GPUEngineering/GPUtils/archive/refs/tags/v2.0.0.zip
+    URL_HASH SHA256=4ba677216d0da6023af03f465dacb7cba68574a4fab31a3172a9236f0bf18b86
 )
 FetchContent_MakeAvailable(gputils)
 FetchContent_GetProperties(
@@ -47,13 +49,11 @@ FetchContent_GetProperties(
 )
 # ----
 add_subdirectory(src)
-if(NOT SPOCK_BUILD_TEST)
-    set(SPOCK_BUILD_TEST OFF)
-endif()
+option(SPOCK_BUILD_TEST "Build SPOCK tests" OFF)
 if (SPOCK_BUILD_TEST)
+    enable_testing()
     add_subdirectory(tests)
 endif()
-unset(SPOCK_BUILD_TEST CACHE)
 # ----
 add_subdirectory(examples/precondition)
 add_subdirectory(examples/andersonBuffer)

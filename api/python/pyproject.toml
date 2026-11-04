@@ -19,7 +19,7 @@ dependencies = [
     'scipy',
     'matplotlib',
     'jinja2',
-    'gputils_api'
+    'gputils_api @ https://github.com/GPUEngineering/GPUtils/archive/refs/tags/v2.0.0.zip#subdirectory=python&sha256=4ba677216d0da6023af03f465dacb7cba68574a4fab31a3172a9236f0bf18b86'
 ]
 
 [project.optional-dependencies]

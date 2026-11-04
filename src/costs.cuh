@@ -28,6 +28,15 @@ protected:
 
     explicit Cost(ScenarioTree<T> &tree) : m_tree(tree) {};
 
+    static void transformWorkspace(const DTensor<T> &matrix,
+                                   std::unique_ptr<DTensor<T>> &workspace,
+                                   std::unique_ptr<DTensor<T>> &product) {
+        // GEMM output must not alias its input. Swap owning buffers instead
+        // of allocating or copying a temporary on each operator evaluation.
+        product->addAB(matrix, *workspace);
+        workspace.swap(product);
+    }
+
     virtual std::ostream &print(std::ostream &) const = 0;
 
 public:
@@ -75,6 +84,8 @@ private:
     std::unique_ptr<DTensor<T>> m_d_uWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_scalarWorkspace = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_xProduct = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_uProduct = nullptr;
 
     std::ostream &print(std::ostream &out) const {
         out << "Cost: quadratic\n";
@@ -109,6 +120,10 @@ public:
             }
         }
         m_d_xWorkspace = std::make_unique<DTensor<T>>(tree.numStates(), 1, this->m_numNodes, true);
+        if (part == nonleaf) {
+            m_d_xProduct = std::make_unique<DTensor<T>>(tree.numStates(), 1, this->m_numNodes);
+            m_d_uProduct = std::make_unique<DTensor<T>>(tree.numInputs(), 1, this->m_numNodes);
+        }
         this->m_dim = this->m_dimPerNode * this->m_numNodes;
     }
 
@@ -127,11 +142,11 @@ public:
         /* IV:1 */
         this->m_tree.memCpyAnc2Node(*m_d_xWorkspace, x, 1, this->m_tree.numNodesMinus1(), this->m_tree.numStates(), 0,
                                     0);
-        m_d_xWorkspace->addAB(*m_d_sqrtQ, *m_d_xWorkspace);
+        this->transformWorkspace(*m_d_sqrtQ, m_d_xWorkspace, m_d_xProduct);
         /* IV:2 */
         this->m_tree.memCpyAnc2Node(*m_d_uWorkspace, u, 1, this->m_tree.numNodesMinus1(), this->m_tree.numInputs(), 0,
                                     0);
-        m_d_uWorkspace->addAB(*m_d_sqrtR, *m_d_uWorkspace);
+        this->transformWorkspace(*m_d_sqrtR, m_d_uWorkspace, m_d_uProduct);
         /* IV:3,4 */
         t *= 0.5;  // This affects the current 't'!!! But it shouldn't matter...
         /* IV (organise IV:1-4) */
@@ -163,11 +178,11 @@ public:
     void adj(DTensor<T> &iv, DTensor<T> &x, DTensor<T> &u, DTensor<T> &t) {
         /* -> Compute `Qiv1` at every nonroot node */
         memCpyNode2Node(*m_d_xWorkspace, iv, 1, this->m_tree.numNodesMinus1(), this->m_tree.numStates());
-        m_d_xWorkspace->addAB(*m_d_sqrtQ, *m_d_xWorkspace);
+        this->transformWorkspace(*m_d_sqrtQ, m_d_xWorkspace, m_d_xProduct);
         /* -> Compute `Riv2` at every nonroot node */
         memCpyNode2Node(*m_d_uWorkspace, iv, 1, this->m_tree.numNodesMinus1(), this->m_tree.numInputs(), 0,
                         this->m_tree.numStates());
-        m_d_uWorkspace->addAB(*m_d_sqrtR, *m_d_uWorkspace);
+        this->transformWorkspace(*m_d_sqrtR, m_d_uWorkspace, m_d_uProduct);
         /* -> Add children of each nonleaf node */
         for (size_t chIdx = 0; chIdx < this->m_tree.numEvents(); chIdx++) {
             /* -> Add to `x` all children `Qiv1` */
@@ -319,6 +334,8 @@ private:
     std::unique_ptr<DTensor<T>> m_d_uWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_scalarWorkspace = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_xProduct = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_uProduct = nullptr;
 
     std::ostream &print(std::ostream &out) const {
         out << "Cost: quadratic-plus-linear\n";
@@ -362,6 +379,10 @@ public:
         }
         m_d_qTr = std::make_unique<DTensor<T>>(m_d_q->tr());
         m_d_xWorkspace = std::make_unique<DTensor<T>>(tree.numStates(), 1, this->m_numNodes, true);
+        if (part == nonleaf) {
+            m_d_xProduct = std::make_unique<DTensor<T>>(tree.numStates(), 1, this->m_numNodes);
+            m_d_uProduct = std::make_unique<DTensor<T>>(tree.numInputs(), 1, this->m_numNodes);
+        }
         this->m_dim = this->m_dimPerNode * this->m_numNodes;
     }
 
@@ -383,12 +404,12 @@ public:
         this->m_tree.memCpyAnc2Node(*m_d_xWorkspace, x, 1, this->m_tree.numNodesMinus1(), this->m_tree.numStates(), 0,
                                     0);
         t.addAB(*m_d_qTr, *m_d_xWorkspace, -.5, 1.);
-        m_d_xWorkspace->addAB(*m_d_sqrtQ, *m_d_xWorkspace);
+        this->transformWorkspace(*m_d_sqrtQ, m_d_xWorkspace, m_d_xProduct);
         /* IV:2 */
         this->m_tree.memCpyAnc2Node(*m_d_uWorkspace, u, 1, this->m_tree.numNodesMinus1(), this->m_tree.numInputs(), 0,
                                     0);
         t.addAB(*m_d_rTr, *m_d_uWorkspace, -.5, 1.);
-        m_d_uWorkspace->addAB(*m_d_sqrtR, *m_d_uWorkspace);
+        this->transformWorkspace(*m_d_sqrtR, m_d_uWorkspace, m_d_uProduct);
         /* IV (organise IV:1-4) */
         /* :1 */
         memCpyNode2Node(iv, *m_d_xWorkspace, 1, this->m_tree.numNodesMinus1(), this->m_tree.numStates());
@@ -423,13 +444,13 @@ public:
                         this->m_tree.numStatesAndInputs() + 1);
         /* -> Compute `Qiv1` at every nonroot node */
         memCpyNode2Node(*m_d_xWorkspace, iv, 1, this->m_tree.numNodesMinus1(), this->m_tree.numStates());
-        m_d_xWorkspace->addAB(*m_d_sqrtQ, *m_d_xWorkspace);
+        this->transformWorkspace(*m_d_sqrtQ, m_d_xWorkspace, m_d_xProduct);
         m_d_xWorkspace->addAB(*m_d_q, t, -.5, 1.);
         m_d_xWorkspace->addAB(*m_d_q, *m_d_scalarWorkspace, -.5, 1.);
         /* -> Compute `Riv2` at every nonroot node */
         memCpyNode2Node(*m_d_uWorkspace, iv, 1, this->m_tree.numNodesMinus1(), this->m_tree.numInputs(), 0,
                         this->m_tree.numStates());
-        m_d_uWorkspace->addAB(*m_d_sqrtR, *m_d_uWorkspace);
+        this->transformWorkspace(*m_d_sqrtR, m_d_uWorkspace, m_d_uProduct);
         m_d_uWorkspace->addAB(*m_d_r, t, -.5, 1.);
         m_d_uWorkspace->addAB(*m_d_r, *m_d_scalarWorkspace, -.5, 1.);
         /* -> Add children of each nonleaf node */

@@ -12,7 +12,7 @@ protected:
 TEMPLATE_WITH_TYPE_T
 class CacheTestData {
 public:
-    std::string m_path = "../../data/";
+    std::string m_path = SPOCK_TEST_DATA_DIR;
     std::unique_ptr<ScenarioTree<T>> m_tree;
     std::unique_ptr<ProblemData<T>> m_data;
     std::unique_ptr<Cache<T>> m_cache;

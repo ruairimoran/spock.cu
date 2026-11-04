@@ -3,6 +3,7 @@
 
 #include "../include/gpu.cuh"
 #include "tree.cuh"
+#include <array>
 
 
 /**
@@ -178,6 +179,20 @@ protected:
 public:
     virtual ~Dynamics() = default;
 
+    // Fixed-shape numerical data for online updates. Uploading into these
+    // tensors preserves the stage slices and Cholesky solver objects.
+    std::array<DTensor<T> *, 8> projectionTensors() {
+        if (m_affine) throw std::invalid_argument("Online projection updates currently require linear dynamics");
+        return {m_d_BTr.get(), m_d_AB.get(), m_d_K.get(), m_d_KTr.get(),
+                m_d_ABKTr.get(), m_d_P.get(), m_d_APB.get(), m_d_lowerCholesky.get()};
+    }
+
+    void resetDeviceWorkspace() {
+        for (auto *buffer : {m_d_q.get(), m_d_d.get(), m_d_workX.get(),
+                            m_d_workU.get(), m_d_workXU.get()})
+            gpuErrChk(cudaMemset(buffer->raw(), 0, buffer->numEl() * sizeof(T)));
+    }
+
     /**
      * For reuse while testing.
      */
@@ -185,7 +200,7 @@ public:
         m_d_q->upload(std::vector<T>(m_tree.numStates() * m_tree.numNodes(), 0));
         m_d_d->upload(std::vector<T>(m_tree.numInputs() * m_tree.numNonleafNodes(), 0));
         m_d_workX->upload(std::vector<T>(m_tree.numStates() * m_tree.numNodes(), 0));
-        m_d_workU->upload(std::vector<T>(m_tree.numInputs() * m_tree.numNodes(), 0));
+        m_d_workU->upload(std::vector<T>(m_d_workU->numEl(), 0));
         m_d_workXU->upload(std::vector<T>(m_tree.numStatesAndInputs() * m_tree.numNodes(), 0));
     }
 

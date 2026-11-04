@@ -5,6 +5,7 @@
 #include "cones.cuh"
 #include "risks.cuh"
 #include "operator.cuh"
+#include "anderson.cuh"
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
@@ -101,6 +102,7 @@ protected:
     T m_tolRel = 0.;
     T m_tol = 0.;
     T m_errAbs = 0.;
+    T m_initialResidual = 0.;
     T m_maxTimeSecs = 0.;
     size_t m_maxOuterIters = 0;
     size_t m_andBuff = 0;
@@ -109,6 +111,8 @@ protected:
     size_t m_colAxis = 1;
     size_t m_matAxis = 2;
     size_t m_callsToL = 0;
+    size_t m_operatorEvaluations = 0;
+    size_t m_backtracks = 0;
     size_t m_computeErrorIters = 25;
     bool m_debug = false;
     bool m_errInit = false;  ///< Whether to initialise tolerances
@@ -164,6 +168,7 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_workIteratePrim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workIterateDual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workYTS = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_projectedYTS = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workDot = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workDotPrim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workDotDual = nullptr;
@@ -203,17 +208,17 @@ protected:
     T m_lambda = 1.;
     /* Anderson */
     std::unique_ptr<DTensor<T>> m_d_andIterateMatrix = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andIterateMatrixLeft = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andIterateMatrixRight = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andIterateMatrixCol0 = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andResidualMatrix = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andResidualMatrixLeft = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andResidualMatrixRight = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andResidualMatrixCol0 = nullptr;
     std::unique_ptr<QRFactoriser<T>> m_andQRFactor = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andQR = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andQRGammaFull = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andQRGamma = nullptr;
+    AndersonOptions m_andersonOptions;
+    std::unique_ptr<RegularisedAnderson<T>> m_regularisedAnderson;
+    size_t m_validAndersonHistory = 0;
+    AndersonStatistics m_andersonStatistics;
 
     /**
      * Protected methods
@@ -282,6 +287,10 @@ protected:
 
     void printToJson(std::string &);
 
+    int runSpockImpl(std::vector<T> &, std::vector<T> *, bool);
+
+    void resetDeviceWorkspace(bool keepIterate);
+
 public:
     /**
      * Constructor
@@ -295,9 +304,13 @@ public:
           size_t maxOuterIters = 1000,
           size_t maxInnerIters = 8,
           size_t andBuff = 3,
-          bool debug = false) :
+          bool debug = false,
+          AndersonOptions andersonOptions = {}) :
         m_tree(tree), m_data(data), m_tolAbs(absTol), m_tolRel(relTol), m_maxTimeSecs(maxTimeSecs),
-        m_maxOuterIters(maxOuterIters), m_maxInnerIters(maxInnerIters), m_andBuff(andBuff), m_debug(debug) {
+        m_maxOuterIters(maxOuterIters), m_maxInnerIters(maxInnerIters), m_andBuff(andBuff), m_debug(debug),
+        m_andersonOptions(andersonOptions) {
+        if (m_andBuff == 0) throw std::invalid_argument("Anderson memory must be positive");
+        if (m_andersonOptions.enabled) m_andersonOptions.validate();
         /* Tolerances */
         if (m_data.preconditioned()) {
             T tolScale = *std::min_element(m_data.scaling().begin(), m_data.scaling().end());
@@ -341,6 +354,7 @@ public:
         m_d_directionScaled = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_workIterate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_workYTS = std::make_unique<DTensor<T>>(m_data.nullDim(), 1, m_tree.numNonleafNodes(), true);
+        m_d_projectedYTS = std::make_unique<DTensor<T>>(m_data.nullDim(), 1, m_tree.numNonleafNodes());
         m_d_workDot = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         /* Slice and reshape tensors */
         reshape();
@@ -354,11 +368,32 @@ public:
 
     int runSpock(std::vector<T> &, std::vector<T> * = nullptr);
 
+    // Reuse all device storage, retaining the accepted iterate for warm starts.
+    int runSpockResident(std::vector<T> &state, bool warm);
+
+    std::vector<T> rootInput() {
+        std::vector<T> input(m_tree.numInputs());
+        gpuErrChk(cudaMemcpy(input.data(), m_d_iterate->raw(), input.size() * sizeof(T), cudaMemcpyDeviceToHost));
+        if (m_data.preconditioned())
+            for (size_t i = 0; i < input.size(); ++i) input[i] /= m_data.scaling()[m_tree.numStates() + i];
+        return input;
+    }
+
     int status() { return m_exitCode; }
 
     size_t solveIter() { return m_countIterations; }
 
     T solveTime() { return m_timeElapsed; }
+
+    const AndersonStatistics &andersonStatistics() const { return m_andersonStatistics; }
+    const AndersonOptions &andersonOptions() const {
+        return m_regularisedAnderson ? m_regularisedAnderson->options() : m_andersonOptions;
+    }
+    T initialResidual() const { return m_initialResidual; }
+    T finalResidual() const { return m_errAbs; }
+    T effectiveTolerance() const { return m_tol; }
+    size_t operatorEvaluations() const { return m_operatorEvaluations; }
+    size_t backtracks() const { return m_backtracks; }
 
     /**
      * Debug functions (slow).
@@ -515,11 +550,7 @@ void Cache<T>::reshape() {
     m_d_ellResidualPrim = std::make_unique<DTensor<T>>(*m_d_ellResidual, m_rowAxis, 0, m_sizePrim - 1);
     m_d_ellResidualDual = std::make_unique<DTensor<T>>(*m_d_ellResidual, m_rowAxis, m_sizePrim,
                                                        m_sizeIterate - 1);
-    m_d_andIterateMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 0, m_andBuff - 2);
-    m_d_andIterateMatrixRight = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 1, m_andBuff - 1);
     m_d_andIterateMatrixCol0 = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 0, 0);
-    m_d_andResidualMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 0, m_andBuff - 2);
-    m_d_andResidualMatrixRight = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 1, m_andBuff - 1);
     m_d_andResidualMatrixCol0 = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 0, 0);
     m_d_andQRGamma = std::make_unique<DTensor<T>>(*m_d_andQRGammaFull, m_rowAxis, 0, m_andBuff - 1);
     reshapePrimalWorkspace();
@@ -564,6 +595,9 @@ void Cache<T>::reshapeDualWorkspace() {
     if (m_sizeIII) {
         m_d_iii = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeIII - 1);
         m_data.nonleafConstraint()->reshape(*m_d_iii);
+    } else {
+        // An absent constraint has no dual entries; keep a valid empty object.
+        m_d_iii = std::make_unique<DTensor<T>>();
     }
     start += m_sizeIII;
     m_d_iv = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeIV - 1);
@@ -573,6 +607,8 @@ void Cache<T>::reshapeDualWorkspace() {
     if (m_sizeV) {
         m_d_v = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeV - 1);
         m_data.leafConstraint()->reshape(*m_d_v);
+    } else {
+        m_d_v = std::make_unique<DTensor<T>>();
     }
     start += m_sizeV;
     m_d_vi = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeVI - 1);
@@ -585,7 +621,12 @@ void Cache<T>::initialiseProjectable() {
     /* Dual II */
     m_nnoc = std::make_unique<NonnegativeOrthantCone<T>>(m_tree.numNonleafNodes());
     /* QR */
-    m_andQRFactor = std::make_unique<QRFactoriser<T>>(*m_d_andQR);
+    if (m_andersonOptions.enabled)
+        m_regularisedAnderson = std::make_unique<RegularisedAnderson<T>>(
+            *m_d_andIterateMatrix, *m_d_andResidualMatrix, *m_d_andQR,
+            *m_d_andQRGammaFull, *m_d_andQRGamma, m_andersonOptions);
+    else
+        m_andQRFactor = std::make_unique<QRFactoriser<T>>(*m_d_andQR);
 }
 
 template<typename T>
@@ -662,7 +703,9 @@ void Cache<T>::projectPrimalWorkspaceOnKernels() {
                                                              m_data.yDim() + m_tree.numEvents(),
                                                              m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
     /* Project onto nullspace in place */
-    m_d_workYTS->addAB(m_data.risk()->nullspaceProj(), *m_d_workYTS);
+    // Keep GEMM input and output separate; both buffers are allocated at setup.
+    m_d_projectedYTS->addAB(m_data.risk()->nullspaceProj(), *m_d_workYTS);
+    m_d_workYTS.swap(m_d_projectedYTS);
     /* Disperse vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
     memCpyNode2Node(*m_d_y, *m_d_workYTS, 0, m_tree.numNonleafNodesMinus1(), m_data.yDim());
     k_memCpyOutTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_t->raw(), m_d_workYTS->raw(),
@@ -794,6 +837,7 @@ void Cache<T>::proximalDual() {
  */
 template<typename T>
 void Cache<T>::iter() {
+    ++m_operatorEvaluations;
     modifyPrimal();
     proximalPrimal();
     modifyDual();
@@ -859,14 +903,52 @@ void Cache<T>::acceptCandidate() {
  */
 template<typename T>
 void Cache<T>::updateDirection(size_t idx) {
-    /* Shift iterate and residual matrices 1 column right */
-    m_d_andIterateMatrixLeft->deviceCopyTo(*m_d_andIterateMatrixRight);
-    m_d_andResidualMatrixLeft->deviceCopyTo(*m_d_andResidualMatrixRight);
-    /* Update first column of iterate and residual matrices */
-    m_d_deltaResidual->deviceCopyTo(*m_d_andResidualMatrixCol0);
-    m_d_deltaIterate->deviceCopyTo(*m_d_andIterateMatrixCol0);
-    *m_d_andIterateMatrixCol0 -= *m_d_deltaResidual;
-
+    // Both modes use the same genuine secant pairs and safe history copies.
+    // Iteration zero has no previous residual evaluation.
+    if (idx > 0) {
+        // Copy whole columns back-to-front. A single overlapping CUDA
+        // memcpy of the shifted matrix is not guaranteed to be safe.
+        for (size_t col = m_andBuff; col > 1; --col) {
+            DTensor<T> oldC(*m_d_andIterateMatrix, m_colAxis, col - 2, col - 2);
+            DTensor<T> newC(*m_d_andIterateMatrix, m_colAxis, col - 1, col - 1);
+            DTensor<T> oldY(*m_d_andResidualMatrix, m_colAxis, col - 2, col - 2);
+            DTensor<T> newY(*m_d_andResidualMatrix, m_colAxis, col - 1, col - 1);
+            oldC.deviceCopyTo(newC);
+            oldY.deviceCopyTo(newY);
+        }
+        m_d_deltaIterate->deviceCopyTo(*m_d_andIterateMatrixCol0);
+        *m_d_andIterateMatrixCol0 -= *m_d_deltaResidual;
+        m_d_deltaResidual->deviceCopyTo(*m_d_andResidualMatrixCol0);
+        m_validAndersonHistory = std::min(m_andBuff, m_validAndersonHistory + 1);
+        if (m_regularisedAnderson) m_regularisedAnderson->historyChanged();
+    }
+    if (m_regularisedAnderson) {
+        if (m_validAndersonHistory < m_andBuff) {
+            ++m_andersonStatistics.bootstrapSteps;
+            m_d_residual->deviceCopyTo(*m_d_direction);
+            *m_d_direction *= T(-1);
+            return;
+        }
+        const auto &fit = m_regularisedAnderson->compute(*m_d_residual, *m_d_direction);
+        auto &stats = m_andersonStatistics;
+        stats.qr = m_regularisedAnderson->qrStatistics();
+        ++stats.fits;
+        stats.lastRank = fit.selectedColumns.size();
+        stats.lastScale = fit.scale;
+        stats.lastCoefficientNorm = fit.coefficientNorm;
+        stats.filteredColumns += m_andBuff - fit.selectedColumns.size();
+        if (fit.accepted()) ++stats.accepted;
+        else {
+            // Old columns need not be cleared: three genuine new pairs will
+            // overwrite them before the next fit is permitted.
+            m_validAndersonHistory = 0;
+            ++stats.restarts;
+            if (fit.status == AndersonFitStatus::coefficientLimit) ++stats.coefficientRejections;
+            else if (fit.status == AndersonFitStatus::directionLimit) ++stats.directionRejections;
+            else ++stats.numericalRejections;
+        }
+        return;
+    }
     /**
      * 1. QR factorise `m_d_andResidualMatrix`.
      * 2. Compute least squares `m_d_andResidualMatrix \ m_d_residual`.
@@ -924,7 +1006,8 @@ void Cache<T>::computeError(size_t idx) {
         *m_d_workIterate *= m_data.stepSizeRecip();
         *m_d_workIterate -= *m_d_ellResidual;
         if (m_errInit) {
-            m_tol = std::max(m_tolAbs, m_tolRel * m_d_workIterate->maxAbs());
+            m_initialResidual = m_d_workIterate->maxAbs();
+            m_tol = std::max(m_tolAbs, m_tolRel * m_initialResidual);
             m_exitCode = notRun;
             m_errInit = false;
         } else {
@@ -1006,11 +1089,47 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
  */
 template<typename T>
 int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSolution) {
+    return runSpockImpl(initState, previousSolution, false);
+}
+
+template<typename T>
+void Cache<T>::resetDeviceWorkspace(bool keepIterate) {
+    m_exitCode = notRun;
+    m_countIterations = 0;
+    m_callsToL = 0;
+    m_timeElapsed = 0;
+    if (!keepIterate) gpuErrChk(cudaMemset(m_d_iterate->raw(), 0, m_d_iterate->numEl() * sizeof(T)));
+    for (auto *buffer : {m_d_initState.get(), m_d_iteratePrev.get(), m_d_iterateCandidate.get(),
+                        m_d_iterateBackup.get(), m_d_deltaIterate.get(), m_d_ellResidual.get(),
+                        m_d_deltaResidual.get(), m_d_residual.get(), m_d_residualPrev.get(), m_d_err.get(),
+                        m_d_andIterateMatrix.get(), m_d_andResidualMatrix.get(), m_d_andQR.get(),
+                        m_d_andQRGammaFull.get(), m_d_direction.get(), m_d_directionScaled.get(),
+                        m_d_workIterate.get(), m_d_workYTS.get(), m_d_workDot.get()})
+        gpuErrChk(cudaMemset(buffer->raw(), 0, buffer->numEl() * sizeof(T)));
+    m_data.dynamics()->resetDeviceWorkspace();
+}
+
+template<typename T>
+int Cache<T>::runSpockResident(std::vector<T> &state, bool warm) {
+    if (warm && m_exitCode != converged)
+        throw std::invalid_argument("A resident warm start requires a previous converged solve");
+    resetDeviceWorkspace(warm);
+    return runSpockImpl(state, nullptr, warm);
+}
+
+template<typename T>
+int Cache<T>::runSpockImpl(std::vector<T> &initState, std::vector<T> *previousSolution, bool residentWarm) {
     m_timeStart = std::chrono::high_resolution_clock::now();
+    m_operatorEvaluations = 0;
+    m_backtracks = 0;
+    m_validAndersonHistory = 0;
+    m_andersonStatistics = {};
+    if (m_regularisedAnderson) m_regularisedAnderson->reset();
     /* Load initial state */
     initialiseState(initState);
     /* Load previous solution if given */
-    initialisePrev(previousSolution);
+    if (residentWarm) saveToPrev();
+    else initialisePrev(previousSolution);
     /* Reset error check */
     m_errInit = true;
     /* Initialise variables */
@@ -1043,6 +1162,8 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         backup();
         /* Compute residual norm */
         w = normM(*m_d_residual, *m_d_residual);
+        if (m_regularisedAnderson && !std::isfinite(w))
+            throw std::runtime_error("Nonfinite SPOCK residual norm");
         /* Compute change of iterate */
         computeDeltaIterate();
         /* Compute change of residual */
@@ -1091,6 +1212,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             } else {
                 tau *= m_beta;
                 countK2bt += 1;
+                ++m_backtracks;
             }
             if (iIn >= m_maxInnerIters - 1) {
                 restore();
@@ -1146,6 +1268,7 @@ private:
     size_t m_maxInnerIters = 0;
     size_t m_andBuff = 0;
     bool m_debug = false;
+    AndersonOptions m_andersonOptions;
 
 public:
     /**
@@ -1201,6 +1324,13 @@ public:
         return *this;
     }
 
+    CacheBuilder<T> &regularisedAnderson(AndersonOptions options = {}) {
+        options.enabled = true;
+        options.validate();
+        m_andersonOptions = options;
+        return *this;
+    }
+
     CacheBuilder<T> &enableDebug(bool enable = true) {
         if (enable && m_maxOuterIters == 0) {
             m_maxOuterIters = 1000;
@@ -1222,7 +1352,8 @@ public:
             m_maxOuterIters,
             m_maxInnerIters,
             m_andBuff,
-            m_debug
+            m_debug,
+            m_andersonOptions
         );
     }
 
@@ -1239,7 +1370,8 @@ public:
             m_maxOuterIters,
             m_maxInnerIters,
             m_andBuff,
-            m_debug
+            m_debug,
+            m_andersonOptions
         );
     }
 };

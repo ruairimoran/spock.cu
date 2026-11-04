@@ -3,6 +3,8 @@ add_library(spock_src STATIC)
 target_sources(spock_src
     PRIVATE
     definitions.cu
+    anderson.cuh
+    anderson_qr.cuh
     cache.cuh
     cones.cuh
     constraints.cuh

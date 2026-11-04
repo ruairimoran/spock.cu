@@ -1,0 +1,43 @@
+Historical note: GPUtils v2.0.0 now includes this fix upstream. SPOCK pins
+that release, so do not apply the patch below to current dependencies.
+For an existing build, clear FETCHCONTENT_SOURCE_DIR_GPUTILS when configuring
+to avoid reusing the previous locally patched checkout. See the main README.
+
+QR workspace correction found while testing a 64-scenario MPC tree
+================================================================
+
+The GPUtils QRFactoriser allocated only the workspace returned by
+cusolverDn[DS]geqrf_bufferSize. Its leastSquares method also calls ORMQR,
+which requires its own workspace query. On this machine the 64-scenario
+problem produced out-of-bounds writes inside cusolverDnDormqr and failed.
+
+gputils_qr_workspace.patch queries both operations and allocates the maximum
+workspace size. It covers double and single precision and does not change
+the numerical method. NVIDIA documents ORMQR's workspace query at:
+https://docs.nvidia.com/cuda/cusolver/index.html#cusolverdn-t-ormqr
+
+Applied remotely to both existing dependency copies:
+  _deps/gputils-src/include/tensor.cuh
+  build/_deps/gputils-src/include/tensor.cuh
+The current MPC target includes the first path. The patch is a dependency
+patch, not an upstream GPUtils commit. A clean dependency download needs
+the patch reapplied. Do not apply it twice to an already fixed copy.
+
+For a fresh dependency copy, from the spock.cu repository root:
+  git -C _deps/gputils-src apply "$PWD/examples/networkedControlMpc/gputils_qr_workspace.patch"
+  # Likewise for build/_deps/gputils-src if present and unpatched.
+  make -C build -j2 networked_mpc
+
+The focused check_qr_workspace.cu test solves a known full-rank least-squares
+problem with 115,169 and 2,000,000 rows, three columns, in both precisions.
+On the RTX PRO 6000 Blackwell, Compute Sanitizer reported zero errors.
+Maximum coefficient errors were 8.33e-15 (double) and 2.90e-6 (float).
+
+Test command used on the remote machine:
+  /usr/local/cuda/bin/nvcc -std=c++20 -O2 -arch=sm_120 -I_deps/gputils-src/include build/check_qr_workspace.cu -o build/check_qr_workspace -lcublas -lcusolver -lcudadevrt
+  /usr/local/cuda/bin/compute-sanitizer --tool memcheck --error-exitcode 99 build/check_qr_workspace
+
+The full MPC solver was not run to completion under the memory checker.
+Its time limit is checked only every 1,000 iterations; that instrumented
+run was stopped and replaced by the focused QR test. Instrumented timings
+are not used as simulation results.

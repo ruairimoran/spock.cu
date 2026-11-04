@@ -1,0 +1,27 @@
+--- a/include/tensor.cuh
++++ b/include/tensor.cuh
+@@ -1851,6 +1851,12 @@
+         m, n,
+         nullptr, m,
+         &m_workspaceSize));
++    // Applying Q' to a right-hand side can require more workspace than GEQRF.
++    int applyWorkspaceSize = 0;
++    gpuErrChk(cusolverDnDormqr_bufferSize(Session::getInstance().cuSolverHandle(),
++        CUBLAS_SIDE_LEFT, CUBLAS_OP_T, m, 1, n,
++        nullptr, m, nullptr, nullptr, m, &applyWorkspaceSize));
++    if (applyWorkspaceSize > m_workspaceSize) m_workspaceSize = applyWorkspaceSize;
+ }
+ 
+ template<>
+@@ -1861,6 +1867,11 @@
+         m, n,
+         nullptr, m,
+         &m_workspaceSize));
++    int applyWorkspaceSize = 0;
++    gpuErrChk(cusolverDnSormqr_bufferSize(Session::getInstance().cuSolverHandle(),
++        CUBLAS_SIDE_LEFT, CUBLAS_OP_T, m, 1, n,
++        nullptr, m, nullptr, nullptr, m, &applyWorkspaceSize));
++    if (applyWorkspaceSize > m_workspaceSize) m_workspaceSize = applyWorkspaceSize;
+ }
+ 
+ template<>

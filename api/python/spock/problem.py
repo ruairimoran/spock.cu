@@ -1,4 +1,5 @@
 import jinja2 as j2
+import json
 import os
 import numpy as np
 import scipy as sp
@@ -6,6 +7,7 @@ from scipy.sparse.linalg import LinearOperator, eigs
 from copy import deepcopy
 from . import tree
 from . import build
+from .weights import stack_weights, factor_structure, dense_weight
 
 try:
     import cvxpy
@@ -468,7 +470,14 @@ class Problem:
         path = self.__tree.get_folder_path
         output_file = os.path.join(path, "data.json")
         fh = open(output_file, "w")
-        fh.write(output)
+        # Missing structure metadata in older files means dense storage.
+        metadata = json.loads(output)
+        for part, cost in (("nonleaf", self.__nonleaf_cost), ("leaf", self.__leaf_cost)):
+            if cost.is_quadratic or cost.is_quadratic_plus_linear:
+                metadata["cost"][part + "Q"] = factor_structure(cost.Q_sqrt)
+                if part == "nonleaf":
+                    metadata["cost"][part + "R"] = factor_structure(cost.R_sqrt)
+        fh.write(json.dumps(metadata, indent=2))
         fh.close()
         # Generate stacks
         stack_input_dyn_tr = np.dstack([a.B.T for a in self.__list_of_dynamics])
@@ -513,8 +522,8 @@ class Problem:
                 cost_txt_nl + "_gradient": stack_gradient_cost,
             })
         elif cost.is_quadratic:
-            stack_sqrt_state_cost = np.dstack(cost.Q_sqrt)
-            stack_sqrt_input_cost = np.dstack(cost.R_sqrt)
+            stack_sqrt_state_cost = stack_weights(cost.Q_sqrt)
+            stack_sqrt_input_cost = stack_weights(cost.R_sqrt)
             stack_nonleaf_translation = np.dstack(cost.translation)
             tensors.update({
                 cost_txt_nl + "_sqrtQ": stack_sqrt_state_cost,
@@ -522,9 +531,9 @@ class Problem:
                 cost_txt_nl + "_translation": stack_nonleaf_translation,
             })
         elif cost.is_quadratic_plus_linear:
-            stack_sqrt_state_cost = np.dstack(cost.Q_sqrt)
+            stack_sqrt_state_cost = stack_weights(cost.Q_sqrt)
             stack_lin_state_cost = np.dstack(cost.q)
-            stack_sqrt_input_cost = np.dstack(cost.R_sqrt)
+            stack_sqrt_input_cost = stack_weights(cost.R_sqrt)
             stack_lin_input_cost = np.dstack(cost.r)
             stack_nonleaf_translation = np.dstack(cost.translation)
             tensors.update({
@@ -544,14 +553,14 @@ class Problem:
                 cost_txt_l + "_gradient": stack_gradient_terminal_cost,
             })
         elif cost.is_quadratic:
-            stack_sqrt_terminal_cost = np.dstack([cost.Q_sqrt[-1]])
+            stack_sqrt_terminal_cost = stack_weights([cost.Q_sqrt[-1]])
             stack_leaf_translation = np.dstack([cost.translation[-1]])
             tensors.update({
                 cost_txt_l + "_sqrtQ": stack_sqrt_terminal_cost,
                 cost_txt_l + "_translation": stack_leaf_translation,
             })
         elif cost.is_quadratic_plus_linear:
-            stack_sqrt_terminal_cost = np.dstack([cost.Q_sqrt[-1]])
+            stack_sqrt_terminal_cost = stack_weights([cost.Q_sqrt[-1]])
             stack_lin_terminal_cost = np.dstack([cost.q[-1]])
             stack_leaf_translation = np.dstack([cost.translation[-1]])
             tensors.update({
@@ -614,7 +623,7 @@ class Problem:
             })
             try:
                 if self.__nonleaf_cost.Q_uncond[-1] is not None:
-                    stack_cost_nonleaf_Q = np.dstack(self.__nonleaf_cost.Q_uncond)
+                    stack_cost_nonleaf_Q = np.dstack([dense_weight(weight) for weight in self.__nonleaf_cost.Q_uncond])
                     tensors.update({
                         prefix + "cost_nonleaf_Q": stack_cost_nonleaf_Q,
                     })
@@ -622,7 +631,7 @@ class Problem:
                 pass
             try:
                 if self.__nonleaf_cost.R_uncond[-1] is not None:
-                    stack_cost_nonleaf_R = np.dstack(self.__nonleaf_cost.R_uncond)
+                    stack_cost_nonleaf_R = np.dstack([dense_weight(weight) for weight in self.__nonleaf_cost.R_uncond])
                     tensors.update({
                         prefix + "cost_nonleaf_R": stack_cost_nonleaf_R,
                     })
@@ -646,7 +655,7 @@ class Problem:
                 pass
             try:
                 if self.__leaf_cost.Q_uncond[-1] is not None:
-                    stack_cost_leaf_Q = np.dstack([self.__leaf_cost.Q_uncond[-1]])
+                    stack_cost_leaf_Q = np.dstack([dense_weight(weight) for weight in [self.__leaf_cost.Q_uncond[-1]]])
                     tensors.update({
                         prefix + "cost_leaf_Q": stack_cost_leaf_Q,
                     })

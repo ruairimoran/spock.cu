@@ -9,6 +9,7 @@ target_sources(spock_src
     cones.cuh
     constraints.cuh
     costs.cuh
+    cost_kernels.cuh
     dynamics.cuh
     operator.cuh
     problem.cuh

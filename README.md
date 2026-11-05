@@ -19,6 +19,11 @@ The solver is based on scenario trees, which it can build from:
 
 ## Dependencies, build and tests
 
+Quadratic and quadratic-plus-linear costs accept compact diagonal weights
+through `spock.build.Diagonal`, independently for state and input costs.
+Dense matrices remain supported. See the [Python API documentation](api/python/README.md#diagonal-quadratic-weights)
+for usage, mixed weights, and the compact problem-file format.
+
 GPUtils is pinned to tag **v2.0.0** with an archive SHA-256 check in CMake
 and the Python API dependency. This release includes the QR-workspace fix;
 the old local GPUtils patch is no longer required. Clear any previous

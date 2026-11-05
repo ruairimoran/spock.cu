@@ -4,6 +4,8 @@
 #include "../include/gpu.cuh"
 #include "tree.cuh"
 #include "projections.cuh"
+#include "cost_kernels.cuh"
+#include <stdexcept>
 
 
 TEMPLATE_WITH_TYPE_T
@@ -35,6 +37,93 @@ protected:
         // of allocating or copying a temporary on each operator evaluation.
         product->addAB(matrix, *workspace);
         workspace.swap(product);
+    }
+
+    static bool diagonalFactor(ScenarioTree<T> &tree, TreePart part, const char *name) {
+        std::ifstream file(tree.path() + tree.json());
+        const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        rapidjson::Document metadata;
+        metadata.Parse(text.c_str());
+        if (metadata.HasParseError() || !metadata.HasMember("cost"))
+            throw std::invalid_argument("Invalid cost metadata");
+        const std::string key = tree.strOfPart(part) + name;
+        const auto &cost = metadata["cost"];
+        if (!cost.HasMember(key.c_str())) return false;  // Legacy files contain dense factors.
+        const auto &value = cost[key.c_str()];
+        if (!value.IsString()) throw std::invalid_argument("Invalid cost factor structure");
+        const std::string structure = value.GetString();
+        if (structure != "dense" && structure != "diagonal")
+            throw std::invalid_argument("Unknown cost factor structure");
+        return structure == "diagonal";
+    }
+
+    static void validateFactor(const DTensor<T> &factor, size_t size, size_t nodes, bool diagonal) {
+        if (factor.numRows() != size || factor.numCols() != (diagonal ? 1 : size) || factor.numMats() != nodes)
+            throw std::invalid_argument("Cost factor dimensions do not match its structure or tree");
+    }
+
+    void forwardFactor(DTensor<T> &output, DTensor<T> &input, const DTensor<T> &factor,
+                       std::unique_ptr<DTensor<T>> &workspace, std::unique_ptr<DTensor<T>> &product,
+                       size_t size, size_t offset, bool diagonal, bool leaf) {
+        if (diagonal) {
+            const size_t count = size * (m_numNodes - (leaf ? 0 : 1));
+            cost_detail::diagonalForward<<<numBlocks(count, TPB), TPB>>>(output.raw(), input.raw(), factor.raw(),
+                m_tree.d_ancestors().raw(), size, m_numNodes, m_dimPerNode, offset, leaf);
+            gpuErrChk(cudaGetLastError());
+        } else {
+            if (leaf) workspace->addAB(factor, input);
+            else {
+                m_tree.memCpyAnc2Node(*workspace, input, 1, m_tree.numNodesMinus1(), size, 0, 0);
+                transformWorkspace(factor, workspace, product);
+            }
+            memCpyNode2Node(output, *workspace, leaf ? 0 : 1, m_numNodes - 1, size, offset);
+        }
+    }
+
+    void adjointFactor(DTensor<T> &output, DTensor<T> &dual, const DTensor<T> &factor,
+                       std::unique_ptr<DTensor<T>> &workspace, std::unique_ptr<DTensor<T>> &product,
+                       size_t size, size_t offset, bool diagonal, bool leaf, const T *linear = nullptr) {
+        const size_t scalarOffset = leaf ? m_tree.numStates() : m_tree.numStatesAndInputs();
+        if (diagonal) {
+            const size_t destinations = leaf ? m_numNodes : m_tree.numNonleafNodes();
+            cost_detail::diagonalAdjoint<<<numBlocks(size * destinations, TPB), TPB>>>(output.raw(), dual.raw(),
+                factor.raw(), linear, m_tree.d_childFrom().raw(), m_tree.d_numChildren().raw(),
+                size, destinations, m_dimPerNode, offset, scalarOffset, leaf);
+            gpuErrChk(cudaGetLastError());
+        } else {
+            memCpyNode2Node(*workspace, dual, leaf ? 0 : 1, m_numNodes - 1, size, 0, offset);
+            if (leaf) {
+                output.addAB(factor, *workspace, T(1), T(1));
+                if (linear) {
+                    cost_detail::linearAdjoint<<<numBlocks(size * m_numNodes, TPB), TPB>>>(output.raw(), dual.raw(),
+                        linear, size, m_numNodes, m_dimPerNode, scalarOffset, true);
+                    gpuErrChk(cudaGetLastError());
+                }
+            } else {
+                transformWorkspace(factor, workspace, product);
+                if (linear) {
+                    cost_detail::linearAdjoint<<<numBlocks(size * m_numNodes, TPB), TPB>>>(workspace->raw(), dual.raw(),
+                        linear, size, m_numNodes, m_dimPerNode, scalarOffset, false);
+                    gpuErrChk(cudaGetLastError());
+                }
+                for (size_t child = 0; child < m_tree.numEvents(); ++child)
+                    m_tree.memCpyCh2Node(output, *workspace, 0, m_tree.numNonleafNodesMinus1(), child, true);
+            }
+        }
+    }
+
+    void forwardScalars(DTensor<T> &output, DTensor<T> &scalar, DTensor<T> &x, DTensor<T> *u,
+                        bool leaf, const T *q = nullptr, const T *r = nullptr) {
+        cost_detail::forwardScalars<<<numBlocks(m_numNodes, TPB), TPB>>>(output.raw(), scalar.raw(), x.raw(),
+            u ? u->raw() : nullptr, q, r, m_tree.d_ancestors().raw(), m_tree.numStates(), m_tree.numInputs(),
+            m_numNodes, m_dimPerNode, leaf);
+        gpuErrChk(cudaGetLastError());
+    }
+
+    void adjointScalars(DTensor<T> &output, DTensor<T> &dual, bool leaf) {
+        cost_detail::adjointScalars<<<numBlocks(m_numNodes, TPB), TPB>>>(output.raw(), dual.raw(), m_numNodes,
+            m_dimPerNode, leaf ? m_tree.numStates() : m_tree.numStatesAndInputs(), leaf);
+        gpuErrChk(cudaGetLastError());
     }
 
     virtual std::ostream &print(std::ostream &) const = 0;
@@ -76,14 +165,13 @@ public:
 template<typename T>
 class CostQuadratic : public Cost<T> {
 private:
+    bool m_qDiagonal = false, m_rDiagonal = false;
     std::unique_ptr<DTensor<T>> m_d_sqrtQ = nullptr;
     std::unique_ptr<DTensor<T>> m_d_sqrtR = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_sqrtQLeaf = nullptr;
     std::unique_ptr<DTensor<T>> m_d_translation = nullptr;
     std::unique_ptr<SocProjection<T>> m_socs = nullptr;
     std::unique_ptr<DTensor<T>> m_d_uWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xWorkspace = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_scalarWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xProduct = nullptr;
     std::unique_ptr<DTensor<T>> m_d_uProduct = nullptr;
 
@@ -96,9 +184,11 @@ public:
     explicit CostQuadratic(ScenarioTree<T> &tree, TreePart part = nonleaf) : Cost<T>(tree) {
         /* Read data from files */
         this->m_prefix = tree.strOfPart(part) + this->m_prefix;
+        m_qDiagonal = this->diagonalFactor(tree, part, "Q");
+        if (part == nonleaf) m_rDiagonal = this->diagonalFactor(tree, part, "R");
         DTensor<T> sqrtQ = DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "sqrtQ" + tree.fpFileExt());
+        this->validateFactor(sqrtQ, tree.numStates(), part == nonleaf ? tree.numNodes() : 1, m_qDiagonal);
         DTensor<T> trans = DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "translation" + tree.fpFileExt());
-        m_d_scalarWorkspace = std::make_unique<DTensor<T>>(1, 1, tree.numNodes(), true);
         if (part == nonleaf) {
             this->m_dimPerNode = tree.numStatesAndInputs() + 2;
             this->m_numNodes = tree.numNodes();
@@ -106,7 +196,8 @@ public:
             m_d_translation = std::make_unique<DTensor<T>>(trans);
             m_d_sqrtR = std::make_unique<DTensor<T>>(
                 DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "sqrtR" + tree.fpFileExt()));
-            m_d_uWorkspace = std::make_unique<DTensor<T>>(tree.numInputs(), 1, this->m_numNodes, true);
+            this->validateFactor(*m_d_sqrtR, tree.numInputs(), tree.numNodes(), m_rDiagonal);
+            if (!m_rDiagonal) m_d_uWorkspace = std::make_unique<DTensor<T>>(tree.numInputs(), 1, this->m_numNodes, true);
         } else {
             this->m_dimPerNode = tree.numStates() + 2;
             this->m_numNodes = tree.numLeafNodes();
@@ -119,10 +210,10 @@ public:
                 trans.deviceCopyTo(trans_slice);
             }
         }
-        m_d_xWorkspace = std::make_unique<DTensor<T>>(tree.numStates(), 1, this->m_numNodes, true);
+        if (!m_qDiagonal) m_d_xWorkspace = std::make_unique<DTensor<T>>(tree.numStates(), 1, this->m_numNodes, true);
         if (part == nonleaf) {
-            m_d_xProduct = std::make_unique<DTensor<T>>(tree.numStates(), 1, this->m_numNodes);
-            m_d_uProduct = std::make_unique<DTensor<T>>(tree.numInputs(), 1, this->m_numNodes);
+            if (!m_qDiagonal) m_d_xProduct = std::make_unique<DTensor<T>>(tree.numStates(), 1, this->m_numNodes);
+            if (!m_rDiagonal) m_d_uProduct = std::make_unique<DTensor<T>>(tree.numInputs(), 1, this->m_numNodes);
         }
         this->m_dim = this->m_dimPerNode * this->m_numNodes;
     }
@@ -139,74 +230,31 @@ public:
     }
 
     void op(DTensor<T> &iv, DTensor<T> &x, DTensor<T> &u, DTensor<T> &t) {
-        /* IV:1 */
-        this->m_tree.memCpyAnc2Node(*m_d_xWorkspace, x, 1, this->m_tree.numNodesMinus1(), this->m_tree.numStates(), 0,
-                                    0);
-        this->transformWorkspace(*m_d_sqrtQ, m_d_xWorkspace, m_d_xProduct);
-        /* IV:2 */
-        this->m_tree.memCpyAnc2Node(*m_d_uWorkspace, u, 1, this->m_tree.numNodesMinus1(), this->m_tree.numInputs(), 0,
-                                    0);
-        this->transformWorkspace(*m_d_sqrtR, m_d_uWorkspace, m_d_uProduct);
-        /* IV:3,4 */
-        t *= 0.5;  // This affects the current 't'!!! But it shouldn't matter...
-        /* IV (organise IV:1-4) */
-        /* :1 */
-        memCpyNode2Node(iv, *m_d_xWorkspace, 1, this->m_tree.numNodesMinus1(), this->m_tree.numStates());
-        /* :2 */
-        memCpyNode2Node(iv, *m_d_uWorkspace, 1, this->m_tree.numNodesMinus1(), this->m_tree.numInputs(),
-                        this->m_tree.numStates());
-        /* :3 */
-        memCpyNode2Node(iv, t, 1, this->m_tree.numNodesMinus1(), 1, this->m_tree.numStatesAndInputs());
-        /* :4 */
-        memCpyNode2Node(iv, t, 1, this->m_tree.numNodesMinus1(), 1, this->m_tree.numStatesAndInputs() + 1);
+        this->forwardFactor(iv, x, *m_d_sqrtQ, m_d_xWorkspace, m_d_xProduct,
+                            this->m_tree.numStates(), 0, m_qDiagonal, false);
+        this->forwardFactor(iv, u, *m_d_sqrtR, m_d_uWorkspace, m_d_uProduct,
+                            this->m_tree.numInputs(), this->m_tree.numStates(), m_rDiagonal, false);
+        this->forwardScalars(iv, t, x, &u, false);
     }
 
     void op(DTensor<T> &vi, DTensor<T> &xLeaf, DTensor<T> &sLeaf) {
-        /* VI:1 */
-        m_d_xWorkspace->addAB(*m_d_sqrtQ, xLeaf);
-        /* VI:2,3 */
-        sLeaf *= 0.5;  // This affects the current 's'!!! But it shouldn't matter...
-        /* VI (organise VI:1-3) */
-        /* :1 */
-        memCpyNode2Node(vi, *m_d_xWorkspace, 0, this->m_tree.numLeafNodesMinus1(), this->m_tree.numStates());
-        /* :2 */
-        memCpyNode2Node(vi, sLeaf, 0, this->m_tree.numLeafNodesMinus1(), 1, this->m_tree.numStates(), 0);
-        /* :3 */
-        memCpyNode2Node(vi, sLeaf, 0, this->m_tree.numLeafNodesMinus1(), 1, this->m_tree.numStates() + 1, 0);
+        this->forwardFactor(vi, xLeaf, *m_d_sqrtQ, m_d_xWorkspace, m_d_xProduct,
+                            this->m_tree.numStates(), 0, m_qDiagonal, true);
+        this->forwardScalars(vi, sLeaf, xLeaf, nullptr, true);
     }
 
     void adj(DTensor<T> &iv, DTensor<T> &x, DTensor<T> &u, DTensor<T> &t) {
-        /* -> Compute `Qiv1` at every nonroot node */
-        memCpyNode2Node(*m_d_xWorkspace, iv, 1, this->m_tree.numNodesMinus1(), this->m_tree.numStates());
-        this->transformWorkspace(*m_d_sqrtQ, m_d_xWorkspace, m_d_xProduct);
-        /* -> Compute `Riv2` at every nonroot node */
-        memCpyNode2Node(*m_d_uWorkspace, iv, 1, this->m_tree.numNodesMinus1(), this->m_tree.numInputs(), 0,
-                        this->m_tree.numStates());
-        this->transformWorkspace(*m_d_sqrtR, m_d_uWorkspace, m_d_uProduct);
-        /* -> Add children of each nonleaf node */
-        for (size_t chIdx = 0; chIdx < this->m_tree.numEvents(); chIdx++) {
-            /* -> Add to `x` all children `Qiv1` */
-            this->m_tree.memCpyCh2Node(x, *m_d_xWorkspace, 0, this->m_tree.numNonleafNodesMinus1(), chIdx, true);
-            /* -> Add to `u` all children `Riv2` */
-            this->m_tree.memCpyCh2Node(u, *m_d_uWorkspace, 0, this->m_tree.numNonleafNodesMinus1(), chIdx, true);
-        }
-        /* t */
-        memCpyNode2Node(t, iv, 1, this->m_tree.numNodesMinus1(), 1, 0, this->m_tree.numStatesAndInputs());
-        memCpyNode2Node(*m_d_scalarWorkspace, iv, 1, this->m_tree.numNodesMinus1(), 1, 0,
-                        this->m_tree.numStatesAndInputs() + 1);
-        t += *m_d_scalarWorkspace;
-        t *= 0.5;
+        this->adjointFactor(x, iv, *m_d_sqrtQ, m_d_xWorkspace, m_d_xProduct,
+                            this->m_tree.numStates(), 0, m_qDiagonal, false);
+        this->adjointFactor(u, iv, *m_d_sqrtR, m_d_uWorkspace, m_d_uProduct,
+                            this->m_tree.numInputs(), this->m_tree.numStates(), m_rDiagonal, false);
+        this->adjointScalars(t, iv, false);
     }
 
     void adj(DTensor<T> &vi, DTensor<T> &xLeaf, DTensor<T> &sLeaf) {
-        memCpyNode2Node(*m_d_xWorkspace, vi, 0, this->m_tree.numLeafNodesMinus1(), this->m_tree.numStates());
-        xLeaf.addAB(*m_d_sqrtQ, *m_d_xWorkspace, 1., 1.);
-        memCpyNode2Node(sLeaf, vi, 0, this->m_tree.numLeafNodesMinus1(), 1, 0, this->m_tree.numStates());
-        this->m_tree.memCpyZero2Leaf(*m_d_scalarWorkspace, vi, 1, 0, this->m_tree.numStates() + 1);
-        DTensor<T> wsLeaf(*m_d_scalarWorkspace, this->m_matAxis, this->m_tree.numNonleafNodes(),
-                          this->m_tree.numNodesMinus1());
-        sLeaf += wsLeaf;
-        sLeaf *= 0.5;
+        this->adjointFactor(xLeaf, vi, *m_d_sqrtQ, m_d_xWorkspace, m_d_xProduct,
+                            this->m_tree.numStates(), 0, m_qDiagonal, true);
+        this->adjointScalars(sLeaf, vi, true);
     }
 
     void translate(DTensor<T> &d_vec) {
@@ -323,17 +371,15 @@ public:
 template<typename T>
 class CostQuadraticPlusLinear : public Cost<T> {
 private:
+    bool m_qDiagonal = false, m_rDiagonal = false;
     std::unique_ptr<DTensor<T>> m_d_sqrtQ = nullptr;
     std::unique_ptr<DTensor<T>> m_d_q = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_qTr = nullptr;
     std::unique_ptr<DTensor<T>> m_d_sqrtR = nullptr;
     std::unique_ptr<DTensor<T>> m_d_r = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_rTr = nullptr;
     std::unique_ptr<DTensor<T>> m_d_translation = nullptr;
     std::unique_ptr<SocProjection<T>> m_socs = nullptr;
     std::unique_ptr<DTensor<T>> m_d_uWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xWorkspace = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_scalarWorkspace = nullptr;
     std::unique_ptr<DTensor<T>> m_d_xProduct = nullptr;
     std::unique_ptr<DTensor<T>> m_d_uProduct = nullptr;
 
@@ -346,10 +392,12 @@ public:
     explicit CostQuadraticPlusLinear(ScenarioTree<T> &tree, TreePart part = nonleaf) : Cost<T>(tree) {
         /* Read data from files */
         this->m_prefix = tree.strOfPart(part) + this->m_prefix;
+        m_qDiagonal = this->diagonalFactor(tree, part, "Q");
+        if (part == nonleaf) m_rDiagonal = this->diagonalFactor(tree, part, "R");
         DTensor<T> sqrtQ = DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "sqrtQ" + tree.fpFileExt());
         DTensor<T> q = DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "q" + tree.fpFileExt());
+        this->validateFactor(sqrtQ, tree.numStates(), part == nonleaf ? tree.numNodes() : 1, m_qDiagonal);
         DTensor<T> trans = DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "translation" + tree.fpFileExt());
-        m_d_scalarWorkspace = std::make_unique<DTensor<T>>(1, 1, tree.numNodes(), true);
         if (part == nonleaf) {
             this->m_dimPerNode = tree.numStatesAndInputs() + 2;
             this->m_numNodes = tree.numNodes();
@@ -358,10 +406,10 @@ public:
             m_d_translation = std::make_unique<DTensor<T>>(trans);
             m_d_sqrtR = std::make_unique<DTensor<T>>(
                 DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "sqrtR" + tree.fpFileExt()));
+            this->validateFactor(*m_d_sqrtR, tree.numInputs(), tree.numNodes(), m_rDiagonal);
             m_d_r = std::make_unique<DTensor<T>>(
                 DTensor<T>::parseFromFile(tree.path() + this->m_prefix + "r" + tree.fpFileExt()));
-            m_d_rTr = std::make_unique<DTensor<T>>(m_d_r->tr());
-            m_d_uWorkspace = std::make_unique<DTensor<T>>(tree.numInputs(), 1, this->m_numNodes, true);
+            if (!m_rDiagonal) m_d_uWorkspace = std::make_unique<DTensor<T>>(tree.numInputs(), 1, this->m_numNodes, true);
         } else {
             this->m_dimPerNode = tree.numStates() + 2;
             this->m_numNodes = tree.numLeafNodes();
@@ -377,11 +425,10 @@ public:
                 trans.deviceCopyTo(trans_slice);
             }
         }
-        m_d_qTr = std::make_unique<DTensor<T>>(m_d_q->tr());
-        m_d_xWorkspace = std::make_unique<DTensor<T>>(tree.numStates(), 1, this->m_numNodes, true);
+        if (!m_qDiagonal) m_d_xWorkspace = std::make_unique<DTensor<T>>(tree.numStates(), 1, this->m_numNodes, true);
         if (part == nonleaf) {
-            m_d_xProduct = std::make_unique<DTensor<T>>(tree.numStates(), 1, this->m_numNodes);
-            m_d_uProduct = std::make_unique<DTensor<T>>(tree.numInputs(), 1, this->m_numNodes);
+            if (!m_qDiagonal) m_d_xProduct = std::make_unique<DTensor<T>>(tree.numStates(), 1, this->m_numNodes);
+            if (!m_rDiagonal) m_d_uProduct = std::make_unique<DTensor<T>>(tree.numInputs(), 1, this->m_numNodes);
         }
         this->m_dim = this->m_dimPerNode * this->m_numNodes;
     }
@@ -398,84 +445,31 @@ public:
     }
 
     void op(DTensor<T> &iv, DTensor<T> &x, DTensor<T> &u, DTensor<T> &t) {
-        /* IV:3,4 */
-        t *= 0.5;  // This affects the current 't'!!! But it shouldn't matter...
-        /* IV:1 */
-        this->m_tree.memCpyAnc2Node(*m_d_xWorkspace, x, 1, this->m_tree.numNodesMinus1(), this->m_tree.numStates(), 0,
-                                    0);
-        t.addAB(*m_d_qTr, *m_d_xWorkspace, -.5, 1.);
-        this->transformWorkspace(*m_d_sqrtQ, m_d_xWorkspace, m_d_xProduct);
-        /* IV:2 */
-        this->m_tree.memCpyAnc2Node(*m_d_uWorkspace, u, 1, this->m_tree.numNodesMinus1(), this->m_tree.numInputs(), 0,
-                                    0);
-        t.addAB(*m_d_rTr, *m_d_uWorkspace, -.5, 1.);
-        this->transformWorkspace(*m_d_sqrtR, m_d_uWorkspace, m_d_uProduct);
-        /* IV (organise IV:1-4) */
-        /* :1 */
-        memCpyNode2Node(iv, *m_d_xWorkspace, 1, this->m_tree.numNodesMinus1(), this->m_tree.numStates());
-        /* :2 */
-        memCpyNode2Node(iv, *m_d_uWorkspace, 1, this->m_tree.numNodesMinus1(), this->m_tree.numInputs(),
-                        this->m_tree.numStates());
-        /* :3 */
-        memCpyNode2Node(iv, t, 1, this->m_tree.numNodesMinus1(), 1, this->m_tree.numStatesAndInputs());
-        /* :4 */
-        memCpyNode2Node(iv, t, 1, this->m_tree.numNodesMinus1(), 1, this->m_tree.numStatesAndInputs() + 1);
+        this->forwardFactor(iv, x, *m_d_sqrtQ, m_d_xWorkspace, m_d_xProduct,
+                            this->m_tree.numStates(), 0, m_qDiagonal, false);
+        this->forwardFactor(iv, u, *m_d_sqrtR, m_d_uWorkspace, m_d_uProduct,
+                            this->m_tree.numInputs(), this->m_tree.numStates(), m_rDiagonal, false);
+        this->forwardScalars(iv, t, x, &u, false, m_d_q->raw(), m_d_r->raw());
     }
 
     void op(DTensor<T> &vi, DTensor<T> &xLeaf, DTensor<T> &sLeaf) {
-        /* VI:1 */
-        m_d_xWorkspace->addAB(*m_d_sqrtQ, xLeaf);
-        /* VI:2,3 */
-        sLeaf *= 0.5;  // This affects the current 's'!!! But it shouldn't matter...
-        sLeaf.addAB(*m_d_qTr, xLeaf, -.5, 1.);
-        /* VI (organise VI:1-3) */
-        /* :1 */
-        memCpyNode2Node(vi, *m_d_xWorkspace, 0, this->m_tree.numLeafNodesMinus1(), this->m_tree.numStates());
-        /* :2 */
-        memCpyNode2Node(vi, sLeaf, 0, this->m_tree.numLeafNodesMinus1(), 1, this->m_tree.numStates(), 0);
-        /* :3 */
-        memCpyNode2Node(vi, sLeaf, 0, this->m_tree.numLeafNodesMinus1(), 1, this->m_tree.numStates() + 1, 0);
+        this->forwardFactor(vi, xLeaf, *m_d_sqrtQ, m_d_xWorkspace, m_d_xProduct,
+                            this->m_tree.numStates(), 0, m_qDiagonal, true);
+        this->forwardScalars(vi, sLeaf, xLeaf, nullptr, true, m_d_q->raw());
     }
 
     void adj(DTensor<T> &iv, DTensor<T> &x, DTensor<T> &u, DTensor<T> &t) {
-        /* Get two parts of t */
-        memCpyNode2Node(t, iv, 1, this->m_tree.numNodesMinus1(), 1, 0, this->m_tree.numStatesAndInputs());
-        memCpyNode2Node(*m_d_scalarWorkspace, iv, 1, this->m_tree.numNodesMinus1(), 1, 0,
-                        this->m_tree.numStatesAndInputs() + 1);
-        /* -> Compute `Qiv1` at every nonroot node */
-        memCpyNode2Node(*m_d_xWorkspace, iv, 1, this->m_tree.numNodesMinus1(), this->m_tree.numStates());
-        this->transformWorkspace(*m_d_sqrtQ, m_d_xWorkspace, m_d_xProduct);
-        m_d_xWorkspace->addAB(*m_d_q, t, -.5, 1.);
-        m_d_xWorkspace->addAB(*m_d_q, *m_d_scalarWorkspace, -.5, 1.);
-        /* -> Compute `Riv2` at every nonroot node */
-        memCpyNode2Node(*m_d_uWorkspace, iv, 1, this->m_tree.numNodesMinus1(), this->m_tree.numInputs(), 0,
-                        this->m_tree.numStates());
-        this->transformWorkspace(*m_d_sqrtR, m_d_uWorkspace, m_d_uProduct);
-        m_d_uWorkspace->addAB(*m_d_r, t, -.5, 1.);
-        m_d_uWorkspace->addAB(*m_d_r, *m_d_scalarWorkspace, -.5, 1.);
-        /* -> Add children of each nonleaf node */
-        for (size_t chIdx = 0; chIdx < this->m_tree.numEvents(); chIdx++) {
-            /* -> Add to `x` all children `Qiv1` */
-            this->m_tree.memCpyCh2Node(x, *m_d_xWorkspace, 0, this->m_tree.numNonleafNodesMinus1(), chIdx, true);
-            /* -> Add to `u` all children `Riv2` */
-            this->m_tree.memCpyCh2Node(u, *m_d_uWorkspace, 0, this->m_tree.numNonleafNodesMinus1(), chIdx, true);
-        }
-        /* Finish t */
-        t += *m_d_scalarWorkspace;
-        t *= 0.5;
+        this->adjointFactor(x, iv, *m_d_sqrtQ, m_d_xWorkspace, m_d_xProduct,
+                            this->m_tree.numStates(), 0, m_qDiagonal, false, m_d_q->raw());
+        this->adjointFactor(u, iv, *m_d_sqrtR, m_d_uWorkspace, m_d_uProduct,
+                            this->m_tree.numInputs(), this->m_tree.numStates(), m_rDiagonal, false, m_d_r->raw());
+        this->adjointScalars(t, iv, false);
     }
 
     void adj(DTensor<T> &vi, DTensor<T> &xLeaf, DTensor<T> &sLeaf) {
-        memCpyNode2Node(*m_d_xWorkspace, vi, 0, this->m_tree.numLeafNodesMinus1(), this->m_tree.numStates());
-        xLeaf.addAB(*m_d_sqrtQ, *m_d_xWorkspace, 1., 1.);
-        memCpyNode2Node(sLeaf, vi, 0, this->m_tree.numLeafNodesMinus1(), 1, 0, this->m_tree.numStates());
-        this->m_tree.memCpyZero2Leaf(*m_d_scalarWorkspace, vi, 1, 0, this->m_tree.numStates() + 1);
-        DTensor<T> wsLeaf(*m_d_scalarWorkspace, this->m_matAxis, this->m_tree.numNonleafNodes(),
-                          this->m_tree.numNodesMinus1());
-        xLeaf.addAB(*m_d_q, sLeaf, -.5, 1.);
-        xLeaf.addAB(*m_d_q, wsLeaf, -.5, 1.);
-        sLeaf += wsLeaf;
-        sLeaf *= 0.5;
+        this->adjointFactor(xLeaf, vi, *m_d_sqrtQ, m_d_xWorkspace, m_d_xProduct,
+                            this->m_tree.numStates(), 0, m_qDiagonal, true, m_d_q->raw());
+        this->adjointScalars(sLeaf, vi, true);
     }
 
     void translate(DTensor<T> &d_vec) {

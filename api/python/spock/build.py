@@ -1,6 +1,6 @@
 import numpy as np
 from copy import deepcopy
-from scipy.linalg import sqrtm
+from .weights import Diagonal, diagonal_values, sqrt_weight, scale_weight, zero_weight
 
 
 # =====================================================================================================================
@@ -80,6 +80,9 @@ class Dynamics:
 # =====================================================================================================================
 
 def check_spd(mat, name):
+    if isinstance(mat, Diagonal):
+        mat.validate()
+        return
     eigs = np.linalg.eigvals(mat)
     is_positive_definite = eigs.all() > 0
     is_symmetric = np.allclose(mat, mat.T)
@@ -175,6 +178,8 @@ class Cost:
 
     @staticmethod
     def _inv(A, b):
+        if isinstance(A, Diagonal):
+            return b / A.values.reshape(-1, 1)
         return np.linalg.solve(A, b)
 
 
@@ -190,13 +195,13 @@ class Quadratic(Cost):
         super().__init__(list_of_costs[-1].leaf)
         self.nodes = len(list_of_costs)
         self.__Q = [cost.Q for cost in list_of_costs]
-        self.__Q_sqrt = [sqrtm(Q) for Q in self.__Q]
+        self.__Q_sqrt = [sqrt_weight(Q) for Q in self.__Q]
         self.__Q_unconditioned = deepcopy(self.__Q)
         self.dim_per_node = self.__Q[0].shape[0] + 2
         self.__start = 0
         if not self.is_leaf:
             self.__R = [cost.R for cost in list_of_costs]
-            self.__R_sqrt = [sqrtm(R) for R in self.__R]
+            self.__R_sqrt = [sqrt_weight(R) for R in self.__R]
             self.__R_unconditioned = deepcopy(self.__R)
             self.dim_per_node = self.dim_per_node + self.__R[0].shape[0]
             self.__start = 1
@@ -294,7 +299,7 @@ class Quadratic(Cost):
     def get_scaling_states(self, scale_x):
         for ele in range(scale_x.size):
             for i in range(self.__start, self.nodes):
-                scale = np.sqrt(self.__Q_unconditioned[i][ele, ele])
+                scale = np.sqrt(diagonal_values(self.__Q_unconditioned[i])[ele])
                 if scale > scale_x[ele]:
                     scale_x[ele] = np.asarray(scale).item()
         return scale_x
@@ -302,18 +307,18 @@ class Quadratic(Cost):
     def get_scaling_inputs(self, scale_u):
         for ele in range(scale_u.size):
             for i in range(self.__start, self.nodes):
-                scale = np.sqrt(self.__R_unconditioned[i][ele, ele])
+                scale = np.sqrt(diagonal_values(self.__R_unconditioned[i])[ele])
                 if scale > scale_u[ele]:
                     scale_u[ele] = np.asarray(scale).item()
         return scale_u
 
     def condition(self, scaling_state_inv, scaling_input_inv=None):
         for i in range(self.__start, self.nodes):
-            self.__Q[i] = scaling_state_inv.T @ self.Q_uncond[i] @ scaling_state_inv
-            self.__Q_sqrt[i] = sqrtm(self.__Q[i])
+            self.__Q[i] = scale_weight(self.Q_uncond[i], scaling_state_inv)
+            self.__Q_sqrt[i] = sqrt_weight(self.__Q[i])
             if not self.is_leaf:
-                self.__R[i] = scaling_input_inv.T @ self.R_uncond[i] @ scaling_input_inv
-                self.__R_sqrt[i] = sqrtm(self.__R[i])
+                self.__R[i] = scale_weight(self.R_uncond[i], scaling_input_inv)
+                self.__R_sqrt[i] = sqrt_weight(self.__R[i])
         self.__set_translation()
         return self
 
@@ -337,8 +342,8 @@ class CostQuadratic:
         self.leaf = leaf
 
     def node_zero(self):
-        self.Q[:] = 0.
-        self.R[:] = 0.
+        zero_weight(self.Q)
+        zero_weight(self.R)
 
     @staticmethod
     def get_class():
@@ -501,7 +506,7 @@ class QuadraticPlusLinear(Cost):
         super().__init__(list_of_costs[-1].leaf)
         self.nodes = len(list_of_costs)
         self.__Q = [cost.Q for cost in list_of_costs]
-        self.__Q_sqrt = [sqrtm(Q) for Q in self.__Q]
+        self.__Q_sqrt = [sqrt_weight(Q) for Q in self.__Q]
         self.__Q_unconditioned = deepcopy(self.__Q)
         self.__q = [np.array(cost.q).reshape(-1, 1) for cost in list_of_costs]
         self.__q_unconditioned = deepcopy(self.__q)
@@ -509,7 +514,7 @@ class QuadraticPlusLinear(Cost):
         self.__start = 0
         if not self.is_leaf:
             self.__R = [cost.R for cost in list_of_costs]
-            self.__R_sqrt = [sqrtm(R) for R in self.__R]
+            self.__R_sqrt = [sqrt_weight(R) for R in self.__R]
             self.__R_unconditioned = deepcopy(self.__R)
             self.__r = [np.array(cost.r).reshape(-1, 1) for cost in list_of_costs]
             self.__r_unconditioned = deepcopy(self.__r)
@@ -636,7 +641,7 @@ class QuadraticPlusLinear(Cost):
     def get_scaling_states(self, scale_x):
         for ele in range(scale_x.size):
             for i in range(self.__start, self.nodes):
-                scale = np.sqrt(self.__Q_unconditioned[i][ele, ele])
+                scale = np.sqrt(diagonal_values(self.__Q_unconditioned[i])[ele])
                 if scale > scale_x[ele]:
                     scale_x[ele] = np.asarray(scale).item()
                 scale = abs(self.__q_unconditioned[i][ele])
@@ -647,7 +652,7 @@ class QuadraticPlusLinear(Cost):
     def get_scaling_inputs(self, scale_u):
         for ele in range(scale_u.size):
             for i in range(self.__start, self.nodes):
-                scale = np.sqrt(self.__R_unconditioned[i][ele, ele])
+                scale = np.sqrt(diagonal_values(self.__R_unconditioned[i])[ele])
                 if scale > scale_u[ele]:
                     scale_u[ele] = np.asarray(scale).item()
                 scale = abs(self.__r_unconditioned[i][ele])
@@ -657,12 +662,12 @@ class QuadraticPlusLinear(Cost):
 
     def condition(self, scaling_state_inv, scaling_input_inv=None):
         for i in range(self.__start, self.nodes):
-            self.__Q[i] = scaling_state_inv.T @ self.Q_uncond[i] @ scaling_state_inv
-            self.__Q_sqrt[i] = sqrtm(self.__Q[i])
+            self.__Q[i] = scale_weight(self.Q_uncond[i], scaling_state_inv)
+            self.__Q_sqrt[i] = sqrt_weight(self.__Q[i])
             self.__q[i] = np.diagonal(scaling_state_inv).reshape(-1, 1) * self.__q_unconditioned[i]
             if not self.is_leaf:
-                self.__R[i] = scaling_input_inv.T @ self.R_uncond[i] @ scaling_input_inv
-                self.__R_sqrt[i] = sqrtm(self.__R[i])
+                self.__R[i] = scale_weight(self.R_uncond[i], scaling_input_inv)
+                self.__R_sqrt[i] = sqrt_weight(self.__R[i])
                 self.__r[i] = np.diagonal(scaling_input_inv).reshape(-1, 1) * self.__r_unconditioned[i]
         self.__set_translation()
         return self
@@ -684,6 +689,9 @@ class CostQuadraticPlusLinear:
         check_spd(Q, "Q")
         if not leaf:
             check_spd(R, "R")
+        for name, weight in (("Q", Q), ("R", R)):
+            if isinstance(weight, Diagonal) and np.any(weight.values == 0):
+                raise ValueError(f"{name} must be strictly positive for quadratic-plus-linear costs")
         self.Q = Q
         self.R = R
         self.q = q
@@ -691,8 +699,8 @@ class CostQuadraticPlusLinear:
         self.leaf = leaf
 
     def node_zero(self):
-        self.Q[:] = 0.
-        self.R[:] = 0.
+        zero_weight(self.Q)
+        zero_weight(self.R)
         self.q[:] = 0.
         self.r[:] = 0.
 

@@ -1339,6 +1339,12 @@ public:
         return *this;
     }
 
+    CacheBuilder<T> &legacyAnderson() {
+        m_andersonOptions.enabled = false;
+        m_andersonOptions.qr.incremental = false;
+        return *this;
+    }
+
     CacheBuilder<T> &enableDebug(bool enable = true) {
         if (enable && m_maxOuterIters == 0) {
             m_maxOuterIters = 1000;

@@ -31,6 +31,16 @@ public:
     virtual ~CacheTestData() = default;
 };
 
+TEST_F(CacheTest, andersonModes) {
+    CacheTestData<double> d;
+    EXPECT_TRUE(d.m_cache->andersonOptions().enabled);
+    EXPECT_TRUE(d.m_cache->andersonOptions().qr.incremental);
+
+    auto legacy = CacheBuilder<double>(*d.m_tree, *d.m_data).legacyAnderson().make_unique();
+    EXPECT_FALSE(legacy->andersonOptions().enabled);
+    EXPECT_FALSE(legacy->andersonOptions().qr.incremental);
+}
+
 /* ---------------------------------------
  * Initialise state
  * --------------------------------------- */

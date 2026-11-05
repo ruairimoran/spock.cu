@@ -12,7 +12,7 @@
 #include <vector>
 
 struct AndersonOptions {
-    bool enabled = false;  // Existing callers retain the legacy algorithm.
+    bool enabled = true;  // Use the safeguarded, regularised fit by default.
     double regularization = 1e-8;
     double rankTolerance = 0.;  // Zero selects a precision-dependent default.
     double maxCoefficientNorm = 1e6;

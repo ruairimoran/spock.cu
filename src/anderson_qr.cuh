@@ -11,7 +11,7 @@
 #include <vector>
 
 struct AndersonQrOptions {
-    bool incremental = false;
+    bool incremental = true;  // Reuse the QR factors for regularised Anderson by default.
     size_t rebuildInterval = 64;
     size_t checkInterval = 16;
     double orthogonalityTolerance = 0.;  // Zero selects a precision-dependent default.

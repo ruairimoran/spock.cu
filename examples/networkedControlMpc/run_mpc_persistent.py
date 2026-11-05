@@ -49,22 +49,23 @@ def main():
     parser.add_argument("--tolerance", type=float, default=1e-3)
     parser.add_argument("--max-time", type=float, default=300.0)
     parser.add_argument("--branching", type=int, nargs="+")
-    parser.add_argument("--anderson", choices=("legacy", "regularized"), default="legacy",
-                        help="Acceleration mode; regularised fitting is enabled explicitly")
+    parser.add_argument("--anderson", choices=("legacy", "regularized"), default="regularized",
+                        help="Acceleration mode (default: regularized with QR updates)")
     parser.add_argument("--aa-regularization", type=float, default=1e-8,
                         help="Ridge parameter after normalising history columns")
     parser.add_argument("--aa-rank-tolerance", type=float, default=1e-8)
     parser.add_argument("--aa-max-coefficient-norm", type=float, default=1e6)
     parser.add_argument("--aa-max-direction-ratio", type=float, default=1e4)
-    parser.add_argument("--aa-qr", choices=("full", "update"), default="full",
-                        help="QR implementation for regularised Anderson fitting")
+    parser.add_argument("--aa-qr", choices=("full", "update"),
+                        help="QR implementation for regularised Anderson (default: update)")
     parser.add_argument("--aa-qr-rebuild-interval", type=int, default=64)
     parser.add_argument("--aa-qr-check-interval", type=int, default=16)
     parser.add_argument("--aa-qr-orthogonality-tolerance", type=float, default=0.0,
                         help="Zero selects the precision-dependent default")
     args = parser.parse_args()
-    if args.anderson == "legacy" and args.aa_qr != "full":
+    if args.anderson == "legacy" and args.aa_qr == "update":
         parser.error("QR updates require --anderson regularized")
+    args.aa_qr = args.aa_qr or ("update" if args.anderson == "regularized" else "full")
     if args.trajectories < 1 or args.steps < 1 or args.tolerance <= 0 or args.max_time < 0:
         parser.error("Invalid simulation parameters")
     anderson = {"mode": args.anderson, "regularization": args.aa_regularization,
@@ -111,7 +112,7 @@ def main():
     online.update(p["phi0"], p["gam"])
     online_errors = online.compare_reference()
     startup_generation = time.perf_counter() - startup_begin
-    executable = (args.executable or repo / "build/examples/networkedControlMpc/networked_mpc_persistent_qr").resolve()
+    executable = (args.executable or repo / "build/examples/networkedControlMpc/networked_mpc_persistent").resolve()
     metadata = {
         "implementation": "persistent GPU storage; binary dynamics-only updates",
         "anderson": anderson,
@@ -164,7 +165,7 @@ def main():
         if not ready.get("ready"):
             raise RuntimeError("Persistent GPU worker did not initialise")
         if args.anderson == "regularized" and ready.get("aa_qr_mode", "full") != args.aa_qr:
-            raise ValueError("GPU worker does not support the requested QR mode; use the new _qr executable")
+            raise ValueError("GPU worker does not support the requested QR mode; rebuild the main executable")
         expected = [(name, list(array.shape[::-1])) for name, array in online.fields.items()]
         if [(entry["name"], entry["shape"]) for entry in ready["fields"]] != expected:
             raise ValueError("GPU dynamics payload layout differs from the online model")

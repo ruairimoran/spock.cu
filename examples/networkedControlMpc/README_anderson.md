@@ -1,11 +1,11 @@
 # Regularised Anderson acceleration
 
-Incremental QR is now available through `--aa-qr update`; see
+Incremental QR is the default through `--aa-qr update`; see
 [README_fast_qr.md](README_fast_qr.md) for factor maintenance, safeguards,
 options and validation. Use `--aa-qr full` to reproduce the full-QR method
-described below in the new `_qr` executable.
+described below in the main executable.
 
-The optional `regularized` mode improves the numerical treatment of the
+The default `regularized` mode improves the numerical treatment of the
 type-II Anderson direction. It keeps the existing three-pair history,
 SuperMann acceptance rules, primal-dual warm start, preconditioning and
 stopping test. The ridge term applies only to the acceleration fit; it
@@ -49,7 +49,7 @@ Device buffers and QR/ORMQR/SVD workspaces are allocated once. Solver status
 is checked outside debug mode. The QR workspace covers both factorisation
 and application of `Q'`.
 
-Both modes in the new executable use safe, back-to-front column copies.
+Both modes in the main executable use safe, back-to-front column copies.
 The previous implementation shifted overlapping device-memory regions,
 whose copy behaviour was not guaranteed. Using the same safe history update
 in both modes isolates the regularisation/filtering comparison. Running
@@ -57,8 +57,8 @@ processes keep their existing executable and are not changed mid-study.
 
 ## Options and defaults
 
-The driver defaults to `legacy` until broader closed-loop performance is
-established. Select the new mode explicitly with `--anderson regularized`.
+The driver defaults to regularised Anderson with QR updates. Select
+`--anderson legacy` to use the original acceleration method.
 
 | Option | Default | Meaning |
 | --- | ---: | --- |
@@ -82,7 +82,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
   -DCMAKE_CUDA_ARCHITECTURES=120 -DSM_ARCH=120 \
   -UFETCHCONTENT_SOURCE_DIR_GPUTILS
-make -C build -j2 networked_mpc_persistent_qr check_anderson
+make -C build -j2 networked_mpc_persistent check_anderson
 
 nohup env OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MPLBACKEND=Agg \
   build/venv/bin/python -u examples/networkedControlMpc/run_mpc_persistent.py \
@@ -95,7 +95,7 @@ echo $! > build/mpc_tree64_regularized_full_qr.pid
 
 Use a fresh output directory and avoid overlapping timing experiments on
 the GPU. To compare with the original unregularised fit, use
-`--anderson legacy` in the same new executable and another output directory.
+`--anderson legacy` in the main executable and another output directory.
 
 ## Diagnostics and validation
 

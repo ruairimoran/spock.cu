@@ -153,10 +153,14 @@ def main():
     reports, controls = {}, {}
     for name, settings, states in (
             ("legacy", {"mode": "legacy"}, sequence),
-            ("regularized", regularized, sequence),
-            ("qr_updates", {**regularized, "qr_mode": "update"}, sequence),
+            ("regularized", {**regularized, "qr_mode": "full"}, sequence),
+            ("qr_updates", regularized, sequence),
             ("forced_rejection", {**regularized, "qr_mode": "update", "max_coefficient_norm": 1e-12}, sequence[:2])):
         ready, responses = run_requests(worker, data, settings, states, args.tolerance, args.max_time)
+        if name == "regularized":
+            assert ready["aa_qr_mode"] == "full"
+        elif name == "qr_updates":
+            assert ready["aa_qr_mode"] == "update", "Default regularised mode must use QR updates"
         check_storage(ready, responses)
         csv_path = output / f"{name}.csv"
         save_responses(csv_path, responses)

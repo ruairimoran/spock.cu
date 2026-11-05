@@ -27,6 +27,7 @@ static AndersonOptions readAndersonOptions(const char *json) {
     const std::string mode = settings["mode"].GetString();
     if (mode != "legacy" && mode != "regularized") throw std::invalid_argument("Unknown Anderson mode");
     options.enabled = mode == "regularized";
+    options.qr.incremental = options.enabled;
     if (settings.HasMember("qr_mode")) {
         if (!settings["qr_mode"].IsString()) throw std::invalid_argument("QR mode must be a string");
         const std::string qrMode = settings["qr_mode"].GetString();
@@ -108,6 +109,7 @@ int main(int argc, char **argv) {
         CacheBuilder<double> builder(tree, problem);
         builder.tol(tol).maxTimeSecs(maxTime);
         if (anderson.enabled) builder.regularisedAnderson(anderson);
+        else builder.legacyAnderson();
         auto cache = builder.build();
         auto tensors = problem.dynamics()->projectionTensors();
         const std::array<const char *, 8> names = {"BTr", "AB", "K", "KTr", "ABKTr", "P", "APB", "lowCholesky"};

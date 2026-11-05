@@ -57,30 +57,28 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
   -DCMAKE_CUDA_ARCHITECTURES=120 -DSM_ARCH=120 \
   -UFETCHCONTENT_SOURCE_DIR_GPUTILS
-make -C build -j2 networked_mpc_persistent_qr check_anderson_qr check_anderson
+make -C build -j2 networked_mpc_persistent check_anderson_qr check_anderson
 
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
 build/venv/bin/python -u examples/networkedControlMpc/run_mpc_persistent.py \
-  --output build/mpc_tree64_fast_qr \
+  --output build/mpc_tree64_qr_main \
   --trajectories 15 --steps 20 --seed 20261103 --branching 8 8 \
-  --anderson regularized --aa-qr update
+  --anderson regularized
 ```
 
-The driver uses the new `_qr` executable. It still defaults to legacy
-Anderson unless `--anderson regularized` is specified. Within regularised
-mode, full QR remains the default until a complete closed-loop comparison
-is available. Select `--aa-qr update` explicitly. Both paths are available in
-the same executable; direct C++ callers and old worker JSON without
-`qr_mode` also retain full QR.
+The main solver and MPC driver use regularised Anderson with QR updates by
+default. The worker JSON can omit `qr_mode`; regularised mode then uses QR
+updates. Select `--aa-qr full` for a full QR at every fit, or
+`--anderson legacy` for the original acceleration method.
 
-Use a fresh output directory for each run. Previously completed results
-and the existing `_aa` executable are retained.
+Use a fresh output directory for each run. Previously completed results are
+retained.
 
 Options specific to the new path:
 
 | Option | Default |
 | --- | ---: |
-| `--aa-qr` | `full` |
+| `--aa-qr` | `update` in regularised mode; `full` in legacy mode |
 | `--aa-qr-rebuild-interval` | `64` |
 | `--aa-qr-check-interval` | `16` |
 | `--aa-qr-orthogonality-tolerance` | `0` (automatic) |

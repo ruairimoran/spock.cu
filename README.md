@@ -51,10 +51,16 @@ updates and the large QR-workspace regression. GPU tests share a resource
 lock so `ctest -j` does not run them concurrently. The Python tests need the
 API's `test` dependencies, including CVXPY.
 
+`Cache` now uses regularised Anderson acceleration with rolling QR updates by
+default. A rolling factor is periodically rebuilt and is rebuilt immediately
+if an update fails its numerical checks. Use `CacheBuilder::legacyAnderson()`
+for the original fit, or pass `AndersonOptions` with `qr.incremental = false`
+to `regularisedAnderson()` for a full QR at every fit.
+
 The MPC integration test can additionally be run in a fresh output directory:
 
 ```bash
 build/venv/bin/python examples/networkedControlMpc/check_anderson_mpc.py \
-  --worker build/examples/networkedControlMpc/networked_mpc_persistent_qr \
+  --worker build/examples/networkedControlMpc/networked_mpc_persistent \
   --output build/mpc_integration_check
 ```

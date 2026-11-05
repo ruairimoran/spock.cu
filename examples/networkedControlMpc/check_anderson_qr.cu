@@ -26,7 +26,8 @@ void checkSequence(const rapidjson::Document &input) {
     std::vector<T> c(rows * memory), y(rows * memory), residual(rows), direction(rows), basis(rows * memory);
     DTensor<T> dC(rows, memory), dY(rows, memory), dResidual(rows), qr(rows, memory), rhs(rows), gamma(memory), dDirection(rows);
     AndersonOptions options;
-    options.enabled = options.qr.incremental = true;
+    if (!options.enabled || !options.qr.incremental)
+        throw std::runtime_error("Default Anderson solver must use QR updates");
     options.rankTolerance = input["rank_tolerance"].GetDouble();
     options.qr.rebuildInterval = input["rebuild_interval"].GetUint64();
     options.qr.checkInterval = input["check_interval"].GetUint64();
@@ -97,7 +98,7 @@ void benchmark(int rows, int steps) {
     DTensor<double> c(rows, memory), y(rows, memory), residual(rows);
     DTensor<double> fullQ(rows, memory), updateQ(rows, memory), fullWork(rows), updateWork(rows);
     DTensor<double> fullGamma(memory), updateGamma(memory), fullDirection(rows), updateDirection(rows), difference(rows);
-    AndersonOptions options; options.enabled = true;
+    AndersonOptions options; options.qr.incremental = false;
     RegularisedAnderson<double> full(c, y, fullQ, fullWork, fullGamma, options);
     options.qr.incremental = true;
     RegularisedAnderson<double> update(c, y, updateQ, updateWork, updateGamma, options);

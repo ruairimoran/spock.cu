@@ -24,3 +24,10 @@ execute_process(
 if(NOT status EQUAL 0)
     message(FATAL_ERROR "Failed to generate diagonal-cost fixtures")
 endif()
+execute_process(
+    COMMAND "${PYTHON}" "${DYNAMICS_GENERATOR}"
+    WORKING_DIRECTORY "${FIXTURE_DIR}"
+    RESULT_VARIABLE status)
+if(NOT status EQUAL 0)
+    message(FATAL_ERROR "Failed to generate dynamics-projection fixtures")
+endif()

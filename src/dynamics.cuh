@@ -26,11 +26,11 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_KTr = nullptr;
     std::unique_ptr<DTensor<T>> m_d_ABKTr = nullptr;  ///< (A+BK)'
     std::unique_ptr<DTensor<T>> m_d_P = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_APB = nullptr;  ///< (A+BK)'PB
+    // Retained for compatibility with existing files and online-update payloads.
+    std::unique_ptr<DTensor<T>> m_d_APB = nullptr;  ///< (A+BK)'PB, unused by projection
     std::unique_ptr<DTensor<T>> m_d_Pe = nullptr;
     std::unique_ptr<DTensor<T>> m_d_lowerCholesky = nullptr;
-    std::vector<std::unique_ptr<DTensor<T>>> m_choleskyStage;
-    std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>> m_choleskyBatch;
+    std::unique_ptr<CholeskyBatchFactoriser<T>> m_choleskyBatch;
     /* Workspaces */
     std::unique_ptr<DTensor<T>> m_d_q = nullptr;
     std::unique_ptr<DTensor<T>> m_d_d = nullptr;
@@ -55,15 +55,9 @@ protected:
         m_d_lowerCholesky = std::make_unique<DTensor<T>>(
             DTensor<T>::parseFromFile(m_tree.path() + m_prefix + "lowCholesky" + m_tree.fpFileExt()));
         m_d_KTr = std::make_unique<DTensor<T>>(m_d_K->tr());
-        /* Sort Cholesky data */
-        m_choleskyStage = std::vector<std::unique_ptr<DTensor<T>>>(m_tree.numStagesMinus1());
-        m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>>(m_tree.numStagesMinus1());
-        for (size_t stage = 0; stage < m_tree.numStagesMinus1(); stage++) {
-            size_t nodeFr = m_tree.stageFrom()[stage];
-            size_t nodeTo = m_tree.stageTo()[stage];
-            m_choleskyStage[stage] = std::make_unique<DTensor<T>>(*m_d_lowerCholesky, m_matAxis, nodeFr, nodeTo);
-            m_choleskyBatch[stage] = std::make_unique<CholeskyBatchFactoriser<T>>(*m_choleskyStage[stage], true);
-        }
+        // The backward recursion needs only the right-hand sides, so all
+        // nonleaf nodes share one solve with their precomputed Cholesky factors.
+        m_choleskyBatch = std::make_unique<CholeskyBatchFactoriser<T>>(*m_d_lowerCholesky, true);
         /* Allocate workspaces */
         m_d_q = std::make_unique<DTensor<T>>(m_tree.numStates(), 1, m_tree.numNodes(), true);
         m_d_d = std::make_unique<DTensor<T>>(m_tree.numInputs(), 1, m_tree.numNonleafNodes(), true);
@@ -80,7 +74,7 @@ protected:
         x_LastStage *= -1.;
         memCpyNode2Node(*m_d_q, states, m_tree.numNonleafNodes(), m_tree.numNodesMinus1(), m_tree.numStates());
         /*
-         * Solve for all d at current stage
+         * Backward sweep: compute q and store each solve's right-hand side in d.
          */
         size_t horizon = m_tree.numStagesMinus1();
         for (size_t t = 1; t < m_tree.numStages(); t++) {
@@ -109,35 +103,30 @@ protected:
             DTensor<T> u_Stage(inputs, m_matAxis, stageFr, stageTo);
             d_Stage *= -1.;
             d_Stage += u_Stage;
-            /* Use Cholesky decomposition for final step of computing all d at current stage */
-            m_choleskyBatch[stage]->solve(d_Stage);
             /*
-             * Solve for all q at current stage (except for stage 0)
+             * Compute q without d (except at the root, where q is unused).
+             * The offline Riccati identities give
+             * sum_children (A+BK)' P B = -K', cancelling all terms in d:
+             * q = sum_children (A+BK)' (q_child + P e) - K' u_bar - x_bar.
              */
             if (stage) {
-                /* Compute APBdAq_ChStage = A(PBd+q+Pe) for each node at child stage. A = (A+B@K).tr */
-                DTensor<T> APB_ChStage(*m_d_APB, m_matAxis, chStageFr, chStageTo);
                 DTensor<T> ABKtr_ChStage(*m_d_ABKTr, m_matAxis, chStageFr, chStageTo);
-                m_tree.memCpyAnc2Node(*m_d_workU, *m_d_d, chStageFr, chStageTo, m_d_d->numRows());
                 DTensor<T> q_SumChStage(*m_d_workX, m_matAxis, chStageFr, chStageTo);
-                DTensor<T> d_ExpandedChStage(*m_d_workU, m_matAxis, chStageFr, chStageTo);
-                q_SumChStage.addAB(APB_ChStage, d_ExpandedChStage);
-                q_SumChStage.addAB(ABKtr_ChStage, q_ChStage, 1., 1.);
-                /* Sum `APBdAq` children of each node into `q` at current stage */
+                q_SumChStage.addAB(ABKtr_ChStage, q_ChStage);
+                /* Sum child contributions into q at the current stage. */
                 for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
                     m_tree.memCpyCh2Node(*m_d_q, *m_d_workX, stageFr, stageTo, chIdx, chIdx);
                 }
-                /* Compute Kdux = K.tr(d-u)@x for each node at current stage and add to `q` */
-                DTensor<T> du_Stage(*m_d_workU, m_matAxis, stageFr, stageTo);
-                d_Stage.deviceCopyTo(du_Stage);
-                du_Stage -= u_Stage;
                 DTensor<T> Ktr_Stage(*m_d_KTr, m_matAxis, stageFr, stageTo);
                 DTensor<T> q_Stage(*m_d_q, m_matAxis, stageFr, stageTo);
-                q_Stage.addAB(Ktr_Stage, du_Stage, 1., 1.);
+                q_Stage.addAB(Ktr_Stage, u_Stage, -1., 1.);
                 DTensor<T> x_Stage(states, m_matAxis, stageFr, stageTo);
                 q_Stage -= x_Stage;
             }
         }
+        // All right-hand sides are now available, including the root's. Solve
+        // across the whole tree before reconstructing states and controls.
+        m_choleskyBatch->solve(*m_d_d);
         /*
          * Set initial state
          */

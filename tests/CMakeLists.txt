@@ -17,6 +17,7 @@ add_test(NAME spock_generate_fixtures
         "-DGENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/cuda/test.py"
         "-DDENSE_GENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/cuda/generate_dense_cost.py"
         "-DDIAGONAL_GENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/cuda/generate_diagonal_cost.py"
+        "-DDYNAMICS_GENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/cuda/generate_dynamics_projection.py"
         "-DFIXTURE_DIR=${SPOCK_TEST_FIXTURE_DIR}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/generate_fixtures.cmake")
 set_tests_properties(spock_generate_fixtures PROPERTIES
@@ -36,6 +37,7 @@ target_sources(spock_tests  # add files
     cuda/testMetricProduct.cu
     cuda/testCostAliasing.cu
     cuda/testDiagonalCost.cu
+    cuda/testDynamics.cu
 )
 target_link_libraries(spock_tests
     PRIVATE

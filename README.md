@@ -64,3 +64,10 @@ build/venv/bin/python examples/networkedControlMpc/check_anderson_mpc.py \
   --worker build/examples/networkedControlMpc/networked_mpc_persistent \
   --output build/mpc_integration_check
 ```
+
+For CUDA memory diagnostics, run `./scripts/run_compute_sanitizer.sh`. It
+builds the test executables, generates fixtures, and runs memcheck with full
+device-allocation leak checking on all CUDA GoogleTests, the large QR
+workspace regression, and 72 rolling-QR fits. Reports are written to
+`build/sanitizer/`; any sanitizer finding makes the script fail. This checks
+CUDA allocations and device accesses, not host heap leaks.

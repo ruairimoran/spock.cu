@@ -316,3 +316,17 @@ TEST_F(CacheTest, testConvergenceSP) {
     CacheTestData<double> dd;
     testConvergenceSP<double>(dd);
 }
+
+TEST_F(CacheTest, residentSolvesReuseAndReleaseStorage) {
+    const size_t baseline = Session::getInstance().totalAllocatedBytes();
+    {
+        CacheTestData<double> d;
+        const size_t allocated = Session::getInstance().totalAllocatedBytes();
+        std::vector<double> state(d.m_tree->numStates(), 1.1);
+        for (bool warm : {false, true, false}) {
+            ASSERT_EQ(d.m_cache->runSpockResident(state, warm), converged);
+            EXPECT_EQ(Session::getInstance().totalAllocatedBytes(), allocated);
+        }
+    }
+    EXPECT_EQ(Session::getInstance().totalAllocatedBytes(), baseline);
+}

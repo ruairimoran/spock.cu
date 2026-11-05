@@ -41,6 +41,9 @@ FetchContent_Declare(
     gputils
     URL https://github.com/GPUEngineering/GPUtils/archive/refs/tags/v2.0.0.zip
     URL_HASH SHA256=4ba677216d0da6023af03f465dacb7cba68574a4fab31a3172a9236f0bf18b86
+    # SPOCK only consumes the headers. GPUtils' standalone CMake project
+    # selects its own CUDA compiler, which can cause a reconfiguration loop.
+    SOURCE_SUBDIR include
 )
 FetchContent_MakeAvailable(gputils)
 FetchContent_GetProperties(

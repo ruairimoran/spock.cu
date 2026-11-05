@@ -8,10 +8,58 @@ name: Continuous integration
 jobs:
   ci:
     runs-on: self-hosted
+    timeout-minutes: 45
+    env:
+      # Toolchain and architecture of the self-hosted A40 runner.
+      CUDACXX: /usr/local/cuda-12.3/bin/nvcc
+      SPOCK_COMPUTE_SANITIZER: /usr/local/cuda-12.3/bin/compute-sanitizer
+      SPOCK_BUILD_JOBS: "2"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
     steps:
-      - name: checkout code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: run test script
-        run: bash ./ci/script.sh
+      - name: Prepare Python environment
+        run: |
+          # Never reuse a CMake cache from another job or compiler installation.
+          export SPOCK_BUILD_DIR="$RUNNER_TEMP/spock-ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          echo "SPOCK_BUILD_DIR=$SPOCK_BUILD_DIR" >> "$GITHUB_ENV"
+          python3.10 -m venv "$SPOCK_BUILD_DIR/venv"
+          "$SPOCK_BUILD_DIR/venv/bin/python" -m pip install --upgrade pip
+          "$SPOCK_BUILD_DIR/venv/bin/python" -m pip install './api/python[test]'
+          echo "PYTHON=$SPOCK_BUILD_DIR/venv/bin/python" >> "$GITHUB_ENV"
+
+      - name: Configure CUDA build for A40
+        timeout-minutes: 5
+        run: |
+          cmake -S . -B "$SPOCK_BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER="$CUDACXX" \
+            -DCMAKE_CUDA_ARCHITECTURES=86 \
+            -DSPOCK_BUILD_TEST=ON \
+            -DPython3_EXECUTABLE="$PYTHON"
+
+      - name: Run Python tests
+        run: bash ./scripts/run_python_tests.sh
+
+      - name: Build and run CUDA tests
+        run: bash ./scripts/run_cuda_tests.sh
+
+      - name: Check CUDA memory and leaks
+        run: bash ./scripts/run_compute_sanitizer.sh
+
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            ${{ env.SPOCK_BUILD_DIR }}/CMakeFiles/CMakeConfigureLog.yaml
+            ${{ env.SPOCK_BUILD_DIR }}/CMakeFiles/CMakeError.log
+            ${{ env.SPOCK_BUILD_DIR }}/CMakeFiles/CMakeOutput.log
+            ${{ env.SPOCK_BUILD_DIR }}/Testing/Temporary/
+            ${{ env.SPOCK_BUILD_DIR }}/sanitizer/
 

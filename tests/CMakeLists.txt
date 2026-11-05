@@ -32,6 +32,7 @@ target_sources(spock_tests  # add files
     cuda/testProjections.cu
     cuda/testOperator.cu
     cuda/testCache.cu
+    cuda/testMetricProduct.cu
     cuda/testCostAliasing.cu
 )
 target_link_libraries(spock_tests

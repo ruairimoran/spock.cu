@@ -763,13 +763,21 @@ void Cache<T>::Ltr(bool add) {
  */
 template<typename T>
 T Cache<T>::dotM(DTensor<T> &x, DTensor<T> &y) {
+    cudaStream_t stream;
+    gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(m_d_workIterate->streamIdx()), &stream));
     DTensor<T> yPrim(y, m_rowAxis, 0, m_sizePrim - 1);
     DTensor<T> yDual(y, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
     yDual.deviceCopyTo(*m_d_workIterateDual);
     Ltr();
+    // Cost operators skip the padded root entries. Their adjoint output at
+    // t[0] must be zero, rather than a value left by an earlier workspace use.
+    gpuErrChk(cudaMemsetAsync(m_d_t->raw(), 0, sizeof(T), stream));
     m_d_workIteratePrim->deviceCopyTo(*m_d_workDotPrim);
     yPrim.deviceCopyTo(*m_d_workIteratePrim);
     L();
+    // Likewise, the root cost has no contribution to L*yPrim. Clearing its
+    // output keeps M linear and symmetric even when y has nonzero padding.
+    gpuErrChk(cudaMemsetAsync(m_d_iv->raw(), 0, m_d_iv->numRows() * sizeof(T), stream));
     m_d_workIterateDual->deviceCopyTo(*m_d_workDotDual);
     *m_d_workDot *= -m_data.stepSize();
     *m_d_workDot += y;
@@ -1198,10 +1206,10 @@ int Cache<T>::runSpockImpl(std::vector<T> &initState, std::vector<T> *previousSo
                 break;  // K1
             }
             /* Compute rho */
-            rho = pow(wTilde, 2) - dotM(*m_d_residual, *m_d_directionScaled);  // This is the algo equation.
-//            *m_d_directionScaled *= -1.;  // This is...
-//            *m_d_directionScaled += *m_d_residual;  // not the algo equation, but...
-//            rho = dotM(*m_d_residual, *m_d_directionScaled);  //  performs well.
+            // normM(r, r) above leaves M*r in m_d_workDot. Nothing on this
+            // branch overwrites it, so symmetry gives r' M d = d' (M*r)
+            // without another application of L and its adjoint.
+            rho = pow(wTilde, 2) - m_d_directionScaled->dotF(*m_d_workDot);
             /* Safeguard update */
             if (rho >= m_sigma * wTilde * w) {
                 *m_d_residual *= (m_lambda * rho / pow(wTilde, 2));

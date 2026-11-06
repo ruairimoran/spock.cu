@@ -27,7 +27,7 @@ void projectRectangle(T epsilon) {
     vub[0] = INFINITY;
     DTensor<T> d_lb(vlb, n);  // lower bound
     DTensor<T> d_ub(vub, n);  // upper bound
-    k_projectRectangle<<<numBlocks(n, TPB), TPB>>>(n, d_v.raw(), d_lb.raw(), d_ub.raw());
+    k_projectRectangle<<<numBlocks(n, TPB), TPB, 0, spock::executionStream(d_v)>>>(n, d_v.raw(), d_lb.raw(), d_ub.raw());
     EXPECT_NEAR(d_v(0, 0, 0), -(ub+oob)*.5, epsilon);
     for (size_t i = 0; i < n; i++) {
         EXPECT_TRUE(d_v(i, 0, 0) >= lb);

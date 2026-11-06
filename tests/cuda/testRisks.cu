@@ -13,7 +13,7 @@ TEMPLATE_WITH_TYPE_T
 class RisksTestData {
 
 public:
-    std::string m_path = "../../data/";
+    std::string m_path = SPOCK_TEST_DATA_DIR;
     std::unique_ptr<ScenarioTree<T>> m_tree;
 
     RisksTestData() {

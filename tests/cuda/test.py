@@ -98,3 +98,12 @@ problem = (
     .generate_problem()
 )
 print(problem)
+
+# Export the NumPy operator as an independent dense reference for metric
+# product tests. This is a small test fixture, never a production MPC matrix.
+basis = np.eye(problem.size_prim)
+metric_operator = np.column_stack([
+    problem._Problem__op(basis[:, column])
+    for column in range(problem.size_prim)
+])
+tree.write_to_file_fp("test_metricOperator", metric_operator)

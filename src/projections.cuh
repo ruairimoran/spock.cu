@@ -95,30 +95,36 @@ public:
         m_d_zeros = std::make_unique<DTensor<T>>(m_d_norms->numRows(),
                                                  m_d_norms->numCols(),
                                                  m_d_norms->numMats(), true);
+        for (auto *tensor : {m_d_lastElementOfSocs.get(), m_d_scalingParams.get(),
+                             m_d_norms.get(), m_d_zeros.get()})
+            tensor->setStreamIdx(d_tensor.streamIdx());
+        m_d_i2->setStreamIdx(d_tensor.streamIdx());
+        m_d_i3->setStreamIdx(d_tensor.streamIdx());
         size_t elementsPerBlock = (this->m_numRows > TPB) ? TPB : this->m_numRows;
         m_sharedMemBytes = sizeof(T) * elementsPerBlock;
     }
 
     void project(DTensor<T> &d_tensor) {
         this->dimensionCheck(d_tensor);
-        m_d_zeros->deviceCopyTo(*m_d_norms);
-        k_projectionMultiSocStep0<<<m_gridDims, m_threadsPerBlock, m_sharedMemBytes>>>(d_tensor.raw(),
+        const auto stream = spock::commonStream(d_tensor, *m_d_norms);
+        m_d_zeros->deviceCopyToAsync(*m_d_norms);
+        k_projectionMultiSocStep0<<<m_gridDims, m_threadsPerBlock, m_sharedMemBytes, stream>>>(d_tensor.raw(),
                                                                                        this->m_numCols,
                                                                                        this->m_numRows,
                                                                                        m_d_lastElementOfSocs->raw(),
                                                                                        m_d_norms->raw());
-        k_projectionMultiSocStep1<<<dim3(1, m_gridDims.y), m_blocksPerCone>>>(this->m_numCols,
+        k_projectionMultiSocStep1<<<dim3(1, m_gridDims.y), m_blocksPerCone, 0, stream>>>(this->m_numCols,
                                                                               m_blocksPerCone,
                                                                               m_d_lastElementOfSocs->raw(),
                                                                               m_d_norms->raw(),
                                                                               m_d_i2->raw(),
                                                                               m_d_i3->raw(),
                                                                               m_d_scalingParams->raw());
-        k_projectionMultiSocStep2<<<m_gridDims, m_threadsPerBlock>>>(d_tensor.raw(),
+        k_projectionMultiSocStep2<<<m_gridDims, m_threadsPerBlock, 0, stream>>>(d_tensor.raw(),
                                                                      this->m_numCols,
                                                                      this->m_numRows,
                                                                      m_d_i2->raw());
-        k_projectionMultiSocStep3<<<m_gridDims, m_threadsPerBlock>>>(d_tensor.raw(),
+        k_projectionMultiSocStep3<<<m_gridDims, m_threadsPerBlock, 0, stream>>>(d_tensor.raw(),
                                                                      this->m_numCols,
                                                                      this->m_numRows,
                                                                      m_d_norms->raw(),

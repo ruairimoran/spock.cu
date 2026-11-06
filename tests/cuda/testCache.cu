@@ -12,7 +12,7 @@ protected:
 TEMPLATE_WITH_TYPE_T
 class CacheTestData {
 public:
-    std::string m_path = "../../data/";
+    std::string m_path = SPOCK_TEST_DATA_DIR;
     std::unique_ptr<ScenarioTree<T>> m_tree;
     std::unique_ptr<ProblemData<T>> m_data;
     std::unique_ptr<Cache<T>> m_cache;
@@ -30,6 +30,16 @@ public:
 
     virtual ~CacheTestData() = default;
 };
+
+TEST_F(CacheTest, andersonModes) {
+    CacheTestData<double> d;
+    EXPECT_TRUE(d.m_cache->andersonOptions().enabled);
+    EXPECT_TRUE(d.m_cache->andersonOptions().qr.incremental);
+
+    auto legacy = CacheBuilder<double>(*d.m_tree, *d.m_data).legacyAnderson().make_unique();
+    EXPECT_FALSE(legacy->andersonOptions().enabled);
+    EXPECT_FALSE(legacy->andersonOptions().qr.incremental);
+}
 
 /* ---------------------------------------
  * Initialise state
@@ -225,7 +235,7 @@ void testMemCpyInTS(CacheTestData<T> &d) {
     DTensor<size_t> d_anc(anc, nM);
     std::vector<size_t> chFrom = {1, 3, 5};
     DTensor<size_t> d_chFrom(chFrom, 3);
-    k_memCpyInTS<<<numBlocks(nM, TPB), TPB>>>(dst.raw(), src.raw(), nM, nR, dstStart, d_anc.raw(), d_chFrom.raw());
+    k_memCpyInTS<<<numBlocks(nM, TPB), TPB, 0, spock::commonStream(dst, src)>>>(dst.raw(), src.raw(), nM, nR, dstStart, d_anc.raw(), d_chFrom.raw());
     std::vector<size_t> numCh = {2, 2, 3};
     for (size_t mat = 1; mat < nM; mat++) {
         size_t anc_ = anc[mat];
@@ -255,7 +265,7 @@ void testMemCpyOutTS(CacheTestData<T> &d) {
     DTensor<size_t> d_anc(anc, nM);
     std::vector<size_t> chFrom = {1, 3, 5};
     DTensor<size_t> d_chFrom(chFrom, 3);
-    k_memCpyOutTS<<<numBlocks(nM, TPB), TPB>>>(dst.raw(), src.raw(), nM, nR, srcStart, d_anc.raw(), d_chFrom.raw());
+    k_memCpyOutTS<<<numBlocks(nM, TPB), TPB, 0, spock::commonStream(dst, src)>>>(dst.raw(), src.raw(), nM, nR, srcStart, d_anc.raw(), d_chFrom.raw());
     std::vector<size_t> numCh = {2, 2, 3};
     for (size_t mat = 1; mat < nM; mat++) {
         size_t anc_ = anc[mat];
@@ -305,4 +315,18 @@ TEST_F(CacheTest, testConvergenceSP) {
     testConvergenceSP<float>(df);
     CacheTestData<double> dd;
     testConvergenceSP<double>(dd);
+}
+
+TEST_F(CacheTest, residentSolvesReuseAndReleaseStorage) {
+    const size_t baseline = Session::getInstance().totalAllocatedBytes();
+    {
+        CacheTestData<double> d;
+        const size_t allocated = Session::getInstance().totalAllocatedBytes();
+        std::vector<double> state(d.m_tree->numStates(), 1.1);
+        for (bool warm : {false, true, false}) {
+            ASSERT_EQ(d.m_cache->runSpockResident(state, warm), converged);
+            EXPECT_EQ(Session::getInstance().totalAllocatedBytes(), allocated);
+        }
+    }
+    EXPECT_EQ(Session::getInstance().totalAllocatedBytes(), baseline);
 }

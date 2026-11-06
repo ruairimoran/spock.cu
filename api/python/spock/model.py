@@ -1,6 +1,13 @@
 import numpy as np
 import cvxpy as cp
 from copy import deepcopy
+from scipy.sparse import diags
+from .weights import Diagonal
+
+
+def quadratic_form(variable, weight):
+    matrix = diags(weight.values) if isinstance(weight, Diagonal) else weight
+    return cp.quad_form(variable, matrix)
 
 
 class Model:
@@ -44,7 +51,8 @@ class Model:
                 "eps_abs": tol,
                 "eps_rel": tol,
                 "eps_infeas": tol,
-                "time_limit_secs": max_time,
+                # SCS represents an unlimited solve time with zero.
+                "time_limit_secs": 0.0 if np.isposinf(max_time) else max_time,
             }
             return self.__cvx.solve(solver=solver,
                                     **scs_params,
@@ -144,16 +152,16 @@ class Model:
             for node in range(1, self.__tree.num_nodes):
                 anc = self.__tree.ancestor_of_node(node)
                 self.__constraints.append(
-                    cp.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost().Q_uncond[node]) +
-                    cp.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost().R_uncond[node])
+                    quadratic_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost().Q_uncond[node]) +
+                    quadratic_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost().R_uncond[node])
                     <= self.__t[node - 1]
                 )
         elif self.__problem.nonleaf_cost().is_quadratic_plus_linear:
             for node in range(1, self.__tree.num_nodes):
                 anc = self.__tree.ancestor_of_node(node)
                 self.__constraints.append(
-                    cp.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost().Q_uncond[node]) +
-                    cp.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost().R_uncond[node]) +
+                    quadratic_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost().Q_uncond[node]) +
+                    quadratic_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost().R_uncond[node]) +
                     self.__problem.nonleaf_cost().q_uncond[node].T @ self.__x[self.__node_to_x(anc)] +
                     self.__problem.nonleaf_cost().r_uncond[node].T @ self.__u[self.__node_to_u(anc)]
                     <= self.__t[node - 1]
@@ -171,14 +179,14 @@ class Model:
             for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
                 leaf_idx = node - self.__tree.num_nonleaf_nodes
                 self.__constraints.append(
-                    cp.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost().Q_uncond[leaf_idx])
+                    quadratic_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost().Q_uncond[leaf_idx])
                     <= self.__s[node]
                 )
         elif self.__problem.leaf_cost().is_quadratic_plus_linear:
             for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
                 leaf_idx = node - self.__tree.num_nonleaf_nodes
                 self.__constraints.append(
-                    cp.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost().Q_uncond[leaf_idx]) +
+                    quadratic_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost().Q_uncond[leaf_idx]) +
                     self.__problem.leaf_cost().q_uncond[leaf_idx].T @ self.__x[self.__node_to_x(node)]
                     <= self.__s[node]
                 )
@@ -318,7 +326,8 @@ class ModelWithPrecondition:
                 "eps_abs": tol,
                 "eps_rel": tol,
                 "eps_infeas": tol,
-                "time_limit_secs": max_time,
+                # SCS represents an unlimited solve time with zero.
+                "time_limit_secs": 0.0 if np.isposinf(max_time) else max_time,
             }
             return self.__cvx.solve(solver=solver,
                                     **scs_params,
@@ -399,16 +408,16 @@ class ModelWithPrecondition:
             for node in range(1, self.__tree.num_nodes):
                 anc = self.__tree.ancestor_of_node(node)
                 self.__constraints.append(
-                    cp.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost().Q[node]) +
-                    cp.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost().R[node])
+                    quadratic_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost().Q[node]) +
+                    quadratic_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost().R[node])
                     <= self.__t[node - 1]
                 )
         elif self.__problem.nonleaf_cost().is_quadratic_plus_linear:
             for node in range(1, self.__tree.num_nodes):
                 anc = self.__tree.ancestor_of_node(node)
                 self.__constraints.append(
-                    cp.quad_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost().Q[node]) +
-                    cp.quad_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost().R[node]) +
+                    quadratic_form(self.__x[self.__node_to_x(anc)], self.__problem.nonleaf_cost().Q[node]) +
+                    quadratic_form(self.__u[self.__node_to_u(anc)], self.__problem.nonleaf_cost().R[node]) +
                     self.__problem.nonleaf_cost().q[node].T @ self.__x[self.__node_to_x(anc)] +
                     self.__problem.nonleaf_cost().r[node].T @ self.__u[self.__node_to_u(anc)]
                     <= self.__t[node - 1]
@@ -426,14 +435,14 @@ class ModelWithPrecondition:
             for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
                 leaf_idx = node - self.__tree.num_nonleaf_nodes
                 self.__constraints.append(
-                    cp.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost().Q[leaf_idx])
+                    quadratic_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost().Q[leaf_idx])
                     <= self.__s[node]
                 )
         elif self.__problem.leaf_cost().is_quadratic_plus_linear:
             for node in range(self.__tree.num_nonleaf_nodes, self.__tree.num_nodes):
                 leaf_idx = node - self.__tree.num_nonleaf_nodes
                 self.__constraints.append(
-                    cp.quad_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost().Q[leaf_idx]) +
+                    quadratic_form(self.__x[self.__node_to_x(node)], self.__problem.leaf_cost().Q[leaf_idx]) +
                     self.__problem.leaf_cost().q[leaf_idx].T @ self.__x[self.__node_to_x(node)]
                     <= self.__s[node]
                 )

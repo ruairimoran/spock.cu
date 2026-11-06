@@ -41,11 +41,12 @@ template<typename T>
 void LinearOperator<T>::op(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<T> &t, DTensor<T> &s,
                            DTensor<T> &i, DTensor<T> &ii, DTensor<T> &iii, DTensor<T> &iv,
                            DTensor<T> &v, DTensor<T> &vi) {
+    spock::commonStream(u, x, y, t, s, i, ii, iii, iv, v, vi, m_data.risk()->b());
     /* I */
-    y.deviceCopyTo(i);
+    y.deviceCopyToAsync(i);
     /* II */
     DTensor<T> sNonleaf(s, m_matAxis, 0, m_tree.numNonleafNodesMinus1());
-    sNonleaf.deviceCopyTo(ii);
+    sNonleaf.deviceCopyToAsync(ii);
     ii.addAB(m_data.risk()->bTr(), y, -1., 1.);
     /* III */
     m_data.nonleafConstraint()->op(iii, x, u);
@@ -63,11 +64,12 @@ template<typename T>
 void LinearOperator<T>::adj(DTensor<T> &u, DTensor<T> &x, DTensor<T> &y, DTensor<T> &t, DTensor<T> &s,
                             DTensor<T> &i, DTensor<T> &ii, DTensor<T> &iii, DTensor<T> &iv,
                             DTensor<T> &v, DTensor<T> &vi) {
+    spock::commonStream(u, x, y, t, s, i, ii, iii, iv, v, vi, m_data.risk()->b());
     /* s (nonleaf) */
     DTensor<T> sNonleaf(s, m_matAxis, 0, m_tree.numNonleafNodesMinus1());
-    ii.deviceCopyTo(sNonleaf);
+    ii.deviceCopyToAsync(sNonleaf);
     /* y */
-    i.deviceCopyTo(y);
+    i.deviceCopyToAsync(y);
     y.addAB(m_data.risk()->b(), ii, -1., 1.);
     /* x (nonleaf) and u:Gamma */
     m_data.nonleafConstraint()->adj(iii, x, u);

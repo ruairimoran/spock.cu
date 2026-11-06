@@ -12,7 +12,7 @@ TEMPLATE_WITH_TYPE_T
 class MarkovTreeTestData {
 
 public:
-    std::string m_path = "../../data/";
+    std::string m_path = SPOCK_TEST_DATA_DIR;
     std::unique_ptr<ScenarioTree<T>> m_mockTree;
     size_t m_numNonleafNodes;
     size_t m_numNodes;

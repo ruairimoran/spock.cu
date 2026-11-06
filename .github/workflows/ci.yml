@@ -8,10 +8,60 @@ name: Continuous integration
 jobs:
   ci:
     runs-on: self-hosted
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash  # GitHub enables -e and -o pipefail, including pipelines to tee.
+    env:
+      # Toolchain and architecture of the self-hosted A40 runner.
+      CUDACXX: /usr/local/cuda-12.3/bin/nvcc
+      SPOCK_COMPUTE_SANITIZER: /usr/local/cuda-12.3/bin/compute-sanitizer
+      SPOCK_BUILD_JOBS: "2"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
     steps:
-      - name: checkout code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: run test script
-        run: bash ./ci/script.sh
+      - name: Prepare Python environment
+        run: |
+          # Never reuse a CMake cache from another job or compiler installation.
+          export SPOCK_BUILD_DIR="$RUNNER_TEMP/spock-ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          export SPOCK_CI_LOG_DIR="$HOME/spock-ci-logs/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$SPOCK_CI_LOG_DIR"
+          echo "SPOCK_BUILD_DIR=$SPOCK_BUILD_DIR" >> "$GITHUB_ENV"
+          echo "SPOCK_CI_LOG_DIR=$SPOCK_CI_LOG_DIR" >> "$GITHUB_ENV"
+          echo "Persistent CI logs: $SPOCK_CI_LOG_DIR"
+          {
+            python3.10 -m venv "$SPOCK_BUILD_DIR/venv"
+            "$SPOCK_BUILD_DIR/venv/bin/python" -m pip install --upgrade pip
+            "$SPOCK_BUILD_DIR/venv/bin/python" -m pip install './api/python[test]'
+          } 2>&1 | tee "$SPOCK_CI_LOG_DIR/python-environment.log"
+          echo "PYTHON=$SPOCK_BUILD_DIR/venv/bin/python" >> "$GITHUB_ENV"
+
+      - name: Configure CUDA build for A40
+        timeout-minutes: 5
+        run: |
+          cmake -S . -B "$SPOCK_BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER="$CUDACXX" \
+            -DCMAKE_CUDA_ARCHITECTURES=86 \
+            -DSPOCK_BUILD_TEST=ON \
+            -DPython3_EXECUTABLE="$PYTHON" \
+            2>&1 | tee "$SPOCK_CI_LOG_DIR/configure.log"
+
+      - name: Run Python tests
+        run: bash ./scripts/run_python_tests.sh 2>&1 | tee "$SPOCK_CI_LOG_DIR/python-tests.log"
+
+      - name: Build and run CUDA tests
+        run: bash ./scripts/run_cuda_tests.sh 2>&1 | tee "$SPOCK_CI_LOG_DIR/cuda-tests.log"
+
+      - name: Check CUDA memory and leaks
+        run: bash ./scripts/run_compute_sanitizer.sh 2>&1 | tee "$SPOCK_CI_LOG_DIR/sanitizer-run.log"
+
+      - name: Preserve diagnostic logs on runner
+        if: ${{ always() && env.SPOCK_CI_LOG_DIR != '' }}
+        env:
+          SPOCK_CI_RESULT: ${{ job.status }}
+        run: bash ./scripts/save_ci_logs.sh
 

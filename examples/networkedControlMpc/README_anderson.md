@@ -32,8 +32,10 @@ The selected fit solves
 
     min || (Y[:,J]/s) gamma_J - r/s ||_2^2 + regularization * ||gamma_J||_2^2.
 
-It uses cuSOLVER Jacobi SVD of the small selected `R/s` matrix, padded with
-zero columns to retain a fixed workspace size. It avoids normal equations
+It uses GPUtils `Svd<T>` (cuSOLVER `gesvd`) for the small selected `R/s`
+matrix, padded with zero columns to retain a fixed workspace size. The object
+and its device workspace are constructed once; each fit refills its input.
+GPUtils returns V-transpose, which is used directly when forming coefficients. It avoids normal equations
 and never explicitly squares the potentially extreme history scale.
 The coefficient vector is mapped back to the original physical columns
 before multiplying by `C`.

@@ -100,23 +100,14 @@ class RegularisedAnderson {
         return options;
     }
 
-    struct SvdParameters {
-        gesvdjInfo_t value{};
-        SvdParameters() {
-            gpuErrChk(cusolverDnCreateGesvdjInfo(&value));
-            gpuErrChk(cusolverDnXgesvdjSetMaxSweeps(value, 100));
-        }
-        ~SvdParameters() { cusolverDnDestroyGesvdjInfo(value); }
-    };
-
     DTensor<T> &m_c, &m_y, &m_qr, &m_rhs, &m_gamma;
-    int m_rows, m_memory, m_qrWorkspaceSize = 0, m_svdWorkspaceSize = 0;
+    int m_rows, m_memory, m_qrWorkspaceSize = 0;
     AndersonOptions m_options;
-    SvdParameters m_svdParameters;
-    DTensor<T> m_tau, m_smallMatrix, m_u, m_v, m_singularValues;
+    DTensor<T> m_tau, m_smallMatrix;
     DTensor<int> m_info;
-    std::unique_ptr<DTensor<T>> m_qrWorkspace, m_svdWorkspace;
-    std::vector<T> m_rHost, m_rhsHost, m_uHost, m_vHost, m_sHost, m_packed, m_gammaHost;
+    std::unique_ptr<DTensor<T>> m_qrWorkspace;
+    std::unique_ptr<Svd<T>> m_svd;
+    std::vector<T> m_rHost, m_rhsHost, m_uHost, m_vtHost, m_sHost, m_packed, m_gammaHost;
     std::vector<double> m_basis, m_innovation, m_normalisedRhs, m_solution;
     AndersonFitInfo m_fit;
     std::unique_ptr<AndersonRollingQr<T>> m_rollingQr;
@@ -124,35 +115,27 @@ class RegularisedAnderson {
 
     cusolverDnHandle_t handle() const { return Session::getInstance().cuSolverHandle(m_y.streamIdx()); }
 
-    void allocateSolverWorkspaces() {
+    void allocateQrWorkspace() {
         int applySize = 0;
         if constexpr (std::is_same_v<T, double>) {
             gpuErrChk(cusolverDnDgeqrf_bufferSize(handle(), m_rows, m_memory, m_qr.raw(), m_rows, &m_qrWorkspaceSize));
             gpuErrChk(cusolverDnDormqr_bufferSize(handle(), CUBLAS_SIDE_LEFT, CUBLAS_OP_T,
                 m_rows, 1, m_memory, m_qr.raw(), m_rows, m_tau.raw(), m_rhs.raw(), m_rows, &applySize));
-            gpuErrChk(cusolverDnDgesvdj_bufferSize(handle(), CUSOLVER_EIG_MODE_VECTOR, 0,
-                m_memory, m_memory, m_smallMatrix.raw(), m_memory, m_singularValues.raw(),
-                m_u.raw(), m_memory, m_v.raw(), m_memory, &m_svdWorkspaceSize, m_svdParameters.value));
         } else {
             gpuErrChk(cusolverDnSgeqrf_bufferSize(handle(), m_rows, m_memory, m_qr.raw(), m_rows, &m_qrWorkspaceSize));
             gpuErrChk(cusolverDnSormqr_bufferSize(handle(), CUBLAS_SIDE_LEFT, CUBLAS_OP_T,
                 m_rows, 1, m_memory, m_qr.raw(), m_rows, m_tau.raw(), m_rhs.raw(), m_rows, &applySize));
-            gpuErrChk(cusolverDnSgesvdj_bufferSize(handle(), CUSOLVER_EIG_MODE_VECTOR, 0,
-                m_memory, m_memory, m_smallMatrix.raw(), m_memory, m_singularValues.raw(),
-                m_u.raw(), m_memory, m_v.raw(), m_memory, &m_svdWorkspaceSize, m_svdParameters.value));
         }
         // QR factorisation and application of Q' have different workspace needs.
         m_qrWorkspaceSize = std::max(m_qrWorkspaceSize, applySize);
         if (!m_options.qr.incremental)
             m_qrWorkspace = std::make_unique<DTensor<T>>(std::max(1, m_qrWorkspaceSize));
-        m_svdWorkspace = std::make_unique<DTensor<T>>(std::max(1, m_svdWorkspaceSize));
         if (m_qrWorkspace) m_qrWorkspace->setStreamIdx(m_y.streamIdx());
-        m_svdWorkspace->setStreamIdx(m_y.streamIdx());
     }
 
-    bool solverSucceeded() {
+    bool solverSucceeded(const DTensor<int> &deviceInfo) {
         int info;
-        spock::detail::copyToHost(&info, m_info.raw(), sizeof(info), spock::executionStream(m_y));
+        spock::detail::copyToHost(&info, deviceInfo.raw(), sizeof(info), spock::executionStream(deviceInfo));
         return info == 0;
     }
 
@@ -168,7 +151,7 @@ class RegularisedAnderson {
             gpuErrChk(cusolverDnSgeqrf(handle(), m_rows, m_memory, m_qr.raw(), m_rows,
                 m_tau.raw(), m_qrWorkspace->raw(), m_qrWorkspaceSize, m_info.raw()));
         }
-        if (!solverSucceeded()) return false;
+        if (!solverSucceeded(m_info)) return false;
         if constexpr (std::is_same_v<T, double>) {
             gpuErrChk(cusolverDnDormqr(handle(), CUBLAS_SIDE_LEFT, CUBLAS_OP_T,
                 m_rows, 1, m_memory, m_qr.raw(), m_rows, m_tau.raw(), m_rhs.raw(), m_rows,
@@ -178,7 +161,7 @@ class RegularisedAnderson {
                 m_rows, 1, m_memory, m_qr.raw(), m_rows, m_tau.raw(), m_rhs.raw(), m_rows,
                 m_qrWorkspace->raw(), m_qrWorkspaceSize, m_info.raw()));
         }
-        if (!solverSucceeded()) return false;
+        if (!solverSucceeded(m_info)) return false;
         spock::detail::copy2DToHost(m_rHost.data(), m_memory * sizeof(T), m_qr.raw(), m_rows * sizeof(T),
             m_memory * sizeof(T), m_memory, spock::executionStream(m_y));
         spock::detail::copyToHost(m_rhsHost.data(), m_rhs.raw(), m_memory * sizeof(T), spock::executionStream(m_y));
@@ -232,22 +215,18 @@ class RegularisedAnderson {
 
     bool solveSelectedRidge() {
         spock::detail::copyToDevice(m_smallMatrix.raw(), m_packed.data(), m_packed.size() * sizeof(T), spock::executionStream(m_y));
-        if constexpr (std::is_same_v<T, double>) {
-            gpuErrChk(cusolverDnDgesvdj(handle(), CUSOLVER_EIG_MODE_VECTOR, 0, m_memory, m_memory,
-                m_smallMatrix.raw(), m_memory, m_singularValues.raw(), m_u.raw(), m_memory, m_v.raw(), m_memory,
-                m_svdWorkspace->raw(), m_svdWorkspaceSize, m_info.raw(), m_svdParameters.value));
-        } else {
-            gpuErrChk(cusolverDnSgesvdj(handle(), CUSOLVER_EIG_MODE_VECTOR, 0, m_memory, m_memory,
-                m_smallMatrix.raw(), m_memory, m_singularValues.raw(), m_u.raw(), m_memory, m_v.raw(), m_memory,
-                m_svdWorkspace->raw(), m_svdWorkspaceSize, m_info.raw(), m_svdParameters.value));
-        }
-        if (!solverSucceeded()) {
+        m_svd->factorise();
+        if (!solverSucceeded(m_svd->info())) {
             m_fit.status = AndersonFitStatus::solverFailure;
             return false;
         }
-        spock::detail::copyToHost(m_uHost.data(), m_u.raw(), m_uHost.size() * sizeof(T), spock::executionStream(m_y));
-        spock::detail::copyToHost(m_vHost.data(), m_v.raw(), m_vHost.size() * sizeof(T), spock::executionStream(m_y));
-        spock::detail::copyToHost(m_sHost.data(), m_singularValues.raw(), m_sHost.size() * sizeof(T), spock::executionStream(m_y));
+        const auto &u = *m_svd->leftSingularVectors().value();
+        const auto &vt = m_svd->rightSingularVectors();
+        const auto &singularValues = m_svd->singularValues();
+        const auto stream = spock::executionStream(m_y);
+        spock::detail::copyToHost(m_uHost.data(), u.raw(), m_uHost.size() * sizeof(T), stream);
+        spock::detail::copyToHost(m_vtHost.data(), vt.raw(), m_vtHost.size() * sizeof(T), stream);
+        spock::detail::copyToHost(m_sHost.data(), singularValues.raw(), m_sHost.size() * sizeof(T), stream);
         std::fill(m_solution.begin(), m_solution.end(), 0.);
         for (int mode = 0; mode < m_memory; ++mode) {
             const double sigma = m_sHost[mode];
@@ -256,10 +235,10 @@ class RegularisedAnderson {
             for (int row = 0; row < m_memory; ++row)
                 rhs += double(m_uHost[mode * m_memory + row]) * m_normalisedRhs[row];
             const double weight = (sigma / (sigma * sigma + m_options.regularization)) * rhs;
-            // gesvdj returns V (not V'). The appended zero columns have zero
-            // applied coefficients; positive ridge also handles zero modes.
+            // GPUtils returns V^T in column-major storage, so V(col, mode)
+            // is V^T(mode, col). Zero-padded columns retain zero coefficients.
             for (size_t col = 0; col < m_fit.selectedColumns.size(); ++col)
-                m_solution[col] += double(m_vHost[mode * m_memory + col]) * weight;
+                m_solution[col] += double(m_vtHost[col * m_memory + mode]) * weight;
         }
         for (size_t j = 0; j < m_fit.selectedColumns.size(); ++j) {
             const T coefficient = T(m_solution[j]);
@@ -289,19 +268,21 @@ public:
         : m_c(c), m_y(y), m_qr(qr), m_rhs(rhs), m_gamma(gamma),
           m_rows(validateWorkspaces(c, y, qr, rhs, gamma)), m_memory(int(y.numCols())),
           m_options(validatedOptions(options)),
-          m_tau(m_memory), m_smallMatrix(m_memory, m_memory), m_u(m_memory, m_memory),
-          m_v(m_memory, m_memory), m_singularValues(m_memory), m_info(1),
+          m_tau(m_memory), m_smallMatrix(m_memory, m_memory), m_info(1),
           m_rHost(m_memory * m_memory), m_rhsHost(m_memory), m_uHost(m_memory * m_memory),
-          m_vHost(m_memory * m_memory), m_sHost(m_memory), m_packed(m_memory * m_memory), m_gammaHost(m_memory),
+          m_vtHost(m_memory * m_memory), m_sHost(m_memory), m_packed(m_memory * m_memory), m_gammaHost(m_memory),
           m_basis(m_memory * m_memory), m_innovation(m_memory), m_normalisedRhs(m_memory), m_solution(m_memory) {
         spock::commonStream(c, y, qr, rhs, gamma);
         // Small solver buffers follow the history, including non-default streams.
-        for (auto *tensor : {&m_tau, &m_smallMatrix, &m_u, &m_v, &m_singularValues})
+        for (auto *tensor : {&m_tau, &m_smallMatrix})
             tensor->setStreamIdx(y.streamIdx());
         m_info.setStreamIdx(y.streamIdx());
         m_fit.selectedColumns.reserve(m_memory);
         m_fit.coefficients.resize(m_memory);
-        allocateSolverWorkspaces();
+        // Construct once on the history stream. factorise() overwrites this
+        // input; solveSelectedRidge() refills it before every fit.
+        m_svd = std::make_unique<Svd<T>>(m_smallMatrix, true, true);
+        allocateQrWorkspace();
         if (m_options.qr.incremental)
             m_rollingQr = std::make_unique<AndersonRollingQr<T>>(m_y, m_qr, m_rhs, m_options.qr, m_options.rankTolerance);
     }

@@ -73,24 +73,25 @@ class AndersonRollingQr {
     }
 
     DTensor<T> &m_y, &m_q, &m_work;
-    int m_rows, m_memory, m_workspaceSize = 0;
+    int m_rows, m_memory;
     double m_rankTolerance;
     AndersonQrOptions m_options;
     AndersonQrStatistics m_statistics;
-    DTensor<T> m_tau, m_projection, m_rotationsDevice, m_gram;
-    DTensor<int> m_info;
-    std::unique_ptr<DTensor<T>> m_workspace;
+    // GPUtils preserves its Householder factors when forming explicit Q;
+    // keep them separate from the basis modified by the rolling updates.
+    DTensor<T> m_factors, m_projection, m_rotationsDevice, m_gram;
+    std::unique_ptr<QRFactoriser<T>> m_factoriser;
     std::vector<T> m_r, m_shiftedR, m_rotations, m_projectionHost, m_gramHost;
+    RegisteredHostVector<T> m_physicalR;
     cudaStream_t m_stream{};
     size_t m_generation = 0, m_factorGeneration = 0, m_updatesSinceRebuild = 0;
     bool m_valid = false, m_updatable = false;
 
     cublasHandle_t blas() const { return Session::getInstance().cuBlasHandle(m_y.streamIdx()); }
-    cusolverDnHandle_t solver() const { return Session::getInstance().cuSolverHandle(m_y.streamIdx()); }
 
     bool solverSucceeded() {
         int info;
-        spock::detail::copyToHost(&info, m_info.raw(), sizeof(info), m_stream);
+        spock::detail::copyToHost(&info, m_factoriser->info().raw(), sizeof(info), m_stream);
         return info == 0;
     }
 
@@ -125,28 +126,16 @@ class AndersonRollingQr {
         ++m_statistics.rebuilds;
         m_valid = false;
         for (int col = 0; col < m_memory; ++col)
-            gpuErrChk(cudaMemcpyAsync(m_q.raw() + col * m_rows,
+            gpuErrChk(cudaMemcpyAsync(m_factors.raw() + col * m_rows,
                 m_y.raw() + (m_memory - 1 - col) * m_rows, m_rows * sizeof(T), cudaMemcpyDeviceToDevice, m_stream));
-        if constexpr (std::is_same_v<T, double>) {
-            gpuErrChk(cusolverDnDgeqrf(solver(), m_rows, m_memory, m_q.raw(), m_rows,
-                m_tau.raw(), m_workspace->raw(), m_workspaceSize, m_info.raw()));
-        } else {
-            gpuErrChk(cusolverDnSgeqrf(solver(), m_rows, m_memory, m_q.raw(), m_rows,
-                m_tau.raw(), m_workspace->raw(), m_workspaceSize, m_info.raw()));
-        }
+        m_factoriser->factorise();
         if (!solverSucceeded()) return false;
-        spock::detail::copy2DToHost(m_r.data(), m_memory * sizeof(T), m_q.raw(), m_rows * sizeof(T),
-            m_memory * sizeof(T), m_memory, m_stream);
-        for (int col = 0; col < m_memory; ++col)
-            for (int row = col + 1; row < m_memory; ++row) m_r[col * m_memory + row] = 0;
-        if constexpr (std::is_same_v<T, double>) {
-            gpuErrChk(cusolverDnDorgqr(solver(), m_rows, m_memory, m_memory, m_q.raw(), m_rows,
-                m_tau.raw(), m_workspace->raw(), m_workspaceSize, m_info.raw()));
-        } else {
-            gpuErrChk(cusolverDnSorgqr(solver(), m_rows, m_memory, m_memory, m_q.raw(), m_rows,
-                m_tau.raw(), m_workspace->raw(), m_workspaceSize, m_info.raw()));
-        }
+        // The Gram buffer is scratch between checks. Reuse it for the small R
+        // output; extractR also zeros the Householder entries below the diagonal.
+        m_factoriser->extractR(m_gram);
+        m_factoriser->formThinQ(m_q);
         if (!solverSucceeded()) return false;
+        spock::detail::copyToHost(m_r.data(), m_gram.raw(), m_r.size() * sizeof(T), m_stream);
         m_valid = true;
         m_updatable = wellConditionedForUpdate();
         m_updatesSinceRebuild = 0;
@@ -220,31 +209,19 @@ public:
     AndersonRollingQr(DTensor<T> &y, DTensor<T> &q, DTensor<T> &work,
                       AndersonQrOptions options, double rankTolerance)
         : m_y(y), m_q(q), m_work(work), m_rows(validateWorkspaces(y, q, work)), m_memory(int(y.numCols())),
-          m_rankTolerance(rankTolerance), m_options(options), m_tau(m_memory), m_projection(m_memory),
-          m_rotationsDevice(std::max(1, 2 * (m_memory - 1))), m_gram(m_memory, m_memory), m_info(1),
+          m_rankTolerance(rankTolerance), m_options(options), m_factors(m_rows, m_memory), m_projection(m_memory),
+          m_rotationsDevice(std::max(1, 2 * (m_memory - 1))), m_gram(m_memory, m_memory),
           m_r(m_memory * m_memory), m_shiftedR(m_memory * m_memory),
-          m_rotations(2 * (m_memory - 1)), m_projectionHost(m_memory), m_gramHost(m_memory * m_memory) {
+          m_rotations(2 * (m_memory - 1)), m_projectionHost(m_memory), m_gramHost(m_memory * m_memory),
+          m_physicalR(m_memory * m_memory) {
         spock::commonStream(y, q, work);
-        for (auto *tensor : {&m_tau, &m_projection, &m_rotationsDevice, &m_gram})
+        for (auto *tensor : {&m_factors, &m_projection, &m_rotationsDevice, &m_gram})
             tensor->setStreamIdx(y.streamIdx());
-        m_info.setStreamIdx(y.streamIdx());
         m_options.validate();
         if (m_options.orthogonalityTolerance == 0)
             m_options.orthogonalityTolerance = std::is_same_v<T, double> ? 1e-10 : 1e-4;
         gpuErrChk(cublasGetStream(blas(), &m_stream));
-        int generateSize = 0;
-        if constexpr (std::is_same_v<T, double>) {
-            gpuErrChk(cusolverDnDgeqrf_bufferSize(solver(), m_rows, m_memory, m_q.raw(), m_rows, &m_workspaceSize));
-            gpuErrChk(cusolverDnDorgqr_bufferSize(solver(), m_rows, m_memory, m_memory,
-                m_q.raw(), m_rows, m_tau.raw(), &generateSize));
-        } else {
-            gpuErrChk(cusolverDnSgeqrf_bufferSize(solver(), m_rows, m_memory, m_q.raw(), m_rows, &m_workspaceSize));
-            gpuErrChk(cusolverDnSorgqr_bufferSize(solver(), m_rows, m_memory, m_memory,
-                m_q.raw(), m_rows, m_tau.raw(), &generateSize));
-        }
-        m_workspaceSize = std::max(m_workspaceSize, generateSize);
-        m_workspace = std::make_unique<DTensor<T>>(std::max(1, m_workspaceSize));
-        m_workspace->setStreamIdx(y.streamIdx());
+        m_factoriser = std::make_unique<QRFactoriser<T>>(m_factors);
     }
 
     void historyChanged() { ++m_generation; }
@@ -278,7 +255,8 @@ public:
         return error <= m_options.orthogonalityTolerance;
     }
 
-    bool compress(DTensor<T> &residual, std::vector<T> &r, std::vector<T> &rhs) {
+private:
+    bool ensureFactors(DTensor<T> &residual) {
         spock::commonStream(m_y, residual);
         bool success;
         if (m_valid && m_factorGeneration == m_generation) {
@@ -295,6 +273,29 @@ public:
         } else success = rebuild();
         if (!success) { invalidate(); return false; }
         m_factorGeneration = m_generation;
+        return true;
+    }
+
+public:
+    // CPU reduced fit: R is already on the host. Only the compressed RHS is
+    // downloaded; the registered buffers and all GPU workspaces are reused.
+    bool compressHost(DTensor<T> &residual, RegisteredHostVector<T> &r, RegisteredHostVector<T> &rhs) {
+        if (r.size() != size_t(m_memory*m_memory) || rhs.size() != size_t(m_memory))
+            throw std::invalid_argument("Invalid host QR destinations");
+        if (!ensureFactors(residual)) return false;
+        for (int col = 0; col < m_memory; ++col)
+            for (int row = 0; row < m_memory; ++row)
+                r[col*m_memory+row] = m_r[(m_memory-1-col)*m_memory+row];
+        project(residual.raw(),m_memory,m_projection.raw());
+        m_projection.downloadAsync(rhs);
+        gpuErrChk(cudaStreamSynchronize(m_stream));
+        return true;
+    }
+
+    // CPU reference/diagnostic interface. Production reduced fitting uses the
+    // device interface below and does not download Q^T r.
+    bool compress(DTensor<T> &residual, std::vector<T> &r, std::vector<T> &rhs) {
+        if (!ensureFactors(residual)) return false;
         for (int col = 0; col < m_memory; ++col)
             for (int row = 0; row < m_memory; ++row)
                 r[col * m_memory + row] = m_r[(m_memory - 1 - col) * m_memory + row];
@@ -302,6 +303,24 @@ public:
         spock::detail::copyToHost(rhs.data(), m_projection.raw(), m_memory * sizeof(T), m_stream);
         return true;
     }
+
+    // R maintenance remains on the CPU in this first device-fit implementation.
+    // Upload it once, retaining Q^T r in the borrowed work vector on the GPU.
+    // The caller must finish this stream before reusing the registered bridge.
+    bool compressDevice(DTensor<T> &residual, DTensor<T> &r) {
+        spock::commonStream(m_y, residual, r);
+        if (r.numRows() != size_t(m_memory) || r.numCols() != size_t(m_memory) || r.numMats() != 1)
+            throw std::invalid_argument("Invalid device R destination");
+        if (!ensureFactors(residual)) return false;
+        for (int col = 0; col < m_memory; ++col)
+            for (int row = 0; row < m_memory; ++row)
+                m_physicalR[col * m_memory + row] = m_r[(m_memory - 1 - col) * m_memory + row];
+        r.uploadAsync(m_physicalR);
+        project(residual.raw(), m_memory, m_projection.raw());
+        m_projection.deviceCopyToAsync(m_work);
+        return true;
+    }
+
 };
 
 #endif

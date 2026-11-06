@@ -26,6 +26,7 @@ set_tests_properties(spock_generate_fixtures PROPERTIES
 add_executable(spock_tests)
 target_sources(spock_tests  # add files
     PRIVATE
+    testCpuSvd.cpp
     cuda/testKernels.cu
     cuda/testTree.cu
     cuda/testCones.cu
@@ -35,6 +36,8 @@ target_sources(spock_tests  # add files
     cuda/testOperator.cu
     cuda/testCache.cu
     cuda/testAndersonSvd.cu
+    cuda/testAndersonQr.cu
+    cuda/testAndersonDevice.cu
     cuda/testMetricProduct.cu
     cuda/testCostAliasing.cu
     cuda/testDiagonalCost.cu

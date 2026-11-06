@@ -39,6 +39,9 @@ if(SPOCK_BUILD_TEST)
             add_anderson_validation("spock_anderson_${mode}_${precision}" test_anderson_reference.py
                 --gpu-executable "$<TARGET_FILE:check_anderson>"
                 --gpu-precision "${precision}" --include-nonfinite ${mode_flags})
+            add_anderson_validation("spock_anderson_cpu_${mode}_${precision}" test_anderson_reference.py
+                --gpu-executable "$<TARGET_FILE:check_anderson>" --fit-backend cpu
+                --gpu-precision "${precision}" --include-nonfinite ${mode_flags})
         endforeach()
         add_anderson_validation("spock_rolling_qr_${precision}" test_anderson_qr.py
             --executable "$<TARGET_FILE:check_anderson_qr>" ${rolling_flags})

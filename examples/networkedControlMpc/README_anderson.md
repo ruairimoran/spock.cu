@@ -17,9 +17,10 @@ Let `Y` contain residual differences, newest first, and let the matching
 columns of `C` be iterate differences minus residual differences. The
 direction remains `d = -r - C gamma`.
 
-The implementation first computes a tall QR factorisation of `Y`. Only
-the small upper triangular `R` and the first three entries of `Q' r` are
-downloaded. Householder data below `R` are excluded explicitly.
+The implementation compresses the history using GPUtils QR factors. The
+reduced `R` and `Q' r` stay on the device for filtering and ridge fitting.
+Rolling QR maintains its small `R` on the CPU and uploads it once per fit;
+the full-QR path extracts `R` directly into the device fit buffer.
 
 Define `s` as the largest history-column Euclidean norm. Two-pass modified
 Gram-Schmidt on `R/s`, in newest-first order, chooses independent physical
@@ -35,7 +36,9 @@ The selected fit solves
 It uses GPUtils `Svd<T>` (cuSOLVER `gesvd`) for the small selected `R/s`
 matrix, padded with zero columns to retain a fixed workspace size. The object
 and its device workspace are constructed once; each fit refills its input.
-GPUtils returns V-transpose, which is used directly when forming coefficients. It avoids normal equations
+Device kernels consume GPUtils' U, singular values and V-transpose directly,
+form coefficients in double intermediate precision, and check the coefficient
+and direction limits. It avoids normal equations
 and never explicitly squares the potentially extreme history scale.
 The coefficient vector is mapped back to the original physical columns
 before multiplying by `C`.
@@ -47,9 +50,25 @@ are then required before another accelerated fit. Iteration zero is not a
 genuine secant pair. A nonfinite current residual produces an explicit
 failure instead of attempting to continue with an invalid residual.
 
-Device buffers and QR/ORMQR/SVD workspaces are allocated once. Solver status
-is checked outside debug mode. The QR workspace covers both factorisation
-and application of `Q'`.
+Device buffers, registered host buffers and QR/SVD workspaces are allocated once.
+The reduced fit reads the SVD status on the device and safely handles failed
+preparation with a finite zero dummy SVD input. One compact final download
+provides the status, selected columns, coefficients and scalar diagnostics used
+by host bookkeeping. A scaled device norm reduction handles direction checks
+without squaring extreme raw values. Input-history and residual norm checks,
+QR rebuild status checks, and rolling-QR maintenance retain their existing
+host completion boundaries. This is a device reduced fit, not an entirely
+device-controlled Anderson iteration.
+
+GPUtils v2.2.0 supplies QR, SVD, matrix products, copies, registered transfers,
+and Givens rotations. It does not provide the ordered Anderson filter, ridge
+coefficient assembly, or a norm operation with a device scalar output. These
+operations are implemented in `src/anderson_reduced.cuh` without new direct
+cuBLAS/cuSOLVER calls. Existing rolling-QR projection/update code uses its
+existing transpose GEMV operations and fused Givens/deletion kernel; GPUtils
+does not expose an allocation-free transposed matrix-vector product. The CPU
+reference in `tests/cuda/referenceAndersonCpu.cuh` is retained for regression
+comparison and is not selected by the production solver.
 
 Both modes in the main executable use safe, back-to-front column copies.
 The previous implementation shifted overlapping device-memory regions,
@@ -145,3 +164,39 @@ These are individual diagnostic solves, not a statistical benchmark. They
 show a 3.6–5.1% overhead without an iteration reduction on these two problems.
 The rejection safeguards are exercised by the stress tests; their presence
 does not establish faster convergence on the manuscript's MPC problems.
+
+
+## CPU reduced fit
+
+Use `--aa-fit cpu` with `run_mpc_persistent.py` to keep tall compression and
+direction construction on the GPU while performing ordered filtering, the
+small SVD, coefficient formation and coefficient checks on the CPU.
+`--aa-fit gpu` remains the default. Both backends use the same regularisation,
+rank thresholds, QR update policy, GPU direction norm and rejection checks.
+The worker records `aa_fit_backend` in its initialisation response.
+
+GPUtils does not provide a CPU SVD. The CPU backend uses Eigen 3.4.0's
+preallocated Jacobi SVD, compiled separately from the CUDA translation units.
+CMake fetches the versioned, SHA-256-pinned archive. Eigen threading is disabled;
+all host scratch is retained and a Release-active allocation-guard regression
+verifies that repeated SVD calls do not allocate Eigen storage. The backend
+preserves the double intermediate arithmetic of the existing column filter and
+coefficient assembly, with float/double SVD and output precision as requested.
+
+With rolling QR, R is already maintained on the CPU: only Q-transpose times
+residual is downloaded into registered storage. With full QR, the small R and
+projected RHS are downloaded on one stream with one completion wait.
+CPU results and status are uploaded in one registered transfer; GPU matrix
+products, direction checks and the final diagnostic download follow on the
+same stream. Borrowed RHS/coefficient aliases remain supported. No new
+low-level BLAS calls are used.
+
+For example, append `--aa-fit cpu` to an existing regularised MPC command:
+
+```bash
+build/venv/bin/python -u examples/networkedControlMpc/run_mpc_persistent.py \
+  --output build/mpc_tree64_cpu_fit --trajectories 15 --steps 20 \
+  --seed 20261103 --branching 8 8 --diagonal-costs \
+  --anderson regularized --aa-qr update --aa-fit cpu \
+  --projections sequential --cuda-graphs cp
+```

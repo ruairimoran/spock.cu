@@ -419,12 +419,14 @@ class FloatFixtureTests(unittest.TestCase):
                                            rtol=5e-6, atol=2e-7)
 
 
-def compare_adapter(executable, cases, precision="double", qr_updates=False):
+def compare_adapter(executable, cases, precision="double", qr_updates=False, fit_backend="gpu"):
     """Compare production adapter directions, filtering and applied coefficients."""
     payload = "".join(json.dumps(case.json_object(), allow_nan=False) + "\n" for case in cases)
     command = [str(executable)] + (["--float"] if precision == "float" else [])
     if qr_updates:
         command.append("--qr-updates")
+    if fit_backend == "cpu":
+        command.append("--cpu-fit")
     process = subprocess.run(command, input=payload, text=True, capture_output=True, check=True)
     outputs = [json.loads(line) for line in process.stdout.splitlines() if line.strip()]
     if len(outputs) != len(cases):
@@ -519,6 +521,7 @@ def main():
                         help="Float mode invokes the adapter with --float and quantises fixture inputs")
     parser.add_argument("--include-nonfinite", action="store_true",
                         help="Include standard-JSON markers requesting nonfinite history injection")
+    parser.add_argument("--fit-backend", choices=("gpu", "cpu"), default="gpu")
     parser.add_argument("--qr-updates", action="store_true", help="Test incremental QR initialisation")
     parser.add_argument("--mpc-csv", type=Path, help="Check enabled-AA bootstrap/restart accounting in an existing CSV")
     parser.add_argument("--report", type=Path, help="Save a machine-readable validation report")
@@ -534,7 +537,7 @@ def main():
     report = {"cpu_tests": result.testsRun, "cpu_tests_passed": True,
               "fixture_precision": args.gpu_precision, "fixture_count": len(cases)}
     if args.gpu_executable:
-        report["gpu_cases"] = compare_adapter(args.gpu_executable.resolve(), cases, args.gpu_precision, args.qr_updates)
+        report["gpu_cases"] = compare_adapter(args.gpu_executable.resolve(), cases, args.gpu_precision, args.qr_updates, args.fit_backend)
         report["gpu_cases_passed"] = True
     if args.mpc_csv:
         report["mpc_counter_checks"] = check_mpc_counters(args.mpc_csv)

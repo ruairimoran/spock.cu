@@ -128,6 +128,7 @@ def check_storage(ready, responses):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--fit-backend", choices=("gpu", "cpu"), default="gpu")
     parser.add_argument("--worker", type=Path, help="Persistent CUDA worker built with Anderson diagnostics")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--tolerance", type=float, default=1e-6)
@@ -148,7 +149,7 @@ def main():
     worker = args.worker.resolve()
     x0, x1 = [0.65, -0.35, 0.0], [0.45, -0.25, -0.1]
     sequence = [x0, x1, x0, x1]
-    regularized = {"mode": "regularized", "regularization": 1e-8, "rank_tolerance": 1e-8,
+    regularized = {"mode": "regularized", "fit_backend": args.fit_backend, "regularization": 1e-8, "rank_tolerance": 1e-8,
                    "max_coefficient_norm": 1e6, "max_direction_ratio": 1e4}
     reports, controls = {}, {}
     for name, settings, states in (

@@ -39,8 +39,8 @@ target_link_libraries(spock_compiler_flags INTERFACE $<BUILD_INTERFACE:spock_dev
 include(FetchContent)
 FetchContent_Declare(
     gputils
-    URL https://github.com/GPUEngineering/GPUtils/archive/refs/tags/v2.1.0.zip
-    URL_HASH SHA256=8a742e5c32adc13c9063b5391f0b332e64d7c7274e834e53655e59d2415e0807
+    URL https://github.com/GPUEngineering/GPUtils/archive/refs/tags/v2.2.0.zip
+    URL_HASH SHA256=eab172556dcca09b1f23e9c72724f4c83d7010fc0a12bd0a6144c2648c5b2993
     # SPOCK only consumes the headers. GPUtils' standalone CMake project
     # selects its own CUDA compiler, which can cause a reconfiguration loop.
     SOURCE_SUBDIR include
@@ -50,6 +50,14 @@ FetchContent_GetProperties(
     gputils
     SOURCE_DIR GPUTILS_SOURCE_DIR
 )
+# ----
+FetchContent_Declare(
+    eigen
+    URL https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
+    URL_HASH SHA256=8586084f71f9bde545ee7fa6d00288b264a2b7ac3607b974e54d13e7162c1c72
+    SOURCE_SUBDIR Eigen
+)
+FetchContent_MakeAvailable(eigen)
 # ----
 add_subdirectory(src)
 option(SPOCK_BUILD_TEST "Build SPOCK tests" OFF)

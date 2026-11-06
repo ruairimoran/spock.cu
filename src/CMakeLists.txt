@@ -1,4 +1,9 @@
 # ----
+add_library(spock_cpu_svd STATIC cpu_svd.cpp)
+target_include_directories(spock_cpu_svd PRIVATE "${eigen_SOURCE_DIR}")
+target_compile_features(spock_cpu_svd PRIVATE cxx_std_20)
+target_compile_definitions(spock_cpu_svd PRIVATE EIGEN_DONT_PARALLELIZE EIGEN_RUNTIME_NO_MALLOC)
+
 add_library(spock_src STATIC)
 target_sources(spock_src
     PRIVATE
@@ -23,6 +28,7 @@ target_sources(spock_src
 target_link_libraries(spock_src
     PUBLIC
     spock_compiler_flags
+    spock_cpu_svd
     cublas
     cusolver
     cudadevrt

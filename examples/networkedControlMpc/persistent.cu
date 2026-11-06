@@ -28,6 +28,14 @@ static AndersonOptions readAndersonOptions(const char *json) {
     if (mode != "legacy" && mode != "regularized") throw std::invalid_argument("Unknown Anderson mode");
     options.enabled = mode == "regularized";
     options.qr.incremental = options.enabled;
+    if (settings.HasMember("fit_backend")) {
+        if (!settings["fit_backend"].IsString()) throw std::invalid_argument("Fit backend must be a string");
+        const std::string backend = settings["fit_backend"].GetString();
+        if (backend != "gpu" && backend != "cpu") throw std::invalid_argument("Unknown Anderson fit backend");
+        options.fitBackend = backend == "cpu" ? AndersonFitBackend::cpu : AndersonFitBackend::gpu;
+    }
+    if (!options.enabled && options.fitBackend == AndersonFitBackend::cpu)
+        throw std::invalid_argument("CPU reduced fitting requires regularised Anderson");
     if (settings.HasMember("qr_mode")) {
         if (!settings["qr_mode"].IsString()) throw std::invalid_argument("QR mode must be a string");
         const std::string qrMode = settings["qr_mode"].GetString();
@@ -165,6 +173,7 @@ int main(int argc, char **argv) {
         ready.Key("anderson_mode"); ready.String(anderson.enabled ? "regularized" : "legacy");
         ready.Key("aa_regularization"); ready.Double(cache.andersonOptions().regularization);
         ready.Key("aa_rank_tolerance"); ready.Double(cache.andersonOptions().rankTolerance);
+        ready.Key("aa_fit_backend"); ready.String(andersonFitBackendName(cache.andersonOptions().fitBackend));
         ready.Key("aa_qr_mode"); ready.String(cache.andersonOptions().qr.incremental ? "update" : "full");
         ready.Key("fields"); ready.StartArray();
         for (size_t i = 0; i < tensors.size(); ++i) {

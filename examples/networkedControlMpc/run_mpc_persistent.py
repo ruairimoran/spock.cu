@@ -57,6 +57,8 @@ def main():
                         help="Acceleration mode (default: regularized with QR updates)")
     parser.add_argument("--cuda-graphs", choices=("none", "s1", "cp"), default="none",
                         help="Capture sequential S1 or the complete CP operator (default: none)")
+    parser.add_argument("--aa-fit", choices=("gpu", "cpu"), default="gpu",
+                        help="Reduced filtering/SVD/coefficient backend (default: gpu)")
     parser.add_argument("--aa-regularization", type=float, default=1e-8,
                         help="Ridge parameter after normalising history columns")
     parser.add_argument("--aa-rank-tolerance", type=float, default=1e-8)
@@ -73,10 +75,12 @@ def main():
         parser.error("CUDA graphs currently require --projections sequential")
     if args.anderson == "legacy" and args.aa_qr == "update":
         parser.error("QR updates require --anderson regularized")
+    if args.anderson == "legacy" and args.aa_fit == "cpu":
+        parser.error("CPU reduced fitting requires --anderson regularized")
     args.aa_qr = args.aa_qr or ("update" if args.anderson == "regularized" else "full")
     if args.trajectories < 1 or args.steps < 1 or args.tolerance <= 0 or args.max_time < 0:
         parser.error("Invalid simulation parameters")
-    anderson = {"mode": args.anderson, "regularization": args.aa_regularization,
+    anderson = {"mode": args.anderson, "fit_backend": args.aa_fit, "regularization": args.aa_regularization,
                 "rank_tolerance": args.aa_rank_tolerance,
                 "max_coefficient_norm": args.aa_max_coefficient_norm,
                 "max_direction_ratio": args.aa_max_direction_ratio,

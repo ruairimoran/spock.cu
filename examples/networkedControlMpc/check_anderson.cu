@@ -7,7 +7,7 @@
 #include <vector>
 
 template<typename T>
-void checkFixture(const rapidjson::Document &input, bool qrUpdates) {
+void checkFixture(const rapidjson::Document &input, bool qrUpdates, bool cpuFit) {
     const auto &values = input["residual"];
     const size_t rows = values.Size();
     const size_t memory = input["Y"][0].Size();
@@ -30,6 +30,7 @@ void checkFixture(const rapidjson::Document &input, bool qrUpdates) {
     AndersonOptions options;
     options.enabled = true;
     options.qr.incremental = qrUpdates;
+    options.fitBackend = cpuFit ? AndersonFitBackend::cpu : AndersonFitBackend::gpu;
     const auto &settings = input["options"];
     options.regularization = settings["regularization"].GetDouble();
     options.rankTolerance = settings["rank_tolerance"].GetDouble();
@@ -79,10 +80,11 @@ void checkFixture(const rapidjson::Document &input, bool qrUpdates) {
 }
 
 int main(int argc, char **argv) {
-    bool single = false, qrUpdates = false;
+    bool single = false, qrUpdates = false, cpuFit = false;
     for (int i = 1; i < argc; ++i) {
         const std::string flag = argv[i];
         if (flag == "--float") single = true;
+        else if (flag == "--cpu-fit") cpuFit = true;
         else if (flag == "--qr-updates") qrUpdates = true;
         else { std::cerr << "Unknown option: " << flag << '\n'; return 2; }
     }
@@ -93,8 +95,8 @@ int main(int argc, char **argv) {
             input.Parse(line.c_str());
             if (input.HasParseError() || !input.HasMember("residual") || input["residual"].Empty())
                 throw std::invalid_argument("Invalid Anderson fixture");
-            if (single) checkFixture<float>(input, qrUpdates);
-            else checkFixture<double>(input, qrUpdates);
+            if (single) checkFixture<float>(input, qrUpdates, cpuFit);
+            else checkFixture<double>(input, qrUpdates, cpuFit);
         }
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

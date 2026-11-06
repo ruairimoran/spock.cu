@@ -39,7 +39,22 @@ but are not incrementally advanced until suitable again.
 Every 16 successful updates, the code checks the maximum absolute entry of
 `Q'Q-I`. A failed check triggers a full rebuild before the fit is used.
 Default tolerances are `1e-10` for double and `1e-4` for float. All device
-buffers, QR/ORGQR workspaces and small host arrays are allocated at setup.
+buffers, QR workspaces and small host arrays are allocated at setup.
+
+GPUtils v2.2.0 supplies the reusable `QRFactoriser`. Full QR uses `factorise`,
+`applyQt` and `extractR`; rolling rebuilds use `factorise`, `extractR` and
+`formThinQ`. The latter keeps the Householder factors in a separate persistent
+history-sized buffer, while the borrowed QR buffer holds the explicit basis
+modified by deletion/insertion updates. At 1,888,055 rows and three columns,
+the additional double-precision factor storage is about 43.2 MiB. Small R
+outputs reuse existing SVD/Gram scratch buffers. Every operation is queued on
+the history's selected stream; status and small fit-data downloads retain
+their explicit completion boundaries. No blocking `getQR` call is used.
+
+After a rolling update, the stored Householder reflectors no longer describe
+the updated basis. Its `Q' r` therefore continues to use GEMV; `applyQt` is
+used for the full-factorisation path only. Rebuild intervals, filtering,
+regularisation, and rejection safeguards keep their existing definitions.
 
 The deletion/insertion construction follows
 [Walker's implementation notes, pp. 2–3](https://users.wpi.edu/~walker/Papers/anderson_accn_algs_imps.pdf),

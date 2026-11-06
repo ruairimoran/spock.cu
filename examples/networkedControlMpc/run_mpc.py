@@ -17,6 +17,7 @@ import numpy as np
 from scipy import stats
 from scipy.linalg import expm, inv
 import spock as s
+from spock.weights import Diagonal
 from gputils_api import read_array_from_gputils_binary_file as read_bt
 
 
@@ -83,8 +84,25 @@ def working_directory(path):
         os.chdir(previous)
 
 
-def generate_problem(p, phi, gamma, workspace):
+def diagonal_weight(weight):
+    """Select compact storage explicitly, without dropping nonzero couplings."""
+    if isinstance(weight, Diagonal):
+        return Diagonal(weight.values)
+    matrix = np.asarray(weight)
+    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+        raise ValueError("Diagonal costs require square weight matrices")
+    values = np.diag(matrix)
+    if not np.array_equal(matrix, np.diag(values)):
+        raise ValueError("--diagonal-costs requires exactly diagonal Q, R and terminal Q")
+    return Diagonal(values)
+
+
+def generate_problem(p, phi, gamma, workspace, *, diagonal_costs=False):
     begin = time.perf_counter()
+    # Keep the plant parameters as dense arrays for rollout and reference checks.
+    Q, R, Q_leaf = (p[name] for name in ("Q", "R", "Q_leaf"))
+    if diagonal_costs:
+        Q, R, Q_leaf = (diagonal_weight(weight) for weight in (Q, R, Q_leaf))
     with working_directory(workspace), contextlib.redirect_stdout(io.StringIO()):
         stages, ancestors, probabilities, values = p["make_beta_tree"](
             gamma, phi, p["branching"], trick_=p["trick"], plot=False)
@@ -95,7 +113,7 @@ def generate_problem(p, phi, gamma, workspace):
         for node in range(1, tree.num_nodes):
             A, B = p["compute_Ai_Bi"](p["Ac"], p["Bc"], p["max_delay"], float(delays[node]))
             dynamics.append(s.build.Dynamics(A, B))
-            costs.append(s.build.CostQuadratic(p["Q"], p["R"]))
+            costs.append(s.build.CostQuadratic(Q, R))
         nonleaf = s.build.Rectangle(
             np.hstack((p["states_lb"], p["inputs_lb"], p["inputs_lb"])),
             np.hstack((p["states_ub"], p["inputs_ub"], p["inputs_ub"])))
@@ -103,7 +121,7 @@ def generate_problem(p, phi, gamma, workspace):
                                  np.hstack((p["states_ub"], p["inputs_ub"])))
         problem = (s.problem.Factory(tree, p["state_size"], p["num_inputs"])
                    .with_dynamics_list(dynamics).with_cost_nonleaf_list(costs)
-                   .with_cost_leaf(s.build.CostQuadratic(p["Q_leaf"], leaf=True))
+                   .with_cost_leaf(s.build.CostQuadratic(Q_leaf, leaf=True))
                    .with_constraint_nonleaf(nonleaf).with_constraint_leaf(leaf)
                    .with_risk(s.build.AVaR(p["alpha"]))
                    .with_preconditioning(p["stored"]["preconditioned"]).generate_problem())

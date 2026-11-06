@@ -146,3 +146,31 @@ The effective graph mode, node count and per-solve replay count are recorded.
 Use fresh output directories and run comparisons sequentially on the GPU.
 See [stream execution](../../docs/stream_execution.md) for the cache lifetime and
 fixed-address requirements.
+
+
+## Compact diagonal costs
+
+Dense cost storage remains the default. Add `--diagonal-costs` to select the
+existing compact kernels for Case Study 2's diagonal Q, R and terminal Q:
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
+build/venv/bin/python -u examples/networkedControlMpc/run_mpc_persistent.py \
+  --output build/mpc_tree64_diagonal \
+  --trajectories 15 --steps 20 --seed 20261103 --branching 8 8 \
+  --anderson regularized --aa-qr update \
+  --projections sequential --cuda-graphs cp --diagonal-costs
+```
+
+Use a fresh output directory. The option rejects matrices with any nonzero
+coupling off the diagonal, rather than changing their costs. General dense
+weights remain supported when the option is omitted. The console prints the
+actual factor structures, and `parameters.json` records `diagonal_costs` and
+`cost_factor_structures`; all three factors should report `diagonal`.
+
+The stored reference problem is checked in its original dense representation
+before generating the requested tree and cost format. Plant parameters used for
+rollout and saved in `plant_parameters.npz` retain their original dense arrays.
+Warm starts, graph selection, dynamics updates and GPU timing retain their
+existing behaviour. The cost format is selected when generating the problem;
+the existing CUDA worker reads it from that problem's metadata.

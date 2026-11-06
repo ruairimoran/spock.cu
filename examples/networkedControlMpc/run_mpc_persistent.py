@@ -49,6 +49,8 @@ def main():
     parser.add_argument("--tolerance", type=float, default=1e-3)
     parser.add_argument("--max-time", type=float, default=300.0)
     parser.add_argument("--branching", type=int, nargs="+")
+    parser.add_argument("--diagonal-costs", action="store_true",
+                        help="Store exactly diagonal Q, R and terminal Q compactly (default: dense)")
     parser.add_argument("--projections", choices=("sequential", "concurrent"), default="sequential",
                         help="Execution of the S1 and S2 projections (default: sequential)")
     parser.add_argument("--anderson", choices=("legacy", "regularized"), default="regularized",
@@ -98,6 +100,7 @@ def main():
         parser.error("Branching factors must be positive and fit the stored prediction horizon")
     print("Generating and checking the stored reference problem once...", flush=True)
     startup_begin = time.perf_counter()
+    # Check the stored dense reference before selecting a representation or tree.
     generate_problem(p, p["phi0"], p["gam"], workspace)
     comparisons = {}
     for name in ("dynamics_AB", "scaling", "nonleafCost_sqrtQ", "nonleafCost_sqrtR", "leafCost_sqrtQ"):
@@ -111,9 +114,17 @@ def main():
     for factor in p["branching"]:
         counts.append(counts[-1] * factor)
     p["expected_nodes"] = sum(counts)
-    if args.branching:
-        print(f"Generating fixed {counts[-1]}-scenario problem once...", flush=True)
-        generate_problem(p, p["phi0"], p["gam"], workspace)
+    if args.branching or args.diagonal_costs:
+        storage = "diagonal" if args.diagonal_costs else "dense"
+        print(f"Generating fixed {counts[-1]}-scenario problem with {storage} costs...", flush=True)
+        generate_problem(p, p["phi0"], p["gam"], workspace,
+                         diagonal_costs=args.diagonal_costs)
+    problem_metadata = json.loads((workspace / "data/data.json").read_text())
+    cost_structures = {key: problem_metadata["cost"].get(key, "dense")
+                       for key in ("nonleafQ", "nonleafR", "leafQ")}
+    if args.diagonal_costs and any(value != "diagonal" for value in cost_structures.values()):
+        raise ValueError("Generated cost factors did not retain the requested diagonal structure")
+    print(f"Quadratic cost factor storage: {cost_structures}", flush=True)
     online = OnlineModel(p, workspace / "data")
     online.update(p["phi0"], p["gam"])
     online_errors = online.compare_reference()
@@ -122,6 +133,7 @@ def main():
     metadata = {
         "implementation": "persistent GPU storage; binary dynamics-only updates",
         "anderson": anderson, "projection_mode": args.projections, "cuda_graphs": args.cuda_graphs,
+        "diagonal_costs": args.diagonal_costs, "cost_factor_structures": cost_structures,
         "trajectories": args.trajectories, "steps": args.steps, "seed": args.seed,
         "physical_states": p["num_states"], "augmented_states": p["state_size"], "inputs": p["num_inputs"],
         "prediction_transitions": len(p["branching"]), "branching": p["branching"],

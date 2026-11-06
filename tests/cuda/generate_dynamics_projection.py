@@ -132,6 +132,8 @@ def main():
              7, 50, rank_deficient=True)
     generate(destination / "scaled", irregular, 5, 3, affine=True, scaled=True)
     generate(destination / "linear_update", irregular, 5, 3, seed=928)
+    # Cross the 128-column vector tile and the 32-row output tile boundaries.
+    generate(destination / "tiled", [-1, 0, 0, 1, 2], 133, 37, affine=True, seed=803)
 
 
 if __name__ == "__main__":

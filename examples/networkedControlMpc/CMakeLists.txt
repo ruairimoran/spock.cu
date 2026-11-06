@@ -14,6 +14,7 @@ add_spock_mpc_example(networked_mpc_persistent_qr persistent.cu)
 add_spock_mpc_example(check_anderson check_anderson.cu)
 add_spock_mpc_example(check_anderson_qr check_anderson_qr.cu)
 add_spock_mpc_example(check_qr_workspace check_qr_workspace.cu)
+add_spock_mpc_example(benchmark_dynamics benchmark_dynamics.cu)
 
 if(SPOCK_BUILD_TEST)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)

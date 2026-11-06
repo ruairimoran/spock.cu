@@ -3,6 +3,7 @@
 
 #include "../include/gpu.cuh"
 #include "tree.cuh"
+#include "dynamics_kernels.cuh"
 #include <array>
 
 
@@ -67,7 +68,10 @@ protected:
     }
 
     void projectOnDynamics(DTensor<T> &initState, DTensor<T> &states, DTensor<T> &inputs) {
-        spock::commonStream(initState, states, inputs, *m_d_q, *m_d_d, *m_d_lowerCholesky);
+        const auto stream = spock::commonStream(initState, states, inputs,
+            *m_d_q, *m_d_d, *m_d_lowerCholesky, *m_d_BTr, *m_d_ABKTr,
+            *m_d_workU, *m_d_workX, m_tree.d_childFrom(), m_tree.d_numChildren());
+        if (m_affine) spock::commonStream(*m_d_q, *m_d_Pe);
         /*
          * Set first q
          */
@@ -85,39 +89,36 @@ protected:
             size_t chStage = stage + 1;  // Stage of children of current stage
             size_t chStageFr = m_tree.stageFrom()[chStage];  // First node of child stage
             size_t chStageTo = m_tree.stageTo()[chStage];  // Last node of child stage
-            size_t maxCh = m_tree.childMax()[stage];  // Max number of children of any node at current stage
-            /* Compute Bq = B(q+Pe) at every child of current stage */
-            DTensor<T> Btr_ChStage(*m_d_BTr, m_matAxis, chStageFr, chStageTo);
-            DTensor<T> q_ChStage(*m_d_q, m_matAxis, chStageFr, chStageTo);
-            if (m_affine) {
-                DTensor<T> Pe_ChStage(*m_d_Pe, m_matAxis, chStageFr, chStageTo);
-                q_ChStage += Pe_ChStage;
-            }
-            DTensor<T> Bq_ChStage(*m_d_workU, m_matAxis, chStageFr, chStageTo);
-            Bq_ChStage.addAB(Btr_ChStage, q_ChStage);
-            /* Sum `Bq` children of each node into `d` at current stage */
-            for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
-                m_tree.memCpyCh2Node(*m_d_d, *m_d_workU, stageFr, stageTo, chIdx, chIdx);
-            }
-            /* Subtract d from u in place */
-            DTensor<T> d_Stage(*m_d_d, m_matAxis, stageFr, stageTo);
-            DTensor<T> u_Stage(inputs, m_matAxis, stageFr, stageTo);
-            d_Stage *= -1.;
-            d_Stage += u_Stage;
-            /*
-             * Compute q without d (except at the root, where q is unused).
-             * The offline Riccati identities give
-             * sum_children (A+BK)' P B = -K', cancelling all terms in d:
-             * q = sum_children (A+BK)' (q_child + P e) - K' u_bar - x_bar.
-             */
-            if (stage) {
-                DTensor<T> ABKtr_ChStage(*m_d_ABKTr, m_matAxis, chStageFr, chStageTo);
-                DTensor<T> q_SumChStage(*m_d_workX, m_matAxis, chStageFr, chStageTo);
-                q_SumChStage.addAB(ABKtr_ChStage, q_ChStage);
-                /* Sum child contributions into q at the current stage. */
-                for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
-                    m_tree.memCpyCh2Node(*m_d_q, *m_d_workX, stageFr, stageTo, chIdx, chIdx);
-                }
+            // Both child products use the same y = q + P c. The root needs
+            // only the input contribution; its q is never consumed.
+            const bool computeState = stage != 0;
+            const size_t outputs = m_tree.numInputs() + (computeState ? m_tree.numStates() : 0);
+            const dim3 productThreads(32, 4);
+            const dim3 productBlocks(chStageTo - chStageFr + 1, numBlocks(outputs, size_t(32)));
+            spock::detail::backwardChildProducts<<<productBlocks, productThreads, 0,
+                stream>>>(
+                    m_d_workU->raw(), m_d_workX->raw(),
+                    m_d_BTr->raw(), m_d_ABKTr->raw(), m_d_q->raw(),
+                    m_affine ? m_d_Pe->raw() : nullptr,
+                    m_tree.numStates(), m_tree.numInputs(), chStageFr, computeState);
+            gpuErrChk(cudaPeekAtLastError());
+            // One pass reduces both output blocks and forms the right-hand
+            // sides. No child-position launches or intermediate parent sums.
+            const size_t width = m_tree.numInputs() + (computeState ? m_tree.numStates() : 0);
+            const size_t count = (stageTo - stageFr + 1) * width;
+            constexpr unsigned int threads = 256;
+            spock::detail::reduceBackwardContributions<<<numBlocks(count, threads), threads, 0,
+                stream>>>(
+                    m_d_d->raw(), m_d_q->raw(), inputs.raw(),
+                    m_d_workU->raw(), m_d_workX->raw(),
+                    m_tree.d_childFrom().raw(), m_tree.d_numChildren().raw(),
+                    m_tree.numStates(), m_tree.numInputs(), stageFr,
+                    stageTo - stageFr + 1, computeState);
+            gpuErrChk(cudaPeekAtLastError());
+            // The Riccati cancellation removes d from the q recursion:
+            // q = sum_children (A+BK)' y - K' u_bar - x_bar.
+            if (computeState) {
+                DTensor<T> u_Stage(inputs, m_matAxis, stageFr, stageTo);
                 DTensor<T> Ktr_Stage(*m_d_KTr, m_matAxis, stageFr, stageTo);
                 DTensor<T> q_Stage(*m_d_q, m_matAxis, stageFr, stageTo);
                 q_Stage.addAB(Ktr_Stage, u_Stage, -1., 1.);

@@ -18,6 +18,7 @@ target_sources(spock_src
     costs.cuh
     cost_kernels.cuh
     dynamics.cuh
+    dynamics_kernels.cuh
     operator.cuh
     problem.cuh
     projections.cuh

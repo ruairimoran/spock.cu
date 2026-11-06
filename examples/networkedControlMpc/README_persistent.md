@@ -186,3 +186,37 @@ rollout and saved in `plant_parameters.npz` retain their original dense arrays.
 Warm starts, graph selection, dynamics updates and GPU timing retain their
 existing behaviour. The cost format is selected when generating the problem;
 the existing CUDA worker reads it from that problem's metadata.
+
+
+## Fused backward contributions
+
+The dynamics projection computes both child contributions, `BTr * y` and
+`ABKTr * y`, in one tiled CUDA kernel per stage. It reads the existing factor
+buffers directly and uses the existing input/state workspaces. For affine
+dynamics, the kernel loads `y = q + P c`; linear dynamics use `y = q`.
+A second kernel sums both contribution blocks for each parent and forms the
+unsolved input right-hand side. Each parent/output component has one writer,
+with children accumulated in their stored order and no atomics. The root
+computes only the input block because its state contribution is unused.
+
+This is the default implementation and needs no additional driver option.
+The all-node Cholesky solve, forward reconstruction, binary MPC updates and
+warm-start policy retain their existing interfaces. The kernels support dense
+factors, float/double precision and captured CUDA graphs, and allocate no
+additional device workspace.
+
+For a fixed-input microbenchmark of the current implementation:
+
+```bash
+make -C build -j2 benchmark_dynamics
+build/examples/networkedControlMpc/benchmark_dynamics \
+  build/mpc_tree64_diagonal/initial_problem/data \
+  build/s1_benchmark_output s1 graph 100
+```
+
+Replace the data directory with an existing MPC run. Use `cp` instead of `s1`
+to measure the full CP operator, and `eager` instead of `graph` for uncaptured
+execution. Standard output is JSON containing each CUDA-event sample, host
+wall time, graph node count and tracked device bytes; the output prefix saves
+the resulting tensor for numerical comparison. Setup, graph construction and
+input preparation are excluded from the recorded intervals.

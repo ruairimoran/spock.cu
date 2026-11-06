@@ -67,6 +67,7 @@ TYPED_TEST(DynamicsProjectionTest, twelveStageChain) { checkDynamicsFixture<Type
 TYPED_TEST(DynamicsProjectionTest, singleStageScalar) { checkDynamicsFixture<TypeParam>("scalar", true); }
 TYPED_TEST(DynamicsProjectionTest, fiftyRankDeficientInputs) { checkDynamicsFixture<TypeParam>("wide", false); }
 TYPED_TEST(DynamicsProjectionTest, scaledAffine) { checkDynamicsFixture<TypeParam>("scaled", true); }
+TYPED_TEST(DynamicsProjectionTest, affineAcrossProductTiles) { checkDynamicsFixture<TypeParam>("tiled", true); }
 
 TYPED_TEST(DynamicsProjectionTest, residentFactorUpdates) {
     using T = TypeParam;

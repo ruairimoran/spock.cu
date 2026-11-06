@@ -163,6 +163,7 @@ TYPED_TEST(CudaGraphTest, projectionReferencesAndResidentFactorUpdates) {
     checkGraphDynamics<T>("scalar", true, false);
     checkGraphDynamics<T>("wide", false, false);
     checkGraphDynamics<T>("scaled", true, false);
+    checkGraphDynamics<T>("tiled", true, false);
 }
 
 TEST(CudaGraphConfigurationTest, sequentialRequiredAndCaptureCleanup) {

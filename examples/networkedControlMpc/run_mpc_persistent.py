@@ -53,6 +53,8 @@ def main():
                         help="Execution of the S1 and S2 projections (default: sequential)")
     parser.add_argument("--anderson", choices=("legacy", "regularized"), default="regularized",
                         help="Acceleration mode (default: regularized with QR updates)")
+    parser.add_argument("--cuda-graphs", choices=("none", "s1", "cp"), default="none",
+                        help="Capture sequential S1 or the complete CP operator (default: none)")
     parser.add_argument("--aa-regularization", type=float, default=1e-8,
                         help="Ridge parameter after normalising history columns")
     parser.add_argument("--aa-rank-tolerance", type=float, default=1e-8)
@@ -65,6 +67,8 @@ def main():
     parser.add_argument("--aa-qr-orthogonality-tolerance", type=float, default=0.0,
                         help="Zero selects the precision-dependent default")
     args = parser.parse_args()
+    if args.cuda_graphs != "none" and args.projections != "sequential":
+        parser.error("CUDA graphs currently require --projections sequential")
     if args.anderson == "legacy" and args.aa_qr == "update":
         parser.error("QR updates require --anderson regularized")
     args.aa_qr = args.aa_qr or ("update" if args.anderson == "regularized" else "full")
@@ -117,7 +121,7 @@ def main():
     executable = (args.executable or repo / "build/examples/networkedControlMpc/networked_mpc_persistent").resolve()
     metadata = {
         "implementation": "persistent GPU storage; binary dynamics-only updates",
-        "anderson": anderson, "projection_mode": args.projections,
+        "anderson": anderson, "projection_mode": args.projections, "cuda_graphs": args.cuda_graphs,
         "trajectories": args.trajectories, "steps": args.steps, "seed": args.seed,
         "physical_states": p["num_states"], "augmented_states": p["state_size"], "inputs": p["num_inputs"],
         "prediction_transitions": len(p["branching"]), "branching": p["branching"],
@@ -150,7 +154,7 @@ def main():
     controls = np.full((args.trajectories, args.steps, p["num_inputs"]), np.nan)
     delays = np.full((args.trajectories, args.steps + 1), np.nan)
     worker = subprocess.Popen([str(executable), str(workspace / "data"), str(args.tolerance), str(args.max_time),
-                               json.dumps(anderson), "--projections", args.projections],
+                               json.dumps(anderson), "--projections", args.projections, "--cuda-graphs", args.cuda_graphs],
                               cwd=repo, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     columns = ["trajectory", "step", "seed", "warm_start", "converged", "status", "gpu_time_s", "solver_wall_s",
                "setup_wall_s", "generation_wall_s", "update_wall_s", "worker_wall_s", "step_wall_s", "iterations",
@@ -160,12 +164,15 @@ def main():
                "aa_coefficient_rejections", "aa_direction_rejections", "aa_numerical_rejections",
                "aa_last_rank", "aa_last_scale", "aa_last_coefficient_norm", "initial_residual", "final_residual",
                "effective_tolerance", "cp_operator_evaluations", "backtracks"]
+    columns += ["cuda_graphs", "graph_nodes", "graph_launches", "graph_setup_wall_s"]
     columns += ["aa_qr_rebuilds", "aa_qr_updates", "aa_qr_reuses", "aa_qr_update_fallbacks",
                 "aa_qr_orthogonality_checks", "aa_qr_last_orthogonality_error"]
     try:
         ready = read_worker_response(worker, "initialisation")
         if not ready.get("ready"):
             raise RuntimeError("Persistent GPU worker did not initialise")
+        if ready.get("cuda_graphs") != args.cuda_graphs:
+            raise RuntimeError("GPU worker does not support the requested CUDA graph mode; rebuild it")
         if ready.get("projection_mode") != args.projections:
             raise RuntimeError("GPU worker does not support the requested projection mode; rebuild it")
         if args.anderson == "regularized" and ready.get("aa_qr_mode", "full") != args.aa_qr:

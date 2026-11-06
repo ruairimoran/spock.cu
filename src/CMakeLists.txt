@@ -6,6 +6,7 @@ target_sources(spock_src
     anderson.cuh
     anderson_qr.cuh
     cache.cuh
+    cuda_graph.cuh
     kernel_projection.cuh
     cones.cuh
     constraints.cuh

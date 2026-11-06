@@ -7,6 +7,7 @@
 #include "operator.cuh"
 #include "anderson.cuh"
 #include "kernel_projection.cuh"
+#include "cuda_graph.cuh"
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
@@ -183,6 +184,8 @@ protected:
     /* Projections */
     std::unique_ptr<NonnegativeOrthantCone<T>> m_nnoc = nullptr;
     std::unique_ptr<spock::detail::ConcurrentPrimalProjections<T>> m_projectionStreams;
+    std::unique_ptr<spock::detail::CudaGraph> m_cudaGraph;
+    spock::GraphMode m_graphMode = spock::GraphMode::none;
     /* Caches */
     std::vector<size_t> m_cacheCallsToL;
     std::vector<T> m_cacheError0;
@@ -263,6 +266,10 @@ protected:
 
     void iter();
 
+    void iterRaw();
+
+    void initialiseCudaGraph(spock::GraphMode);
+
     void backup();
 
     void restore();
@@ -302,7 +309,8 @@ public:
           size_t andBuff = 3,
           bool debug = false,
           AndersonOptions andersonOptions = {},
-          spock::ProjectionMode projections = spock::ProjectionMode::automatic) :
+          spock::ProjectionMode projections = spock::ProjectionMode::automatic,
+          spock::GraphMode graphs = spock::GraphMode::none) :
         m_tree(tree), m_data(data), m_tolAbs(absTol), m_tolRel(relTol), m_maxTimeSecs(maxTimeSecs),
         m_maxOuterIters(maxOuterIters), m_maxInnerIters(maxInnerIters), m_andBuff(andBuff), m_debug(debug),
         m_andersonOptions(andersonOptions) {
@@ -313,6 +321,10 @@ public:
         if (projections == spock::ProjectionMode::concurrent && Session::getInstance().numStreams() < 2)
             throw std::invalid_argument(
                 "Call Session::setStreams(2) before creating tensors to enable concurrent projections");
+        if (graphs != spock::GraphMode::none && graphs != spock::GraphMode::dynamics && graphs != spock::GraphMode::cp)
+            throw std::invalid_argument("Unknown CUDA graph mode");
+        if (graphs != spock::GraphMode::none && projections == spock::ProjectionMode::concurrent)
+            throw std::invalid_argument("CUDA graphs currently require sequential projections");
         if (m_andBuff == 0) throw std::invalid_argument("Anderson memory must be positive");
         if (m_andersonOptions.enabled) m_andersonOptions.validate();
         /* Tolerances */
@@ -364,17 +376,24 @@ public:
         reshape();
         /* Initialise projectable objects */
         initialiseProjectable();
-        if (projections != spock::ProjectionMode::sequential && Session::getInstance().numStreams() >= 2)
+        if (graphs == spock::GraphMode::none && projections != spock::ProjectionMode::sequential && Session::getInstance().numStreams() >= 2)
             m_projectionStreams = std::make_unique<spock::detail::ConcurrentPrimalProjections<T>>(
                 spock::executionStream(*m_d_workIteratePrim), 1, *m_d_y, *m_d_t, *m_d_s,
                 *m_d_workYTS, *m_d_projectedYTS, m_data.risk()->nullspaceProj());
+        initialiseCudaGraph(graphs);
     }
 
     // Drain projection streams before any scratch storage or AA buffers die.
-    ~Cache() { m_projectionStreams.reset(); }
+    ~Cache() { m_cudaGraph.reset(); m_projectionStreams.reset(); }
 
     spock::ProjectionMode projectionMode() const {
         return m_projectionStreams ? spock::ProjectionMode::concurrent : spock::ProjectionMode::sequential;
+    }
+
+    spock::GraphMode graphMode() const { return m_graphMode; }
+    const spock::GraphStatistics &graphStatistics() const {
+        static const spock::GraphStatistics disabled{};
+        return m_cudaGraph ? m_cudaGraph->statistics() : disabled;
     }
 
     int runCp(std::vector<T> &, std::vector<T> * = nullptr);
@@ -698,7 +717,8 @@ void Cache<T>::proxRootS() {
 
 template<typename T>
 void Cache<T>::projectPrimalWorkspaceOnDynamics() {
-    m_data.dynamics()->project(*m_d_initState, *m_d_x, *m_d_u);
+    if (m_graphMode == spock::GraphMode::dynamics) m_cudaGraph->launch();
+    else m_data.dynamics()->project(*m_d_initState, *m_d_x, *m_d_u);
 }
 
 template<typename T>
@@ -843,10 +863,38 @@ void Cache<T>::proximalDual() {
 template<typename T>
 void Cache<T>::iter() {
     ++m_operatorEvaluations;
+    if (m_graphMode == spock::GraphMode::cp) {
+        m_cudaGraph->launch();
+        if (m_debug) m_callsToL += 2;  // Host bookkeeping is not replayed by CUDA.
+    } else iterRaw();
+}
+
+template<typename T>
+void Cache<T>::iterRaw() {
     modifyPrimal();
     proximalPrimal();
     modifyDual();
     proximalDual();
+}
+
+template<typename T>
+void Cache<T>::initialiseCudaGraph(spock::GraphMode mode) {
+    if (mode == spock::GraphMode::none) return;
+    const auto start = std::chrono::steady_clock::now();
+    m_cudaGraph = std::make_unique<spock::detail::CudaGraph>();
+    auto submit = [this, mode] {
+        if (mode == spock::GraphMode::dynamics)
+            m_data.dynamics()->project(*m_d_initState, *m_d_x, *m_d_u);
+        else iterRaw();
+    };
+    // Prime library workspaces before capture, using the cache's valid zero
+    // inputs. Restore the normal initial state after the graph is uploaded.
+    submit();
+    m_cudaGraph->capture(spock::executionStream(*m_d_workIterate), submit);
+    resetDeviceWorkspace(false);
+    gpuErrChk(cudaStreamSynchronize(spock::executionStream(*m_d_workIterate)));
+    m_graphMode = mode;
+    m_cudaGraph->setSetupSeconds(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
 }
 
 template<typename T>
@@ -1054,6 +1102,8 @@ void Cache<T>::computeError(size_t idx) {
  */
 template<typename T>
 int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution) {
+    m_operatorEvaluations = 0;
+    if (m_cudaGraph) m_cudaGraph->resetLaunchCount();
     m_timeStart = std::chrono::high_resolution_clock::now();
     /* Load initial state */
     initialiseState(initState);
@@ -1127,6 +1177,7 @@ template<typename T>
 int Cache<T>::runSpockImpl(std::vector<T> &initState, std::vector<T> *previousSolution, bool residentWarm) {
     m_timeStart = std::chrono::high_resolution_clock::now();
     m_operatorEvaluations = 0;
+    if (m_cudaGraph) m_cudaGraph->resetLaunchCount();
     m_backtracks = 0;
     m_validAndersonHistory = 0;
     m_andersonStatistics = {};
@@ -1276,6 +1327,7 @@ private:
     bool m_debug = false;
     AndersonOptions m_andersonOptions;
     spock::ProjectionMode m_projectionMode = spock::ProjectionMode::automatic;
+    spock::GraphMode m_graphMode = spock::GraphMode::none;
 
 public:
     /**
@@ -1357,6 +1409,11 @@ public:
         return *this;
     }
 
+    CacheBuilder<T> &cudaGraphs(spock::GraphMode mode) {
+        m_graphMode = mode;
+        return *this;
+    }
+
     /**
      * Build Cache
      */
@@ -1372,7 +1429,8 @@ public:
             m_andBuff,
             m_debug,
             m_andersonOptions,
-            m_projectionMode
+            m_projectionMode,
+            m_graphMode
         );
     }
 
@@ -1391,7 +1449,8 @@ public:
             m_andBuff,
             m_debug,
             m_andersonOptions,
-            m_projectionMode
+            m_projectionMode,
+            m_graphMode
         );
     }
 };

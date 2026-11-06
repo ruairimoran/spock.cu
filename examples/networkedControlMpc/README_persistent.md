@@ -3,7 +3,7 @@
 For the current QR-update executable and regularised fitting options, see
 [README_fast_qr.md](README_fast_qr.md).
 
-`run_mpc_persistent.py` uses `networked_mpc_persistent_qr`, which constructs the
+`run_mpc_persistent.py` uses `networked_mpc_persistent`, which constructs the
 scenario tree, problem data, solver cache, Cholesky objects and QR workspace
 once for the whole simulation. Warm starts retain the complete accepted
 primal-dual iterate on the GPU. Only the root control is downloaded.
@@ -28,7 +28,7 @@ already running those continues using the original implementation.
 
 ## Build and run
 
-GPUtils v2.0.0 is pinned by the project and includes the QR-workspace fix
+GPUtils v2.1.0 is pinned by the project and includes the QR-workspace fix
 needed for larger trees. The historical `gputils_qr_workspace.patch` must
 not be applied to this release.
 
@@ -89,9 +89,9 @@ remain allocated between steps, while utilisation can drop during CPU
 preparation. The one-time setup still includes the original factory's
 known warnings for dummy zero cost matrices.
 
-The optional regularised Anderson fit is documented in
-`README_anderson.md`. The driver defaults to `legacy`; use
-`--anderson regularized` to enable the new fit explicitly.
+The regularised Anderson fit is documented in `README_anderson.md`. The
+driver defaults to `regularized` with QR updates; use `--anderson legacy`
+to select the original fit.
 
 ## Validation performed
 
@@ -120,3 +120,29 @@ Sequential execution remains the default because it was faster on the current
 case study/GPU; `--projections sequential` explicitly selects it. The mode is recorded
 in `parameters.json` and in worker responses. The numerical solver settings and
 warm-start policy are the same in both modes.
+
+
+## Optional CUDA graphs (sequential projections)
+
+Use `--cuda-graphs cp` to replay the complete CP operator, or `--cuda-graphs s1`
+to capture only the dynamics projection. The default is `--cuda-graphs none`.
+Both graph modes use sequential projections; combining them with
+`--projections concurrent` is rejected. For example, after rebuilding the worker:
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
+build/venv/bin/python -u examples/networkedControlMpc/run_mpc_persistent.py \
+  --output build/mpc_tree64_graph_cp \
+  --trajectories 15 --steps 20 --seed 20261103 --branching 8 8 \
+  --anderson regularized --aa-qr update \
+  --projections sequential --cuda-graphs cp
+```
+
+The graph is constructed once per persistent worker and reused for all cold and
+warm solves, including in-place dynamics updates. Anderson, adaptive line search
+and termination remain outside the graph. `gpu_time_s` excludes construction;
+`graph_setup_wall_s` reports the extra one-time graph setup in the first CSV row.
+The effective graph mode, node count and per-solve replay count are recorded.
+Use fresh output directories and run comparisons sequentially on the GPU.
+See [stream execution](../../docs/stream_execution.md) for the cache lifetime and
+fixed-address requirements.

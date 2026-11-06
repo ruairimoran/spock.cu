@@ -92,7 +92,7 @@ static void writeAndersonDiagnostics(JsonWriter &out, const Cache<double> &cache
 // arrays in CUDA column-major order. No model files are read after setup.
 int main(int argc, char **argv) {
     if (argc < 4) {
-        std::cerr << "Usage: networked_mpc_persistent DATA_DIRECTORY TOLERANCE MAX_TIME_SECONDS [ANDERSON_JSON] [--projections sequential|concurrent]\n";
+        std::cerr << "Usage: networked_mpc_persistent DATA_DIRECTORY TOLERANCE MAX_TIME_SECONDS [ANDERSON_JSON] [--projections sequential|concurrent] [--cuda-graphs none|s1|cp]\n";
         return 2;
     }
     static_assert(std::endian::native == std::endian::little);
@@ -103,6 +103,7 @@ int main(int argc, char **argv) {
         const double tol = std::stod(argv[2]), maxTime = std::stod(argv[3]);
         const char *andersonJson = nullptr;
         auto projections = spock::ProjectionMode::sequential;
+        auto graphs = spock::GraphMode::none;
         for (int arg = 4; arg < argc; ++arg) {
             const std::string option = argv[arg];
             if (option == "--projections") {
@@ -111,9 +112,18 @@ int main(int argc, char **argv) {
                 if (mode == "sequential") projections = spock::ProjectionMode::sequential;
                 else if (mode == "concurrent") projections = spock::ProjectionMode::concurrent;
                 else throw std::invalid_argument("Unknown projection mode");
+            } else if (option == "--cuda-graphs") {
+                if (++arg >= argc) throw std::invalid_argument("Missing CUDA graph mode");
+                const std::string mode = argv[arg];
+                if (mode == "none") graphs = spock::GraphMode::none;
+                else if (mode == "s1") graphs = spock::GraphMode::dynamics;
+                else if (mode == "cp") graphs = spock::GraphMode::cp;
+                else throw std::invalid_argument("Unknown CUDA graph mode");
             } else if (!andersonJson && !option.starts_with("--")) andersonJson = argv[arg];
             else throw std::invalid_argument("Unexpected persistent MPC argument");
         }
+        if (graphs != spock::GraphMode::none && projections != spock::ProjectionMode::sequential)
+            throw std::invalid_argument("CUDA graphs currently require sequential projections");
         const AndersonOptions anderson = andersonJson ? readAndersonOptions(andersonJson) : AndersonOptions{};
         // Session is configured before ScenarioTree allocates its first tensor.
         Session::setStreams(projections == spock::ProjectionMode::concurrent ? 2 : 1);
@@ -122,7 +132,7 @@ int main(int argc, char **argv) {
         ScenarioTree<double> tree(path);
         ProblemData<double> problem(tree);
         CacheBuilder<double> builder(tree, problem);
-        builder.tol(tol).maxTimeSecs(maxTime).projectionMode(projections);
+        builder.tol(tol).maxTimeSecs(maxTime).projectionMode(projections).cudaGraphs(graphs);
         if (anderson.enabled) builder.regularisedAnderson(anderson);
         else builder.legacyAnderson();
         auto cache = builder.build();
@@ -144,6 +154,10 @@ int main(int argc, char **argv) {
         ready.StartObject();
         ready.Key("ready"); ready.Bool(true);
         ready.Key("projection_mode"); ready.String(spock::projectionModeName(cache.projectionMode()));
+        ready.Key("cuda_graphs"); ready.String(spock::graphModeName(cache.graphMode()));
+        ready.Key("graph_nodes"); ready.Uint64(cache.graphStatistics().nodes);
+        ready.Key("graph_allocation_nodes"); ready.Uint64(cache.graphStatistics().allocationNodes);
+        ready.Key("graph_setup_wall_s"); ready.Double(cache.graphStatistics().setupSeconds);
         ready.Key("setup_wall_s"); ready.Double(setupSeconds);
         ready.Key("device_allocated_bytes"); ready.Uint64(allocated);
         ready.Key("primal_size"); ready.Uint64(cache.sizePrimal());
@@ -215,6 +229,10 @@ int main(int argc, char **argv) {
             out.StartObject();
             out.Key("converged"); out.Bool(status == converged);
             out.Key("projection_mode"); out.String(spock::projectionModeName(cache.projectionMode()));
+            out.Key("cuda_graphs"); out.String(spock::graphModeName(cache.graphMode()));
+            out.Key("graph_launches"); out.Uint64(cache.graphStatistics().launches);
+            out.Key("graph_nodes"); out.Uint64(cache.graphStatistics().nodes);
+            out.Key("graph_setup_wall_s"); out.Double(solves == 0 ? cache.graphStatistics().setupSeconds : 0.);
             out.Key("status"); out.Int(status);
             out.Key("warm_start"); out.Bool(warm);
             out.Key("iterations"); out.Uint64(cache.solveIter());

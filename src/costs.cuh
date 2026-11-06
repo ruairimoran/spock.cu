@@ -30,13 +30,12 @@ protected:
 
     explicit Cost(ScenarioTree<T> &tree) : m_tree(tree) {};
 
-    static void transformWorkspace(const DTensor<T> &matrix,
-                                   std::unique_ptr<DTensor<T>> &workspace,
-                                   std::unique_ptr<DTensor<T>> &product) {
-        // GEMM output must not alias its input. Swap owning buffers instead
-        // of allocating or copying a temporary on each operator evaluation.
-        product->addAB(matrix, *workspace);
-        workspace.swap(product);
+    static DTensor<T> &transformWorkspace(const DTensor<T> &matrix,
+                                         DTensor<T> &workspace, DTensor<T> &product) {
+        // Keep distinct GEMM input/output allocations in fixed roles. A graph
+        // replays device work, so it cannot replay a host-side owner swap.
+        product.addAB(matrix, workspace);
+        return product;
     }
 
     static bool diagonalFactor(ScenarioTree<T> &tree, TreePart part, const char *name) {
@@ -72,12 +71,13 @@ protected:
                 m_tree.d_ancestors().raw(), size, m_numNodes, m_dimPerNode, offset, leaf);
             gpuErrChk(cudaGetLastError());
         } else {
+            DTensor<T> *result = workspace.get();
             if (leaf) workspace->addAB(factor, input);
             else {
                 m_tree.memCpyAnc2Node(*workspace, input, 1, m_tree.numNodesMinus1(), size, 0, 0);
-                transformWorkspace(factor, workspace, product);
+                result = &transformWorkspace(factor, *workspace, *product);
             }
-            memCpyNode2Node(output, *workspace, leaf ? 0 : 1, m_numNodes - 1, size, offset);
+            memCpyNode2Node(output, *result, leaf ? 0 : 1, m_numNodes - 1, size, offset);
         }
     }
 
@@ -102,14 +102,14 @@ protected:
                     gpuErrChk(cudaGetLastError());
                 }
             } else {
-                transformWorkspace(factor, workspace, product);
+                auto &result = transformWorkspace(factor, *workspace, *product);
                 if (linear) {
-                    cost_detail::linearAdjoint<<<numBlocks(size * m_numNodes, TPB), TPB, 0, stream>>>(workspace->raw(), dual.raw(),
+                    cost_detail::linearAdjoint<<<numBlocks(size * m_numNodes, TPB), TPB, 0, stream>>>(result.raw(), dual.raw(),
                         linear, size, m_numNodes, m_dimPerNode, scalarOffset, false);
                     gpuErrChk(cudaGetLastError());
                 }
                 for (size_t child = 0; child < m_tree.numEvents(); ++child)
-                    m_tree.memCpyCh2Node(output, *workspace, 0, m_tree.numNonleafNodesMinus1(), child, true);
+                    m_tree.memCpyCh2Node(output, result, 0, m_tree.numNonleafNodesMinus1(), child, true);
             }
         }
     }

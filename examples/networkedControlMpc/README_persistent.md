@@ -112,3 +112,11 @@ The optional regularised Anderson fit is documented in
 In the two 64-scenario online updates, CPU preparation took about 2.57 s
 and transfer/upload about 0.87 s. These are validation measurements; one
 warm solve was profiled, so these short runs are not a new paper benchmark.
+
+Add `--projections concurrent` to `run_mpc_persistent.py` to overlap the S1/S2
+projections. The worker creates two GPUtils stream/handle pairs before any tensors,
+and joins the streams with CUDA events before using the complete primal result.
+Sequential execution remains the default because it was faster on the current
+case study/GPU; `--projections sequential` explicitly selects it. The mode is recorded
+in `parameters.json` and in worker responses. The numerical solver settings and
+warm-start policy are the same in both modes.

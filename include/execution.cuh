@@ -6,6 +6,17 @@
 
 namespace spock {
 
+enum class ProjectionMode { automatic, sequential, concurrent };
+
+inline const char *projectionModeName(ProjectionMode mode) {
+    switch (mode) {
+        case ProjectionMode::automatic: return "automatic";
+        case ProjectionMode::sequential: return "sequential";
+        case ProjectionMode::concurrent: return "concurrent";
+    }
+    return "unknown";
+}
+
 // Stream index zero is GPUtils' first stream, not CUDA's legacy NULL stream.
 // Custom kernels must use the same actual stream as their tensor operations.
 template<typename T>

@@ -91,8 +91,8 @@ static void writeAndersonDiagnostics(JsonWriter &out, const Cache<double> &cache
 // JSON lines followed, when update=true, by eight little-endian float64
 // arrays in CUDA column-major order. No model files are read after setup.
 int main(int argc, char **argv) {
-    if (argc != 4 && argc != 5) {
-        std::cerr << "Usage: networked_mpc_persistent DATA_DIRECTORY TOLERANCE MAX_TIME_SECONDS [ANDERSON_JSON]\n";
+    if (argc < 4) {
+        std::cerr << "Usage: networked_mpc_persistent DATA_DIRECTORY TOLERANCE MAX_TIME_SECONDS [ANDERSON_JSON] [--projections sequential|concurrent]\n";
         return 2;
     }
     static_assert(std::endian::native == std::endian::little);
@@ -101,13 +101,28 @@ int main(int argc, char **argv) {
         std::string path = argv[1];
         if (path.back() != '/') path += '/';
         const double tol = std::stod(argv[2]), maxTime = std::stod(argv[3]);
-        const AndersonOptions anderson = argc == 5 ? readAndersonOptions(argv[4]) : AndersonOptions{};
+        const char *andersonJson = nullptr;
+        auto projections = spock::ProjectionMode::sequential;
+        for (int arg = 4; arg < argc; ++arg) {
+            const std::string option = argv[arg];
+            if (option == "--projections") {
+                if (++arg >= argc) throw std::invalid_argument("Missing projection mode");
+                const std::string mode = argv[arg];
+                if (mode == "sequential") projections = spock::ProjectionMode::sequential;
+                else if (mode == "concurrent") projections = spock::ProjectionMode::concurrent;
+                else throw std::invalid_argument("Unknown projection mode");
+            } else if (!andersonJson && !option.starts_with("--")) andersonJson = argv[arg];
+            else throw std::invalid_argument("Unexpected persistent MPC argument");
+        }
+        const AndersonOptions anderson = andersonJson ? readAndersonOptions(andersonJson) : AndersonOptions{};
+        // Session is configured before ScenarioTree allocates its first tensor.
+        Session::setStreams(projections == spock::ProjectionMode::concurrent ? 2 : 1);
         const auto setupStart = Clock::now();
         checked(cudaFree(nullptr));
         ScenarioTree<double> tree(path);
         ProblemData<double> problem(tree);
         CacheBuilder<double> builder(tree, problem);
-        builder.tol(tol).maxTimeSecs(maxTime);
+        builder.tol(tol).maxTimeSecs(maxTime).projectionMode(projections);
         if (anderson.enabled) builder.regularisedAnderson(anderson);
         else builder.legacyAnderson();
         auto cache = builder.build();
@@ -128,6 +143,7 @@ int main(int argc, char **argv) {
         rapidjson::Writer<rapidjson::StringBuffer> ready(readyBuffer);
         ready.StartObject();
         ready.Key("ready"); ready.Bool(true);
+        ready.Key("projection_mode"); ready.String(spock::projectionModeName(cache.projectionMode()));
         ready.Key("setup_wall_s"); ready.Double(setupSeconds);
         ready.Key("device_allocated_bytes"); ready.Uint64(allocated);
         ready.Key("primal_size"); ready.Uint64(cache.sizePrimal());
@@ -198,6 +214,7 @@ int main(int argc, char **argv) {
             rapidjson::Writer<rapidjson::StringBuffer> out(buffer);
             out.StartObject();
             out.Key("converged"); out.Bool(status == converged);
+            out.Key("projection_mode"); out.String(spock::projectionModeName(cache.projectionMode()));
             out.Key("status"); out.Int(status);
             out.Key("warm_start"); out.Bool(warm);
             out.Key("iterations"); out.Uint64(cache.solveIter());

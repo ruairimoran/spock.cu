@@ -49,6 +49,8 @@ def main():
     parser.add_argument("--tolerance", type=float, default=1e-3)
     parser.add_argument("--max-time", type=float, default=300.0)
     parser.add_argument("--branching", type=int, nargs="+")
+    parser.add_argument("--projections", choices=("sequential", "concurrent"), default="sequential",
+                        help="Execution of the S1 and S2 projections (default: sequential)")
     parser.add_argument("--anderson", choices=("legacy", "regularized"), default="regularized",
                         help="Acceleration mode (default: regularized with QR updates)")
     parser.add_argument("--aa-regularization", type=float, default=1e-8,
@@ -115,7 +117,7 @@ def main():
     executable = (args.executable or repo / "build/examples/networkedControlMpc/networked_mpc_persistent").resolve()
     metadata = {
         "implementation": "persistent GPU storage; binary dynamics-only updates",
-        "anderson": anderson,
+        "anderson": anderson, "projection_mode": args.projections,
         "trajectories": args.trajectories, "steps": args.steps, "seed": args.seed,
         "physical_states": p["num_states"], "augmented_states": p["state_size"], "inputs": p["num_inputs"],
         "prediction_transitions": len(p["branching"]), "branching": p["branching"],
@@ -148,7 +150,7 @@ def main():
     controls = np.full((args.trajectories, args.steps, p["num_inputs"]), np.nan)
     delays = np.full((args.trajectories, args.steps + 1), np.nan)
     worker = subprocess.Popen([str(executable), str(workspace / "data"), str(args.tolerance), str(args.max_time),
-                               json.dumps(anderson)],
+                               json.dumps(anderson), "--projections", args.projections],
                               cwd=repo, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     columns = ["trajectory", "step", "seed", "warm_start", "converged", "status", "gpu_time_s", "solver_wall_s",
                "setup_wall_s", "generation_wall_s", "update_wall_s", "worker_wall_s", "step_wall_s", "iterations",
@@ -164,6 +166,8 @@ def main():
         ready = read_worker_response(worker, "initialisation")
         if not ready.get("ready"):
             raise RuntimeError("Persistent GPU worker did not initialise")
+        if ready.get("projection_mode") != args.projections:
+            raise RuntimeError("GPU worker does not support the requested projection mode; rebuild it")
         if args.anderson == "regularized" and ready.get("aa_qr_mode", "full") != args.aa_qr:
             raise ValueError("GPU worker does not support the requested QR mode; rebuild the main executable")
         expected = [(name, list(array.shape[::-1])) for name, array in online.fields.items()]

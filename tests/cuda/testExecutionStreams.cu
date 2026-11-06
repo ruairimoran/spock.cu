@@ -8,26 +8,33 @@ namespace {
 // remove the legacy-default-stream ordering that could hide a missing stream
 // argument in a kernel launch or host transfer.
 class StreamEnvironment : public testing::Environment {
-    cudaStream_t m_originalBlas{}, m_originalSolver{}, m_nonblocking{};
+    std::vector<cudaStream_t> m_originalBlas, m_originalSolver, m_nonblocking;
 public:
     void SetUp() override {
-        Session::setStreams(2);  // The second stream also tests rejected operands.
+        const bool single = std::getenv("SPOCK_TEST_SINGLE_STREAM") != nullptr;
+        Session::setStreams(single ? 1 : 2);
         if (!std::getenv("SPOCK_TEST_NONBLOCKING_STREAM")) return;
         auto &session = Session::getInstance();
-        gpuErrChk(cublasGetStream(session.cuBlasHandle(), &m_originalBlas));
-        gpuErrChk(cusolverDnGetStream(session.cuSolverHandle(), &m_originalSolver));
-        gpuErrChk(cudaStreamCreateWithFlags(&m_nonblocking, cudaStreamNonBlocking));
-        gpuErrChk(cublasSetStream(session.cuBlasHandle(), m_nonblocking));
-        gpuErrChk(cusolverDnSetStream(session.cuSolverHandle(), m_nonblocking));
+        m_originalBlas.resize(session.numStreams());
+        m_originalSolver.resize(session.numStreams());
+        m_nonblocking.resize(session.numStreams());
+        for (size_t i = 0; i < session.numStreams(); ++i) {
+            gpuErrChk(cublasGetStream(session.cuBlasHandle(i), &m_originalBlas[i]));
+            gpuErrChk(cusolverDnGetStream(session.cuSolverHandle(i), &m_originalSolver[i]));
+            gpuErrChk(cudaStreamCreateWithFlags(&m_nonblocking[i], cudaStreamNonBlocking));
+            gpuErrChk(cublasSetStream(session.cuBlasHandle(i), m_nonblocking[i]));
+            gpuErrChk(cusolverDnSetStream(session.cuSolverHandle(i), m_nonblocking[i]));
+        }
     }
 
     void TearDown() override {
-        if (!m_nonblocking) return;
-        gpuErrChk(cudaStreamSynchronize(m_nonblocking));
         auto &session = Session::getInstance();
-        gpuErrChk(cublasSetStream(session.cuBlasHandle(), m_originalBlas));
-        gpuErrChk(cusolverDnSetStream(session.cuSolverHandle(), m_originalSolver));
-        gpuErrChk(cudaStreamDestroy(m_nonblocking));
+        for (size_t i = 0; i < m_nonblocking.size(); ++i) {
+            gpuErrChk(cudaStreamSynchronize(m_nonblocking[i]));
+            gpuErrChk(cublasSetStream(session.cuBlasHandle(i), m_originalBlas[i]));
+            gpuErrChk(cusolverDnSetStream(session.cuSolverHandle(i), m_originalSolver[i]));
+            gpuErrChk(cudaStreamDestroy(m_nonblocking[i]));
+        }
     }
 };
 

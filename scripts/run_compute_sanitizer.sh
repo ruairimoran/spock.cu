@@ -75,6 +75,8 @@ run_memcheck() {
 run_memcheck spock_tests "$build_dir/tests/spock_tests"
 # A second full pass removes legacy default-stream ordering from the solver.
 SPOCK_TEST_NONBLOCKING_STREAM=1 run_memcheck spock_nonblocking_streams "$build_dir/tests/spock_tests"
+SPOCK_TEST_SINGLE_STREAM=1 run_memcheck projection_single_stream "$build_dir/tests/spock_tests" \
+    --gtest_filter=ProjectionConfigurationTest.singleStreamFallback
 run_memcheck qr_workspace "$build_dir/examples/networkedControlMpc/check_qr_workspace"
 # More than 64 history changes also exercises the scheduled QR rebuild.
 run_memcheck rolling_qr "$build_dir/examples/networkedControlMpc/check_anderson_qr" \

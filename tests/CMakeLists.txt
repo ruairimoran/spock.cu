@@ -39,6 +39,7 @@ target_sources(spock_tests  # add files
     cuda/testDiagonalCost.cu
     cuda/testDynamics.cu
     cuda/testExecutionStreams.cu
+    cuda/testConcurrentProjections.cu
 )
 target_link_libraries(spock_tests
     PRIVATE
@@ -70,4 +71,10 @@ add_test(NAME spock_nonblocking_streams
     COMMAND "${CMAKE_COMMAND}" -E env SPOCK_TEST_NONBLOCKING_STREAM=1
         $<TARGET_FILE:spock_tests>)
 set_tests_properties(spock_nonblocking_streams PROPERTIES
+    FIXTURES_REQUIRED spock_data RESOURCE_LOCK spock_gpu)
+
+add_test(NAME spock_single_stream_projection
+    COMMAND "${CMAKE_COMMAND}" -E env SPOCK_TEST_SINGLE_STREAM=1
+        $<TARGET_FILE:spock_tests> --gtest_filter=ProjectionConfigurationTest.singleStreamFallback)
+set_tests_properties(spock_single_stream_projection PROPERTIES
     FIXTURES_REQUIRED spock_data RESOURCE_LOCK spock_gpu)

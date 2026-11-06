@@ -6,16 +6,11 @@
 #include "risks.cuh"
 #include "operator.cuh"
 #include "anderson.cuh"
+#include "kernel_projection.cuh"
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
 
-
-TEMPLATE_WITH_TYPE_T
-__global__ void k_memCpyInTS(T *, T *, size_t, size_t, size_t, size_t *, size_t *);
-
-TEMPLATE_WITH_TYPE_T
-__global__ void k_memCpyOutTS(T *, T *, size_t, size_t, size_t, size_t *, size_t *);
 
 template<typename T>
 class CacheTestData;
@@ -187,6 +182,7 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_input = nullptr;
     /* Projections */
     std::unique_ptr<NonnegativeOrthantCone<T>> m_nnoc = nullptr;
+    std::unique_ptr<spock::detail::ConcurrentPrimalProjections<T>> m_projectionStreams;
     /* Caches */
     std::vector<size_t> m_cacheCallsToL;
     std::vector<T> m_cacheError0;
@@ -305,10 +301,18 @@ public:
           size_t maxInnerIters = 8,
           size_t andBuff = 3,
           bool debug = false,
-          AndersonOptions andersonOptions = {}) :
+          AndersonOptions andersonOptions = {},
+          spock::ProjectionMode projections = spock::ProjectionMode::automatic) :
         m_tree(tree), m_data(data), m_tolAbs(absTol), m_tolRel(relTol), m_maxTimeSecs(maxTimeSecs),
         m_maxOuterIters(maxOuterIters), m_maxInnerIters(maxInnerIters), m_andBuff(andBuff), m_debug(debug),
         m_andersonOptions(andersonOptions) {
+        if (projections != spock::ProjectionMode::automatic &&
+            projections != spock::ProjectionMode::sequential &&
+            projections != spock::ProjectionMode::concurrent)
+            throw std::invalid_argument("Unknown projection mode");
+        if (projections == spock::ProjectionMode::concurrent && Session::getInstance().numStreams() < 2)
+            throw std::invalid_argument(
+                "Call Session::setStreams(2) before creating tensors to enable concurrent projections");
         if (m_andBuff == 0) throw std::invalid_argument("Anderson memory must be positive");
         if (m_andersonOptions.enabled) m_andersonOptions.validate();
         /* Tolerances */
@@ -360,9 +364,18 @@ public:
         reshape();
         /* Initialise projectable objects */
         initialiseProjectable();
+        if (projections != spock::ProjectionMode::sequential && Session::getInstance().numStreams() >= 2)
+            m_projectionStreams = std::make_unique<spock::detail::ConcurrentPrimalProjections<T>>(
+                spock::executionStream(*m_d_workIteratePrim), 1, *m_d_y, *m_d_t, *m_d_s,
+                *m_d_workYTS, *m_d_projectedYTS, m_data.risk()->nullspaceProj());
     }
 
-    ~Cache() = default;
+    // Drain projection streams before any scratch storage or AA buffers die.
+    ~Cache() { m_projectionStreams.reset(); }
+
+    spock::ProjectionMode projectionMode() const {
+        return m_projectionStreams ? spock::ProjectionMode::concurrent : spock::ProjectionMode::sequential;
+    }
 
     int runCp(std::vector<T> &, std::vector<T> * = nullptr);
 
@@ -690,36 +703,9 @@ void Cache<T>::projectPrimalWorkspaceOnDynamics() {
 
 template<typename T>
 void Cache<T>::projectPrimalWorkspaceOnKernels() {
-    /**
-     * Project on kernel of every node of tree at once
-     */
-    const auto stream = spock::commonStream(*m_d_workYTS, *m_d_projectedYTS,
-                                            *m_d_y, *m_d_t, *m_d_s,
-                                            m_data.risk()->nullspaceProj());
-    /* Gather vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
-    memCpyNode2Node(*m_d_workYTS, *m_d_y, 0, m_tree.numNonleafNodesMinus1(), m_data.yDim());
-    k_memCpyInTS<<<numBlocks(m_tree.numNodes(), TPB), TPB, 0, stream>>>(m_d_workYTS->raw(), m_d_t->raw(),
-                                                             m_tree.numNodes(), m_d_workYTS->numRows(),
-                                                             m_data.yDim(),
-                                                             m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
-    k_memCpyInTS<<<numBlocks(m_tree.numNodes(), TPB), TPB, 0, stream>>>(m_d_workYTS->raw(), m_d_s->raw(),
-                                                             m_tree.numNodes(), m_d_workYTS->numRows(),
-                                                             m_data.yDim() + m_tree.numEvents(),
-                                                             m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
-    /* Project onto nullspace in place */
-    // Keep GEMM input and output separate; both buffers are allocated at setup.
-    m_d_projectedYTS->addAB(m_data.risk()->nullspaceProj(), *m_d_workYTS);
-    m_d_workYTS.swap(m_d_projectedYTS);
-    /* Disperse vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
-    memCpyNode2Node(*m_d_y, *m_d_workYTS, 0, m_tree.numNonleafNodesMinus1(), m_data.yDim());
-    k_memCpyOutTS<<<numBlocks(m_tree.numNodes(), TPB), TPB, 0, stream>>>(m_d_t->raw(), m_d_workYTS->raw(),
-                                                              m_tree.numNodes(), m_d_workYTS->numRows(),
-                                                              m_data.yDim(),
-                                                              m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
-    k_memCpyOutTS<<<numBlocks(m_tree.numNodes(), TPB), TPB, 0, stream>>>(m_d_s->raw(), m_d_workYTS->raw(),
-                                                              m_tree.numNodes(), m_d_workYTS->numRows(),
-                                                              m_data.yDim() + m_tree.numEvents(),
-                                                              m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
+    spock::detail::projectRiskKernels(m_tree, *m_d_y, *m_d_t, *m_d_s,
+                                    *m_d_workYTS, *m_d_projectedYTS,
+                                    m_data.risk()->nullspaceProj());
 }
 
 template<typename T>
@@ -812,8 +798,16 @@ void Cache<T>::modifyPrimal() {
 template<typename T>
 void Cache<T>::proximalPrimal() {
     proxRootS();
-    projectPrimalWorkspaceOnDynamics();
-    projectPrimalWorkspaceOnKernels();
+    if (m_projectionStreams) {
+        // Queue the short independent branch first, then submit the dynamics
+        // recursion while S2 runs. No host wait occurs at the fork or join.
+        m_projectionStreams->enqueueRiskProjection(m_tree);
+        projectPrimalWorkspaceOnDynamics();
+        m_projectionStreams->join();
+    } else {
+        projectPrimalWorkspaceOnDynamics();
+        projectPrimalWorkspaceOnKernels();
+    }
     m_d_workIteratePrim->deviceCopyToAsync(*m_d_iterateCandidatePrim);  // Store primal
 }
 
@@ -1281,6 +1275,7 @@ private:
     size_t m_andBuff = 0;
     bool m_debug = false;
     AndersonOptions m_andersonOptions;
+    spock::ProjectionMode m_projectionMode = spock::ProjectionMode::automatic;
 
 public:
     /**
@@ -1357,6 +1352,11 @@ public:
         return *this;
     }
 
+    CacheBuilder<T> &projectionMode(spock::ProjectionMode mode) {
+        m_projectionMode = mode;
+        return *this;
+    }
+
     /**
      * Build Cache
      */
@@ -1371,7 +1371,8 @@ public:
             m_maxInnerIters,
             m_andBuff,
             m_debug,
-            m_andersonOptions
+            m_andersonOptions,
+            m_projectionMode
         );
     }
 
@@ -1389,7 +1390,8 @@ public:
             m_maxInnerIters,
             m_andBuff,
             m_debug,
-            m_andersonOptions
+            m_andersonOptions,
+            m_projectionMode
         );
     }
 };

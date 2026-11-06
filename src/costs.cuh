@@ -65,9 +65,10 @@ protected:
     void forwardFactor(DTensor<T> &output, DTensor<T> &input, const DTensor<T> &factor,
                        std::unique_ptr<DTensor<T>> &workspace, std::unique_ptr<DTensor<T>> &product,
                        size_t size, size_t offset, bool diagonal, bool leaf) {
+        const auto stream = spock::commonStream(output, input, factor);
         if (diagonal) {
             const size_t count = size * (m_numNodes - (leaf ? 0 : 1));
-            cost_detail::diagonalForward<<<numBlocks(count, TPB), TPB>>>(output.raw(), input.raw(), factor.raw(),
+            cost_detail::diagonalForward<<<numBlocks(count, TPB), TPB, 0, stream>>>(output.raw(), input.raw(), factor.raw(),
                 m_tree.d_ancestors().raw(), size, m_numNodes, m_dimPerNode, offset, leaf);
             gpuErrChk(cudaGetLastError());
         } else {
@@ -83,10 +84,11 @@ protected:
     void adjointFactor(DTensor<T> &output, DTensor<T> &dual, const DTensor<T> &factor,
                        std::unique_ptr<DTensor<T>> &workspace, std::unique_ptr<DTensor<T>> &product,
                        size_t size, size_t offset, bool diagonal, bool leaf, const T *linear = nullptr) {
+        const auto stream = spock::commonStream(output, dual, factor);
         const size_t scalarOffset = leaf ? m_tree.numStates() : m_tree.numStatesAndInputs();
         if (diagonal) {
             const size_t destinations = leaf ? m_numNodes : m_tree.numNonleafNodes();
-            cost_detail::diagonalAdjoint<<<numBlocks(size * destinations, TPB), TPB>>>(output.raw(), dual.raw(),
+            cost_detail::diagonalAdjoint<<<numBlocks(size * destinations, TPB), TPB, 0, stream>>>(output.raw(), dual.raw(),
                 factor.raw(), linear, m_tree.d_childFrom().raw(), m_tree.d_numChildren().raw(),
                 size, destinations, m_dimPerNode, offset, scalarOffset, leaf);
             gpuErrChk(cudaGetLastError());
@@ -95,14 +97,14 @@ protected:
             if (leaf) {
                 output.addAB(factor, *workspace, T(1), T(1));
                 if (linear) {
-                    cost_detail::linearAdjoint<<<numBlocks(size * m_numNodes, TPB), TPB>>>(output.raw(), dual.raw(),
+                    cost_detail::linearAdjoint<<<numBlocks(size * m_numNodes, TPB), TPB, 0, stream>>>(output.raw(), dual.raw(),
                         linear, size, m_numNodes, m_dimPerNode, scalarOffset, true);
                     gpuErrChk(cudaGetLastError());
                 }
             } else {
                 transformWorkspace(factor, workspace, product);
                 if (linear) {
-                    cost_detail::linearAdjoint<<<numBlocks(size * m_numNodes, TPB), TPB>>>(workspace->raw(), dual.raw(),
+                    cost_detail::linearAdjoint<<<numBlocks(size * m_numNodes, TPB), TPB, 0, stream>>>(workspace->raw(), dual.raw(),
                         linear, size, m_numNodes, m_dimPerNode, scalarOffset, false);
                     gpuErrChk(cudaGetLastError());
                 }
@@ -114,14 +116,17 @@ protected:
 
     void forwardScalars(DTensor<T> &output, DTensor<T> &scalar, DTensor<T> &x, DTensor<T> *u,
                         bool leaf, const T *q = nullptr, const T *r = nullptr) {
-        cost_detail::forwardScalars<<<numBlocks(m_numNodes, TPB), TPB>>>(output.raw(), scalar.raw(), x.raw(),
+        const auto stream = u ? spock::commonStream(output, scalar, x, *u)
+                              : spock::commonStream(output, scalar, x);
+        cost_detail::forwardScalars<<<numBlocks(m_numNodes, TPB), TPB, 0, stream>>>(output.raw(), scalar.raw(), x.raw(),
             u ? u->raw() : nullptr, q, r, m_tree.d_ancestors().raw(), m_tree.numStates(), m_tree.numInputs(),
             m_numNodes, m_dimPerNode, leaf);
         gpuErrChk(cudaGetLastError());
     }
 
     void adjointScalars(DTensor<T> &output, DTensor<T> &dual, bool leaf) {
-        cost_detail::adjointScalars<<<numBlocks(m_numNodes, TPB), TPB>>>(output.raw(), dual.raw(), m_numNodes,
+        const auto stream = spock::commonStream(output, dual);
+        cost_detail::adjointScalars<<<numBlocks(m_numNodes, TPB), TPB, 0, stream>>>(output.raw(), dual.raw(), m_numNodes,
             m_dimPerNode, leaf ? m_tree.numStates() : m_tree.numStatesAndInputs(), leaf);
         gpuErrChk(cudaGetLastError());
     }
@@ -326,12 +331,12 @@ public:
         this->m_tree.memCpyAnc2Node(*m_d_xuWorkspace, u, 1, this->m_tree.numNodesMinus1(), this->m_tree.numInputs(),
                                     this->m_tree.numStates());
         m_d_sum->addAB(*m_d_gradient, *m_d_xuWorkspace);
-        t.deviceCopyTo(*m_d_set);
+        t.deviceCopyToAsync(*m_d_set);
     }
 
     void op(DTensor<T> &vi, DTensor<T> &xLeaf, DTensor<T> &sLeaf) {
         m_d_sum->addAB(*m_d_gradient, xLeaf);
-        sLeaf.deviceCopyTo(*m_d_set);
+        sLeaf.deviceCopyToAsync(*m_d_set);
     }
 
     void adj(DTensor<T> &iv, DTensor<T> &x, DTensor<T> &u, DTensor<T> &t) {
@@ -346,18 +351,18 @@ public:
             /* -> Add to `u` all children `Riv2` */
             this->m_tree.memCpyCh2Node(u, *m_d_uWorkspace, 0, this->m_tree.numNonleafNodesMinus1(), chIdx, true);
         }
-        m_d_set->deviceCopyTo(t);
+        m_d_set->deviceCopyToAsync(t);
     }
 
     void adj(DTensor<T> &vi, DTensor<T> &xLeaf, DTensor<T> &sLeaf) {
         xLeaf.addAB(*m_d_gradientTr, *m_d_sum, 1., 1.);
-        m_d_set->deviceCopyTo(sLeaf);
+        m_d_set->deviceCopyToAsync(sLeaf);
     }
 
     void translate(DTensor<T> &) {}
 
     void project() {
-        k_projectRectangle<<<numBlocks(this->m_numNodes, TPB), TPB>>>(this->m_numNodes,
+        k_projectRectangle<<<numBlocks(this->m_numNodes, TPB), TPB, 0, spock::executionStream(*m_d_sum)>>>(this->m_numNodes,
                                                                       this->m_d_sum->raw(),
                                                                       m_d_lowerBound->raw(),
                                                                       m_d_set->raw());

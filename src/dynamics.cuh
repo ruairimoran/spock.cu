@@ -67,6 +67,7 @@ protected:
     }
 
     void projectOnDynamics(DTensor<T> &initState, DTensor<T> &states, DTensor<T> &inputs) {
+        spock::commonStream(initState, states, inputs, *m_d_q, *m_d_d, *m_d_lowerCholesky);
         /*
          * Set first q
          */
@@ -179,7 +180,7 @@ public:
     void resetDeviceWorkspace() {
         for (auto *buffer : {m_d_q.get(), m_d_d.get(), m_d_workX.get(),
                             m_d_workU.get(), m_d_workXU.get()})
-            gpuErrChk(cudaMemset(buffer->raw(), 0, buffer->numEl() * sizeof(T)));
+            gpuErrChk(cudaMemsetAsync(buffer->raw(), 0, buffer->numEl() * sizeof(T), spock::executionStream(*buffer)));
     }
 
     /**

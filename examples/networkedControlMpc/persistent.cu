@@ -111,6 +111,7 @@ int main(int argc, char **argv) {
         if (anderson.enabled) builder.regularisedAnderson(anderson);
         else builder.legacyAnderson();
         auto cache = builder.build();
+        const auto stream = spock::executionStream(cache.solution());
         auto tensors = problem.dynamics()->projectionTensors();
         const std::array<const char *, 8> names = {"BTr", "AB", "K", "KTr", "ABKTr", "P", "APB", "lowCholesky"};
         size_t largest = 0;
@@ -121,7 +122,7 @@ int main(int argc, char **argv) {
         cudaEvent_t start, stop;
         checked(cudaEventCreate(&start));
         checked(cudaEventCreate(&stop));
-        checked(cudaDeviceSynchronize());
+        checked(cudaStreamSynchronize(stream));
         const double setupSeconds = std::chrono::duration<double>(Clock::now() - setupStart).count();
         rapidjson::StringBuffer readyBuffer;
         rapidjson::Writer<rapidjson::StringBuffer> ready(readyBuffer);
@@ -175,16 +176,15 @@ int main(int argc, char **argv) {
                     const size_t bytes = tensor->numEl() * sizeof(double);
                     if (!std::cin.read(reinterpret_cast<char *>(staging.data()), bytes))
                         throw std::runtime_error("Incomplete binary dynamics payload");
-                    checked(cudaMemcpy(tensor->raw(), staging.data(), bytes, cudaMemcpyHostToDevice));
+                    spock::detail::copyToDevice(tensor->raw(), staging.data(), bytes, stream);
                 }
             }
-            checked(cudaDeviceSynchronize());
+            checked(cudaStreamSynchronize(stream));
             const double updateSeconds = std::chrono::duration<double>(Clock::now() - updateStart).count();
-            checked(cudaEventRecord(start));
+            checked(cudaEventRecord(start, stream));
             const auto solveStart = Clock::now();
             const int status = cache.runSpockResident(state, warm);
-            checked(cudaDeviceSynchronize());
-            checked(cudaEventRecord(stop));
+            checked(cudaEventRecord(stop, stream));
             checked(cudaEventSynchronize(stop));
             float milliseconds;
             checked(cudaEventElapsedTime(&milliseconds, start, stop));

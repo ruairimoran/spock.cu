@@ -38,6 +38,7 @@ target_sources(spock_tests  # add files
     cuda/testCostAliasing.cu
     cuda/testDiagonalCost.cu
     cuda/testDynamics.cu
+    cuda/testExecutionStreams.cu
 )
 target_link_libraries(spock_tests
     PRIVATE
@@ -63,3 +64,10 @@ set_tests_properties(spock_python PROPERTIES
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/python-fixtures"
     ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/api/python:${GPUTILS_SOURCE_DIR}/python;OPENBLAS_NUM_THREADS=1;OMP_NUM_THREADS=1;MPLBACKEND=Agg")
 # ----
+
+# Run the complete CUDA suite without implicit NULL-stream synchronization.
+add_test(NAME spock_nonblocking_streams
+    COMMAND "${CMAKE_COMMAND}" -E env SPOCK_TEST_NONBLOCKING_STREAM=1
+        $<TARGET_FILE:spock_tests>)
+set_tests_properties(spock_nonblocking_streams PROPERTIES
+    FIXTURES_REQUIRED spock_data RESOURCE_LOCK spock_gpu)

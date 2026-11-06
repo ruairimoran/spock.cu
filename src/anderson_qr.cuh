@@ -85,12 +85,12 @@ class AndersonRollingQr {
     size_t m_generation = 0, m_factorGeneration = 0, m_updatesSinceRebuild = 0;
     bool m_valid = false, m_updatable = false;
 
-    cublasHandle_t blas() const { return Session::getInstance().cuBlasHandle(); }
-    cusolverDnHandle_t solver() const { return Session::getInstance().cuSolverHandle(); }
+    cublasHandle_t blas() const { return Session::getInstance().cuBlasHandle(m_y.streamIdx()); }
+    cusolverDnHandle_t solver() const { return Session::getInstance().cuSolverHandle(m_y.streamIdx()); }
 
     bool solverSucceeded() {
         int info;
-        gpuErrChk(cudaMemcpy(&info, m_info.raw(), sizeof(info), cudaMemcpyDeviceToHost));
+        spock::detail::copyToHost(&info, m_info.raw(), sizeof(info), m_stream);
         return info == 0;
     }
 
@@ -125,8 +125,8 @@ class AndersonRollingQr {
         ++m_statistics.rebuilds;
         m_valid = false;
         for (int col = 0; col < m_memory; ++col)
-            gpuErrChk(cudaMemcpy(m_q.raw() + col * m_rows,
-                m_y.raw() + (m_memory - 1 - col) * m_rows, m_rows * sizeof(T), cudaMemcpyDeviceToDevice));
+            gpuErrChk(cudaMemcpyAsync(m_q.raw() + col * m_rows,
+                m_y.raw() + (m_memory - 1 - col) * m_rows, m_rows * sizeof(T), cudaMemcpyDeviceToDevice, m_stream));
         if constexpr (std::is_same_v<T, double>) {
             gpuErrChk(cusolverDnDgeqrf(solver(), m_rows, m_memory, m_q.raw(), m_rows,
                 m_tau.raw(), m_workspace->raw(), m_workspaceSize, m_info.raw()));
@@ -135,8 +135,8 @@ class AndersonRollingQr {
                 m_tau.raw(), m_workspace->raw(), m_workspaceSize, m_info.raw()));
         }
         if (!solverSucceeded()) return false;
-        gpuErrChk(cudaMemcpy2D(m_r.data(), m_memory * sizeof(T), m_q.raw(), m_rows * sizeof(T),
-            m_memory * sizeof(T), m_memory, cudaMemcpyDeviceToHost));
+        spock::detail::copy2DToHost(m_r.data(), m_memory * sizeof(T), m_q.raw(), m_rows * sizeof(T),
+            m_memory * sizeof(T), m_memory, m_stream);
         for (int col = 0; col < m_memory; ++col)
             for (int row = col + 1; row < m_memory; ++row) m_r[col * m_memory + row] = 0;
         if constexpr (std::is_same_v<T, double>) {
@@ -156,12 +156,12 @@ class AndersonRollingQr {
     bool appendNewestColumn() {
         // Two-pass classical Gram--Schmidt uses GEMV for the whole thin basis
         // rather than launching a dot and an AXPY separately for each column.
-        gpuErrChk(cudaMemcpy(m_work.raw(), m_y.raw(), m_rows * sizeof(T), cudaMemcpyDeviceToDevice));
+        gpuErrChk(cudaMemcpyAsync(m_work.raw(), m_y.raw(), m_rows * sizeof(T), cudaMemcpyDeviceToDevice, m_stream));
         const int retained = m_memory - 1;
         const T minusOne = -1, one = 1;
         for (int pass = 0; pass < 2 && retained; ++pass) {
             project(m_work.raw(), retained, m_projection.raw());
-            gpuErrChk(cudaMemcpy(m_projectionHost.data(), m_projection.raw(), retained * sizeof(T), cudaMemcpyDeviceToHost));
+            spock::detail::copyToHost(m_projectionHost.data(), m_projection.raw(), retained * sizeof(T), m_stream);
             for (int col = 0; col < retained; ++col)
                 m_r[retained * m_memory + col] += m_projectionHost[col];
             if constexpr (std::is_same_v<T, double>) {
@@ -205,7 +205,7 @@ class AndersonRollingQr {
         }
         m_r.swap(m_shiftedR);
         if (m_memory > 1) {
-            gpuErrChk(cudaMemcpy(m_rotationsDevice.raw(), m_rotations.data(), m_rotations.size() * sizeof(T), cudaMemcpyHostToDevice));
+            spock::detail::copyToDevice(m_rotationsDevice.raw(), m_rotations.data(), m_rotations.size() * sizeof(T), m_stream);
             anderson_qr_detail::deleteOldestColumn<<<1 + (m_rows - 1) / 256, 256, 0, m_stream>>>(
                 m_q.raw(), m_rows, m_memory, m_rotationsDevice.raw());
             gpuErrChk(cudaGetLastError());
@@ -224,6 +224,10 @@ public:
           m_rotationsDevice(std::max(1, 2 * (m_memory - 1))), m_gram(m_memory, m_memory), m_info(1),
           m_r(m_memory * m_memory), m_shiftedR(m_memory * m_memory),
           m_rotations(2 * (m_memory - 1)), m_projectionHost(m_memory), m_gramHost(m_memory * m_memory) {
+        spock::commonStream(y, q, work);
+        for (auto *tensor : {&m_tau, &m_projection, &m_rotationsDevice, &m_gram})
+            tensor->setStreamIdx(y.streamIdx());
+        m_info.setStreamIdx(y.streamIdx());
         m_options.validate();
         if (m_options.orthogonalityTolerance == 0)
             m_options.orthogonalityTolerance = std::is_same_v<T, double> ? 1e-10 : 1e-4;
@@ -240,6 +244,7 @@ public:
         }
         m_workspaceSize = std::max(m_workspaceSize, generateSize);
         m_workspace = std::make_unique<DTensor<T>>(std::max(1, m_workspaceSize));
+        m_workspace->setStreamIdx(y.streamIdx());
     }
 
     void historyChanged() { ++m_generation; }
@@ -260,7 +265,7 @@ public:
             gpuErrChk(cublasSgemm(blas(), CUBLAS_OP_T, CUBLAS_OP_N, m_memory, m_memory, m_rows,
                 &one, m_q.raw(), m_rows, m_q.raw(), m_rows, &zero, m_gram.raw(), m_memory));
         }
-        gpuErrChk(cudaMemcpy(m_gramHost.data(), m_gram.raw(), m_gramHost.size() * sizeof(T), cudaMemcpyDeviceToHost));
+        spock::detail::copyToHost(m_gramHost.data(), m_gram.raw(), m_gramHost.size() * sizeof(T), m_stream);
         double error = 0.;
         for (int col = 0; col < m_memory; ++col)
             for (int row = 0; row < m_memory; ++row) {
@@ -274,6 +279,7 @@ public:
     }
 
     bool compress(DTensor<T> &residual, std::vector<T> &r, std::vector<T> &rhs) {
+        spock::commonStream(m_y, residual);
         bool success;
         if (m_valid && m_factorGeneration == m_generation) {
             ++m_statistics.reuses;
@@ -293,7 +299,7 @@ public:
             for (int row = 0; row < m_memory; ++row)
                 r[col * m_memory + row] = m_r[(m_memory - 1 - col) * m_memory + row];
         project(residual.raw(), m_memory, m_projection.raw());
-        gpuErrChk(cudaMemcpy(rhs.data(), m_projection.raw(), m_memory * sizeof(T), cudaMemcpyDeviceToHost));
+        spock::detail::copyToHost(rhs.data(), m_projection.raw(), m_memory * sizeof(T), m_stream);
         return true;
     }
 };

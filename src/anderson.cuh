@@ -122,7 +122,7 @@ class RegularisedAnderson {
     std::unique_ptr<AndersonRollingQr<T>> m_rollingQr;
     AndersonQrStatistics m_fullQrStatistics;
 
-    cusolverDnHandle_t handle() const { return Session::getInstance().cuSolverHandle(); }
+    cusolverDnHandle_t handle() const { return Session::getInstance().cuSolverHandle(m_y.streamIdx()); }
 
     void allocateSolverWorkspaces() {
         int applySize = 0;
@@ -146,19 +146,21 @@ class RegularisedAnderson {
         if (!m_options.qr.incremental)
             m_qrWorkspace = std::make_unique<DTensor<T>>(std::max(1, m_qrWorkspaceSize));
         m_svdWorkspace = std::make_unique<DTensor<T>>(std::max(1, m_svdWorkspaceSize));
+        if (m_qrWorkspace) m_qrWorkspace->setStreamIdx(m_y.streamIdx());
+        m_svdWorkspace->setStreamIdx(m_y.streamIdx());
     }
 
     bool solverSucceeded() {
         int info;
-        gpuErrChk(cudaMemcpy(&info, m_info.raw(), sizeof(info), cudaMemcpyDeviceToHost));
+        spock::detail::copyToHost(&info, m_info.raw(), sizeof(info), spock::executionStream(m_y));
         return info == 0;
     }
 
     bool compressHistory(DTensor<T> &residual) {
         if (m_rollingQr) return m_rollingQr->compress(residual, m_rHost, m_rhsHost);
         ++m_fullQrStatistics.rebuilds;
-        m_y.deviceCopyTo(m_qr);
-        residual.deviceCopyTo(m_rhs);
+        m_y.deviceCopyToAsync(m_qr);
+        residual.deviceCopyToAsync(m_rhs);
         if constexpr (std::is_same_v<T, double>) {
             gpuErrChk(cusolverDnDgeqrf(handle(), m_rows, m_memory, m_qr.raw(), m_rows,
                 m_tau.raw(), m_qrWorkspace->raw(), m_qrWorkspaceSize, m_info.raw()));
@@ -177,9 +179,9 @@ class RegularisedAnderson {
                 m_qrWorkspace->raw(), m_qrWorkspaceSize, m_info.raw()));
         }
         if (!solverSucceeded()) return false;
-        gpuErrChk(cudaMemcpy2D(m_rHost.data(), m_memory * sizeof(T), m_qr.raw(), m_rows * sizeof(T),
-            m_memory * sizeof(T), m_memory, cudaMemcpyDeviceToHost));
-        gpuErrChk(cudaMemcpy(m_rhsHost.data(), m_rhs.raw(), m_memory * sizeof(T), cudaMemcpyDeviceToHost));
+        spock::detail::copy2DToHost(m_rHost.data(), m_memory * sizeof(T), m_qr.raw(), m_rows * sizeof(T),
+            m_memory * sizeof(T), m_memory, spock::executionStream(m_y));
+        spock::detail::copyToHost(m_rhsHost.data(), m_rhs.raw(), m_memory * sizeof(T), spock::executionStream(m_y));
         // GEQRF stores Householder vectors below R; they are not part of R.
         for (int col = 0; col < m_memory; ++col)
             for (int row = col + 1; row < m_memory; ++row) m_rHost[col * m_memory + row] = 0;
@@ -229,7 +231,7 @@ class RegularisedAnderson {
     }
 
     bool solveSelectedRidge() {
-        gpuErrChk(cudaMemcpy(m_smallMatrix.raw(), m_packed.data(), m_packed.size() * sizeof(T), cudaMemcpyHostToDevice));
+        spock::detail::copyToDevice(m_smallMatrix.raw(), m_packed.data(), m_packed.size() * sizeof(T), spock::executionStream(m_y));
         if constexpr (std::is_same_v<T, double>) {
             gpuErrChk(cusolverDnDgesvdj(handle(), CUSOLVER_EIG_MODE_VECTOR, 0, m_memory, m_memory,
                 m_smallMatrix.raw(), m_memory, m_singularValues.raw(), m_u.raw(), m_memory, m_v.raw(), m_memory,
@@ -243,9 +245,9 @@ class RegularisedAnderson {
             m_fit.status = AndersonFitStatus::solverFailure;
             return false;
         }
-        gpuErrChk(cudaMemcpy(m_uHost.data(), m_u.raw(), m_uHost.size() * sizeof(T), cudaMemcpyDeviceToHost));
-        gpuErrChk(cudaMemcpy(m_vHost.data(), m_v.raw(), m_vHost.size() * sizeof(T), cudaMemcpyDeviceToHost));
-        gpuErrChk(cudaMemcpy(m_sHost.data(), m_singularValues.raw(), m_sHost.size() * sizeof(T), cudaMemcpyDeviceToHost));
+        spock::detail::copyToHost(m_uHost.data(), m_u.raw(), m_uHost.size() * sizeof(T), spock::executionStream(m_y));
+        spock::detail::copyToHost(m_vHost.data(), m_v.raw(), m_vHost.size() * sizeof(T), spock::executionStream(m_y));
+        spock::detail::copyToHost(m_sHost.data(), m_singularValues.raw(), m_sHost.size() * sizeof(T), spock::executionStream(m_y));
         std::fill(m_solution.begin(), m_solution.end(), 0.);
         for (int mode = 0; mode < m_memory; ++mode) {
             const double sigma = m_sHost[mode];
@@ -275,8 +277,8 @@ class RegularisedAnderson {
         m_fit.status = status;
         std::fill(m_fit.coefficients.begin(), m_fit.coefficients.end(), 0.);
         std::fill(m_gammaHost.begin(), m_gammaHost.end(), T(0));
-        gpuErrChk(cudaMemcpy(m_gamma.raw(), m_gammaHost.data(), m_memory * sizeof(T), cudaMemcpyHostToDevice));
-        residual.deviceCopyTo(direction);
+        spock::detail::copyToDevice(m_gamma.raw(), m_gammaHost.data(), m_memory * sizeof(T), spock::executionStream(m_y));
+        residual.deviceCopyToAsync(direction);
         direction *= T(-1);
         return m_fit;
     }
@@ -292,6 +294,11 @@ public:
           m_rHost(m_memory * m_memory), m_rhsHost(m_memory), m_uHost(m_memory * m_memory),
           m_vHost(m_memory * m_memory), m_sHost(m_memory), m_packed(m_memory * m_memory), m_gammaHost(m_memory),
           m_basis(m_memory * m_memory), m_innovation(m_memory), m_normalisedRhs(m_memory), m_solution(m_memory) {
+        spock::commonStream(c, y, qr, rhs, gamma);
+        // Small solver buffers follow the history, including non-default streams.
+        for (auto *tensor : {&m_tau, &m_smallMatrix, &m_u, &m_v, &m_singularValues})
+            tensor->setStreamIdx(y.streamIdx());
+        m_info.setStreamIdx(y.streamIdx());
         m_fit.selectedColumns.reserve(m_memory);
         m_fit.coefficients.resize(m_memory);
         allocateSolverWorkspaces();
@@ -313,6 +320,7 @@ public:
         if (residual.numRows() != size_t(m_rows) || residual.numCols() != 1 || residual.numMats() != 1 ||
             direction.numRows() != size_t(m_rows) || direction.numCols() != 1 || direction.numMats() != 1)
             throw std::invalid_argument("Invalid Anderson residual/direction size");
+        spock::commonStream(m_y, residual, direction);
         m_fit.selectedColumns.clear();
         std::fill(m_fit.coefficients.begin(), m_fit.coefficients.end(), 0.);
         std::fill(m_gammaHost.begin(), m_gammaHost.end(), T(0));
@@ -329,8 +337,8 @@ public:
             m_fit.status == AndersonFitStatus::solverFailure ? m_fit.status : AndersonFitStatus::nonfiniteSolution);
         if (m_fit.coefficientNorm > m_options.maxCoefficientNorm)
             return fallback(residual, direction, AndersonFitStatus::coefficientLimit);
-        gpuErrChk(cudaMemcpy(m_gamma.raw(), m_gammaHost.data(), m_memory * sizeof(T), cudaMemcpyHostToDevice));
-        residual.deviceCopyTo(direction);
+        spock::detail::copyToDevice(m_gamma.raw(), m_gammaHost.data(), m_memory * sizeof(T), spock::executionStream(m_y));
+        residual.deviceCopyToAsync(direction);
         direction *= T(-1);
         direction.addAB(m_c, m_gamma, T(-1), T(1));
         const double directionNorm = direction.normF();

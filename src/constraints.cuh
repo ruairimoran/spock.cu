@@ -69,7 +69,7 @@ public:
 
     void project(DTensor<T> &d_vec) {
         if (m_dim)
-            k_projectRectangle<<<numBlocks(this->m_dim, TPB), TPB>>>(this->m_dim, d_vec.raw(),
+            k_projectRectangle<<<numBlocks(this->m_dim, TPB), TPB, 0, spock::commonStream(d_vec, *m_d_lowerBound, *m_d_upperBound)>>>(this->m_dim, d_vec.raw(),
                                                                      m_d_lowerBound->raw(), m_d_upperBound->raw());
     }
 
@@ -94,8 +94,8 @@ public:
      * @param u inputs
      */
     void adj(DTensor<T> &dual, DTensor<T> &x, DTensor<T> &u) {
-        k_setToZero<<<numBlocks(x.numEl(), TPB), TPB>>>(x.raw(), x.numEl());
-        k_setToZero<<<numBlocks(u.numEl(), TPB), TPB>>>(u.raw(), u.numEl());
+        k_setToZero<<<numBlocks(x.numEl(), TPB), TPB, 0, spock::executionStream(x)>>>(x.raw(), x.numEl());
+        k_setToZero<<<numBlocks(u.numEl(), TPB), TPB, 0, spock::executionStream(u)>>>(u.raw(), u.numEl());
     }
 
     /**
@@ -104,7 +104,7 @@ public:
      * @param x leaf states
      */
     void adj(DTensor<T> &dual, DTensor<T> &x) {
-        k_setToZero<<<numBlocks(x.numEl(), TPB), TPB>>>(x.raw(), x.numEl());
+        k_setToZero<<<numBlocks(x.numEl(), TPB), TPB, 0, spock::executionStream(x)>>>(x.raw(), x.numEl());
     }
 };
 

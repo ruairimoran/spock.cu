@@ -373,7 +373,8 @@ public:
 
     std::vector<T> rootInput() {
         std::vector<T> input(m_tree.numInputs());
-        gpuErrChk(cudaMemcpy(input.data(), m_d_iterate->raw(), input.size() * sizeof(T), cudaMemcpyDeviceToHost));
+        spock::detail::copyToHost(input.data(), m_d_iterate->raw(), input.size() * sizeof(T),
+                                  spock::executionStream(*m_d_iterate));
         if (m_data.preconditioned())
             for (size_t i = 0; i < input.size(); ++i) input[i] /= m_data.scaling()[m_tree.numStates() + i];
         return input;
@@ -404,7 +405,7 @@ public:
     size_t sizeDual() { return m_sizeDual; }
 
     DTensor<T> getDual(DTensor<T> &primal) {
-        primal.deviceCopyTo(*m_d_workIteratePrim);
+        primal.deviceCopyToAsync(*m_d_workIteratePrim);
         modifyDual();
         proximalDual();
         return *m_d_iterateCandidateDual;
@@ -419,7 +420,7 @@ public:
     void reset();
 
     std::vector<T> inputs() {
-        m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
+        m_d_iteratePrim->deviceCopyToAsync(*m_d_workIteratePrim);
         std::vector<T> inputs(m_sizeU);
         m_d_u->download(inputs);
         if (m_data.preconditioned()) {
@@ -433,7 +434,7 @@ public:
     }
 
     std::vector<T> states() {
-        m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
+        m_d_iteratePrim->deviceCopyToAsync(*m_d_workIteratePrim);
         std::vector<T> states(m_sizeX);
         m_d_x->download(states);
         if (m_data.preconditioned()) {
@@ -692,13 +693,16 @@ void Cache<T>::projectPrimalWorkspaceOnKernels() {
     /**
      * Project on kernel of every node of tree at once
      */
+    const auto stream = spock::commonStream(*m_d_workYTS, *m_d_projectedYTS,
+                                            *m_d_y, *m_d_t, *m_d_s,
+                                            m_data.risk()->nullspaceProj());
     /* Gather vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
     memCpyNode2Node(*m_d_workYTS, *m_d_y, 0, m_tree.numNonleafNodesMinus1(), m_data.yDim());
-    k_memCpyInTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_workYTS->raw(), m_d_t->raw(),
+    k_memCpyInTS<<<numBlocks(m_tree.numNodes(), TPB), TPB, 0, stream>>>(m_d_workYTS->raw(), m_d_t->raw(),
                                                              m_tree.numNodes(), m_d_workYTS->numRows(),
                                                              m_data.yDim(),
                                                              m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
-    k_memCpyInTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_workYTS->raw(), m_d_s->raw(),
+    k_memCpyInTS<<<numBlocks(m_tree.numNodes(), TPB), TPB, 0, stream>>>(m_d_workYTS->raw(), m_d_s->raw(),
                                                              m_tree.numNodes(), m_d_workYTS->numRows(),
                                                              m_data.yDim() + m_tree.numEvents(),
                                                              m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
@@ -708,11 +712,11 @@ void Cache<T>::projectPrimalWorkspaceOnKernels() {
     m_d_workYTS.swap(m_d_projectedYTS);
     /* Disperse vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
     memCpyNode2Node(*m_d_y, *m_d_workYTS, 0, m_tree.numNonleafNodesMinus1(), m_data.yDim());
-    k_memCpyOutTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_t->raw(), m_d_workYTS->raw(),
+    k_memCpyOutTS<<<numBlocks(m_tree.numNodes(), TPB), TPB, 0, stream>>>(m_d_t->raw(), m_d_workYTS->raw(),
                                                               m_tree.numNodes(), m_d_workYTS->numRows(),
                                                               m_data.yDim(),
                                                               m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
-    k_memCpyOutTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_s->raw(), m_d_workYTS->raw(),
+    k_memCpyOutTS<<<numBlocks(m_tree.numNodes(), TPB), TPB, 0, stream>>>(m_d_s->raw(), m_d_workYTS->raw(),
                                                               m_tree.numNodes(), m_d_workYTS->numRows(),
                                                               m_data.yDim() + m_tree.numEvents(),
                                                               m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
@@ -763,22 +767,21 @@ void Cache<T>::Ltr(bool add) {
  */
 template<typename T>
 T Cache<T>::dotM(DTensor<T> &x, DTensor<T> &y) {
-    cudaStream_t stream;
-    gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(m_d_workIterate->streamIdx()), &stream));
+    const auto stream = spock::commonStream(x, y, *m_d_workIterate);
     DTensor<T> yPrim(y, m_rowAxis, 0, m_sizePrim - 1);
     DTensor<T> yDual(y, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
-    yDual.deviceCopyTo(*m_d_workIterateDual);
+    yDual.deviceCopyToAsync(*m_d_workIterateDual);
     Ltr();
     // Cost operators skip the padded root entries. Their adjoint output at
     // t[0] must be zero, rather than a value left by an earlier workspace use.
     gpuErrChk(cudaMemsetAsync(m_d_t->raw(), 0, sizeof(T), stream));
-    m_d_workIteratePrim->deviceCopyTo(*m_d_workDotPrim);
-    yPrim.deviceCopyTo(*m_d_workIteratePrim);
+    m_d_workIteratePrim->deviceCopyToAsync(*m_d_workDotPrim);
+    yPrim.deviceCopyToAsync(*m_d_workIteratePrim);
     L();
     // Likewise, the root cost has no contribution to L*yPrim. Clearing its
     // output keeps M linear and symmetric even when y has nonzero padding.
     gpuErrChk(cudaMemsetAsync(m_d_iv->raw(), 0, m_d_iv->numRows() * sizeof(T), stream));
-    m_d_workIterateDual->deviceCopyTo(*m_d_workDotDual);
+    m_d_workIterateDual->deviceCopyToAsync(*m_d_workDotDual);
     *m_d_workDot *= -m_data.stepSize();
     *m_d_workDot += y;
     return x.dotF(*m_d_workDot);
@@ -797,7 +800,7 @@ T Cache<T>::normM(DTensor<T> &x, DTensor<T> &y) {
  */
 template<typename T>
 void Cache<T>::modifyPrimal() {
-    m_d_iterateDual->deviceCopyTo(*m_d_workIterateDual);
+    m_d_iterateDual->deviceCopyToAsync(*m_d_workIterateDual);
     Ltr(true);
     *m_d_workIteratePrim *= -m_data.stepSize();
     *m_d_workIteratePrim += *m_d_iteratePrim;
@@ -811,7 +814,7 @@ void Cache<T>::proximalPrimal() {
     proxRootS();
     projectPrimalWorkspaceOnDynamics();
     projectPrimalWorkspaceOnKernels();
-    m_d_workIteratePrim->deviceCopyTo(*m_d_iterateCandidatePrim);  // Store primal
+    m_d_workIteratePrim->deviceCopyToAsync(*m_d_iterateCandidatePrim);  // Store primal
 }
 
 /**
@@ -833,7 +836,7 @@ template<typename T>
 void Cache<T>::proximalDual() {
     *m_d_workIterateDual *= m_data.stepSizeRecip();
     translateSocs();
-    m_d_workIterateDual->deviceCopyTo(*m_d_iterateCandidateDual);
+    m_d_workIterateDual->deviceCopyToAsync(*m_d_iterateCandidateDual);
     projectDualWorkspaceOnConstraints();
     *m_d_iterateCandidateDual -= *m_d_workIterateDual;
     *m_d_iterateCandidateDual *= m_data.stepSize();  // Store dual
@@ -854,12 +857,12 @@ void Cache<T>::iter() {
 
 template<typename T>
 void Cache<T>::backup() {
-    m_d_iterateCandidate->deviceCopyTo(*m_d_iterateBackup);
+    m_d_iterateCandidate->deviceCopyToAsync(*m_d_iterateBackup);
 }
 
 template<typename T>
 void Cache<T>::restore() {
-    m_d_iterateBackup->deviceCopyTo(*m_d_iterateCandidate);
+    m_d_iterateBackup->deviceCopyToAsync(*m_d_iterateCandidate);
 }
 
 /**
@@ -867,7 +870,7 @@ void Cache<T>::restore() {
  */
 template<typename T>
 void Cache<T>::computeResidual() {
-    m_d_iterate->deviceCopyTo(*m_d_residual);
+    m_d_iterate->deviceCopyToAsync(*m_d_residual);
     *m_d_residual -= *m_d_iterateCandidate;
 }
 
@@ -876,7 +879,7 @@ void Cache<T>::computeResidual() {
  */
 template<typename T>
 void Cache<T>::computeDeltaIterate() {
-    m_d_iterate->deviceCopyTo(*m_d_deltaIterate);
+    m_d_iterate->deviceCopyToAsync(*m_d_deltaIterate);
     *m_d_deltaIterate -= *m_d_iteratePrev;
 }
 
@@ -885,7 +888,7 @@ void Cache<T>::computeDeltaIterate() {
  */
 template<typename T>
 void Cache<T>::computeDeltaResidual() {
-    m_d_residual->deviceCopyTo(*m_d_deltaResidual);
+    m_d_residual->deviceCopyToAsync(*m_d_deltaResidual);
     *m_d_deltaResidual -= *m_d_residualPrev;
 }
 
@@ -894,8 +897,8 @@ void Cache<T>::computeDeltaResidual() {
  */
 template<typename T>
 void Cache<T>::saveToPrev() {
-    m_d_iterate->deviceCopyTo(*m_d_iteratePrev);
-    m_d_residual->deviceCopyTo(*m_d_residualPrev);
+    m_d_iterate->deviceCopyToAsync(*m_d_iteratePrev);
+    m_d_residual->deviceCopyToAsync(*m_d_residualPrev);
 }
 
 /**
@@ -903,7 +906,7 @@ void Cache<T>::saveToPrev() {
  */
 template<typename T>
 void Cache<T>::acceptCandidate() {
-    m_d_iterateCandidate->deviceCopyTo(*m_d_iterate);
+    m_d_iterateCandidate->deviceCopyToAsync(*m_d_iterate);
 }
 
 /**
@@ -921,19 +924,19 @@ void Cache<T>::updateDirection(size_t idx) {
             DTensor<T> newC(*m_d_andIterateMatrix, m_colAxis, col - 1, col - 1);
             DTensor<T> oldY(*m_d_andResidualMatrix, m_colAxis, col - 2, col - 2);
             DTensor<T> newY(*m_d_andResidualMatrix, m_colAxis, col - 1, col - 1);
-            oldC.deviceCopyTo(newC);
-            oldY.deviceCopyTo(newY);
+            oldC.deviceCopyToAsync(newC);
+            oldY.deviceCopyToAsync(newY);
         }
-        m_d_deltaIterate->deviceCopyTo(*m_d_andIterateMatrixCol0);
+        m_d_deltaIterate->deviceCopyToAsync(*m_d_andIterateMatrixCol0);
         *m_d_andIterateMatrixCol0 -= *m_d_deltaResidual;
-        m_d_deltaResidual->deviceCopyTo(*m_d_andResidualMatrixCol0);
+        m_d_deltaResidual->deviceCopyToAsync(*m_d_andResidualMatrixCol0);
         m_validAndersonHistory = std::min(m_andBuff, m_validAndersonHistory + 1);
         if (m_regularisedAnderson) m_regularisedAnderson->historyChanged();
     }
     if (m_regularisedAnderson) {
         if (m_validAndersonHistory < m_andBuff) {
             ++m_andersonStatistics.bootstrapSteps;
-            m_d_residual->deviceCopyTo(*m_d_direction);
+            m_d_residual->deviceCopyToAsync(*m_d_direction);
             *m_d_direction *= T(-1);
             return;
         }
@@ -964,8 +967,8 @@ void Cache<T>::updateDirection(size_t idx) {
      */
     if (idx >= m_andBuff) {
         /* QR decomposition */
-        m_d_andResidualMatrix->deviceCopyTo(*m_d_andQR);
-        m_d_residual->deviceCopyTo(*m_d_andQRGammaFull);
+        m_d_andResidualMatrix->deviceCopyToAsync(*m_d_andQR);
+        m_d_residual->deviceCopyToAsync(*m_d_andQRGammaFull);
         m_andQRFactor->factorise();
         if (m_debug) {
             DTensor<int> status = m_andQRFactor->info();
@@ -988,7 +991,7 @@ void Cache<T>::updateDirection(size_t idx) {
         *m_d_direction -= *m_d_residual;
     } else {
         /* Use residual direction */
-        m_d_residual->deviceCopyTo(*m_d_direction);
+        m_d_residual->deviceCopyToAsync(*m_d_direction);
         *m_d_direction *= -1.;
     }
 }
@@ -998,19 +1001,20 @@ void Cache<T>::updateDirection(size_t idx) {
  */
 template<typename T>
 void Cache<T>::computeError(size_t idx) {
-    cudaDeviceSynchronize();  // DO NOT REMOVE !!!
+    // All iteration work uses this stream; do not wait for unrelated GPU work.
+    gpuErrChk(cudaStreamSynchronize(spock::executionStream(*m_d_iterateCandidate)));
     if (m_debug) isFinite(*m_d_iterateCandidate);
     computeResidual();
     if (idx % m_computeErrorIters == 0) {
         /* L(residualPrim) and L'(residualDual) */
-        m_d_residualDual->deviceCopyTo(*m_d_workIterateDual);
+        m_d_residualDual->deviceCopyToAsync(*m_d_workIterateDual);
         Ltr();
-        m_d_workIteratePrim->deviceCopyTo(*m_d_ellResidualPrim);
-        m_d_residualPrim->deviceCopyTo(*m_d_workIteratePrim);
+        m_d_workIteratePrim->deviceCopyToAsync(*m_d_ellResidualPrim);
+        m_d_residualPrim->deviceCopyToAsync(*m_d_workIteratePrim);
         L();
-        m_d_workIterateDual->deviceCopyTo(*m_d_ellResidualDual);
+        m_d_workIterateDual->deviceCopyToAsync(*m_d_ellResidualDual);
         /* residual/step - ell(residual) */
-        m_d_residual->deviceCopyTo(*m_d_workIterate);
+        m_d_residual->deviceCopyToAsync(*m_d_workIterate);
         *m_d_workIterate *= m_data.stepSizeRecip();
         *m_d_workIterate -= *m_d_ellResidual;
         if (m_errInit) {
@@ -1042,7 +1046,7 @@ void Cache<T>::computeError(size_t idx) {
             /* new_iter - T(old_iter) */
             m_cacheError3[idx] = (*m_d_iterate - *m_d_iterateCandidate).normF();
             /* cand_prim - L'(cand_dual) */
-            m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
+            m_d_iterateCandidateDual->deviceCopyToAsync(*m_d_workIterateDual);
             Ltr();
             *m_d_err *= -1.;
             *m_d_err += *m_d_iterateCandidatePrim;
@@ -1106,14 +1110,14 @@ void Cache<T>::resetDeviceWorkspace(bool keepIterate) {
     m_countIterations = 0;
     m_callsToL = 0;
     m_timeElapsed = 0;
-    if (!keepIterate) gpuErrChk(cudaMemset(m_d_iterate->raw(), 0, m_d_iterate->numEl() * sizeof(T)));
+    if (!keepIterate) gpuErrChk(cudaMemsetAsync(m_d_iterate->raw(), 0, m_d_iterate->numEl() * sizeof(T), spock::executionStream(*m_d_iterate)));
     for (auto *buffer : {m_d_initState.get(), m_d_iteratePrev.get(), m_d_iterateCandidate.get(),
                         m_d_iterateBackup.get(), m_d_deltaIterate.get(), m_d_ellResidual.get(),
                         m_d_deltaResidual.get(), m_d_residual.get(), m_d_residualPrev.get(), m_d_err.get(),
                         m_d_andIterateMatrix.get(), m_d_andResidualMatrix.get(), m_d_andQR.get(),
                         m_d_andQRGammaFull.get(), m_d_direction.get(), m_d_directionScaled.get(),
                         m_d_workIterate.get(), m_d_workYTS.get(), m_d_workDot.get()})
-        gpuErrChk(cudaMemset(buffer->raw(), 0, buffer->numEl() * sizeof(T)));
+        gpuErrChk(cudaMemsetAsync(buffer->raw(), 0, buffer->numEl() * sizeof(T), spock::executionStream(*buffer)));
     m_data.dynamics()->resetDeviceWorkspace();
 }
 
@@ -1182,7 +1186,7 @@ int Cache<T>::runSpockImpl(std::vector<T> &initState, std::vector<T> *previousSo
         updateDirection(iOut);
         /* Blind update */
         if (w <= m_c0 * zeta) {
-            m_d_iteratePrev->deviceCopyTo(*m_d_iterateCandidate);
+            m_d_iteratePrev->deviceCopyToAsync(*m_d_iterateCandidate);
             *m_d_iterateCandidate += *m_d_direction;
             zeta = w;
             countK0 += 1;
@@ -1191,8 +1195,8 @@ int Cache<T>::runSpockImpl(std::vector<T> &initState, std::vector<T> *previousSo
         /* Line search on tau */
         tau = 1.;
         for (size_t iIn = 0; iIn < m_maxInnerIters; iIn++) {
-            m_d_iteratePrev->deviceCopyTo(*m_d_iterate);
-            m_d_direction->deviceCopyTo(*m_d_directionScaled);
+            m_d_iteratePrev->deviceCopyToAsync(*m_d_iterate);
+            m_d_direction->deviceCopyToAsync(*m_d_directionScaled);
             *m_d_directionScaled *= tau;
             *m_d_iterate += *m_d_directionScaled;
             iter();
@@ -1200,7 +1204,7 @@ int Cache<T>::runSpockImpl(std::vector<T> &initState, std::vector<T> *previousSo
             wTilde = normM(*m_d_residual, *m_d_residual);
             /* Educated update */
             if (w <= wSafe && wTilde <= m_c1 * w) {
-                m_d_iterate->deviceCopyTo(*m_d_iterateCandidate);
+                m_d_iterate->deviceCopyToAsync(*m_d_iterateCandidate);
                 wSafe = wTilde + pow(m_c2, iOut);
                 countK1 += 1;
                 break;  // K1
@@ -1213,7 +1217,7 @@ int Cache<T>::runSpockImpl(std::vector<T> &initState, std::vector<T> *previousSo
             /* Safeguard update */
             if (rho >= m_sigma * wTilde * w) {
                 *m_d_residual *= (m_lambda * rho / pow(wTilde, 2));
-                m_d_iteratePrev->deviceCopyTo(*m_d_iterateCandidate);
+                m_d_iteratePrev->deviceCopyToAsync(*m_d_iterateCandidate);
                 *m_d_iterateCandidate -= *m_d_residual;
                 countK2 += 1;
                 break;  // K2

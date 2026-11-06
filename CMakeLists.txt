@@ -39,8 +39,8 @@ target_link_libraries(spock_compiler_flags INTERFACE $<BUILD_INTERFACE:spock_dev
 include(FetchContent)
 FetchContent_Declare(
     gputils
-    URL https://github.com/GPUEngineering/GPUtils/archive/refs/tags/v2.0.0.zip
-    URL_HASH SHA256=4ba677216d0da6023af03f465dacb7cba68574a4fab31a3172a9236f0bf18b86
+    URL https://github.com/GPUEngineering/GPUtils/archive/refs/tags/v2.1.0.zip
+    URL_HASH SHA256=8a742e5c32adc13c9063b5391f0b332e64d7c7274e834e53655e59d2415e0807
     # SPOCK only consumes the headers. GPUtils' standalone CMake project
     # selects its own CUDA compiler, which can cause a reconfiguration loop.
     SOURCE_SUBDIR include

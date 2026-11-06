@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "dynamics.cuh"
 #include <cmath>
+#include <limits>
 #include <type_traits>
 
 template<typename T>
@@ -73,13 +74,41 @@ TYPED_TEST(DynamicsProjectionTest, residentFactorUpdates) {
     ScenarioTree<T> tree(base + "linear/data/");
     Linear<T> projection(tree);
     checkProjectionReferences(projection, tree, base + "linear/data/");
-    const auto tensors = projection.projectionTensors();
-    const std::array<std::string, 8> names = {"BTr", "AB", "K", "KTr", "ABKTr", "P", "APB", "lowCholesky"};
+    // Obsolete resident values must never influence the linear projection.
+    const auto complete = projection.projectionTensors();
+    for (size_t index : {size_t(5),size_t(6)})
+        complete[index]->upload(std::vector<T>(complete[index]->numEl(),std::numeric_limits<T>::quiet_NaN()));
+    const auto tensors = projection.linearUpdateTensors();
+    const auto &names = Dynamics<T>::linearUpdateNames;
     for (size_t i = 0; i < tensors.size(); ++i) {
-        auto replacement = DTensor<T>::parseFromFile(base + "linear_update/data/dynamics_" + names[i] + tree.fpFileExt());
+        auto replacement = DTensor<T>::parseFromFile(base + "linear_update/data/dynamics_" + std::string(names[i]) + tree.fpFileExt());
         replacement.deviceCopyTo(*tensors[i]);
     }
     // The solver's pointer arrays must continue to refer to the resident
     // factors after their values change between MPC optimization problems.
     checkProjectionReferences(projection, tree, base + "linear_update/data/");
+}
+
+TYPED_TEST(DynamicsProjectionTest, linearUpdateLayoutContainsOnlyActiveFactors) {
+    using T = TypeParam;
+    const auto path = std::string(SPOCK_TEST_FIXTURE_DIR) + "dynamics_projection/linear/data/";
+    ScenarioTree<T> tree(path);
+    Linear<T> projection(tree);
+    const auto complete = projection.projectionTensors();
+    const auto active = projection.linearUpdateTensors();
+    ASSERT_EQ(active.size(),6);
+    const std::array<size_t,6> indices = {0,1,2,3,4,7};
+    const std::array<const char *,6> names = {"BTr","AB","K","KTr","ABKTr","lowCholesky"};
+    for (size_t i = 0; i < active.size(); ++i) {
+        EXPECT_EQ(active[i],complete[indices[i]]);
+        EXPECT_STREQ(names[i],Dynamics<T>::linearUpdateNames[i]);
+    }
+}
+
+TYPED_TEST(DynamicsProjectionTest, affineOnlineUpdatesRemainUnsupported) {
+    using T = TypeParam;
+    const auto path = std::string(SPOCK_TEST_FIXTURE_DIR) + "dynamics_projection/affine/data/";
+    ScenarioTree<T> tree(path);
+    Affine<T> projection(tree);
+    EXPECT_THROW(projection.linearUpdateTensors(),std::invalid_argument);
 }

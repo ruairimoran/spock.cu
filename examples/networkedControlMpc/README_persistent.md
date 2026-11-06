@@ -20,15 +20,24 @@ used by Case Study 2; unsupported plants are rejected explicitly.
 
 The stored prediction horizon remains 47 transitions / 48 stages. The
 stored Beta law, costs, constraints, AVaR parameter and tolerances are
-preserved. At startup all eight online dynamics/projection tensors are
-compared with the original factory output before simulation begins.
+preserved. At startup the six transmitted factors and the CPU Riccati `P`
+are compared with the original factory output before simulation begins.
+
+The `linear-v2` update protocol sends only `BTr`, `AB`, `K`, `KTr`, `ABKTr`
+and `lowCholesky`, in that order. The linear GPU projection does not read
+`P` or `APB`: `P` remains CPU workspace for the Riccati recursion, while the
+unused `APB` product is no longer generated online. For the 64-scenario
+case, this reduces each update from 2,530,620,000 to 1,821,900,000 bytes
+(28.0%). Existing static problem files remain supported. Rebuild the
+worker when updating the driver; the startup handshake checks the protocol,
+field shapes and payload size before sending any coefficients.
 
 The original `run_mpc.py` and `networked_mpc` remain available. A process
 already running those continues using the original implementation.
 
 ## Build and run
 
-GPUtils v2.1.0 is pinned by the project and includes the QR-workspace fix
+GPUtils v2.2.0 is pinned by the project and includes the QR-workspace fix
 needed for larger trees. The historical `gputils_qr_workspace.patch` must
 not be applied to this release.
 
@@ -76,6 +85,9 @@ build/venv/bin/python examples/networkedControlMpc/plot_mpc.py \
   problem, whose coefficients were prepared at startup.
 - `update_wall_s`: receiving binary coefficient arrays and uploading them
   into existing buffers, including synchronisation.
+- `dynamics_update_bytes`: coefficient payload sent for this solve; zero
+  when no update is requested. The worker's startup metadata records the
+  protocol and full per-update payload size.
 - `gpu_time_s`: CUDA-event elapsed interval around SPOCK, including
   in-place scratch reset, initial-state upload and host-paced gaps. This
   is an elapsed solve interval, not a sum of active kernel durations.

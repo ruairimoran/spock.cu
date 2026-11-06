@@ -180,13 +180,17 @@ def main():
                "aa_coefficient_rejections", "aa_direction_rejections", "aa_numerical_rejections",
                "aa_last_rank", "aa_last_scale", "aa_last_coefficient_norm", "initial_residual", "final_residual",
                "effective_tolerance", "cp_operator_evaluations", "backtracks"]
-    columns += ["cuda_graphs", "graph_nodes", "graph_launches", "graph_setup_wall_s"]
+    columns += ["cuda_graphs", "graph_nodes", "graph_launches", "graph_setup_wall_s", "dynamics_update_bytes"]
     columns += ["aa_qr_rebuilds", "aa_qr_updates", "aa_qr_reuses", "aa_qr_update_fallbacks",
                 "aa_qr_orthogonality_checks", "aa_qr_last_orthogonality_error"]
     try:
         ready = read_worker_response(worker, "initialisation")
         if not ready.get("ready"):
             raise RuntimeError("Persistent GPU worker did not initialise")
+        if ready.get("dynamics_update_protocol") != online.protocol:
+            raise ValueError("GPU dynamics update protocol differs from the online model; rebuild the worker")
+        if ready.get("dynamics_update_bytes") != online.payload_bytes:
+            raise ValueError("GPU dynamics payload byte count differs from the online model")
         if ready.get("cuda_graphs") != args.cuda_graphs:
             raise RuntimeError("GPU worker does not support the requested CUDA graph mode; rebuild it")
         if ready.get("projection_mode") != args.projections:

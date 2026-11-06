@@ -26,7 +26,7 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_KTr = nullptr;
     std::unique_ptr<DTensor<T>> m_d_ABKTr = nullptr;  ///< (A+BK)'
     std::unique_ptr<DTensor<T>> m_d_P = nullptr;
-    // Retained for compatibility with existing files and online-update payloads.
+    // Retained for compatibility with existing static factor files.
     std::unique_ptr<DTensor<T>> m_d_APB = nullptr;  ///< (A+BK)'PB, unused by projection
     std::unique_ptr<DTensor<T>> m_d_Pe = nullptr;
     std::unique_ptr<DTensor<T>> m_d_lowerCholesky = nullptr;
@@ -169,8 +169,20 @@ protected:
 public:
     virtual ~Dynamics() = default;
 
-    // Fixed-shape numerical data for online updates. Uploading into these
-    // tensors preserves the stage slices and Cholesky solver objects.
+    inline static constexpr std::array<const char *, 6> linearUpdateNames = {
+        "BTr", "AB", "K", "KTr", "ABKTr", "lowCholesky"};
+
+    // These are the only factors read by the current linear projection. P is
+    // needed by the CPU Riccati recursion, but P/APB need no online GPU upload.
+    // Updating values in place retains graph pointers and solver workspaces.
+    std::array<DTensor<T> *, 6> linearUpdateTensors() {
+        if (m_affine) throw std::invalid_argument("Online projection updates currently require linear dynamics");
+        return {m_d_BTr.get(), m_d_AB.get(), m_d_K.get(), m_d_KTr.get(),
+                m_d_ABKTr.get(), m_d_lowerCholesky.get()};
+    }
+
+    // Complete factor set for existing callers and static reference checks.
+    // Persistent linear MPC updates use linearUpdateTensors() instead.
     std::array<DTensor<T> *, 8> projectionTensors() {
         if (m_affine) throw std::invalid_argument("Online projection updates currently require linear dynamics");
         return {m_d_BTr.get(), m_d_AB.get(), m_d_K.get(), m_d_KTr.get(),

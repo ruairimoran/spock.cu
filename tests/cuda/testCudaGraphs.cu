@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <limits>
 #include "cache.cuh"
 #include <array>
 
@@ -125,8 +126,11 @@ void checkGraphDynamics(const std::string &name, bool affine, bool update) {
     for (int version = 0; version < (update ? 2 : 1); ++version) {
         const auto current = version ? base + "linear_update/data/" : path;
         if (version) {
-            const auto factors = projection->projectionTensors();
-            const std::array<const char *, 8> names = {"BTr", "AB", "K", "KTr", "ABKTr", "P", "APB", "lowCholesky"};
+            const auto complete = projection->projectionTensors();
+            for (size_t index : {size_t(5),size_t(6)})
+                complete[index]->upload(std::vector<T>(complete[index]->numEl(),std::numeric_limits<T>::quiet_NaN()));
+            const auto factors = projection->linearUpdateTensors();
+            const auto &names = Dynamics<T>::linearUpdateNames;
             for (size_t i = 0; i < factors.size(); ++i) {
                 auto factor = DTensor<T>::parseFromFile(current + "dynamics_" + names[i] + tree.fpFileExt());
                 factor.deviceCopyTo(*factors[i]);

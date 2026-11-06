@@ -96,8 +96,8 @@ static void writeAndersonDiagnostics(JsonWriter &out, const Cache<double> &cache
     out.Key("backtracks"); out.Uint64(cache.backtracks());
 }
 
-// JSON lines followed, when update=true, by eight little-endian float64
-// arrays in CUDA column-major order. No model files are read after setup.
+// JSON lines followed, when update=true, by the six little-endian float64
+// arrays advertised in ready.fields. P/APB are not part of the update payload.
 int main(int argc, char **argv) {
     if (argc < 4) {
         std::cerr << "Usage: networked_mpc_persistent DATA_DIRECTORY TOLERANCE MAX_TIME_SECONDS [ANDERSON_JSON] [--projections sequential|concurrent] [--cuda-graphs none|s1|cp]\n";
@@ -145,8 +145,10 @@ int main(int argc, char **argv) {
         else builder.legacyAnderson();
         auto cache = builder.build();
         const auto stream = spock::executionStream(cache.solution());
-        auto tensors = problem.dynamics()->projectionTensors();
-        const std::array<const char *, 8> names = {"BTr", "AB", "K", "KTr", "ABKTr", "P", "APB", "lowCholesky"};
+        auto tensors = problem.dynamics()->linearUpdateTensors();
+        const auto &names = Dynamics<double>::linearUpdateNames;
+        size_t payloadBytes = 0;
+        for (const auto *tensor : tensors) payloadBytes += tensor->numEl()*sizeof(double);
         size_t largest = 0;
         for (auto *tensor : tensors) largest = std::max(largest, tensor->numEl());
         std::vector<double> staging(largest);
@@ -161,6 +163,8 @@ int main(int argc, char **argv) {
         rapidjson::Writer<rapidjson::StringBuffer> ready(readyBuffer);
         ready.StartObject();
         ready.Key("ready"); ready.Bool(true);
+        ready.Key("dynamics_update_protocol"); ready.String("linear-v2");
+        ready.Key("dynamics_update_bytes"); ready.Uint64(payloadBytes);
         ready.Key("projection_mode"); ready.String(spock::projectionModeName(cache.projectionMode()));
         ready.Key("cuda_graphs"); ready.String(spock::graphModeName(cache.graphMode()));
         ready.Key("graph_nodes"); ready.Uint64(cache.graphStatistics().nodes);
@@ -207,7 +211,7 @@ int main(int argc, char **argv) {
             const auto updateStart = Clock::now();
             if (request["update"].GetBool()) {
                 if (!request.HasMember("sizes") || !request["sizes"].IsArray() || request["sizes"].Size() != tensors.size())
-                    throw std::runtime_error("Missing dynamics payload sizes");
+                        throw std::runtime_error("Dynamics payload requires the six fields advertised by linear-v2");
                 for (size_t i = 0; i < tensors.size(); ++i)
                     if (!request["sizes"][i].IsUint64() || request["sizes"][i].GetUint64() != tensors[i]->numEl())
                         throw std::runtime_error("Dynamics update dimensions changed");
@@ -249,6 +253,7 @@ int main(int argc, char **argv) {
             out.Key("solver_wall_s"); out.Double(solveSeconds);
             out.Key("setup_wall_s"); out.Double(solves == 0 ? setupSeconds : 0.0);
             out.Key("update_wall_s"); out.Double(updateSeconds);
+            out.Key("dynamics_update_bytes"); out.Uint64(request["update"].GetBool() ? payloadBytes : 0);
             out.Key("worker_wall_s"); out.Double(std::chrono::duration<double>(Clock::now() - requestStart).count());
             out.Key("device_allocated_bytes"); out.Uint64(allocated);
             out.Key("solution_device_pointer"); out.Uint64(reinterpret_cast<uintptr_t>(cache.solution().raw()));

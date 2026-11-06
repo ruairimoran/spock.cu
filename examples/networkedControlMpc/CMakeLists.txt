@@ -50,4 +50,6 @@ if(SPOCK_BUILD_TEST)
     set_tests_properties(spock_qr_workspace PROPERTIES RESOURCE_LOCK spock_gpu)
     add_test(NAME spock_worker_responses
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_worker_responses.py")
+    add_test(NAME spock_online_model
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_online_model.py" -v)
 endif()

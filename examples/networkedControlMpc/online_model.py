@@ -13,7 +13,8 @@ from scipy.linalg import cholesky, cho_solve
 
 
 class OnlineModel:
-    names = ("BTr", "AB", "K", "KTr", "ABKTr", "P", "APB", "lowCholesky")
+    names = ("BTr", "AB", "K", "KTr", "ABKTr", "lowCholesky")
+    protocol = "linear-v2"
 
     def __init__(self, parameters, data):
         self.p = parameters
@@ -37,7 +38,9 @@ class OnlineModel:
         self.nodes, self.nonleaf = len(self.fields["AB"]), len(self.fields["K"])
         self.AB = self.fields["AB"].swapaxes(1, 2)
         self.A, self.B = self.AB[:, :, :self.nx], self.AB[:, :, self.nx:]
-        self.P = self.fields["P"].swapaxes(1, 2)
+        # Retain the old per-matrix column-major layout for the CPU recursion.
+        # P is private workspace; neither it nor APB belongs in the wire payload.
+        self.P = np.zeros((self.nodes, self.nx, self.nx), dtype="<f8").swapaxes(1, 2)
         self.K = self.fields["K"].swapaxes(1, 2)
         self.identity_x, self.identity_u = np.eye(self.nx), np.eye(self.nu)
         config = json.loads((self.data / "data.json").read_text())
@@ -102,16 +105,17 @@ class OnlineModel:
                     self.fields["ABKTr"][child] = combined
                     atp = combined.T @ self.P[child]
                     sum_p += atp @ combined
-                    self.fields["APB"][child] = (atp @ self.B[child]).T
                 self.P[parent] = self.identity_x + self.K[parent].T @ self.K[parent] + sum_p
-        if not all(np.isfinite(array).all() for array in self.fields.values()):
+        if not np.isfinite(self.P).all() or not all(np.isfinite(array).all() for array in self.fields.values()):
             raise ValueError("Nonfinite online dynamics/projection data")
         return time.perf_counter() - begin
 
     def compare_reference(self, data=None):
         data = Path(data) if data is not None else self.data
         errors = {}
-        for name, array in self.fields.items():
+        # Audit the CPU-only Riccati factors as well as the transmitted fields.
+        arrays = {**self.fields, "P": self.P.swapaxes(1, 2)}
+        for name, array in arrays.items():
             if name == "KTr":
                 k = self.fields["K"]
                 reference = np.fromfile(data / "dynamics_K_d.bt", dtype="<f8", offset=24).reshape(k.shape).swapaxes(1, 2)
@@ -122,6 +126,10 @@ class OnlineModel:
             np.testing.assert_allclose(array, reference, rtol=2e-10, atol=1e-9,
                                        err_msg=f"Online {name} differs from the original factory")
         return errors
+
+    @property
+    def payload_bytes(self):
+        return sum(array.nbytes for array in self.fields.values())
 
     def write_payload(self, stream):
         # memoryview avoids creating a multi-gigabyte bytes object.

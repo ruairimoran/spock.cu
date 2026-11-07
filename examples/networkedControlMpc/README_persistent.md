@@ -237,13 +237,29 @@ build/venv/bin/python -u examples/networkedControlMpc/run_mpc_persistent.py \
   --output build/mpc_tree64_partial4 \
   --trajectories 15 --steps 20 --seed 20261103 --branching 8 8 \
   --anderson regularized --aa-qr update --diagonal-costs \
-  --projections sequential --cuda-graphs cp --partial-lifting 4
+  --projections sequential --cuda-graphs cp --partial-lifting 4 \
+  --partial-lifting-backward-warps 8
 ```
 
 Use a fresh output directory for each schedule. Both `s1` and `cp` graph modes
 are supported. The fixed-input benchmark accepts an optional final block-size
 argument, for example `... DATA output.bt s1 graph 100 8`; use an output name
 ending in `.bt` to save binary tensor data.
+
+The Case Study 2 Python driver and persistent C++ worker select eight warps per
+local backward CUDA block by default. Use `--partial-lifting-backward-warps 4`
+to select the original launch width. Both choices use eight forward warps and
+the original single accumulator. This option affects blocked partial lifting
+only: the default fused schedule (`--partial-lifting 0`) and the diagnostic
+reordered stage schedule (`1`) have no local segment kernels. Select the warp
+count before constructing/capturing the solver; it is fixed for its lifetime.
+
+Startup metadata, solve replies, `parameters.json` and the timing CSV record
+`partial_lifting_backward_warps`. The Python driver verifies that the worker
+reports the requested count. Rebuild the worker when using the updated driver.
+The fixed-input benchmark accepts `[BLOCK_SIZE [BACKWARD_WARPS]]`; for example,
+`... DATA output.bt cp graph 100 4 8` measures B=4 with eight backward warps.
+Its default warp count remains four for comparison with existing benchmarks.
 
 The implementation finds the common single-child suffix after the last
 branching stage. It keeps the branching prefix on stage sweeps, divides each
@@ -262,9 +278,13 @@ Unsupported state dimensions are rejected during configuration. All data and
 workspaces remain allocated throughout the MPC simulation.
 
 Configure the C++ interface with
-`problem.dynamics()->configurePartialLifting(4)` before constructing the cache.
+`problem.dynamics()->configurePartialLifting(4, 8)` before constructing the cache
+to select B=4 and eight backward warps. The general C++ API retains a default of
+four warps: `configurePartialLifting(4)` is equivalent to
+`configurePartialLifting(4, 4)`. The configured width is also available through
+`partialLiftingStatistics().backwardWarps` when partial lifting is configured.
 Reconfiguration after the first projection or graph capture is rejected because
-graphs retain fixed addresses. After changing projection factors in place, call
+graphs retain fixed addresses and launch dimensions. After changing projection factors in place, call
 `problem.dynamics()->refreshProjectionFactors()` on their execution stream
 before the next projection. This enqueues preparation without allocating new
 storage. The persistent worker does this automatically after each linear MPC

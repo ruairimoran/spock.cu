@@ -301,7 +301,8 @@ __device__ void chainMatVec(const T *fTranspose, const T *value, T *result,
  * `grid.x`, with `grid.y = grid.z = 1`. There is no extra-block bounds check.
  * Use block dimensions `(32, W, 1)` with W positive and allocate at least
  * `2 * states * sizeof(T)` bytes of dynamic shared memory, within the device's
- * per-block limit. The host launcher currently uses W=8 forward and W=4 backward.
+ * per-block limit. The host launcher uses W=8 forward and a configured W=4 or 8
+ * backward, selected before graph capture.
  * @pre In reconstruction mode, the coarse boundary sweep has completed before
  * launch. Summary mode requires only the source and edge-factor arrays.
  * @note Synchronization inside a segment protects its two shared vectors;

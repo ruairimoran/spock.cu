@@ -100,7 +100,7 @@ static void writeAndersonDiagnostics(JsonWriter &out, const Cache<double> &cache
 // arrays advertised in ready.fields. P/APB are not part of the update payload.
 int main(int argc, char **argv) {
     if (argc < 4) {
-        std::cerr << "Usage: networked_mpc_persistent DATA_DIRECTORY TOLERANCE MAX_TIME_SECONDS [ANDERSON_JSON] [--projections sequential|concurrent] [--cuda-graphs none|s1|cp] [--partial-lifting 0|1|2|3|4|5|8]\n";
+        std::cerr << "Usage: networked_mpc_persistent DATA_DIRECTORY TOLERANCE MAX_TIME_SECONDS [ANDERSON_JSON] [--projections sequential|concurrent] [--cuda-graphs none|s1|cp] [--partial-lifting 0|1|2|3|4|5|8] [--partial-lifting-backward-warps 4|8]\n";
         return 2;
     }
     static_assert(std::endian::native == std::endian::little);
@@ -113,6 +113,7 @@ int main(int argc, char **argv) {
         auto projections = spock::ProjectionMode::sequential;
         auto graphs = spock::GraphMode::none;
         size_t partialBlock = 0;
+        size_t partialBackwardWarps = 8;  // Measured choice for this Case Study 2 example.
         for (int arg = 4; arg < argc; ++arg) {
             const std::string option = argv[arg];
             if (option == "--projections") {
@@ -128,6 +129,12 @@ int main(int argc, char **argv) {
                     && value != "4" && value != "5" && value != "8")
                     throw std::invalid_argument("Partial lifting accepts 0, 1, 2, 3, 4, 5 or 8");
                 partialBlock = std::stoul(value);
+            } else if (option == "--partial-lifting-backward-warps") {
+                if (++arg >= argc) throw std::invalid_argument("Missing partial-lifting backward warp count");
+                const std::string value = argv[arg];
+                if (value != "4" && value != "8")
+                    throw std::invalid_argument("Partial lifting backward warps must be 4 or 8");
+                partialBackwardWarps = std::stoul(value);
             } else if (option == "--cuda-graphs") {
                 if (++arg >= argc) throw std::invalid_argument("Missing CUDA graph mode");
                 const std::string mode = argv[arg];
@@ -147,7 +154,7 @@ int main(int argc, char **argv) {
         checked(cudaFree(nullptr));
         ScenarioTree<double> tree(path);
         ProblemData<double> problem(tree);
-        problem.dynamics()->configurePartialLifting(partialBlock);
+        problem.dynamics()->configurePartialLifting(partialBlock, partialBackwardWarps);
         const auto lifting = problem.dynamics()->partialLiftingStatistics();
         CacheBuilder<double> builder(tree, problem);
         builder.tol(tol).maxTimeSecs(maxTime).projectionMode(projections).cudaGraphs(graphs);
@@ -176,6 +183,7 @@ int main(int argc, char **argv) {
         ready.Key("dynamics_update_protocol"); ready.String("linear-v2");
         ready.Key("dynamics_update_bytes"); ready.Uint64(payloadBytes);
         ready.Key("partial_lifting_block_size"); ready.Uint64(partialBlock);
+        ready.Key("partial_lifting_backward_warps"); ready.Uint64(partialBackwardWarps);
         ready.Key("partial_lifting_active"); ready.Bool(lifting.chains != 0);
         ready.Key("partial_lifting_device_bytes"); ready.Uint64(lifting.allocatedBytes);
         ready.Key("partial_lifting_matrix_bytes"); ready.Uint64(lifting.matrixBytes);
@@ -278,6 +286,7 @@ int main(int argc, char **argv) {
             out.Key("solver_wall_s"); out.Double(solveSeconds);
             out.Key("setup_wall_s"); out.Double(solves == 0 ? setupSeconds : 0.0);
             out.Key("partial_lifting_block_size"); out.Uint64(partialBlock);
+            out.Key("partial_lifting_backward_warps"); out.Uint64(partialBackwardWarps);
             out.Key("partial_lifting_update_wall_s"); out.Double(liftingUpdateSeconds);
             out.Key("update_wall_s"); out.Double(updateSeconds);
             out.Key("dynamics_update_bytes"); out.Uint64(request["update"].GetBool() ? payloadBytes : 0);

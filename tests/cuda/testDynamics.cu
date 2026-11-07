@@ -52,13 +52,15 @@ void checkProjectionReferences(Dynamics<T> &projection, ScenarioTree<T> &tree, c
 }
 
 template<typename T>
-void checkDynamicsFixture(const std::string &name, bool affine, size_t blockSize = 0) {
+void checkDynamicsFixture(const std::string &name, bool affine, size_t blockSize = 0,
+                          size_t backwardWarps = 4) {
     const std::string path = std::string(SPOCK_TEST_FIXTURE_DIR) + "dynamics_projection/" + name + "/data/";
     ScenarioTree<T> tree(path);
     std::unique_ptr<Dynamics<T>> projection;
     if (affine) projection = std::make_unique<Affine<T>>(tree);
     else projection = std::make_unique<Linear<T>>(tree);
-    projection->configurePartialLifting(blockSize);
+    projection->configurePartialLifting(blockSize, backwardWarps);
+    if (blockSize) EXPECT_EQ(projection->partialLiftingStatistics().backwardWarps, backwardWarps);
     checkProjectionReferences(*projection, tree, path);
 }
 
@@ -116,14 +118,18 @@ TYPED_TEST(DynamicsProjectionTest, affineOnlineUpdatesRemainUnsupported) {
 }
 
 TYPED_TEST(DynamicsProjectionTest, partialLiftingDenseReferencesAndRemainders) {
-    for (size_t blockSize : {size_t(1), size_t(2), size_t(3), size_t(4), size_t(5), size_t(8)}) {
-        SCOPED_TRACE("block size " + std::to_string(blockSize));
-        checkDynamicsFixture<TypeParam>("chain", false, blockSize);
-        checkDynamicsFixture<TypeParam>("affine_tail", true, blockSize);
-        checkDynamicsFixture<TypeParam>("tail_tiled", true, blockSize);
-        checkDynamicsFixture<TypeParam>("scalar", true, blockSize);
-        checkDynamicsFixture<TypeParam>("wide", false, blockSize);
-        checkDynamicsFixture<TypeParam>("affine", true, blockSize);  // No unary suffix: stage fallback.
+    for (size_t backwardWarps : {size_t(4), size_t(8)}) {
+        SCOPED_TRACE("backward warps " + std::to_string(backwardWarps));
+        for (size_t blockSize : {size_t(1), size_t(2), size_t(3), size_t(4), size_t(5), size_t(8)}) {
+            SCOPED_TRACE("block size " + std::to_string(blockSize));
+            checkDynamicsFixture<TypeParam>("chain", false, blockSize, backwardWarps);
+            checkDynamicsFixture<TypeParam>("affine_tail", true, blockSize, backwardWarps);
+            checkDynamicsFixture<TypeParam>("tail_tiled", true, blockSize, backwardWarps);
+            checkDynamicsFixture<TypeParam>("scalar", true, blockSize, backwardWarps);
+            checkDynamicsFixture<TypeParam>("wide", false, blockSize, backwardWarps);
+            // No unary suffix: the original stage implementation is used.
+            checkDynamicsFixture<TypeParam>("affine", true, blockSize, backwardWarps);
+        }
     }
 }
 
@@ -160,6 +166,7 @@ TYPED_TEST(DynamicsProjectionTest, partialLiftingConfigurationAndStorage) {
     const size_t allocated = Session::getInstance().totalAllocatedBytes();
     projection.configurePartialLifting(4);
     const auto info = projection.partialLiftingStatistics();
+    EXPECT_EQ(info.backwardWarps, 4);  // Existing one-argument callers retain four warps.
     EXPECT_EQ(info.tailStage, 2);
     EXPECT_EQ(info.chains, 4);
     EXPECT_EQ(info.chainLength, 9);
@@ -169,6 +176,23 @@ TYPED_TEST(DynamicsProjectionTest, partialLiftingConfigurationAndStorage) {
     EXPECT_THROW(projection.configurePartialLifting(8), std::logic_error);
     checkProjectionReferences(projection, tree, base + "affine_tail/data/");
     EXPECT_THROW(projection.configurePartialLifting(0), std::logic_error);
+}
+
+TYPED_TEST(DynamicsProjectionTest, partialLiftingBackwardWarpConfiguration) {
+    using T = TypeParam;
+    const auto path = std::string(SPOCK_TEST_FIXTURE_DIR) + "dynamics_projection/affine_tail/data/";
+    ScenarioTree<T> tree(path);
+    Affine<T> projection(tree);
+    const size_t before = Session::getInstance().totalAllocatedBytes();
+    for (size_t invalid : {size_t(0), size_t(2), size_t(16)}) {
+        EXPECT_THROW(projection.configurePartialLifting(4, invalid), std::invalid_argument);
+        EXPECT_THROW(projection.configurePartialLifting(0, invalid), std::invalid_argument);
+    }
+    EXPECT_EQ(Session::getInstance().totalAllocatedBytes(), before);
+    projection.configurePartialLifting(4, 8);
+    EXPECT_EQ(projection.partialLiftingStatistics().backwardWarps, 8);
+    checkProjectionReferences(projection, tree, path);
+    EXPECT_THROW(projection.configurePartialLifting(4, 4), std::logic_error);
 }
 
 TYPED_TEST(DynamicsProjectionTest, partialLiftingTwoEdgeStorage) {

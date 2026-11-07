@@ -10,11 +10,17 @@ namespace spock {
 struct PartialLiftingStatistics {
     size_t blockSize = 0, tailStage = 0, chainLength = 0, chains = 0, blocks = 0;
     size_t matrixBytes = 0, scratchBytes = 0, allocatedBytes = 0;
+    size_t backwardWarps = 4;  ///< Local backward launch width; unused by B=0/1.
 };
 
-// Experimental blocking of the common unary suffix. Topology and storage are
-// fixed at construction; refresh() changes only matrix values, keeping captured
-// graph addresses valid. The stage path is retained when the suffix is empty.
+/**
+ * @brief Blocked projection recurrences on the common unary tree suffix.
+ * @tparam T Real floating-point scalar type; float and double are supported.
+ *
+ * Topology, storage and launch dimensions are fixed at construction. refresh()
+ * changes only matrix values, keeping captured graph addresses valid. The stage
+ * path is retained when the suffix is empty.
+ */
 template<typename T>
 class PartialLifting {
     ScenarioTree<T> &m_tree;
@@ -25,7 +31,7 @@ class PartialLifting {
 
     template<bool Forward, bool Reconstruct>
     void local(DTensor<T> &values, const DTensor<T> &sources, const DTensor<T> &fTranspose) {
-        detail::localChainRecurrence<T, Forward, Reconstruct><<<m_stats.blocks, dim3(32, Forward ? 8 : 4),
+        detail::localChainRecurrence<T, Forward, Reconstruct><<<m_stats.blocks, dim3(32, Forward ? 8 : m_stats.backwardWarps),
             2 * m_tree.numStates() * sizeof(T), executionStream(values)>>>(
                 values.raw(), m_offsets->raw(), sources.raw(), fTranspose.raw(), m_nodes->raw(),
                 m_tree.numStates(), m_stats.chains, m_stats.chainLength, m_stats.blockSize);
@@ -45,11 +51,26 @@ class PartialLifting {
     }
 
 public:
-    PartialLifting(ScenarioTree<T> &tree, DTensor<T> &fTranspose, size_t blockSize) : m_tree(tree) {
+    /**
+     * @brief Allocate persistent segment data and prepare the initial block maps.
+     * @param[in] tree Scenario tree, which must outlive this object.
+     * @param[in] fTranspose Node-indexed, column-major closed-loop factors F_j^T.
+     * @param[in] blockSize Segment edge count, or 1 for the reordered stage path.
+     * @param[in] backwardWarps Warps per local backward CUDA block: 4 or 8.
+     *                         The general default remains 4. Forward local
+     *                         kernels always use 8; boundary kernels use 4.
+     * @throws std::invalid_argument If either launch setting is unsupported or
+     * the required shared state vectors exceed the device's per-block limit.
+     */
+    PartialLifting(ScenarioTree<T> &tree, DTensor<T> &fTranspose, size_t blockSize,
+                   size_t backwardWarps = 4) : m_tree(tree) {
         if (blockSize != 1 && blockSize != 2 && blockSize != 3
             && blockSize != 4 && blockSize != 5 && blockSize != 8)
             throw std::invalid_argument("Partial lifting supports B=2/3/4/5/8 or the B=1 stage baseline");
+        if (backwardWarps != 4 && backwardWarps != 8)
+            throw std::invalid_argument("Partial lifting backward warps must be 4 or 8");
         m_stats.blockSize = blockSize;
+        m_stats.backwardWarps = backwardWarps;
         for (size_t stage = 0; stage < tree.numStagesMinus1(); ++stage)
             for (size_t node = tree.stageFrom()[stage]; node <= tree.stageTo()[stage]; ++node)
                 if (tree.numChildren()[node] != 1) m_stats.tailStage = stage + 1;

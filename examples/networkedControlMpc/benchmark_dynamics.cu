@@ -19,8 +19,8 @@ public:
 };
 
 int main(int argc, char **argv) {
-    if (argc != 6 && argc != 7) {
-        std::cerr << "Usage: benchmark_dynamics DATA OUTPUT s1|cp eager|graph SAMPLES [BLOCK_SIZE]\n";
+    if (argc < 6 || argc > 8) {
+        std::cerr << "Usage: benchmark_dynamics DATA OUTPUT s1|cp eager|graph SAMPLES [BLOCK_SIZE [BACKWARD_WARPS]]\n";
         return 2;
     }
     std::string path = argv[1];
@@ -29,17 +29,20 @@ int main(int argc, char **argv) {
     if ((operation != "s1" && operation != "cp") || (mode != "eager" && mode != "graph")) return 2;
     const int samples = std::stoi(argv[5]);
     if (samples < 1) return 2;
+    const std::string backwardArgument = argc == 8 ? argv[7] : "4";
+    if (backwardArgument != "4" && backwardArgument != "8") return 2;
+    const size_t backwardWarps = std::stoul(backwardArgument);
     const bool cp = operation == "cp";
     Session::setStreams(2);
     ScenarioTree<double> tree(path);
     ProblemData<double> data(tree);
-    const size_t blockSize = argc == 7 ? std::stoul(argv[6]) : 0;
+    const size_t blockSize = argc >= 7 ? std::stoul(argv[6]) : 0;
     const auto setupStream = spock::executionStream(tree.d_ancestors());
     gpuErrChk(cudaStreamSynchronize(setupStream));
     size_t freeBefore, totalMemory, freeAfter;
     gpuErrChk(cudaMemGetInfo(&freeBefore, &totalMemory));
     const auto setupStart = std::chrono::steady_clock::now();
-    data.dynamics()->configurePartialLifting(blockSize);
+    data.dynamics()->configurePartialLifting(blockSize, backwardWarps);
     gpuErrChk(cudaStreamSynchronize(setupStream));
     gpuErrChk(cudaMemGetInfo(&freeAfter, &totalMemory));
     const double summarySetupMs = std::chrono::duration<double, std::milli>(
@@ -91,6 +94,7 @@ int main(int argc, char **argv) {
         std::chrono::steady_clock::now() - updateStart).count() / 5;
     std::cout << "],\"device_bytes\":" << allocated
               << ",\"block_size\":" << blockSize << ",\"lifting_device_bytes\":" << lifting.allocatedBytes
+              << ",\"backward_warps\":" << backwardWarps
               << ",\"lifting_cuda_setup_delta_bytes\":" << (freeBefore >= freeAfter ? freeBefore - freeAfter : 0)
               << ",\"lifting_matrix_bytes\":" << lifting.matrixBytes
               << ",\"lifting_scratch_bytes\":" << lifting.scratchBytes

@@ -59,6 +59,8 @@ def main():
                         help="Capture sequential S1 or the complete CP operator (default: none)")
     parser.add_argument("--partial-lifting", type=int, choices=(0, 1, 2, 3, 4, 5, 8), default=0,
                         help="Dynamics schedule: 0=fused stages, 1=reordered stages, 2/3/4/5/8=blocked unary suffix")
+    parser.add_argument("--partial-lifting-backward-warps", type=int, choices=(4, 8), default=8,
+                        help="Warps per local backward block when partial lifting is enabled (default: 8 for Case Study 2)")
     parser.add_argument("--aa-fit", choices=("gpu", "cpu"), default="gpu",
                         help="Reduced filtering/SVD/coefficient backend (default: gpu)")
     parser.add_argument("--aa-regularization", type=float, default=1e-8,
@@ -141,6 +143,7 @@ def main():
         "anderson": anderson, "projection_mode": args.projections, "cuda_graphs": args.cuda_graphs,
         "diagonal_costs": args.diagonal_costs, "cost_factor_structures": cost_structures,
         "partial_lifting_block_size": args.partial_lifting,
+        "partial_lifting_backward_warps": args.partial_lifting_backward_warps,
         "trajectories": args.trajectories, "steps": args.steps, "seed": args.seed,
         "physical_states": p["num_states"], "augmented_states": p["state_size"], "inputs": p["num_inputs"],
         "prediction_transitions": len(p["branching"]), "branching": p["branching"],
@@ -176,6 +179,7 @@ def main():
                    json.dumps(anderson), "--projections", args.projections, "--cuda-graphs", args.cuda_graphs]
     if args.partial_lifting:
         worker_args += ["--partial-lifting", str(args.partial_lifting)]
+    worker_args += ["--partial-lifting-backward-warps", str(args.partial_lifting_backward_warps)]
     worker = subprocess.Popen(worker_args, cwd=repo, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
     columns = ["trajectory", "step", "seed", "warm_start", "converged", "status", "gpu_time_s", "solver_wall_s",
@@ -187,7 +191,7 @@ def main():
                "aa_last_rank", "aa_last_scale", "aa_last_coefficient_norm", "initial_residual", "final_residual",
                "effective_tolerance", "cp_operator_evaluations", "backtracks"]
     columns += ["cuda_graphs", "graph_nodes", "graph_launches", "graph_setup_wall_s", "dynamics_update_bytes"]
-    columns += ["partial_lifting_block_size", "partial_lifting_update_wall_s"]
+    columns += ["partial_lifting_block_size", "partial_lifting_backward_warps", "partial_lifting_update_wall_s"]
     columns += ["aa_qr_rebuilds", "aa_qr_updates", "aa_qr_reuses", "aa_qr_update_fallbacks",
                 "aa_qr_orthogonality_checks", "aa_qr_last_orthogonality_error"]
     try:
@@ -200,6 +204,8 @@ def main():
             raise ValueError("GPU dynamics payload byte count differs from the online model")
         if ready.get("partial_lifting_block_size", 0) != args.partial_lifting:
             raise ValueError("GPU worker does not support the requested partial-lifting schedule; rebuild it")
+        if ready.get("partial_lifting_backward_warps") != args.partial_lifting_backward_warps:
+            raise ValueError("GPU worker does not support the requested backward warp count; rebuild it")
         if ready.get("cuda_graphs") != args.cuda_graphs:
             raise RuntimeError("GPU worker does not support the requested CUDA graph mode; rebuild it")
         if ready.get("projection_mode") != args.projections:
@@ -213,6 +219,7 @@ def main():
         if args.partial_lifting:
             print(f"Dynamics schedule B={args.partial_lifting}: "
                   f"{ready.get('partial_lifting_blocks', 0)} blocks, "
+                  f"{ready['partial_lifting_backward_warps']} backward warps, "
                   f"{ready.get('partial_lifting_device_bytes', 0)/2**20:.2f} MiB additional GPU storage", flush=True)
         print(f"GPU storage allocated once: {ready['device_allocated_bytes']/2**30:.3f} GiB of tracked tensors", flush=True)
         with (output / "mpc_gpu_timings.csv").open("w", newline="") as stream:

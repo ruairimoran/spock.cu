@@ -214,18 +214,31 @@ protected:
 public:
     virtual ~Dynamics() = default;
 
-    // Configure before constructing a Cache: captured graphs retain workspace
-    // addresses. B=0 selects the original schedule; B=1 is the reordered stage
-    // baseline, while B=2/3/4/5/8 enable the experimental blocked unary suffix.
-    void configurePartialLifting(size_t blockSize) {
+    /**
+     * @brief Select a dynamics-projection schedule and its local backward width.
+     * @param[in] blockSize Zero selects fused stages, 1 selects reordered stages,
+     *                     and 2/3/4/5/8 select blocked unary-suffix recurrences.
+     * @param[in] backwardWarps Warps per local backward CUDA block: 4 or 8.
+     *                         Defaults to 4 for existing/general callers. This
+     *                         setting has no effect for blockSize 0 or 1.
+     * @pre Call before constructing a Cache or starting any projection. Captured
+     * graphs retain both workspace addresses and kernel launch dimensions.
+     * @throws std::invalid_argument If a block size or warp count is unsupported.
+     * @throws std::logic_error If a second nonzero configuration is requested,
+     * or any projection has started.
+     */
+    void configurePartialLifting(size_t blockSize, size_t backwardWarps = 4) {
         if (m_projectionStarted)
             throw std::logic_error("Configure partial lifting before the first projection or graph capture");
         if (blockSize != 0 && blockSize != 1 && blockSize != 2 && blockSize != 3
             && blockSize != 4 && blockSize != 5 && blockSize != 8)
             throw std::invalid_argument("Partial lifting block size must be 0, 1, 2, 3, 4, 5 or 8");
+        if (backwardWarps != 4 && backwardWarps != 8)
+            throw std::invalid_argument("Partial lifting backward warps must be 4 or 8");
         if (!blockSize) { m_partialLifting.reset(); return; }
         if (m_partialLifting) throw std::logic_error("Partial lifting is already configured");
-        m_partialLifting = std::make_unique<spock::PartialLifting<T>>(m_tree, *m_d_ABKTr, blockSize);
+        m_partialLifting = std::make_unique<spock::PartialLifting<T>>(
+            m_tree, *m_d_ABKTr, blockSize, backwardWarps);
     }
 
     spock::PartialLiftingStatistics partialLiftingStatistics() const {

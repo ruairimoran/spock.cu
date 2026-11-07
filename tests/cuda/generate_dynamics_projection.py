@@ -134,6 +134,15 @@ def main():
     generate(destination / "linear_update", irregular, 5, 3, seed=928)
     # Cross the 128-column vector tile and the 32-row output tile boundaries.
     generate(destination / "tiled", [-1, 0, 0, 1, 2], 133, 37, affine=True, seed=803)
+    generate(destination / "chain_update", [-1] + list(range(12)), 5, 3, seed=928)
+    tail = irregular.copy()
+    frontier = list(range(4, 8))
+    for _ in range(9):
+        first = len(tail)
+        tail.extend(frontier)
+        frontier = list(range(first, len(tail)))
+    generate(destination / "affine_tail", tail, 5, 3, affine=True, scaled=True, seed=715)
+    generate(destination / "tail_tiled", [-1] + list(range(6)), 133, 7, affine=True, seed=719)
 
 
 if __name__ == "__main__":

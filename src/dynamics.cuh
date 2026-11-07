@@ -4,6 +4,7 @@
 #include "../include/gpu.cuh"
 #include "tree.cuh"
 #include "dynamics_kernels.cuh"
+#include "partial_lifting.cuh"
 #include <array>
 
 
@@ -39,6 +40,44 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_workU = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workXU = nullptr;
 
+    std::unique_ptr<spock::PartialLifting<T>> m_partialLifting;
+    bool m_projectionStarted = false;
+
+    void projectWithPartialLifting(DTensor<T> &initState, DTensor<T> &states, DTensor<T> &inputs) {
+        const auto stream = spock::commonStream(initState, states, inputs, *m_d_q, *m_d_d,
+            *m_d_workX, *m_d_workU, *m_d_KTr, *m_d_AB, m_tree.d_ancestors());
+        // Solve for y = q + P c. Its sources are -x_bar - K' u_bar + P c,
+        // so affine contributions need no separate child traversal.
+        states.deviceCopyToAsync(*m_d_workX);
+        *m_d_workX *= -1.;
+        if (m_affine) *m_d_workX += *m_d_Pe;
+        DTensor<T> sources(*m_d_workX, m_matAxis, 0, m_tree.numNonleafNodesMinus1());
+        sources.addAB(*m_d_KTr, inputs, -1., 1.);
+        m_partialLifting->backward(*m_d_q, *m_d_workX, *m_d_ABKTr);
+        DTensor<T> bTranspose(*m_d_BTr, m_matAxis, 1, m_tree.numNodesMinus1());
+        DTensor<T> childY(*m_d_q, m_matAxis, 1, m_tree.numNodesMinus1());
+        DTensor<T> childInputs(*m_d_workU, m_matAxis, 1, m_tree.numNodesMinus1());
+        childInputs.addAB(bTranspose, childY);
+        const size_t count = m_tree.numNonleafNodes() * m_tree.numInputs();
+        spock::detail::reduceBackwardContributions<T><<<numBlocks(count, size_t(256)), 256, 0, stream>>>(
+            m_d_d->raw(), m_d_q->raw(), inputs.raw(), m_d_workU->raw(), nullptr,
+            m_tree.d_childFrom().raw(), m_tree.d_numChildren().raw(),
+            m_tree.numStates(), m_tree.numInputs(), 0, m_tree.numNonleafNodes(), false);
+        gpuErrChk(cudaPeekAtLastError());
+        m_choleskyBatch->solve(*m_d_d);
+        // The source workspace is now free to hold all B d_parent + c offsets.
+        const size_t entries = m_tree.numNodesMinus1() * m_tree.numStates();
+        spock::detail::dynamicsInputOffsets<<<numBlocks(entries, size_t(256)), 256, 0, stream>>>(
+            m_d_workX->raw(), m_d_AB->raw(), m_d_d->raw(), m_affine ? m_d_e->raw() : nullptr,
+            m_tree.d_ancestors().raw(), m_tree.numStates(), m_tree.numInputs(), m_tree.numNodes());
+        gpuErrChk(cudaPeekAtLastError());
+        memCpyNode2Node(states, initState, 0, 0, m_tree.numStates());
+        m_partialLifting->forward(states, *m_d_workX, *m_d_ABKTr);
+        DTensor<T> nonleafStates(states, m_matAxis, 0, m_tree.numNonleafNodesMinus1());
+        inputs.addAB(*m_d_K, nonleafStates);
+        inputs += *m_d_d;
+    }
+
     explicit Dynamics(ScenarioTree<T> &tree) : m_tree(tree) {
         /* Read projection data from files */
         m_d_BTr = std::make_unique<DTensor<T>>(
@@ -68,6 +107,11 @@ protected:
     }
 
     void projectOnDynamics(DTensor<T> &initState, DTensor<T> &states, DTensor<T> &inputs) {
+        m_projectionStarted = true;
+        if (m_partialLifting && m_partialLifting->active()) {
+            projectWithPartialLifting(initState, states, inputs);
+            return;
+        }
         const auto stream = spock::commonStream(initState, states, inputs,
             *m_d_q, *m_d_d, *m_d_lowerCholesky, *m_d_BTr, *m_d_ABKTr,
             *m_d_workU, *m_d_workX, m_tree.d_childFrom(), m_tree.d_numChildren());
@@ -169,6 +213,30 @@ protected:
 
 public:
     virtual ~Dynamics() = default;
+
+    // Configure before constructing a Cache: captured graphs retain workspace
+    // addresses. B=0 selects the original schedule; B=1 is the reordered stage
+    // baseline, while B=2/3/4/5/8 enable the experimental blocked unary suffix.
+    void configurePartialLifting(size_t blockSize) {
+        if (m_projectionStarted)
+            throw std::logic_error("Configure partial lifting before the first projection or graph capture");
+        if (blockSize != 0 && blockSize != 1 && blockSize != 2 && blockSize != 3
+            && blockSize != 4 && blockSize != 5 && blockSize != 8)
+            throw std::invalid_argument("Partial lifting block size must be 0, 1, 2, 3, 4, 5 or 8");
+        if (!blockSize) { m_partialLifting.reset(); return; }
+        if (m_partialLifting) throw std::logic_error("Partial lifting is already configured");
+        m_partialLifting = std::make_unique<spock::PartialLifting<T>>(m_tree, *m_d_ABKTr, blockSize);
+    }
+
+    spock::PartialLiftingStatistics partialLiftingStatistics() const {
+        return m_partialLifting ? m_partialLifting->statistics() : spock::PartialLiftingStatistics{};
+    }
+
+    // Call after in-place factor updates and before replaying a captured graph.
+    // The method enqueues work on the factors' stream and allocates no storage.
+    void refreshProjectionFactors() {
+        if (m_partialLifting) m_partialLifting->refresh(*m_d_ABKTr);
+    }
 
     inline static constexpr std::array<const char *, 6> linearUpdateNames = {
         "BTr", "AB", "K", "KTr", "ABKTr", "lowCholesky"};

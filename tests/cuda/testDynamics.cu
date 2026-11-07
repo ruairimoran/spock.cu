@@ -52,12 +52,13 @@ void checkProjectionReferences(Dynamics<T> &projection, ScenarioTree<T> &tree, c
 }
 
 template<typename T>
-void checkDynamicsFixture(const std::string &name, bool affine) {
+void checkDynamicsFixture(const std::string &name, bool affine, size_t blockSize = 0) {
     const std::string path = std::string(SPOCK_TEST_FIXTURE_DIR) + "dynamics_projection/" + name + "/data/";
     ScenarioTree<T> tree(path);
     std::unique_ptr<Dynamics<T>> projection;
     if (affine) projection = std::make_unique<Affine<T>>(tree);
     else projection = std::make_unique<Linear<T>>(tree);
+    projection->configurePartialLifting(blockSize);
     checkProjectionReferences(*projection, tree, path);
 }
 
@@ -112,4 +113,101 @@ TYPED_TEST(DynamicsProjectionTest, affineOnlineUpdatesRemainUnsupported) {
     ScenarioTree<T> tree(path);
     Affine<T> projection(tree);
     EXPECT_THROW(projection.linearUpdateTensors(),std::invalid_argument);
+}
+
+TYPED_TEST(DynamicsProjectionTest, partialLiftingDenseReferencesAndRemainders) {
+    for (size_t blockSize : {size_t(1), size_t(2), size_t(3), size_t(4), size_t(5), size_t(8)}) {
+        SCOPED_TRACE("block size " + std::to_string(blockSize));
+        checkDynamicsFixture<TypeParam>("chain", false, blockSize);
+        checkDynamicsFixture<TypeParam>("affine_tail", true, blockSize);
+        checkDynamicsFixture<TypeParam>("tail_tiled", true, blockSize);
+        checkDynamicsFixture<TypeParam>("scalar", true, blockSize);
+        checkDynamicsFixture<TypeParam>("wide", false, blockSize);
+        checkDynamicsFixture<TypeParam>("affine", true, blockSize);  // No unary suffix: stage fallback.
+    }
+}
+
+TYPED_TEST(DynamicsProjectionTest, partialLiftingResidentFactorUpdates) {
+    using T = TypeParam;
+    const auto base = std::string(SPOCK_TEST_FIXTURE_DIR) + "dynamics_projection/";
+    for (size_t blockSize : {size_t(1), size_t(2), size_t(3), size_t(4), size_t(5), size_t(8)}) {
+        ScenarioTree<T> tree(base + "chain/data/");
+        Linear<T> projection(tree);
+        projection.configurePartialLifting(blockSize);
+        checkProjectionReferences(projection, tree, base + "chain/data/");
+        const auto complete = projection.projectionTensors();
+        for (size_t index : {size_t(5), size_t(6)})
+            complete[index]->upload(std::vector<T>(complete[index]->numEl(), std::numeric_limits<T>::quiet_NaN()));
+        const auto factors = projection.linearUpdateTensors();
+        for (size_t i = 0; i < factors.size(); ++i) {
+            auto updated = DTensor<T>::parseFromFile(base + "chain_update/data/dynamics_"
+                + Dynamics<T>::linearUpdateNames[i] + tree.fpFileExt());
+            updated.deviceCopyToAsync(*factors[i]);
+        }
+        const size_t allocated = Session::getInstance().totalAllocatedBytes();
+        projection.refreshProjectionFactors();
+        EXPECT_EQ(Session::getInstance().totalAllocatedBytes(), allocated);
+        checkProjectionReferences(projection, tree, base + "chain_update/data/");
+    }
+}
+
+TYPED_TEST(DynamicsProjectionTest, partialLiftingConfigurationAndStorage) {
+    using T = TypeParam;
+    const auto base = std::string(SPOCK_TEST_FIXTURE_DIR) + "dynamics_projection/";
+    ScenarioTree<T> tree(base + "affine_tail/data/");
+    Affine<T> projection(tree);
+    EXPECT_THROW(projection.configurePartialLifting(6), std::invalid_argument);
+    const size_t allocated = Session::getInstance().totalAllocatedBytes();
+    projection.configurePartialLifting(4);
+    const auto info = projection.partialLiftingStatistics();
+    EXPECT_EQ(info.tailStage, 2);
+    EXPECT_EQ(info.chains, 4);
+    EXPECT_EQ(info.chainLength, 9);
+    EXPECT_EQ(info.blocks, 12);
+    EXPECT_EQ(info.matrixBytes, size_t(12 * 5 * 5) * sizeof(T));
+    EXPECT_EQ(info.allocatedBytes, Session::getInstance().totalAllocatedBytes() - allocated);
+    EXPECT_THROW(projection.configurePartialLifting(8), std::logic_error);
+    checkProjectionReferences(projection, tree, base + "affine_tail/data/");
+    EXPECT_THROW(projection.configurePartialLifting(0), std::logic_error);
+}
+
+TYPED_TEST(DynamicsProjectionTest, partialLiftingTwoEdgeStorage) {
+    using T = TypeParam;
+    const auto path = std::string(SPOCK_TEST_FIXTURE_DIR) + "dynamics_projection/affine_tail/data/";
+    ScenarioTree<T> tree(path);
+    Affine<T> projection(tree);
+    const size_t before = Session::getInstance().totalAllocatedBytes();
+    projection.configurePartialLifting(2);
+    const auto info = projection.partialLiftingStatistics();
+    EXPECT_EQ(info.blockSize, 2);
+    EXPECT_EQ(info.tailStage, 2);
+    EXPECT_EQ(info.chains, 4);
+    EXPECT_EQ(info.chainLength, 9);
+    EXPECT_EQ(info.blocks, 20);  // Each chain ends with a one-edge block.
+    EXPECT_EQ(info.matrixBytes, size_t(20 * 5 * 5) * sizeof(T));
+    EXPECT_EQ(info.allocatedBytes, Session::getInstance().totalAllocatedBytes() - before);
+    checkProjectionReferences(projection, tree, path);
+}
+
+TYPED_TEST(DynamicsProjectionTest, partialLiftingOddBlockStorage) {
+    using T = TypeParam;
+    const auto path = std::string(SPOCK_TEST_FIXTURE_DIR) + "dynamics_projection/affine_tail/data/";
+    for (size_t blockSize : {size_t(3), size_t(5)}) {
+        SCOPED_TRACE("block size " + std::to_string(blockSize));
+        ScenarioTree<T> tree(path);
+        Affine<T> projection(tree);
+        const size_t before = Session::getInstance().totalAllocatedBytes();
+        projection.configurePartialLifting(blockSize);
+        const auto info = projection.partialLiftingStatistics();
+        // Four nine-edge chains: B=3 divides exactly; B=5 leaves four edges.
+        const size_t expectedBlocks = blockSize == 3 ? 12 : 8;
+        EXPECT_EQ(info.blockSize, blockSize);
+        EXPECT_EQ(info.tailStage, 2);
+        EXPECT_EQ(info.chains, 4);
+        EXPECT_EQ(info.chainLength, 9);
+        EXPECT_EQ(info.blocks, expectedBlocks);
+        EXPECT_EQ(info.matrixBytes, expectedBlocks * 5 * 5 * sizeof(T));
+        EXPECT_EQ(info.allocatedBytes, Session::getInstance().totalAllocatedBytes() - before);
+        checkProjectionReferences(projection, tree, path);
+    }
 }

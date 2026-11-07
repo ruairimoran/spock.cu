@@ -14,8 +14,8 @@ class ConesTestData {
 
 public:
     /** Prepare some host and device data */
-    size_t m_n = 64;
-    size_t m_numConeTypes = 4;
+    static constexpr size_t m_n = 64;
+    static constexpr size_t m_numConeTypes = 4;
     DTensor<T> m_d_data = DTensor<T>(m_n);
     DTensor<T> m_d_dataCart = DTensor<T>(m_n * m_numConeTypes);
     std::vector<T> m_hostData = std::vector<T>(m_n);
@@ -23,7 +23,7 @@ public:
     std::vector<T> m_hostZero = std::vector<T>(m_n);
     std::vector<T> m_hostSocA = std::vector<T>(m_n);
     std::vector<T> m_hostSocB = std::vector<T>(m_n);
-    std::vector<T> m_hostSocC = std::vector<T>(m_n);
+    std::vector<T> m_hostSocC = std::vector<T>(m_n, T{1});
     std::vector<T> m_hostCart = std::vector<T>(m_n * m_numConeTypes);
     std::vector<T> m_testCart;
 
@@ -32,20 +32,16 @@ public:
         for (size_t i = 0; i < m_n; i = i + 2) { m_hostData[i] = -2. * (i + 1.); }
         for (size_t i = 1; i < m_n; i = i + 2) { m_hostData[i] = 2. * (i + 1.); }
         m_d_data.upload(m_hostData);  ///< Main vector for projection testing
-        /** Zeroes in m_zero */
-        for (size_t i = 0; i < m_n; i++) { m_hostZero[i] = 0.; }
+        // Size construction already zero-initializes m_hostZero, SocA and SocB.
         /** For testing `if` projection of SOC */
-        for (size_t i = 0; i < m_n - 1; i++) { m_hostSocA[i] = 0.; }
-        m_hostSocA[m_n - 1] = 1.;
+        m_hostSocA.back() = T{1};
         /** For testing `else if` projection of SOC */
-        for (size_t i = 0; i < m_n - 1; i++) { m_hostSocB[i] = 0.; }
-        m_hostSocB[m_n - 1] = -1.;
+        m_hostSocB.back() = T{-1};
         /** For testing `else` projection of SOC */
-        for (size_t i = 0; i < m_n - 1; i++) { m_hostSocC[i] = 1.; }
-        m_hostSocC[m_n - 1] = 0.;
+        m_hostSocC.back() = T{0};
         /** For testing Cartesian cone of all types */
         for (size_t i = 0; i < m_n * m_numConeTypes; i++) {
-            if (m_n * 0 <= i && i < m_n * 1) m_hostCart[i] = m_hostData[i % m_n];  ///< For projecting Cartesian::Univ
+            if (i < m_n) m_hostCart[i] = m_hostData[i % m_n];  ///< For projecting Cartesian::Univ
             if (m_n * 1 <= i && i < m_n * 2) m_hostCart[i] = m_hostData[i % m_n];  ///< For projecting Cartesian::Zero
             if (m_n * 2 <= i && i < m_n * 3) m_hostCart[i] = m_hostData[i % m_n];  ///< For projecting Cartesian::NnOC
             if (m_n * 3 <= i && i < m_n * 4) m_hostCart[i] = m_hostSocC[i % m_n];  ///< For projecting Cartesian::SOC

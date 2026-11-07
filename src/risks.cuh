@@ -98,8 +98,9 @@ public:
 
     void projectDual(DTensor<T> &d_tensor) {
         this->dimensionCheck(d_tensor);
-        m_d_zeros->deviceCopyTo(*m_d_idx);
-        k_projectionMultiIndexedNnoc<<<numBlocks(this->m_dim, TPB), TPB>>>(d_tensor.raw(),
+        const auto stream = spock::commonStream(d_tensor, *m_d_idx);
+        m_d_zeros->deviceCopyToAsync(*m_d_idx);
+        k_projectionMultiIndexedNnoc<<<numBlocks(this->m_dim, TPB), TPB, 0, stream>>>(d_tensor.raw(),
                                                                            this->m_dim,
                                                                            m_d_idxNnoc->raw(),
                                                                            m_d_idx->raw());

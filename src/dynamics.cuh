@@ -3,6 +3,9 @@
 
 #include "../include/gpu.cuh"
 #include "tree.cuh"
+#include "dynamics_kernels.cuh"
+#include "partial_lifting.cuh"
+#include <array>
 
 
 /**
@@ -25,17 +28,55 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_KTr = nullptr;
     std::unique_ptr<DTensor<T>> m_d_ABKTr = nullptr;  ///< (A+BK)'
     std::unique_ptr<DTensor<T>> m_d_P = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_APB = nullptr;  ///< (A+BK)'PB
+    // Retained for compatibility with existing static factor files.
+    std::unique_ptr<DTensor<T>> m_d_APB = nullptr;  ///< (A+BK)'PB, unused by projection
     std::unique_ptr<DTensor<T>> m_d_Pe = nullptr;
     std::unique_ptr<DTensor<T>> m_d_lowerCholesky = nullptr;
-    std::vector<std::unique_ptr<DTensor<T>>> m_choleskyStage;
-    std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>> m_choleskyBatch;
+    std::unique_ptr<CholeskyBatchFactoriser<T>> m_choleskyBatch;
     /* Workspaces */
     std::unique_ptr<DTensor<T>> m_d_q = nullptr;
     std::unique_ptr<DTensor<T>> m_d_d = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workX = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workU = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workXU = nullptr;
+
+    std::unique_ptr<spock::PartialLifting<T>> m_partialLifting;
+    bool m_projectionStarted = false;
+
+    void projectWithPartialLifting(DTensor<T> &initState, DTensor<T> &states, DTensor<T> &inputs) {
+        const auto stream = spock::commonStream(initState, states, inputs, *m_d_q, *m_d_d,
+            *m_d_workX, *m_d_workU, *m_d_KTr, *m_d_AB, m_tree.d_ancestors());
+        // Solve for y = q + P c. Its sources are -x_bar - K' u_bar + P c,
+        // so affine contributions need no separate child traversal.
+        states.deviceCopyToAsync(*m_d_workX);
+        *m_d_workX *= -1.;
+        if (m_affine) *m_d_workX += *m_d_Pe;
+        DTensor<T> sources(*m_d_workX, m_matAxis, 0, m_tree.numNonleafNodesMinus1());
+        sources.addAB(*m_d_KTr, inputs, -1., 1.);
+        m_partialLifting->backward(*m_d_q, *m_d_workX, *m_d_ABKTr);
+        DTensor<T> bTranspose(*m_d_BTr, m_matAxis, 1, m_tree.numNodesMinus1());
+        DTensor<T> childY(*m_d_q, m_matAxis, 1, m_tree.numNodesMinus1());
+        DTensor<T> childInputs(*m_d_workU, m_matAxis, 1, m_tree.numNodesMinus1());
+        childInputs.addAB(bTranspose, childY);
+        const size_t count = m_tree.numNonleafNodes() * m_tree.numInputs();
+        spock::detail::reduceBackwardContributions<T><<<numBlocks(count, size_t(256)), 256, 0, stream>>>(
+            m_d_d->raw(), m_d_q->raw(), inputs.raw(), m_d_workU->raw(), nullptr,
+            m_tree.d_childFrom().raw(), m_tree.d_numChildren().raw(),
+            m_tree.numStates(), m_tree.numInputs(), 0, m_tree.numNonleafNodes(), false);
+        gpuErrChk(cudaPeekAtLastError());
+        m_choleskyBatch->solve(*m_d_d);
+        // The source workspace is now free to hold all B d_parent + c offsets.
+        const size_t entries = m_tree.numNodesMinus1() * m_tree.numStates();
+        spock::detail::dynamicsInputOffsets<<<numBlocks(entries, size_t(256)), 256, 0, stream>>>(
+            m_d_workX->raw(), m_d_AB->raw(), m_d_d->raw(), m_affine ? m_d_e->raw() : nullptr,
+            m_tree.d_ancestors().raw(), m_tree.numStates(), m_tree.numInputs(), m_tree.numNodes());
+        gpuErrChk(cudaPeekAtLastError());
+        memCpyNode2Node(states, initState, 0, 0, m_tree.numStates());
+        m_partialLifting->forward(states, *m_d_workX, *m_d_ABKTr);
+        DTensor<T> nonleafStates(states, m_matAxis, 0, m_tree.numNonleafNodesMinus1());
+        inputs.addAB(*m_d_K, nonleafStates);
+        inputs += *m_d_d;
+    }
 
     explicit Dynamics(ScenarioTree<T> &tree) : m_tree(tree) {
         /* Read projection data from files */
@@ -54,15 +95,9 @@ protected:
         m_d_lowerCholesky = std::make_unique<DTensor<T>>(
             DTensor<T>::parseFromFile(m_tree.path() + m_prefix + "lowCholesky" + m_tree.fpFileExt()));
         m_d_KTr = std::make_unique<DTensor<T>>(m_d_K->tr());
-        /* Sort Cholesky data */
-        m_choleskyStage = std::vector<std::unique_ptr<DTensor<T>>>(m_tree.numStagesMinus1());
-        m_choleskyBatch = std::vector<std::unique_ptr<CholeskyBatchFactoriser<T>>>(m_tree.numStagesMinus1());
-        for (size_t stage = 0; stage < m_tree.numStagesMinus1(); stage++) {
-            size_t nodeFr = m_tree.stageFrom()[stage];
-            size_t nodeTo = m_tree.stageTo()[stage];
-            m_choleskyStage[stage] = std::make_unique<DTensor<T>>(*m_d_lowerCholesky, m_matAxis, nodeFr, nodeTo);
-            m_choleskyBatch[stage] = std::make_unique<CholeskyBatchFactoriser<T>>(*m_choleskyStage[stage], true);
-        }
+        // The backward recursion needs only the right-hand sides, so all
+        // nonleaf nodes share one solve with their precomputed Cholesky factors.
+        m_choleskyBatch = std::make_unique<CholeskyBatchFactoriser<T>>(*m_d_lowerCholesky, true);
         /* Allocate workspaces */
         m_d_q = std::make_unique<DTensor<T>>(m_tree.numStates(), 1, m_tree.numNodes(), true);
         m_d_d = std::make_unique<DTensor<T>>(m_tree.numInputs(), 1, m_tree.numNonleafNodes(), true);
@@ -72,6 +107,15 @@ protected:
     }
 
     void projectOnDynamics(DTensor<T> &initState, DTensor<T> &states, DTensor<T> &inputs) {
+        m_projectionStarted = true;
+        if (m_partialLifting && m_partialLifting->active()) {
+            projectWithPartialLifting(initState, states, inputs);
+            return;
+        }
+        const auto stream = spock::commonStream(initState, states, inputs,
+            *m_d_q, *m_d_d, *m_d_lowerCholesky, *m_d_BTr, *m_d_ABKTr,
+            *m_d_workU, *m_d_workX, m_tree.d_childFrom(), m_tree.d_numChildren());
+        if (m_affine) spock::commonStream(*m_d_q, *m_d_Pe);
         /*
          * Set first q
          */
@@ -79,7 +123,7 @@ protected:
         x_LastStage *= -1.;
         memCpyNode2Node(*m_d_q, states, m_tree.numNonleafNodes(), m_tree.numNodesMinus1(), m_tree.numStates());
         /*
-         * Solve for all d at current stage
+         * Backward sweep: compute q and store each solve's right-hand side in d.
          */
         size_t horizon = m_tree.numStagesMinus1();
         for (size_t t = 1; t < m_tree.numStages(); t++) {
@@ -89,54 +133,46 @@ protected:
             size_t chStage = stage + 1;  // Stage of children of current stage
             size_t chStageFr = m_tree.stageFrom()[chStage];  // First node of child stage
             size_t chStageTo = m_tree.stageTo()[chStage];  // Last node of child stage
-            size_t maxCh = m_tree.childMax()[stage];  // Max number of children of any node at current stage
-            /* Compute Bq = B(q+Pe) at every child of current stage */
-            DTensor<T> Btr_ChStage(*m_d_BTr, m_matAxis, chStageFr, chStageTo);
-            DTensor<T> q_ChStage(*m_d_q, m_matAxis, chStageFr, chStageTo);
-            if (m_affine) {
-                DTensor<T> Pe_ChStage(*m_d_Pe, m_matAxis, chStageFr, chStageTo);
-                q_ChStage += Pe_ChStage;
-            }
-            DTensor<T> Bq_ChStage(*m_d_workU, m_matAxis, chStageFr, chStageTo);
-            Bq_ChStage.addAB(Btr_ChStage, q_ChStage);
-            /* Sum `Bq` children of each node into `d` at current stage */
-            for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
-                m_tree.memCpyCh2Node(*m_d_d, *m_d_workU, stageFr, stageTo, chIdx, chIdx);
-            }
-            /* Subtract d from u in place */
-            DTensor<T> d_Stage(*m_d_d, m_matAxis, stageFr, stageTo);
-            DTensor<T> u_Stage(inputs, m_matAxis, stageFr, stageTo);
-            d_Stage *= -1.;
-            d_Stage += u_Stage;
-            /* Use Cholesky decomposition for final step of computing all d at current stage */
-            m_choleskyBatch[stage]->solve(d_Stage);
-            /*
-             * Solve for all q at current stage (except for stage 0)
-             */
-            if (stage) {
-                /* Compute APBdAq_ChStage = A(PBd+q+Pe) for each node at child stage. A = (A+B@K).tr */
-                DTensor<T> APB_ChStage(*m_d_APB, m_matAxis, chStageFr, chStageTo);
-                DTensor<T> ABKtr_ChStage(*m_d_ABKTr, m_matAxis, chStageFr, chStageTo);
-                m_tree.memCpyAnc2Node(*m_d_workU, *m_d_d, chStageFr, chStageTo, m_d_d->numRows());
-                DTensor<T> q_SumChStage(*m_d_workX, m_matAxis, chStageFr, chStageTo);
-                DTensor<T> d_ExpandedChStage(*m_d_workU, m_matAxis, chStageFr, chStageTo);
-                q_SumChStage.addAB(APB_ChStage, d_ExpandedChStage);
-                q_SumChStage.addAB(ABKtr_ChStage, q_ChStage, 1., 1.);
-                /* Sum `APBdAq` children of each node into `q` at current stage */
-                for (size_t chIdx = 0; chIdx < maxCh; chIdx++) {
-                    m_tree.memCpyCh2Node(*m_d_q, *m_d_workX, stageFr, stageTo, chIdx, chIdx);
-                }
-                /* Compute Kdux = K.tr(d-u)@x for each node at current stage and add to `q` */
-                DTensor<T> du_Stage(*m_d_workU, m_matAxis, stageFr, stageTo);
-                d_Stage.deviceCopyTo(du_Stage);
-                du_Stage -= u_Stage;
+            // Both child products use the same y = q + P c. The root needs
+            // only the input contribution; its q is never consumed.
+            const bool computeState = stage != 0;
+            const size_t outputs = m_tree.numInputs() + (computeState ? m_tree.numStates() : 0);
+            const dim3 productThreads(32, 4);
+            const dim3 productBlocks(chStageTo - chStageFr + 1, numBlocks(outputs, size_t(32)));
+            spock::detail::backwardChildProducts<<<productBlocks, productThreads, 0,
+                stream>>>(
+                    m_d_workU->raw(), m_d_workX->raw(),
+                    m_d_BTr->raw(), m_d_ABKTr->raw(), m_d_q->raw(),
+                    m_affine ? m_d_Pe->raw() : nullptr,
+                    m_tree.numStates(), m_tree.numInputs(), chStageFr, computeState);
+            gpuErrChk(cudaPeekAtLastError());
+            // One pass reduces both output blocks and forms the right-hand
+            // sides. No child-position launches or intermediate parent sums.
+            const size_t width = m_tree.numInputs() + (computeState ? m_tree.numStates() : 0);
+            const size_t count = (stageTo - stageFr + 1) * width;
+            constexpr unsigned int threads = 256;
+            spock::detail::reduceBackwardContributions<<<numBlocks(count, threads), threads, 0,
+                stream>>>(
+                    m_d_d->raw(), m_d_q->raw(), inputs.raw(),
+                    m_d_workU->raw(), m_d_workX->raw(),
+                    m_tree.d_childFrom().raw(), m_tree.d_numChildren().raw(),
+                    m_tree.numStates(), m_tree.numInputs(), stageFr,
+                    stageTo - stageFr + 1, computeState);
+            gpuErrChk(cudaPeekAtLastError());
+            // The Riccati cancellation removes d from the q recursion:
+            // q = sum_children (A+BK)' y - K' u_bar - x_bar.
+            if (computeState) {
+                DTensor<T> u_Stage(inputs, m_matAxis, stageFr, stageTo);
                 DTensor<T> Ktr_Stage(*m_d_KTr, m_matAxis, stageFr, stageTo);
                 DTensor<T> q_Stage(*m_d_q, m_matAxis, stageFr, stageTo);
-                q_Stage.addAB(Ktr_Stage, du_Stage, 1., 1.);
+                q_Stage.addAB(Ktr_Stage, u_Stage, -1., 1.);
                 DTensor<T> x_Stage(states, m_matAxis, stageFr, stageTo);
                 q_Stage -= x_Stage;
             }
         }
+        // All right-hand sides are now available, including the root's. Solve
+        // across the whole tree before reconstructing states and controls.
+        m_choleskyBatch->solve(*m_d_d);
         /*
          * Set initial state
          */
@@ -179,13 +215,76 @@ public:
     virtual ~Dynamics() = default;
 
     /**
+     * @brief Select a dynamics-projection schedule and its local backward width.
+     * @param[in] blockSize Zero selects fused stages, 1 selects reordered stages,
+     *                     and 2/3/4/5/8 select blocked unary-suffix recurrences.
+     * @param[in] backwardWarps Warps per local backward CUDA block: 4 or 8.
+     *                         Defaults to 4 for existing/general callers. This
+     *                         setting has no effect for blockSize 0 or 1.
+     * @pre Call before constructing a Cache or starting any projection. Captured
+     * graphs retain both workspace addresses and kernel launch dimensions.
+     * @throws std::invalid_argument If a block size or warp count is unsupported.
+     * @throws std::logic_error If a second nonzero configuration is requested,
+     * or any projection has started.
+     */
+    void configurePartialLifting(size_t blockSize, size_t backwardWarps = 4) {
+        if (m_projectionStarted)
+            throw std::logic_error("Configure partial lifting before the first projection or graph capture");
+        if (blockSize != 0 && blockSize != 1 && blockSize != 2 && blockSize != 3
+            && blockSize != 4 && blockSize != 5 && blockSize != 8)
+            throw std::invalid_argument("Partial lifting block size must be 0, 1, 2, 3, 4, 5 or 8");
+        if (backwardWarps != 4 && backwardWarps != 8)
+            throw std::invalid_argument("Partial lifting backward warps must be 4 or 8");
+        if (!blockSize) { m_partialLifting.reset(); return; }
+        if (m_partialLifting) throw std::logic_error("Partial lifting is already configured");
+        m_partialLifting = std::make_unique<spock::PartialLifting<T>>(
+            m_tree, *m_d_ABKTr, blockSize, backwardWarps);
+    }
+
+    spock::PartialLiftingStatistics partialLiftingStatistics() const {
+        return m_partialLifting ? m_partialLifting->statistics() : spock::PartialLiftingStatistics{};
+    }
+
+    // Call after in-place factor updates and before replaying a captured graph.
+    // The method enqueues work on the factors' stream and allocates no storage.
+    void refreshProjectionFactors() {
+        if (m_partialLifting) m_partialLifting->refresh(*m_d_ABKTr);
+    }
+
+    inline static constexpr std::array<const char *, 6> linearUpdateNames = {
+        "BTr", "AB", "K", "KTr", "ABKTr", "lowCholesky"};
+
+    // These are the only factors read by the current linear projection. P is
+    // needed by the CPU Riccati recursion, but P/APB need no online GPU upload.
+    // Updating values in place retains graph pointers and solver workspaces.
+    std::array<DTensor<T> *, 6> linearUpdateTensors() {
+        if (m_affine) throw std::invalid_argument("Online projection updates currently require linear dynamics");
+        return {m_d_BTr.get(), m_d_AB.get(), m_d_K.get(), m_d_KTr.get(),
+                m_d_ABKTr.get(), m_d_lowerCholesky.get()};
+    }
+
+    // Complete factor set for existing callers and static reference checks.
+    // Persistent linear MPC updates use linearUpdateTensors() instead.
+    std::array<DTensor<T> *, 8> projectionTensors() {
+        if (m_affine) throw std::invalid_argument("Online projection updates currently require linear dynamics");
+        return {m_d_BTr.get(), m_d_AB.get(), m_d_K.get(), m_d_KTr.get(),
+                m_d_ABKTr.get(), m_d_P.get(), m_d_APB.get(), m_d_lowerCholesky.get()};
+    }
+
+    void resetDeviceWorkspace() {
+        for (auto *buffer : {m_d_q.get(), m_d_d.get(), m_d_workX.get(),
+                            m_d_workU.get(), m_d_workXU.get()})
+            gpuErrChk(cudaMemsetAsync(buffer->raw(), 0, buffer->numEl() * sizeof(T), spock::executionStream(*buffer)));
+    }
+
+    /**
      * For reuse while testing.
      */
     void resetWorkspace() {
         m_d_q->upload(std::vector<T>(m_tree.numStates() * m_tree.numNodes(), 0));
         m_d_d->upload(std::vector<T>(m_tree.numInputs() * m_tree.numNonleafNodes(), 0));
         m_d_workX->upload(std::vector<T>(m_tree.numStates() * m_tree.numNodes(), 0));
-        m_d_workU->upload(std::vector<T>(m_tree.numInputs() * m_tree.numNodes(), 0));
+        m_d_workU->upload(std::vector<T>(m_d_workU->numEl(), 0));
         m_d_workXU->upload(std::vector<T>(m_tree.numStatesAndInputs() * m_tree.numNodes(), 0));
     }
 

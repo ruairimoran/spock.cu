@@ -5,16 +5,13 @@
 #include "cones.cuh"
 #include "risks.cuh"
 #include "operator.cuh"
+#include "anderson.cuh"
+#include "kernel_projection.cuh"
+#include "cuda_graph.cuh"
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
 
-
-TEMPLATE_WITH_TYPE_T
-__global__ void k_memCpyInTS(T *, T *, size_t, size_t, size_t, size_t *, size_t *);
-
-TEMPLATE_WITH_TYPE_T
-__global__ void k_memCpyOutTS(T *, T *, size_t, size_t, size_t, size_t *, size_t *);
 
 template<typename T>
 class CacheTestData;
@@ -101,6 +98,7 @@ protected:
     T m_tolRel = 0.;
     T m_tol = 0.;
     T m_errAbs = 0.;
+    T m_initialResidual = 0.;
     T m_maxTimeSecs = 0.;
     size_t m_maxOuterIters = 0;
     size_t m_andBuff = 0;
@@ -109,7 +107,9 @@ protected:
     size_t m_colAxis = 1;
     size_t m_matAxis = 2;
     size_t m_callsToL = 0;
-    size_t m_computeErrorIters = 25;
+    size_t m_operatorEvaluations = 0;
+    size_t m_backtracks = 0;
+    size_t m_computeErrorIters = 10;
     bool m_debug = false;
     bool m_errInit = false;  ///< Whether to initialise tolerances
     bool m_status = false;  ///< General status use
@@ -164,6 +164,7 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_workIteratePrim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workIterateDual = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workYTS = nullptr;
+    std::unique_ptr<DTensor<T>> m_d_projectedYTS = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workDot = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workDotPrim = nullptr;
     std::unique_ptr<DTensor<T>> m_d_workDotDual = nullptr;
@@ -182,6 +183,9 @@ protected:
     std::unique_ptr<DTensor<T>> m_d_input = nullptr;
     /* Projections */
     std::unique_ptr<NonnegativeOrthantCone<T>> m_nnoc = nullptr;
+    std::unique_ptr<spock::detail::ConcurrentPrimalProjections<T>> m_projectionStreams;
+    std::unique_ptr<spock::detail::CudaGraph> m_cudaGraph;
+    spock::GraphMode m_graphMode = spock::GraphMode::none;
     /* Caches */
     std::vector<size_t> m_cacheCallsToL;
     std::vector<T> m_cacheError0;
@@ -203,17 +207,17 @@ protected:
     T m_lambda = 1.;
     /* Anderson */
     std::unique_ptr<DTensor<T>> m_d_andIterateMatrix = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andIterateMatrixLeft = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andIterateMatrixRight = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andIterateMatrixCol0 = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andResidualMatrix = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andResidualMatrixLeft = nullptr;
-    std::unique_ptr<DTensor<T>> m_d_andResidualMatrixRight = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andResidualMatrixCol0 = nullptr;
     std::unique_ptr<QRFactoriser<T>> m_andQRFactor = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andQR = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andQRGammaFull = nullptr;
     std::unique_ptr<DTensor<T>> m_d_andQRGamma = nullptr;
+    AndersonOptions m_andersonOptions;
+    std::unique_ptr<RegularisedAnderson<T>> m_regularisedAnderson;
+    size_t m_validAndersonHistory = 0;
+    AndersonStatistics m_andersonStatistics;
 
     /**
      * Protected methods
@@ -262,6 +266,10 @@ protected:
 
     void iter();
 
+    void iterRaw();
+
+    void initialiseCudaGraph(spock::GraphMode);
+
     void backup();
 
     void restore();
@@ -282,6 +290,10 @@ protected:
 
     void printToJson(std::string &);
 
+    int runSpockImpl(std::vector<T> &, std::vector<T> *, bool);
+
+    void resetDeviceWorkspace(bool keepIterate);
+
 public:
     /**
      * Constructor
@@ -295,9 +307,26 @@ public:
           size_t maxOuterIters = 1000,
           size_t maxInnerIters = 8,
           size_t andBuff = 3,
-          bool debug = false) :
+          bool debug = false,
+          AndersonOptions andersonOptions = {},
+          spock::ProjectionMode projections = spock::ProjectionMode::automatic,
+          spock::GraphMode graphs = spock::GraphMode::none) :
         m_tree(tree), m_data(data), m_tolAbs(absTol), m_tolRel(relTol), m_maxTimeSecs(maxTimeSecs),
-        m_maxOuterIters(maxOuterIters), m_maxInnerIters(maxInnerIters), m_andBuff(andBuff), m_debug(debug) {
+        m_maxOuterIters(maxOuterIters), m_maxInnerIters(maxInnerIters), m_andBuff(andBuff), m_debug(debug),
+        m_andersonOptions(andersonOptions) {
+        if (projections != spock::ProjectionMode::automatic &&
+            projections != spock::ProjectionMode::sequential &&
+            projections != spock::ProjectionMode::concurrent)
+            throw std::invalid_argument("Unknown projection mode");
+        if (projections == spock::ProjectionMode::concurrent && Session::getInstance().numStreams() < 2)
+            throw std::invalid_argument(
+                "Call Session::setStreams(2) before creating tensors to enable concurrent projections");
+        if (graphs != spock::GraphMode::none && graphs != spock::GraphMode::dynamics && graphs != spock::GraphMode::cp)
+            throw std::invalid_argument("Unknown CUDA graph mode");
+        if (graphs != spock::GraphMode::none && projections == spock::ProjectionMode::concurrent)
+            throw std::invalid_argument("CUDA graphs currently require sequential projections");
+        if (m_andBuff == 0) throw std::invalid_argument("Anderson memory must be positive");
+        if (m_andersonOptions.enabled) m_andersonOptions.validate();
         /* Tolerances */
         if (m_data.preconditioned()) {
             T tolScale = *std::min_element(m_data.scaling().begin(), m_data.scaling().end());
@@ -341,24 +370,63 @@ public:
         m_d_directionScaled = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_workIterate = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         m_d_workYTS = std::make_unique<DTensor<T>>(m_data.nullDim(), 1, m_tree.numNonleafNodes(), true);
+        m_d_projectedYTS = std::make_unique<DTensor<T>>(m_data.nullDim(), 1, m_tree.numNonleafNodes());
         m_d_workDot = std::make_unique<DTensor<T>>(m_sizeIterate, 1, 1, true);
         /* Slice and reshape tensors */
         reshape();
         /* Initialise projectable objects */
         initialiseProjectable();
+        if (graphs == spock::GraphMode::none && projections != spock::ProjectionMode::sequential && Session::getInstance().numStreams() >= 2)
+            m_projectionStreams = std::make_unique<spock::detail::ConcurrentPrimalProjections<T>>(
+                spock::executionStream(*m_d_workIteratePrim), 1, *m_d_y, *m_d_t, *m_d_s,
+                *m_d_workYTS, *m_d_projectedYTS, m_data.risk()->nullspaceProj());
+        initialiseCudaGraph(graphs);
     }
 
-    ~Cache() = default;
+    // Drain projection streams before any scratch storage or AA buffers die.
+    ~Cache() { m_cudaGraph.reset(); m_projectionStreams.reset(); }
+
+    spock::ProjectionMode projectionMode() const {
+        return m_projectionStreams ? spock::ProjectionMode::concurrent : spock::ProjectionMode::sequential;
+    }
+
+    spock::GraphMode graphMode() const { return m_graphMode; }
+    const spock::GraphStatistics &graphStatistics() const {
+        static const spock::GraphStatistics disabled{};
+        return m_cudaGraph ? m_cudaGraph->statistics() : disabled;
+    }
 
     int runCp(std::vector<T> &, std::vector<T> * = nullptr);
 
     int runSpock(std::vector<T> &, std::vector<T> * = nullptr);
+
+    // Reuse all device storage, retaining the accepted iterate for warm starts.
+    int runSpockResident(std::vector<T> &state, bool warm);
+
+    std::vector<T> rootInput() {
+        std::vector<T> input(m_tree.numInputs());
+        spock::detail::copyToHost(input.data(), m_d_iterate->raw(), input.size() * sizeof(T),
+                                  spock::executionStream(*m_d_iterate));
+        if (m_data.preconditioned())
+            for (size_t i = 0; i < input.size(); ++i) input[i] /= m_data.scaling()[m_tree.numStates() + i];
+        return input;
+    }
 
     int status() { return m_exitCode; }
 
     size_t solveIter() { return m_countIterations; }
 
     T solveTime() { return m_timeElapsed; }
+
+    const AndersonStatistics &andersonStatistics() const { return m_andersonStatistics; }
+    const AndersonOptions &andersonOptions() const {
+        return m_regularisedAnderson ? m_regularisedAnderson->options() : m_andersonOptions;
+    }
+    T initialResidual() const { return m_initialResidual; }
+    T finalResidual() const { return m_errAbs; }
+    T effectiveTolerance() const { return m_tol; }
+    size_t operatorEvaluations() const { return m_operatorEvaluations; }
+    size_t backtracks() const { return m_backtracks; }
 
     /**
      * Debug functions (slow).
@@ -369,7 +437,7 @@ public:
     size_t sizeDual() { return m_sizeDual; }
 
     DTensor<T> getDual(DTensor<T> &primal) {
-        primal.deviceCopyTo(*m_d_workIteratePrim);
+        primal.deviceCopyToAsync(*m_d_workIteratePrim);
         modifyDual();
         proximalDual();
         return *m_d_iterateCandidateDual;
@@ -384,7 +452,7 @@ public:
     void reset();
 
     std::vector<T> inputs() {
-        m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
+        m_d_iteratePrim->deviceCopyToAsync(*m_d_workIteratePrim);
         std::vector<T> inputs(m_sizeU);
         m_d_u->download(inputs);
         if (m_data.preconditioned()) {
@@ -398,7 +466,7 @@ public:
     }
 
     std::vector<T> states() {
-        m_d_iteratePrim->deviceCopyTo(*m_d_workIteratePrim);
+        m_d_iteratePrim->deviceCopyToAsync(*m_d_workIteratePrim);
         std::vector<T> states(m_sizeX);
         m_d_x->download(states);
         if (m_data.preconditioned()) {
@@ -515,11 +583,7 @@ void Cache<T>::reshape() {
     m_d_ellResidualPrim = std::make_unique<DTensor<T>>(*m_d_ellResidual, m_rowAxis, 0, m_sizePrim - 1);
     m_d_ellResidualDual = std::make_unique<DTensor<T>>(*m_d_ellResidual, m_rowAxis, m_sizePrim,
                                                        m_sizeIterate - 1);
-    m_d_andIterateMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 0, m_andBuff - 2);
-    m_d_andIterateMatrixRight = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 1, m_andBuff - 1);
     m_d_andIterateMatrixCol0 = std::make_unique<DTensor<T>>(*m_d_andIterateMatrix, m_colAxis, 0, 0);
-    m_d_andResidualMatrixLeft = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 0, m_andBuff - 2);
-    m_d_andResidualMatrixRight = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 1, m_andBuff - 1);
     m_d_andResidualMatrixCol0 = std::make_unique<DTensor<T>>(*m_d_andResidualMatrix, m_colAxis, 0, 0);
     m_d_andQRGamma = std::make_unique<DTensor<T>>(*m_d_andQRGammaFull, m_rowAxis, 0, m_andBuff - 1);
     reshapePrimalWorkspace();
@@ -564,6 +628,9 @@ void Cache<T>::reshapeDualWorkspace() {
     if (m_sizeIII) {
         m_d_iii = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeIII - 1);
         m_data.nonleafConstraint()->reshape(*m_d_iii);
+    } else {
+        // An absent constraint has no dual entries; keep a valid empty object.
+        m_d_iii = std::make_unique<DTensor<T>>();
     }
     start += m_sizeIII;
     m_d_iv = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeIV - 1);
@@ -573,6 +640,8 @@ void Cache<T>::reshapeDualWorkspace() {
     if (m_sizeV) {
         m_d_v = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeV - 1);
         m_data.leafConstraint()->reshape(*m_d_v);
+    } else {
+        m_d_v = std::make_unique<DTensor<T>>();
     }
     start += m_sizeV;
     m_d_vi = std::make_unique<DTensor<T>>(*m_d_workIterateDual, m_rowAxis, start, start + m_sizeVI - 1);
@@ -585,7 +654,12 @@ void Cache<T>::initialiseProjectable() {
     /* Dual II */
     m_nnoc = std::make_unique<NonnegativeOrthantCone<T>>(m_tree.numNonleafNodes());
     /* QR */
-    m_andQRFactor = std::make_unique<QRFactoriser<T>>(*m_d_andQR);
+    if (m_andersonOptions.enabled)
+        m_regularisedAnderson = std::make_unique<RegularisedAnderson<T>>(
+            *m_d_andIterateMatrix, *m_d_andResidualMatrix, *m_d_andQR,
+            *m_d_andQRGammaFull, *m_d_andQRGamma, m_andersonOptions);
+    else
+        m_andQRFactor = std::make_unique<QRFactoriser<T>>(*m_d_andQR);
 }
 
 template<typename T>
@@ -643,36 +717,15 @@ void Cache<T>::proxRootS() {
 
 template<typename T>
 void Cache<T>::projectPrimalWorkspaceOnDynamics() {
-    m_data.dynamics()->project(*m_d_initState, *m_d_x, *m_d_u);
+    if (m_graphMode == spock::GraphMode::dynamics) m_cudaGraph->launch();
+    else m_data.dynamics()->project(*m_d_initState, *m_d_x, *m_d_u);
 }
 
 template<typename T>
 void Cache<T>::projectPrimalWorkspaceOnKernels() {
-    /**
-     * Project on kernel of every node of tree at once
-     */
-    /* Gather vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
-    memCpyNode2Node(*m_d_workYTS, *m_d_y, 0, m_tree.numNonleafNodesMinus1(), m_data.yDim());
-    k_memCpyInTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_workYTS->raw(), m_d_t->raw(),
-                                                             m_tree.numNodes(), m_d_workYTS->numRows(),
-                                                             m_data.yDim(),
-                                                             m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
-    k_memCpyInTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_workYTS->raw(), m_d_s->raw(),
-                                                             m_tree.numNodes(), m_d_workYTS->numRows(),
-                                                             m_data.yDim() + m_tree.numEvents(),
-                                                             m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
-    /* Project onto nullspace in place */
-    m_d_workYTS->addAB(m_data.risk()->nullspaceProj(), *m_d_workYTS);
-    /* Disperse vec[i] = (y_i, t[ch(i)], s[ch(i)]) for all nonleaf nodes */
-    memCpyNode2Node(*m_d_y, *m_d_workYTS, 0, m_tree.numNonleafNodesMinus1(), m_data.yDim());
-    k_memCpyOutTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_t->raw(), m_d_workYTS->raw(),
-                                                              m_tree.numNodes(), m_d_workYTS->numRows(),
-                                                              m_data.yDim(),
-                                                              m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
-    k_memCpyOutTS<<<numBlocks(m_tree.numNodes(), TPB), TPB>>>(m_d_s->raw(), m_d_workYTS->raw(),
-                                                              m_tree.numNodes(), m_d_workYTS->numRows(),
-                                                              m_data.yDim() + m_tree.numEvents(),
-                                                              m_tree.d_ancestors().raw(), m_tree.d_childFrom().raw());
+    spock::detail::projectRiskKernels(m_tree, *m_d_y, *m_d_t, *m_d_s,
+                                    *m_d_workYTS, *m_d_projectedYTS,
+                                    m_data.risk()->nullspaceProj());
 }
 
 template<typename T>
@@ -720,14 +773,21 @@ void Cache<T>::Ltr(bool add) {
  */
 template<typename T>
 T Cache<T>::dotM(DTensor<T> &x, DTensor<T> &y) {
+    const auto stream = spock::commonStream(x, y, *m_d_workIterate);
     DTensor<T> yPrim(y, m_rowAxis, 0, m_sizePrim - 1);
     DTensor<T> yDual(y, m_rowAxis, m_sizePrim, m_sizeIterate - 1);
-    yDual.deviceCopyTo(*m_d_workIterateDual);
+    yDual.deviceCopyToAsync(*m_d_workIterateDual);
     Ltr();
-    m_d_workIteratePrim->deviceCopyTo(*m_d_workDotPrim);
-    yPrim.deviceCopyTo(*m_d_workIteratePrim);
+    // Cost operators skip the padded root entries. Their adjoint output at
+    // t[0] must be zero, rather than a value left by an earlier workspace use.
+    gpuErrChk(cudaMemsetAsync(m_d_t->raw(), 0, sizeof(T), stream));
+    m_d_workIteratePrim->deviceCopyToAsync(*m_d_workDotPrim);
+    yPrim.deviceCopyToAsync(*m_d_workIteratePrim);
     L();
-    m_d_workIterateDual->deviceCopyTo(*m_d_workDotDual);
+    // Likewise, the root cost has no contribution to L*yPrim. Clearing its
+    // output keeps M linear and symmetric even when y has nonzero padding.
+    gpuErrChk(cudaMemsetAsync(m_d_iv->raw(), 0, m_d_iv->numRows() * sizeof(T), stream));
+    m_d_workIterateDual->deviceCopyToAsync(*m_d_workDotDual);
     *m_d_workDot *= -m_data.stepSize();
     *m_d_workDot += y;
     return x.dotF(*m_d_workDot);
@@ -746,7 +806,7 @@ T Cache<T>::normM(DTensor<T> &x, DTensor<T> &y) {
  */
 template<typename T>
 void Cache<T>::modifyPrimal() {
-    m_d_iterateDual->deviceCopyTo(*m_d_workIterateDual);
+    m_d_iterateDual->deviceCopyToAsync(*m_d_workIterateDual);
     Ltr(true);
     *m_d_workIteratePrim *= -m_data.stepSize();
     *m_d_workIteratePrim += *m_d_iteratePrim;
@@ -758,9 +818,17 @@ void Cache<T>::modifyPrimal() {
 template<typename T>
 void Cache<T>::proximalPrimal() {
     proxRootS();
-    projectPrimalWorkspaceOnDynamics();
-    projectPrimalWorkspaceOnKernels();
-    m_d_workIteratePrim->deviceCopyTo(*m_d_iterateCandidatePrim);  // Store primal
+    if (m_projectionStreams) {
+        // Queue the short independent branch first, then submit the dynamics
+        // recursion while S2 runs. No host wait occurs at the fork or join.
+        m_projectionStreams->enqueueRiskProjection(m_tree);
+        projectPrimalWorkspaceOnDynamics();
+        m_projectionStreams->join();
+    } else {
+        projectPrimalWorkspaceOnDynamics();
+        projectPrimalWorkspaceOnKernels();
+    }
+    m_d_workIteratePrim->deviceCopyToAsync(*m_d_iterateCandidatePrim);  // Store primal
 }
 
 /**
@@ -782,7 +850,7 @@ template<typename T>
 void Cache<T>::proximalDual() {
     *m_d_workIterateDual *= m_data.stepSizeRecip();
     translateSocs();
-    m_d_workIterateDual->deviceCopyTo(*m_d_iterateCandidateDual);
+    m_d_workIterateDual->deviceCopyToAsync(*m_d_iterateCandidateDual);
     projectDualWorkspaceOnConstraints();
     *m_d_iterateCandidateDual -= *m_d_workIterateDual;
     *m_d_iterateCandidateDual *= m_data.stepSize();  // Store dual
@@ -794,6 +862,15 @@ void Cache<T>::proximalDual() {
  */
 template<typename T>
 void Cache<T>::iter() {
+    ++m_operatorEvaluations;
+    if (m_graphMode == spock::GraphMode::cp) {
+        m_cudaGraph->launch();
+        if (m_debug) m_callsToL += 2;  // Host bookkeeping is not replayed by CUDA.
+    } else iterRaw();
+}
+
+template<typename T>
+void Cache<T>::iterRaw() {
     modifyPrimal();
     proximalPrimal();
     modifyDual();
@@ -801,13 +878,33 @@ void Cache<T>::iter() {
 }
 
 template<typename T>
+void Cache<T>::initialiseCudaGraph(spock::GraphMode mode) {
+    if (mode == spock::GraphMode::none) return;
+    const auto start = std::chrono::steady_clock::now();
+    m_cudaGraph = std::make_unique<spock::detail::CudaGraph>();
+    auto submit = [this, mode] {
+        if (mode == spock::GraphMode::dynamics)
+            m_data.dynamics()->project(*m_d_initState, *m_d_x, *m_d_u);
+        else iterRaw();
+    };
+    // Prime library workspaces before capture, using the cache's valid zero
+    // inputs. Restore the normal initial state after the graph is uploaded.
+    submit();
+    m_cudaGraph->capture(spock::executionStream(*m_d_workIterate), submit);
+    resetDeviceWorkspace(false);
+    gpuErrChk(cudaStreamSynchronize(spock::executionStream(*m_d_workIterate)));
+    m_graphMode = mode;
+    m_cudaGraph->setSetupSeconds(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+}
+
+template<typename T>
 void Cache<T>::backup() {
-    m_d_iterateCandidate->deviceCopyTo(*m_d_iterateBackup);
+    m_d_iterateCandidate->deviceCopyToAsync(*m_d_iterateBackup);
 }
 
 template<typename T>
 void Cache<T>::restore() {
-    m_d_iterateBackup->deviceCopyTo(*m_d_iterateCandidate);
+    m_d_iterateBackup->deviceCopyToAsync(*m_d_iterateCandidate);
 }
 
 /**
@@ -815,7 +912,7 @@ void Cache<T>::restore() {
  */
 template<typename T>
 void Cache<T>::computeResidual() {
-    m_d_iterate->deviceCopyTo(*m_d_residual);
+    m_d_iterate->deviceCopyToAsync(*m_d_residual);
     *m_d_residual -= *m_d_iterateCandidate;
 }
 
@@ -824,7 +921,7 @@ void Cache<T>::computeResidual() {
  */
 template<typename T>
 void Cache<T>::computeDeltaIterate() {
-    m_d_iterate->deviceCopyTo(*m_d_deltaIterate);
+    m_d_iterate->deviceCopyToAsync(*m_d_deltaIterate);
     *m_d_deltaIterate -= *m_d_iteratePrev;
 }
 
@@ -833,7 +930,7 @@ void Cache<T>::computeDeltaIterate() {
  */
 template<typename T>
 void Cache<T>::computeDeltaResidual() {
-    m_d_residual->deviceCopyTo(*m_d_deltaResidual);
+    m_d_residual->deviceCopyToAsync(*m_d_deltaResidual);
     *m_d_deltaResidual -= *m_d_residualPrev;
 }
 
@@ -842,8 +939,8 @@ void Cache<T>::computeDeltaResidual() {
  */
 template<typename T>
 void Cache<T>::saveToPrev() {
-    m_d_iterate->deviceCopyTo(*m_d_iteratePrev);
-    m_d_residual->deviceCopyTo(*m_d_residualPrev);
+    m_d_iterate->deviceCopyToAsync(*m_d_iteratePrev);
+    m_d_residual->deviceCopyToAsync(*m_d_residualPrev);
 }
 
 /**
@@ -851,7 +948,7 @@ void Cache<T>::saveToPrev() {
  */
 template<typename T>
 void Cache<T>::acceptCandidate() {
-    m_d_iterateCandidate->deviceCopyTo(*m_d_iterate);
+    m_d_iterateCandidate->deviceCopyToAsync(*m_d_iterate);
 }
 
 /**
@@ -859,14 +956,52 @@ void Cache<T>::acceptCandidate() {
  */
 template<typename T>
 void Cache<T>::updateDirection(size_t idx) {
-    /* Shift iterate and residual matrices 1 column right */
-    m_d_andIterateMatrixLeft->deviceCopyTo(*m_d_andIterateMatrixRight);
-    m_d_andResidualMatrixLeft->deviceCopyTo(*m_d_andResidualMatrixRight);
-    /* Update first column of iterate and residual matrices */
-    m_d_deltaResidual->deviceCopyTo(*m_d_andResidualMatrixCol0);
-    m_d_deltaIterate->deviceCopyTo(*m_d_andIterateMatrixCol0);
-    *m_d_andIterateMatrixCol0 -= *m_d_deltaResidual;
-
+    // Both modes use the same genuine secant pairs and safe history copies.
+    // Iteration zero has no previous residual evaluation.
+    if (idx > 0) {
+        // Copy whole columns back-to-front. A single overlapping CUDA
+        // memcpy of the shifted matrix is not guaranteed to be safe.
+        for (size_t col = m_andBuff; col > 1; --col) {
+            DTensor<T> oldC(*m_d_andIterateMatrix, m_colAxis, col - 2, col - 2);
+            DTensor<T> newC(*m_d_andIterateMatrix, m_colAxis, col - 1, col - 1);
+            DTensor<T> oldY(*m_d_andResidualMatrix, m_colAxis, col - 2, col - 2);
+            DTensor<T> newY(*m_d_andResidualMatrix, m_colAxis, col - 1, col - 1);
+            oldC.deviceCopyToAsync(newC);
+            oldY.deviceCopyToAsync(newY);
+        }
+        m_d_deltaIterate->deviceCopyToAsync(*m_d_andIterateMatrixCol0);
+        *m_d_andIterateMatrixCol0 -= *m_d_deltaResidual;
+        m_d_deltaResidual->deviceCopyToAsync(*m_d_andResidualMatrixCol0);
+        m_validAndersonHistory = std::min(m_andBuff, m_validAndersonHistory + 1);
+        if (m_regularisedAnderson) m_regularisedAnderson->historyChanged();
+    }
+    if (m_regularisedAnderson) {
+        if (m_validAndersonHistory < m_andBuff) {
+            ++m_andersonStatistics.bootstrapSteps;
+            m_d_residual->deviceCopyToAsync(*m_d_direction);
+            *m_d_direction *= T(-1);
+            return;
+        }
+        const auto &fit = m_regularisedAnderson->compute(*m_d_residual, *m_d_direction);
+        auto &stats = m_andersonStatistics;
+        stats.qr = m_regularisedAnderson->qrStatistics();
+        ++stats.fits;
+        stats.lastRank = fit.selectedColumns.size();
+        stats.lastScale = fit.scale;
+        stats.lastCoefficientNorm = fit.coefficientNorm;
+        stats.filteredColumns += m_andBuff - fit.selectedColumns.size();
+        if (fit.accepted()) ++stats.accepted;
+        else {
+            // Old columns need not be cleared: three genuine new pairs will
+            // overwrite them before the next fit is permitted.
+            m_validAndersonHistory = 0;
+            ++stats.restarts;
+            if (fit.status == AndersonFitStatus::coefficientLimit) ++stats.coefficientRejections;
+            else if (fit.status == AndersonFitStatus::directionLimit) ++stats.directionRejections;
+            else ++stats.numericalRejections;
+        }
+        return;
+    }
     /**
      * 1. QR factorise `m_d_andResidualMatrix`.
      * 2. Compute least squares `m_d_andResidualMatrix \ m_d_residual`.
@@ -874,8 +1009,8 @@ void Cache<T>::updateDirection(size_t idx) {
      */
     if (idx >= m_andBuff) {
         /* QR decomposition */
-        m_d_andResidualMatrix->deviceCopyTo(*m_d_andQR);
-        m_d_residual->deviceCopyTo(*m_d_andQRGammaFull);
+        m_d_andResidualMatrix->deviceCopyToAsync(*m_d_andQR);
+        m_d_residual->deviceCopyToAsync(*m_d_andQRGammaFull);
         m_andQRFactor->factorise();
         if (m_debug) {
             DTensor<int> status = m_andQRFactor->info();
@@ -898,7 +1033,7 @@ void Cache<T>::updateDirection(size_t idx) {
         *m_d_direction -= *m_d_residual;
     } else {
         /* Use residual direction */
-        m_d_residual->deviceCopyTo(*m_d_direction);
+        m_d_residual->deviceCopyToAsync(*m_d_direction);
         *m_d_direction *= -1.;
     }
 }
@@ -908,23 +1043,25 @@ void Cache<T>::updateDirection(size_t idx) {
  */
 template<typename T>
 void Cache<T>::computeError(size_t idx) {
-    cudaDeviceSynchronize();  // DO NOT REMOVE !!!
+    // All iteration work uses this stream; do not wait for unrelated GPU work.
+    gpuErrChk(cudaStreamSynchronize(spock::executionStream(*m_d_iterateCandidate)));
     if (m_debug) isFinite(*m_d_iterateCandidate);
     computeResidual();
     if (idx % m_computeErrorIters == 0) {
         /* L(residualPrim) and L'(residualDual) */
-        m_d_residualDual->deviceCopyTo(*m_d_workIterateDual);
+        m_d_residualDual->deviceCopyToAsync(*m_d_workIterateDual);
         Ltr();
-        m_d_workIteratePrim->deviceCopyTo(*m_d_ellResidualPrim);
-        m_d_residualPrim->deviceCopyTo(*m_d_workIteratePrim);
+        m_d_workIteratePrim->deviceCopyToAsync(*m_d_ellResidualPrim);
+        m_d_residualPrim->deviceCopyToAsync(*m_d_workIteratePrim);
         L();
-        m_d_workIterateDual->deviceCopyTo(*m_d_ellResidualDual);
+        m_d_workIterateDual->deviceCopyToAsync(*m_d_ellResidualDual);
         /* residual/step - ell(residual) */
-        m_d_residual->deviceCopyTo(*m_d_workIterate);
+        m_d_residual->deviceCopyToAsync(*m_d_workIterate);
         *m_d_workIterate *= m_data.stepSizeRecip();
         *m_d_workIterate -= *m_d_ellResidual;
         if (m_errInit) {
-            m_tol = std::max(m_tolAbs, m_tolRel * m_d_workIterate->maxAbs());
+            m_initialResidual = m_d_workIterate->maxAbs();
+            m_tol = std::max(m_tolAbs, m_tolRel * m_initialResidual);
             m_exitCode = notRun;
             m_errInit = false;
         } else {
@@ -951,7 +1088,7 @@ void Cache<T>::computeError(size_t idx) {
             /* new_iter - T(old_iter) */
             m_cacheError3[idx] = (*m_d_iterate - *m_d_iterateCandidate).normF();
             /* cand_prim - L'(cand_dual) */
-            m_d_iterateCandidateDual->deviceCopyTo(*m_d_workIterateDual);
+            m_d_iterateCandidateDual->deviceCopyToAsync(*m_d_workIterateDual);
             Ltr();
             *m_d_err *= -1.;
             *m_d_err += *m_d_iterateCandidatePrim;
@@ -965,6 +1102,8 @@ void Cache<T>::computeError(size_t idx) {
  */
 template<typename T>
 int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution) {
+    m_operatorEvaluations = 0;
+    if (m_cudaGraph) m_cudaGraph->resetLaunchCount();
     m_timeStart = std::chrono::high_resolution_clock::now();
     /* Load initial state */
     initialiseState(initState);
@@ -1006,11 +1145,48 @@ int Cache<T>::runCp(std::vector<T> &initState, std::vector<T> *previousSolution)
  */
 template<typename T>
 int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSolution) {
+    return runSpockImpl(initState, previousSolution, false);
+}
+
+template<typename T>
+void Cache<T>::resetDeviceWorkspace(bool keepIterate) {
+    m_exitCode = notRun;
+    m_countIterations = 0;
+    m_callsToL = 0;
+    m_timeElapsed = 0;
+    if (!keepIterate) gpuErrChk(cudaMemsetAsync(m_d_iterate->raw(), 0, m_d_iterate->numEl() * sizeof(T), spock::executionStream(*m_d_iterate)));
+    for (auto *buffer : {m_d_initState.get(), m_d_iteratePrev.get(), m_d_iterateCandidate.get(),
+                        m_d_iterateBackup.get(), m_d_deltaIterate.get(), m_d_ellResidual.get(),
+                        m_d_deltaResidual.get(), m_d_residual.get(), m_d_residualPrev.get(), m_d_err.get(),
+                        m_d_andIterateMatrix.get(), m_d_andResidualMatrix.get(), m_d_andQR.get(),
+                        m_d_andQRGammaFull.get(), m_d_direction.get(), m_d_directionScaled.get(),
+                        m_d_workIterate.get(), m_d_workYTS.get(), m_d_workDot.get()})
+        gpuErrChk(cudaMemsetAsync(buffer->raw(), 0, buffer->numEl() * sizeof(T), spock::executionStream(*buffer)));
+    m_data.dynamics()->resetDeviceWorkspace();
+}
+
+template<typename T>
+int Cache<T>::runSpockResident(std::vector<T> &state, bool warm) {
+    if (warm && m_exitCode != converged)
+        throw std::invalid_argument("A resident warm start requires a previous converged solve");
+    resetDeviceWorkspace(warm);
+    return runSpockImpl(state, nullptr, warm);
+}
+
+template<typename T>
+int Cache<T>::runSpockImpl(std::vector<T> &initState, std::vector<T> *previousSolution, bool residentWarm) {
     m_timeStart = std::chrono::high_resolution_clock::now();
+    m_operatorEvaluations = 0;
+    if (m_cudaGraph) m_cudaGraph->resetLaunchCount();
+    m_backtracks = 0;
+    m_validAndersonHistory = 0;
+    m_andersonStatistics = {};
+    if (m_regularisedAnderson) m_regularisedAnderson->reset();
     /* Load initial state */
     initialiseState(initState);
     /* Load previous solution if given */
-    initialisePrev(previousSolution);
+    if (residentWarm) saveToPrev();
+    else initialisePrev(previousSolution);
     /* Reset error check */
     m_errInit = true;
     /* Initialise variables */
@@ -1043,6 +1219,8 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         backup();
         /* Compute residual norm */
         w = normM(*m_d_residual, *m_d_residual);
+        if (m_regularisedAnderson && !std::isfinite(w))
+            throw std::runtime_error("Nonfinite SPOCK residual norm");
         /* Compute change of iterate */
         computeDeltaIterate();
         /* Compute change of residual */
@@ -1053,7 +1231,7 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         updateDirection(iOut);
         /* Blind update */
         if (w <= m_c0 * zeta) {
-            m_d_iteratePrev->deviceCopyTo(*m_d_iterateCandidate);
+            m_d_iteratePrev->deviceCopyToAsync(*m_d_iterateCandidate);
             *m_d_iterateCandidate += *m_d_direction;
             zeta = w;
             countK0 += 1;
@@ -1062,8 +1240,8 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
         /* Line search on tau */
         tau = 1.;
         for (size_t iIn = 0; iIn < m_maxInnerIters; iIn++) {
-            m_d_iteratePrev->deviceCopyTo(*m_d_iterate);
-            m_d_direction->deviceCopyTo(*m_d_directionScaled);
+            m_d_iteratePrev->deviceCopyToAsync(*m_d_iterate);
+            m_d_direction->deviceCopyToAsync(*m_d_directionScaled);
             *m_d_directionScaled *= tau;
             *m_d_iterate += *m_d_directionScaled;
             iter();
@@ -1071,26 +1249,27 @@ int Cache<T>::runSpock(std::vector<T> &initState, std::vector<T> *previousSoluti
             wTilde = normM(*m_d_residual, *m_d_residual);
             /* Educated update */
             if (w <= wSafe && wTilde <= m_c1 * w) {
-                m_d_iterate->deviceCopyTo(*m_d_iterateCandidate);
+                m_d_iterate->deviceCopyToAsync(*m_d_iterateCandidate);
                 wSafe = wTilde + pow(m_c2, iOut);
                 countK1 += 1;
                 break;  // K1
             }
             /* Compute rho */
-            rho = pow(wTilde, 2) - dotM(*m_d_residual, *m_d_directionScaled);  // This is the algo equation.
-//            *m_d_directionScaled *= -1.;  // This is...
-//            *m_d_directionScaled += *m_d_residual;  // not the algo equation, but...
-//            rho = dotM(*m_d_residual, *m_d_directionScaled);  //  performs well.
+            // normM(r, r) above leaves M*r in m_d_workDot. Nothing on this
+            // branch overwrites it, so symmetry gives r' M d = d' (M*r)
+            // without another application of L and its adjoint.
+            rho = pow(wTilde, 2) - m_d_directionScaled->dotF(*m_d_workDot);
             /* Safeguard update */
             if (rho >= m_sigma * wTilde * w) {
                 *m_d_residual *= (m_lambda * rho / pow(wTilde, 2));
-                m_d_iteratePrev->deviceCopyTo(*m_d_iterateCandidate);
+                m_d_iteratePrev->deviceCopyToAsync(*m_d_iterateCandidate);
                 *m_d_iterateCandidate -= *m_d_residual;
                 countK2 += 1;
                 break;  // K2
             } else {
                 tau *= m_beta;
                 countK2bt += 1;
+                ++m_backtracks;
             }
             if (iIn >= m_maxInnerIters - 1) {
                 restore();
@@ -1146,6 +1325,9 @@ private:
     size_t m_maxInnerIters = 0;
     size_t m_andBuff = 0;
     bool m_debug = false;
+    AndersonOptions m_andersonOptions;
+    spock::ProjectionMode m_projectionMode = spock::ProjectionMode::automatic;
+    spock::GraphMode m_graphMode = spock::GraphMode::none;
 
 public:
     /**
@@ -1201,11 +1383,34 @@ public:
         return *this;
     }
 
+    CacheBuilder<T> &regularisedAnderson(AndersonOptions options = {}) {
+        options.enabled = true;
+        options.validate();
+        m_andersonOptions = options;
+        return *this;
+    }
+
+    CacheBuilder<T> &legacyAnderson() {
+        m_andersonOptions.enabled = false;
+        m_andersonOptions.qr.incremental = false;
+        return *this;
+    }
+
     CacheBuilder<T> &enableDebug(bool enable = true) {
         if (enable && m_maxOuterIters == 0) {
             m_maxOuterIters = 1000;
         }
         m_debug = enable;
+        return *this;
+    }
+
+    CacheBuilder<T> &projectionMode(spock::ProjectionMode mode) {
+        m_projectionMode = mode;
+        return *this;
+    }
+
+    CacheBuilder<T> &cudaGraphs(spock::GraphMode mode) {
+        m_graphMode = mode;
         return *this;
     }
 
@@ -1222,7 +1427,10 @@ public:
             m_maxOuterIters,
             m_maxInnerIters,
             m_andBuff,
-            m_debug
+            m_debug,
+            m_andersonOptions,
+            m_projectionMode,
+            m_graphMode
         );
     }
 
@@ -1239,7 +1447,10 @@ public:
             m_maxOuterIters,
             m_maxInnerIters,
             m_andBuff,
-            m_debug
+            m_debug,
+            m_andersonOptions,
+            m_projectionMode,
+            m_graphMode
         );
     }
 };

@@ -145,8 +145,8 @@ if status != "infeasible":
     tol = 1e-2
     print("States:\n", states_, "\nInputs:\n", inputs_, "\n")
     print("Equal: ",
-          np.allclose(states_, states, tol) and
-          np.allclose(inputs_, inputs, tol),
+          np.allclose(states_, states, rtol=tol, atol=tol) and
+          np.allclose(inputs_, inputs, rtol=tol, atol=tol),
           "\n")
 
 # Primal solution

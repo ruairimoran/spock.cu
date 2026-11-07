@@ -2,6 +2,7 @@
 #define GPU__
 
 #include <tensor.cuh>
+#include "execution.cuh"
 #include <vector>
 #include <cublas_v2.h>
 #include <cusolverDn.h>

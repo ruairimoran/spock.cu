@@ -292,9 +292,10 @@ static void memCpyNode2Node(DTensor<T> &dst, DTensor<T> &src,
     size_t nodeSizeSrc = src.numRows();
     if (dst.numCols() != 1 || src.numCols() != 1)
         throw std::invalid_argument("[scenarioTree::memCpy::node2Node] numCols must be 1.");
+    const auto stream = spock::commonStream(dst, src);
     dim3 blocks, threads;
     setKernelDimensions(blocks, threads, nodeTo - nodeFrom + 1, numEl);
-    k_memCpyNode2Node<<<blocks, threads>>>(dst.raw(), src.raw(), nodeFrom, nodeTo, numEl, nodeSizeDst,
+    k_memCpyNode2Node<<<blocks, threads, 0, stream>>>(dst.raw(), src.raw(), nodeFrom, nodeTo, numEl, nodeSizeDst,
                                            nodeSizeSrc, elFromDst, elFromSrc);
 }
 
@@ -308,9 +309,10 @@ void ScenarioTree<T>::memCpyAnc2Node(DTensor<T> &dst, DTensor<T> &src,
         throw std::invalid_argument("[scenarioTree::memCpy::anc2Node] numCols must be 1.");
     if (nodeFrom < 1)
         throw std::invalid_argument("[scenarioTree::memCpy::anc2Node] Root node has no ancestor.");
+    const auto stream = spock::commonStream(dst, src);
     dim3 blocks, threads;
     setKernelDimensions(blocks, threads, nodeTo - nodeFrom + 1, numEl);
-    k_memCpyAnc2Node<<<blocks, threads>>>(dst.raw(), src.raw(), nodeFrom, nodeTo, numEl, nodeSizeDst,
+    k_memCpyAnc2Node<<<blocks, threads, 0, stream>>>(dst.raw(), src.raw(), nodeFrom, nodeTo, numEl, nodeSizeDst,
                                           nodeSizeSrc, elFromDst, elFromSrc, m_d_ancestors->raw());
 }
 
@@ -322,9 +324,10 @@ void ScenarioTree<T>::memCpyCh2Node(DTensor<T> &dst, DTensor<T> &src,
         throw std::invalid_argument("[scenarioTree::memCpy::ch2Node] numCols must be 1.");
     if (dst.numRows() != numEl)
         throw std::invalid_argument("[scenarioTree::memCpy::ch2Node] Source and destination dimensions mismatch.");
+    const auto stream = spock::commonStream(dst, src);
     dim3 blocks, threads;
     setKernelDimensions(blocks, threads, nodeTo - nodeFrom + 1, numEl);
-    k_memCpyCh2Node<<<blocks, threads>>>(dst.raw(), src.raw(),
+    k_memCpyCh2Node<<<blocks, threads, 0, stream>>>(dst.raw(), src.raw(),
                                          nodeFrom, nodeTo, numEl, chIdx,
                                          m_d_childFrom->raw(), m_d_numChildren->raw(), add);
 }
@@ -336,9 +339,10 @@ void ScenarioTree<T>::memCpyLeaf2Zero(DTensor<T> &dst, DTensor<T> &src,
     size_t nodeSizeSrc = src.numRows();
     if (dst.numCols() != 1 || src.numCols() != 1)
         throw std::invalid_argument("[scenarioTree::memCpy::leaf2Zero] numCols must be 1.");
+    const auto stream = spock::commonStream(dst, src);
     dim3 blocks, threads;
     setKernelDimensions(blocks, threads, m_numLeafNodes, numEl);
-    k_memCpyLeaf2Zero<<<blocks, threads>>>(dst.raw(), src.raw(), m_numNonleafNodes, m_numNodesMinus1, numEl,
+    k_memCpyLeaf2Zero<<<blocks, threads, 0, stream>>>(dst.raw(), src.raw(), m_numNonleafNodes, m_numNodesMinus1, numEl,
                                            nodeSizeDst, nodeSizeSrc, elFromDst, elFromSrc);
 }
 
@@ -349,9 +353,10 @@ void ScenarioTree<T>::memCpyZero2Leaf(DTensor<T> &dst, DTensor<T> &src,
     size_t nodeSizeSrc = src.numRows();
     if (dst.numCols() != 1 || src.numCols() != 1)
         throw std::invalid_argument("[scenarioTree::memCpy::zero2Leaf] numCols must be 1.");
+    const auto stream = spock::commonStream(dst, src);
     dim3 blocks, threads;
     setKernelDimensions(blocks, threads, m_numLeafNodes, numEl);
-    k_memCpyZero2Leaf<<<blocks, threads>>>(dst.raw(), src.raw(), m_numNonleafNodes, m_numNodesMinus1, numEl,
+    k_memCpyZero2Leaf<<<blocks, threads, 0, stream>>>(dst.raw(), src.raw(), m_numNonleafNodes, m_numNodesMinus1, numEl,
                                            nodeSizeDst, nodeSizeSrc, elFromDst, elFromSrc);
 }
 

@@ -9,9 +9,24 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 # ----
 enable_testing()
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(SPOCK_TEST_FIXTURE_DIR "${CMAKE_CURRENT_BINARY_DIR}/fixtures")
+add_test(NAME spock_generate_fixtures
+    COMMAND "${CMAKE_COMMAND}"
+        "-DPYTHON=${Python3_EXECUTABLE}"
+        "-DGENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/cuda/test.py"
+        "-DDENSE_GENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/cuda/generate_dense_cost.py"
+        "-DDIAGONAL_GENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/cuda/generate_diagonal_cost.py"
+        "-DDYNAMICS_GENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/cuda/generate_dynamics_projection.py"
+        "-DFIXTURE_DIR=${SPOCK_TEST_FIXTURE_DIR}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/generate_fixtures.cmake")
+set_tests_properties(spock_generate_fixtures PROPERTIES
+    FIXTURES_SETUP spock_data
+    ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/api/python:${GPUTILS_SOURCE_DIR}/python")
 add_executable(spock_tests)
 target_sources(spock_tests  # add files
     PRIVATE
+    testCpuSvd.cpp
     cuda/testKernels.cu
     cuda/testTree.cu
     cuda/testCones.cu
@@ -20,6 +35,16 @@ target_sources(spock_tests  # add files
     cuda/testProjections.cu
     cuda/testOperator.cu
     cuda/testCache.cu
+    cuda/testAndersonSvd.cu
+    cuda/testAndersonQr.cu
+    cuda/testAndersonDevice.cu
+    cuda/testMetricProduct.cu
+    cuda/testCostAliasing.cu
+    cuda/testDiagonalCost.cu
+    cuda/testDynamics.cu
+    cuda/testExecutionStreams.cu
+    cuda/testConcurrentProjections.cu
+    cuda/testCudaGraphs.cu
 )
 target_link_libraries(spock_tests
     PRIVATE
@@ -32,6 +57,29 @@ target_include_directories(spock_tests
     "${PROJECT_SOURCE_DIR}/src"
     "${PROJECT_BINARY_DIR}"
 )
+target_compile_definitions(spock_tests PRIVATE
+    SPOCK_TEST_DATA_DIR="${SPOCK_TEST_FIXTURE_DIR}/data/"
+    SPOCK_TEST_FIXTURE_DIR="${SPOCK_TEST_FIXTURE_DIR}/")
 include(GoogleTest)
-gtest_discover_tests(spock_tests)
+gtest_discover_tests(spock_tests PROPERTIES FIXTURES_REQUIRED spock_data RESOURCE_LOCK spock_gpu)
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/python-fixtures")
+add_test(NAME spock_python
+    COMMAND "${Python3_EXECUTABLE}" -m unittest discover
+        -s "${CMAKE_CURRENT_SOURCE_DIR}/python" -p "test*.py" -v)
+set_tests_properties(spock_python PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/python-fixtures"
+    ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/api/python:${GPUTILS_SOURCE_DIR}/python;OPENBLAS_NUM_THREADS=1;OMP_NUM_THREADS=1;MPLBACKEND=Agg")
 # ----
+
+# Run the complete CUDA suite without implicit NULL-stream synchronization.
+add_test(NAME spock_nonblocking_streams
+    COMMAND "${CMAKE_COMMAND}" -E env SPOCK_TEST_NONBLOCKING_STREAM=1
+        $<TARGET_FILE:spock_tests>)
+set_tests_properties(spock_nonblocking_streams PROPERTIES
+    FIXTURES_REQUIRED spock_data RESOURCE_LOCK spock_gpu)
+
+add_test(NAME spock_single_stream_projection
+    COMMAND "${CMAKE_COMMAND}" -E env SPOCK_TEST_SINGLE_STREAM=1
+        $<TARGET_FILE:spock_tests> --gtest_filter=ProjectionConfigurationTest.singleStreamFallback:CudaGraph*)
+set_tests_properties(spock_single_stream_projection PROPERTIES
+    FIXTURES_REQUIRED spock_data RESOURCE_LOCK spock_gpu)

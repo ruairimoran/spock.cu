@@ -109,7 +109,7 @@ protected:
     size_t m_callsToL = 0;
     size_t m_operatorEvaluations = 0;
     size_t m_backtracks = 0;
-    size_t m_computeErrorIters = 25;
+    size_t m_computeErrorIters = 10;
     bool m_debug = false;
     bool m_errInit = false;  ///< Whether to initialise tolerances
     bool m_status = false;  ///< General status use

@@ -57,6 +57,8 @@ def main():
                         help="Acceleration mode (default: regularized with QR updates)")
     parser.add_argument("--cuda-graphs", choices=("none", "s1", "cp"), default="none",
                         help="Capture sequential S1 or the complete CP operator (default: none)")
+    parser.add_argument("--partial-lifting", type=int, choices=(0, 1, 2, 3, 4, 5, 8), default=0,
+                        help="Dynamics schedule: 0=fused stages, 1=reordered stages, 2/3/4/5/8=blocked unary suffix")
     parser.add_argument("--aa-fit", choices=("gpu", "cpu"), default="gpu",
                         help="Reduced filtering/SVD/coefficient backend (default: gpu)")
     parser.add_argument("--aa-regularization", type=float, default=1e-8,
@@ -138,6 +140,7 @@ def main():
         "implementation": "persistent GPU storage; binary dynamics-only updates",
         "anderson": anderson, "projection_mode": args.projections, "cuda_graphs": args.cuda_graphs,
         "diagonal_costs": args.diagonal_costs, "cost_factor_structures": cost_structures,
+        "partial_lifting_block_size": args.partial_lifting,
         "trajectories": args.trajectories, "steps": args.steps, "seed": args.seed,
         "physical_states": p["num_states"], "augmented_states": p["state_size"], "inputs": p["num_inputs"],
         "prediction_transitions": len(p["branching"]), "branching": p["branching"],
@@ -169,9 +172,12 @@ def main():
     states = np.full((args.trajectories, args.steps + 1, p["state_size"]), np.nan)
     controls = np.full((args.trajectories, args.steps, p["num_inputs"]), np.nan)
     delays = np.full((args.trajectories, args.steps + 1), np.nan)
-    worker = subprocess.Popen([str(executable), str(workspace / "data"), str(args.tolerance), str(args.max_time),
-                               json.dumps(anderson), "--projections", args.projections, "--cuda-graphs", args.cuda_graphs],
-                              cwd=repo, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    worker_args = [str(executable), str(workspace / "data"), str(args.tolerance), str(args.max_time),
+                   json.dumps(anderson), "--projections", args.projections, "--cuda-graphs", args.cuda_graphs]
+    if args.partial_lifting:
+        worker_args += ["--partial-lifting", str(args.partial_lifting)]
+    worker = subprocess.Popen(worker_args, cwd=repo, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+
     columns = ["trajectory", "step", "seed", "warm_start", "converged", "status", "gpu_time_s", "solver_wall_s",
                "setup_wall_s", "generation_wall_s", "update_wall_s", "worker_wall_s", "step_wall_s", "iterations",
                "primal_size", "dual_size", "device_allocated_bytes", "solution_device_pointer", "phi", "next_phi",
@@ -181,6 +187,7 @@ def main():
                "aa_last_rank", "aa_last_scale", "aa_last_coefficient_norm", "initial_residual", "final_residual",
                "effective_tolerance", "cp_operator_evaluations", "backtracks"]
     columns += ["cuda_graphs", "graph_nodes", "graph_launches", "graph_setup_wall_s", "dynamics_update_bytes"]
+    columns += ["partial_lifting_block_size", "partial_lifting_update_wall_s"]
     columns += ["aa_qr_rebuilds", "aa_qr_updates", "aa_qr_reuses", "aa_qr_update_fallbacks",
                 "aa_qr_orthogonality_checks", "aa_qr_last_orthogonality_error"]
     try:
@@ -191,6 +198,8 @@ def main():
             raise ValueError("GPU dynamics update protocol differs from the online model; rebuild the worker")
         if ready.get("dynamics_update_bytes") != online.payload_bytes:
             raise ValueError("GPU dynamics payload byte count differs from the online model")
+        if ready.get("partial_lifting_block_size", 0) != args.partial_lifting:
+            raise ValueError("GPU worker does not support the requested partial-lifting schedule; rebuild it")
         if ready.get("cuda_graphs") != args.cuda_graphs:
             raise RuntimeError("GPU worker does not support the requested CUDA graph mode; rebuild it")
         if ready.get("projection_mode") != args.projections:
@@ -201,6 +210,10 @@ def main():
         if [(entry["name"], entry["shape"]) for entry in ready["fields"]] != expected:
             raise ValueError("GPU dynamics payload layout differs from the online model")
         metadata["worker_initialisation"] = ready
+        if args.partial_lifting:
+            print(f"Dynamics schedule B={args.partial_lifting}: "
+                  f"{ready.get('partial_lifting_blocks', 0)} blocks, "
+                  f"{ready.get('partial_lifting_device_bytes', 0)/2**20:.2f} MiB additional GPU storage", flush=True)
         print(f"GPU storage allocated once: {ready['device_allocated_bytes']/2**30:.3f} GiB of tracked tensors", flush=True)
         with (output / "mpc_gpu_timings.csv").open("w", newline="") as stream:
             writer = csv.DictWriter(stream, fieldnames=columns)

@@ -19,8 +19,8 @@ public:
 };
 
 int main(int argc, char **argv) {
-    if (argc != 6) {
-        std::cerr << "Usage: benchmark_dynamics DATA OUTPUT s1|cp eager|graph SAMPLES\n";
+    if (argc != 6 && argc != 7) {
+        std::cerr << "Usage: benchmark_dynamics DATA OUTPUT s1|cp eager|graph SAMPLES [BLOCK_SIZE]\n";
         return 2;
     }
     std::string path = argv[1];
@@ -33,6 +33,18 @@ int main(int argc, char **argv) {
     Session::setStreams(2);
     ScenarioTree<double> tree(path);
     ProblemData<double> data(tree);
+    const size_t blockSize = argc == 7 ? std::stoul(argv[6]) : 0;
+    const auto setupStream = spock::executionStream(tree.d_ancestors());
+    gpuErrChk(cudaStreamSynchronize(setupStream));
+    size_t freeBefore, totalMemory, freeAfter;
+    gpuErrChk(cudaMemGetInfo(&freeBefore, &totalMemory));
+    const auto setupStart = std::chrono::steady_clock::now();
+    data.dynamics()->configurePartialLifting(blockSize);
+    gpuErrChk(cudaStreamSynchronize(setupStream));
+    gpuErrChk(cudaMemGetInfo(&freeAfter, &totalMemory));
+    const double summarySetupMs = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - setupStart).count();
+    const auto lifting = data.dynamics()->partialLiftingStatistics();
     DynamicsBenchmarkCache cache(tree, data);
     std::vector<double> root(tree.numStates(), .1), values(cache.solution().numEl());
     for (size_t i = 0; i < values.size(); ++i) values[i] = .2 * std::sin(.17 * double(i));
@@ -72,7 +84,20 @@ int main(int argc, char **argv) {
     }
     if (Session::getInstance().totalAllocatedBytes() != allocated)
         throw std::runtime_error("Projection benchmark changed tracked device allocation");
-    std::cout << "],\"device_bytes\":" << allocated << "}\n";
+    const auto updateStart = std::chrono::steady_clock::now();
+    for (int i = 0; i < 5; ++i) data.dynamics()->refreshProjectionFactors();
+    gpuErrChk(cudaStreamSynchronize(stream));
+    const double refreshMs = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - updateStart).count() / 5;
+    std::cout << "],\"device_bytes\":" << allocated
+              << ",\"block_size\":" << blockSize << ",\"lifting_device_bytes\":" << lifting.allocatedBytes
+              << ",\"lifting_cuda_setup_delta_bytes\":" << (freeBefore >= freeAfter ? freeBefore - freeAfter : 0)
+              << ",\"lifting_matrix_bytes\":" << lifting.matrixBytes
+              << ",\"lifting_scratch_bytes\":" << lifting.scratchBytes
+              << ",\"lifting_blocks\":" << lifting.blocks
+              << ",\"lifting_tail_stage\":" << lifting.tailStage
+              << ",\"summary_setup_ms\":" << summarySetupMs
+              << ",\"summary_refresh_ms\":" << refreshMs << "}\n";
     cache.output(cp).saveToFile(argv[2]);
     gpuErrChk(cudaEventDestroy(begin)); gpuErrChk(cudaEventDestroy(end));
 }

@@ -110,13 +110,15 @@ TYPED_TEST(CudaGraphTest, coldWarmAndPendingDestruction) {
 }
 
 template<typename T>
-void checkGraphDynamics(const std::string &name, bool affine, bool update) {
+void checkGraphDynamics(const std::string &name, bool affine, bool update,
+                        size_t blockSize = 0, const std::string &replacement = "linear_update") {
     const std::string base = std::string(SPOCK_TEST_FIXTURE_DIR) + "dynamics_projection/";
     const std::string path = base + name + "/data/";
     ScenarioTree<T> tree(path);
     std::unique_ptr<Dynamics<T>> projection;
     if (affine) projection = std::make_unique<Affine<T>>(tree);
     else projection = std::make_unique<Linear<T>>(tree);
+    projection->configurePartialLifting(blockSize);
     DTensor<T> root(tree.numStates(), 1, 1, true);
     DTensor<T> states(tree.numStates(), 1, tree.numNodes(), true);
     DTensor<T> inputs(tree.numInputs(), 1, tree.numNonleafNodes(), true);
@@ -124,7 +126,7 @@ void checkGraphDynamics(const std::string &name, bool affine, bool update) {
     spock::detail::CudaGraph graph;
     graph.capture(spock::executionStream(states), [&] { projection->project(root, states, inputs); });
     for (int version = 0; version < (update ? 2 : 1); ++version) {
-        const auto current = version ? base + "linear_update/data/" : path;
+        const auto current = version ? base + replacement + "/data/" : path;
         if (version) {
             const auto complete = projection->projectionTensors();
             for (size_t index : {size_t(5),size_t(6)})
@@ -135,6 +137,9 @@ void checkGraphDynamics(const std::string &name, bool affine, bool update) {
                 auto factor = DTensor<T>::parseFromFile(current + "dynamics_" + names[i] + tree.fpFileExt());
                 factor.deviceCopyTo(*factors[i]);
             }
+            const size_t allocated = Session::getInstance().totalAllocatedBytes();
+            projection->refreshProjectionFactors();
+            EXPECT_EQ(Session::getInstance().totalAllocatedBytes(), allocated);
         }
         for (int sample = 0; sample < 3; ++sample) {
             const auto prefix = current + "projection_" + std::to_string(sample) + "_";
@@ -189,3 +194,13 @@ TEST(CudaGraphConfigurationTest, sequentialRequiredAndCaptureCleanup) {
 }
 
 }  // namespace
+
+TYPED_TEST(CudaGraphTest, partialLiftingReferencesAndResidentUpdates) {
+    using T = TypeParam;
+    for (size_t blockSize : {size_t(1), size_t(2), size_t(3), size_t(4), size_t(5), size_t(8)}) {
+        checkGraphDynamics<T>("chain", false, true, blockSize, "chain_update");
+        checkGraphDynamics<T>("affine_tail", true, false, blockSize);
+        checkGraphDynamics<T>("tail_tiled", true, false, blockSize);
+        checkGraphDynamics<T>("affine", true, false, blockSize);
+    }
+}

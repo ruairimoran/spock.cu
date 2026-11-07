@@ -220,3 +220,73 @@ execution. Standard output is JSON containing each CUDA-event sample, host
 wall time, graph node count and tracked device bytes; the output prefix saves
 the resulting tensor for numerical comparison. Setup, graph construction and
 input preparation are excluded from the recorded intervals.
+
+
+## Experimental partial lifting
+
+On branch `f/partial-lifting`, use `--partial-lifting B` with `B` equal to
+`2`, `3`, `4`, `5` or `8` to select blocked dynamics projections. The default `0`
+keeps the existing fused stage sweeps. The diagnostic value `1` selects a
+reordered stage baseline with whole-tree known-term/control products and affine
+state reconstruction, but without block matrices.
+
+```bash
+make -C build -j2 networked_mpc_persistent benchmark_dynamics
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
+build/venv/bin/python -u examples/networkedControlMpc/run_mpc_persistent.py \
+  --output build/mpc_tree64_partial4 \
+  --trajectories 15 --steps 20 --seed 20261103 --branching 8 8 \
+  --anderson regularized --aa-qr update --diagonal-costs \
+  --projections sequential --cuda-graphs cp --partial-lifting 4
+```
+
+Use a fresh output directory for each schedule. Both `s1` and `cp` graph modes
+are supported. The fixed-input benchmark accepts an optional final block-size
+argument, for example `... DATA output.bt s1 graph 100 8`; use an output name
+ending in `.bt` to save binary tensor data.
+
+The implementation finds the common single-child suffix after the last
+branching stage. It keeps the branching prefix on stage sweeps, divides each
+remaining chain into short blocks, and performs independent local
+summarisation, coarse boundary sweeps, and independent interior reconstruction
+in both directions. Short final blocks are handled explicitly. If no unary
+suffix exists, the original stage implementation is used; startup metadata
+reports whether the requested schedule is active.
+
+One transposed block matrix is shared by the forward and backward recurrences.
+GPUtils composes these matrices on the GPU. Two chain-sized matrix batches are
+retained as preparation scratch rather than allocating scratch for every block.
+State vectors are held in block-local shared memory during short recurrences;
+this requires two state vectors to fit the GPU's default shared-memory limit.
+Unsupported state dimensions are rejected during configuration. All data and
+workspaces remain allocated throughout the MPC simulation.
+
+Configure the C++ interface with
+`problem.dynamics()->configurePartialLifting(4)` before constructing the cache.
+Reconfiguration after the first projection or graph capture is rejected because
+graphs retain fixed addresses. After changing projection factors in place, call
+`problem.dynamics()->refreshProjectionFactors()` on their execution stream
+before the next projection. This enqueues preparation without allocating new
+storage. The persistent worker does this automatically after each linear MPC
+update, including when replaying an already captured graph. The existing
+six-field host-to-GPU update payload is unchanged.
+
+Startup metadata records the selected block size, suffix depth/length, block
+count, summary-matrix bytes, preparation-scratch bytes and exact additional
+GPUtils-tracked device bytes. For the stored 64-scenario problem, the 45-edge
+unary tail gives the following block counts and approximate extra allocations,
+including preparation scratch, vector/index storage and pointer metadata:
+
+| Block size | Blocks | Extra GPU storage (MB) |
+| --- | ---: | ---: |
+| 2 | 1,472 | 289.9 |
+| 3 | 960 | 197.1 |
+| 4 | 768 | 162.3 |
+| 5 | 576 | 127.5 |
+| 8 | 384 | 92.7 |
+
+Both B=3 and B=5 divide the tail exactly; short final blocks remain supported
+for other horizons. The initial preparation is part of `setup_wall_s`; subsequent
+`partial_lifting_update_wall_s` values record summary recomposition and are also
+included in `update_wall_s`. CUDA-event `gpu_time_s` continues to measure only
+the resident solver interval.
